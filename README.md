@@ -48,7 +48,11 @@ It is now maintained here as its own project, with badge templates, templates sh
 dashboards, `visibility` support inside templates, and a series of variable-substitution and
 layout fixes on top of that work.
 
-Everything here is MIT licensed, as was all of the work it builds on.
+This project is maintained by [tempus2016](https://github.com/tempus2016) and is copyright
+2026 John MacKinnon. It began as a fork of RomRider's `decluttering-card`, which is copyright
+2018 Alexandre Garcia, and parts of that original card remain in it — so both notices are
+carried in [LICENSE](LICENSE). Everything here is MIT licensed, as was all of the work it
+builds on.
 
 ## Migrating from `decluttering-card`
 
