@@ -1,3 +1,5 @@
+## 1.0.0 (2026-08-18)
+
 # Changelog
 
 Releases of this fork are listed here as they are made. The entries below the first
