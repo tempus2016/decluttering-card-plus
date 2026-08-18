@@ -16,13 +16,27 @@ export function isTemplateCardType(type: string | undefined): boolean {
   return type === TEMPLATE_TYPE || type === LEGACY_TEMPLATE_TYPE;
 }
 
-function collectFromCards(cards: any[] | undefined, templates: Record<string, TemplateConfig>): void {
-  if (!cards) return;
-  for (const card of cards) {
-    if (isTemplateCardType(card.type)) {
-      templates[card.template] = card as DeclutteringTemplateConfig;
-    }
+/*
+ * A template card can sit anywhere a card can, which includes inside a stack, a grid or a
+ * conditional card - people group their template definitions exactly like anything else on
+ * the dashboard. Only the top level used to be looked at, so a template tidied away inside
+ * a stack was invisible and every card using it failed with "doesn't exist".
+ *
+ * A template card's own content is not descended into: a template card inside a template
+ * card is part of the outer definition, not another definition of its own.
+ */
+function collectFromNode(node: any, templates: Record<string, TemplateConfig>): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectFromNode(item, templates);
+    return;
   }
+  if (!node || typeof node !== 'object') return;
+
+  if (isTemplateCardType(node.type)) {
+    if (typeof node.template === 'string') templates[node.template] = node as DeclutteringTemplateConfig;
+    return;
+  }
+  for (const value of Object.values(node)) collectFromNode(value, templates);
 }
 
 /** Every template a single dashboard configuration defines, by name. */
@@ -33,15 +47,9 @@ export function collectTemplates(ll: LovelaceConfig | null | undefined): Record<
   const declared = (ll as any).decluttering_templates;
   if (declared) Object.assign(templates, declared);
 
-  if (ll.views) {
-    for (const view of ll.views) {
-      collectFromCards(view.cards, templates);
-      const sections = (view as any).sections;
-      if (sections) {
-        for (const section of sections) collectFromCards(section.cards, templates);
-      }
-    }
-  }
+  // The whole view is walked, so wherever a template card has been put - cards, sections,
+  // nested inside either - it is found.
+  if (ll.views) collectFromNode(ll.views, templates);
   return templates;
 }
 
