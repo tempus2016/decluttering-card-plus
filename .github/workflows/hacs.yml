@@ -1,22 +1,35 @@
 name: HACS
 
+# Deliberately not run on pull_request. HACS resolves the repository through GitHub's API
+# and reads its metadata - description, topics, licence - from the DEFAULT branch, so a
+# pull request is graded against master rather than against itself. That makes the result
+# say nothing true about the change, and each failure emails the repository owner while
+# the meaningful checks are still running. master is what actually determines HACS
+# publishability, so push, nightly and on demand gives full coverage without the noise.
+
 on:
   workflow_dispatch:
   push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
+    branches: [master]
   schedule:
     - cron: '0 4 * * 1'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   validate:
+    name: HACS
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: HACS validation
-        uses: hacs/action@main
+        uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main
         with:
           category: plugin

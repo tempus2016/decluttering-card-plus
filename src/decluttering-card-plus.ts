@@ -925,18 +925,23 @@ const customCards: any[] = ((window as any).customCards = (window as any).custom
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const customBadges: any[] = ((window as any).customBadges = (window as any).customBadges || []);
 
+// Shown as the documentation link on the entry in Home Assistant's card and badge pickers.
+const DOCUMENTATION_URL = 'https://github.com/tempus2016/decluttering-card-plus';
+
 defineElement(CARD_EDITOR_TAG, DeclutteringCardEditor);
 defineElement(TEMPLATE_EDITOR_TAG, DeclutteringTemplateEditor);
 
 if (defineElement(CARD_TAG, DeclutteringCard)) {
   customCards.push({
     type: CARD_TAG,
+    documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Card Plus',
     preview: false,
     description: 'Reuse multiple times the same card configuration with variables to declutter your config.',
   });
   customBadges.push({
     type: CARD_TAG,
+    documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Card Plus',
     preview: false,
     description: 'Instantiate a template whose content is a badge.',
@@ -946,6 +951,7 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
 if (defineElement(TEMPLATE_TAG, DeclutteringTemplate)) {
   customCards.push({
     type: TEMPLATE_TAG,
+    documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Template Plus',
     preview: false,
     description: 'Define a reusable template for decluttering cards to instantiate.',
@@ -975,6 +981,7 @@ class LegacyDeclutteringTemplate extends DeclutteringTemplate {
 if (defineElement(LEGACY_CARD_TAG, LegacyDeclutteringCard)) {
   customCards.push({
     type: LEGACY_CARD_TAG,
+    documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Card (compatibility)',
     preview: false,
     description: 'Compatibility alias for existing custom:decluttering-card configurations.',
@@ -984,6 +991,7 @@ if (defineElement(LEGACY_CARD_TAG, LegacyDeclutteringCard)) {
 if (defineElement(LEGACY_TEMPLATE_TAG, LegacyDeclutteringTemplate)) {
   customCards.push({
     type: LEGACY_TEMPLATE_TAG,
+    documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Template (compatibility)',
     preview: false,
     description: 'Compatibility alias for existing custom:decluttering-template configurations.',
