@@ -232,6 +232,37 @@ default:
   how: 'Boop'
 ```
 
+#### Nested variables
+
+A variable's value can itself contain variables. Substitution repeats until nothing is left
+to replace, so the order you declare them in does not matter.
+
+```yaml
+type: custom:decluttering-template-plus
+template: area_sensor
+card:
+  type: tile
+  entity: '[[entity]]'
+  name: '[[label]]'
+default:
+  - label: '[[area]] sensor'
+  - area: Garden
+  - entity: sun.sun
+```
+
+Used like this, `label` resolves to `Shed sensor` — a value you pass in always wins over the
+template's default, including when the placeholder only appears because of another substitution:
+
+```yaml
+type: custom:decluttering-card-plus
+template: area_sensor
+variables:
+  - area: Shed
+```
+
+A variable that refers to itself cannot be resolved. Substitution gives up after 10 passes and
+logs a warning to the browser console rather than looping forever.
+
 ### Using the card
 
 If your template content is a card, add a *Custom: Decluttering Card Plus* to your dashboard

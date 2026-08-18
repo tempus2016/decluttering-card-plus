@@ -23,6 +23,8 @@ jobs:
         run: npm ci
       - name: Lint the code
         run: npm run lint --if-present
+      - name: Run the tests
+        run: npm test --if-present
   build:
     runs-on: ubuntu-latest
 
