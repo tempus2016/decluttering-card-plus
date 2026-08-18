@@ -164,6 +164,17 @@ yourself. Use `lovelace` for the original default dashboard.
 The other dashboards are read once per browser session, so a change to a shared template shows
 up in other dashboards after a refresh.
 
+### Seeing what uses a template
+
+A template card's visual editor has a **Where used** tab, listing every view on the
+dashboard that uses the template and how many times, plus any other template that calls it.
+
+It is worth a look before changing a template, because what a change affects is not visible
+from the template card itself — the cards using it can be anywhere on the dashboard, including
+inside stacks, grids and conditional cards, all of which are counted.
+
+Cards on other dashboards are not counted, even ones that borrow this dashboard's templates.
+
 ### Sharing templates with other people
 
 A template card's visual editor has a **Share** tab. Its top half writes the template out as
@@ -526,6 +537,37 @@ failing, so a list built from a helper can be empty without breaking the dashboa
 | ---- | ---- | ------- | -----------
 | for_each | list | **Optional** | One copy of the template per item; each item is a set of variables for that copy
 | columns | number | **Optional** | How many copies sit side by side. Defaults to 1, which stacks them
+
+#### Asking for a variable in a different shape
+
+A placeholder can ask for its value written differently, which lets one variable serve both
+a name and the entity id built from it:
+
+```yaml
+type: custom:decluttering-template-plus
+template: room_tile
+card:
+  type: tile
+  entity: 'light.[[room|slug]]'
+  name: '[[room|title]]'
+default:
+  - room: Back Garden
+```
+
+`light.[[room|slug]]` becomes `light.back_garden`, and `[[room|title]]` becomes
+`Back Garden`. Passing `room: John's Shed` gives `light.john_s_shed` without you having to
+pass the entity id separately.
+
+| Transform | Does | `John's Back Garden` becomes
+| --------- | ---- | ---------------------------
+| `slug` | Lower case, anything that is not a letter or digit becomes `_` | `john_s_back_garden`
+| `upper` | Upper case | `JOHN'S BACK GARDEN`
+| `lower` | Lower case | `john's back garden`
+| `title` | Capitalises each word | `John's Back Garden`
+
+The same variable can be used raw and transformed in the same template. A word after the
+bar that is not one of these four is not a transform, so nothing is substituted and the
+mistake is visible rather than silent.
 
 #### Nested variables
 

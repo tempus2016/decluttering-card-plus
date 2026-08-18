@@ -106,3 +106,51 @@ export async function findTemplateAnywhere(
 ): Promise<TemplateConfig | null> {
   return (await collectAllTemplates(hass, ll))[template] ?? null;
 }
+
+// The cards that consume a template, as opposed to the ones that define it.
+const CONSUMER_TYPES = ['custom:decluttering-card-plus', 'custom:decluttering-card'];
+
+export interface TemplateUsages {
+  /** Each view that uses the template, and how many times. */
+  views: { title: string; path: string; count: number }[];
+  /** Other templates that call this one. */
+  templates: string[];
+}
+
+function countUses(node: any, template: string): number {
+  if (Array.isArray(node)) return node.reduce((total, item) => total + countUses(item, template), 0);
+  if (!node || typeof node !== 'object') return 0;
+
+  // A template card carries the same `template:` key but defines the template rather than
+  // using it, and its content belongs to the definition - so neither is a use.
+  if (isTemplateCardType(node.type)) return 0;
+
+  let uses = CONSUMER_TYPES.includes(node.type) && node.template === template ? 1 : 0;
+  for (const value of Object.values(node)) uses += countUses(value, template);
+  return uses;
+}
+
+/**
+ * Everywhere a template is used, which is what you want to know before changing it. The
+ * whole view is walked rather than just its cards, so a use inside a stack, a grid, a
+ * conditional card, a badge or a picture element is counted like any other.
+ */
+export function collectUsages(ll: LovelaceConfig | null | undefined, template: string): TemplateUsages {
+  const usages: TemplateUsages = { views: [], templates: [] };
+  if (!ll) return usages;
+
+  for (const view of ll.views ?? []) {
+    const count = countUses(view, template);
+    if (count)
+      usages.views.push({ title: view.title ?? (view as any).path ?? '', path: (view as any).path ?? '', count });
+  }
+
+  // Both ways of defining a template are checked, and only the content is walked: the
+  // definition itself carries a `template:` key that names itself, not a use.
+  for (const [name, definition] of Object.entries(collectTemplates(ll))) {
+    if (name === template) continue;
+    const content = [definition.card, definition.row, definition.element, definition.badge];
+    if (countUses(content, template)) usages.templates.push(name);
+  }
+  return usages;
+}

@@ -15,6 +15,35 @@ export interface VariableDeclaration {
 
 const PLACEHOLDER_SOURCE = '\\[\\[([^[\\]]+)\\]\\]';
 
+/*
+ * A placeholder can ask for its value in a different shape - `[[room|slug]]` alongside
+ * `[[room]]` - which is what lets one variable serve both a name and the entity id built
+ * from it. The set is deliberately closed: an unrecognised word after the bar is not a
+ * transform, so nothing is substituted and the mistake is visible rather than silent.
+ */
+export const TRANSFORMS: Record<string, (value: string) => string> = {
+  slug: (value) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, ''),
+  upper: (value) => value.toUpperCase(),
+  lower: (value) => value.toLowerCase(),
+  title: (value) => value.replace(/\S+/g, (word) => word[0].toUpperCase() + word.slice(1).toLowerCase()),
+};
+
+/** Matches the optional `|transform` on a placeholder, capturing which one it is. */
+export const TRANSFORM_SUFFIX = `(?:\\|(${Object.keys(TRANSFORMS).join('|')}))?`;
+
+const TRANSFORM_TAIL = new RegExp(`\\|(${Object.keys(TRANSFORMS).join('|')})$`);
+
+/** The value a placeholder asks for, in the shape it asks for it. */
+export function applyTransform(transform: string | undefined, value: unknown): string {
+  const text = String(value);
+  const fn = transform ? TRANSFORMS[transform] : undefined;
+  return fn ? fn(text) : text;
+}
+
 // The parts of a template that get substituted into, and so the only places a placeholder
 // can do anything.
 const CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'style'];
@@ -106,7 +135,8 @@ function placeholdersIn(value: unknown): string[] {
   const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
   let match = pattern.exec(json);
   while (match !== null) {
-    names.push(match[1]);
+    // `[[room|slug]]` is a use of `room`, not of a variable called `room|slug`.
+    names.push(match[1].replace(TRANSFORM_TAIL, ''));
     match = pattern.exec(json);
   }
   return names;

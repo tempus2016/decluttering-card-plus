@@ -96,6 +96,18 @@ check(
   ['a'],
 );
 
+check(
+  'a transformed placeholder is a use of the variable, not of a name with a bar in it',
+  usedVariables({ card: { entity: 'light.[[room|slug]]' } }),
+  ['room'],
+);
+
+check(
+  'a variable used only through a transform is not reported as missing',
+  diagnoseInstance([{ room: 'Hall' }], { card: { entity: 'light.[[room|slug]]' } }),
+  { missing: [], unused: [] },
+);
+
 /* -------------------------------------------------------------- resolution */
 
 check(

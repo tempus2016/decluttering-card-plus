@@ -191,6 +191,49 @@ check(
   { entity: 'sun.sun' },
 );
 
+check(
+  'slug turns a name into an entity id fragment',
+  deepReplace([{ room: 'Living Room' }], {}, { entity: 'light.[[room|slug]]' }),
+  { entity: 'light.living_room' },
+);
+
+check('upper and lower change case', deepReplace([{ a: 'MiXeD' }], {}, { u: '[[a|upper]]', l: '[[a|lower]]' }), {
+  u: 'MIXED',
+  l: 'mixed',
+});
+
+check('title capitalises each word', deepReplace([{ a: 'living room light' }], {}, { t: '[[a|title]]' }), {
+  t: 'Living Room Light',
+});
+
+check('a transform on a whole value produces a string', deepReplace([{ a: 'Hall' }], {}, { name: '[[a|upper]]' }), {
+  name: 'HALL',
+});
+
+check(
+  'the same variable can be used raw and transformed at once',
+  deepReplace([{ room: 'Back Garden' }], {}, { name: '[[room]]', entity: 'light.[[room|slug]]' }),
+  { name: 'Back Garden', entity: 'light.back_garden' },
+);
+
+check(
+  'an unknown transform is not a transform, so nothing is replaced',
+  deepReplace([{ a: 'x' }], {}, { v: '[[a|shout]]' }),
+  { v: '[[a|shout]]' },
+);
+
+check(
+  'slug collapses runs of punctuation and trims the ends',
+  deepReplace([{ a: "  John's  Shed!  " }], {}, { v: '[[a|slug]]' }),
+  { v: 'john_s_shed' },
+);
+
+check(
+  'a transform applies to a default as well as a passed value',
+  deepReplace(undefined, { default: [{ room: 'Front Door' }] }, { v: '[[room|slug]]' }),
+  { v: 'front_door' },
+);
+
 warnings.length = 0;
 const started = Date.now();
 deepReplace([{ a: 'x[[a]]' }], {}, { v: '[[a]]' });
