@@ -1,12 +1,11 @@
 {
   "name": "decluttering-card-plus",
-  "version": "2026.2.0",
+  "version": "1.0.0",
   "description": "Decluttering Card Plus for Lovelace",
   "main": "dist/decluttering-card-plus.js",
   "scripts": {
     "build": "npm run lint && npm run rollup",
     "lint": "eslint .",
-    "postversion": "npm run build",
     "rollup": "rollup -c",
     "start": "rollup -c --watch",
     "test": "tsc src/deep-replace.ts src/templates.ts --outDir .test-build --module commonjs --target es2017 --skipLibCheck && node test/deep-replace.test.js && node test/templates.test.js"
@@ -38,6 +37,7 @@
     "@rollup/plugin-terser": "^1.0.0",
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^11.0.1",
     "@semantic-release/npm": "^13.1.5",
     "@semantic-release/release-notes-generator": "^14.1.1",

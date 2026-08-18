@@ -24,9 +24,17 @@ module.exports = {
       },
     ],
     [
+      // Rebuild once the new version is in package.json, so the bundle that is committed
+      // and attached to the release carries it too.
+      '@semantic-release/exec',
+      {
+        prepareCmd: 'npm run build',
+      },
+    ],
+    [
       '@semantic-release/git',
       {
-        assets: ['CHANGELOG.md', 'README.md', 'package.json', 'yarn.lock'],
+        assets: ['CHANGELOG.md', 'README.md', 'package.json', 'package-lock.json', 'dist/decluttering-card-plus.js'],
       },
     ],
     [
