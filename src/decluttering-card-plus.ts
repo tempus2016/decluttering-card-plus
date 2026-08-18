@@ -119,7 +119,9 @@ abstract class DeclutteringElement extends LitElement {
 
   private _thingConfig?: LovelaceThingConfig;
   private _thingType?: LovelaceThingType;
-  private _ro?: ResizeObserver;
+  // One observer for the element's lifetime. A new one per wrapped card leaked a live
+  // observer on every reconfigure, and left them all running after the card was gone.
+  private _resizes?: ResizeObserver;
   private _savedStyles?: Map<string, [string, string]>;
   @state() private _style?: string;
 
@@ -272,10 +274,32 @@ abstract class DeclutteringElement extends LitElement {
     this._thing = thing;
     this._forwardGridApi(thing);
     if (this._hass) thing.hass = this._hass;
-    this._ro = new ResizeObserver(() => {
-      this._displayHidden();
-    });
-    this._ro.observe(thing);
+    this._watchForHiding(thing);
+  }
+
+  // The wrapped card is watched so that this wrapper can collapse when the card hides
+  // itself. Whatever was being watched before is dropped first: a card that has been
+  // replaced is no longer anything to react to.
+  private _watchForHiding(thing: LovelaceThing): void {
+    if (!this._resizes) {
+      this._resizes = new ResizeObserver(() => {
+        this._displayHidden();
+      });
+    }
+    this._resizes.disconnect();
+    this._resizes.observe(thing);
+  }
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    // Home Assistant moves cards between views rather than rebuilding them, so a card
+    // put back on the page has to start watching again.
+    if (this._thing) this._watchForHiding(this._thing);
+  }
+
+  public disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._resizes?.disconnect();
   }
 
   /*
