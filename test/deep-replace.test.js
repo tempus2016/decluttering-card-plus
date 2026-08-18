@@ -78,6 +78,70 @@ check('no variables at all returns the content untouched',
   deepReplace(undefined, {}, { entity: '[[entity]]' }),
   { entity: '[[entity]]' });
 
+// Regressions from the upstream issue tracker. Substitution is string surgery on JSON
+// text, so any value inserted into a JSON string has to be escaped for one.
+
+check('a value containing a newline (upstream #47)',
+  deepReplace([{ v: 'line one\nline two' }], {}, { content: '[[v]]' }),
+  { content: 'line one\nline two' });
+
+check('a multi-line Jinja template (upstream #60)',
+  deepReplace([{ v: "{% if false -%}\n{{states('zone.home')}}\n{%- endif %}" }], {}, { content: '[[v]]' }),
+  { content: "{% if false -%}\n{{states('zone.home')}}\n{%- endif %}" });
+
+check('a value containing a double quote',
+  deepReplace([{ v: 'say "hi"' }], {}, { content: '[[v]]' }),
+  { content: 'say "hi"' });
+
+check('a value containing a backslash',
+  deepReplace([{ v: 'C:\\Users' }], {}, { content: '[[v]]' }),
+  { content: 'C:\\Users' });
+
+check('a value containing a tab',
+  deepReplace([{ v: 'a\tb' }], {}, { content: '[[v]]' }),
+  { content: 'a\tb' });
+
+// String.replace reads $& and $1 in the replacement as patterns, which corrupted the
+// value and, with substitution looping, grew it on every pass.
+check('a value containing $& is inserted literally',
+  deepReplace([{ v: 'a$&b' }], {}, { content: '[[v]]' }),
+  { content: 'a$&b' });
+
+check('a value containing $1 is inserted literally',
+  deepReplace([{ v: 'cost $1' }], {}, { content: '[[v]]' }),
+  { content: 'cost $1' });
+
+check('an object used inside a longer string becomes its JSON text (upstream #83)',
+  deepReplace([{ VALUE: ['tst1.x', 'tst2.y'] }], {}, { content: "{{ '[[VALUE]]' }}" }),
+  { content: '{{ \'["tst1.x","tst2.y"]\' }}' });
+
+check('a variable name containing regexp characters',
+  deepReplace([{ 'my.var': 'x' }], {}, { content: '[[my.var]]' }),
+  { content: 'x' });
+
+check('null value',
+  deepReplace([{ v: null }], {}, { content: '[[v]]' }),
+  { content: null });
+
+// The examples from the two nested-variable issues, verbatim.
+
+check('default referencing another variable (upstream #62)',
+  deepReplace([{ room: 'office' }], { default: [{ light_entity: 'light.[[room]]' }] }, { entity: '[[light_entity]]' }),
+  { entity: 'light.office' });
+
+check('default referencing another variable, overridden (upstream #62)',
+  deepReplace(
+    [{ room: 'office' }, { light_entity: 'light.office_floor_lamp' }],
+    { default: [{ light_entity: 'light.[[room]]' }] },
+    { entity: '[[light_entity]]' },
+  ),
+  { entity: 'light.office_floor_lamp' });
+
+check('a variable falling back to another variable (upstream #84)',
+  deepReplace([{ entity: 'sensor.my_entity' }], { default: [{ history_entity: '[[entity]]' }] },
+    { entity: '[[entity]]', history: '[[history_entity]]' }),
+  { entity: 'sensor.my_entity', history: 'sensor.my_entity' });
+
 warnings.length = 0;
 const started = Date.now();
 deepReplace([{ a: 'x[[a]]' }], {}, { v: '[[a]]' });

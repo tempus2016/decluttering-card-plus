@@ -167,6 +167,14 @@ abstract class DeclutteringElement extends LitElement {
       }
       :host(.decluttering-container) {
         display: block;
+        /*
+         * The host is an extra level between the layout and the wrapped card, so a card
+         * sized against its container - fill_container on a tile, for example - would
+         * otherwise measure itself against this wrapper's content height instead of the
+         * space the layout gave it. Against an auto-height parent this resolves to auto,
+         * so it changes nothing outside sized containers.
+         */
+        height: 100%;
       }
     `;
   }
@@ -177,8 +185,19 @@ abstract class DeclutteringElement extends LitElement {
     });
   }
 
+  // A wrapped card can hide itself with an inline style, a stylesheet rule or the hidden
+  // attribute. Only the first of those was checked before, so a card hiding itself by any
+  // other means left this wrapper occupying space in the layout - upstream issue #58.
+  private _childIsHidden(): boolean {
+    const thing = this._thing;
+    if (!thing) return false;
+    if (thing.hasAttribute('hidden')) return true;
+    // `display` is not inherited, so this stays correct even while the host is hidden.
+    return getComputedStyle(thing).display === 'none';
+  }
+
   protected _displayHidden(): void {
-    if (this._thing?.style.display === 'none') {
+    if (this._childIsHidden()) {
       this.classList.add('child-card-hidden');
     } else if (this.classList.contains('child-card-hidden')) {
       this.classList.remove('child-card-hidden');
@@ -228,11 +247,36 @@ abstract class DeclutteringElement extends LitElement {
     }
 
     this._thing = thing;
+    this._forwardGridApi(thing);
     if (this._hass) thing.hass = this._hass;
     this._ro = new ResizeObserver(() => {
       this._displayHidden();
     });
     this._ro.observe(thing);
+  }
+
+  /*
+   * The sections layout asks the card how much of the grid it wants, while it renders.
+   * Without this the wrapper answers for itself and every templated card is laid out with
+   * the defaults instead of the size the wrapped card asked for.
+   *
+   * Home Assistant ignores `getLayoutOptions` entirely on an element that also has
+   * `getGridOptions`, so these are assigned per instance rather than declared on the class:
+   * a card implementing only the older API would otherwise be silently ignored.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _forwardGridApi(thing?: any): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const self = this as any;
+    delete self.getGridOptions;
+    delete self.getLayoutOptions;
+    if (this._thingType !== 'card' || !thing) return;
+    if (typeof thing.getGridOptions === 'function') {
+      self.getGridOptions = (): unknown => thing.getGridOptions();
+    }
+    if (typeof thing.getLayoutOptions === 'function') {
+      self.getLayoutOptions = (): unknown => thing.getLayoutOptions();
+    }
   }
 
   protected render(): TemplateResult | void {
