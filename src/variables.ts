@@ -196,3 +196,32 @@ export function mergeVariables(existing: VariablesConfig[] | undefined, desired:
   merged.push(...wanted.values());
   return merged;
 }
+
+/**
+ * One entry of a card's `for_each` list, as the values to substitute for that copy. An
+ * item is usually written as a mapping, which reads far better than a list of one-key
+ * entries when every copy sets the same three or four things.
+ */
+export function forEachVariables(item: unknown, cardVariables: VariablesConfig[] | undefined): VariablesConfig[] {
+  const own: VariablesConfig[] = [];
+  if (Array.isArray(item)) {
+    own.push(...item.filter((entry) => variableName(entry) !== undefined));
+  } else if (item && typeof item === 'object') {
+    for (const [name, value] of Object.entries(item)) own.push({ [name]: value });
+  }
+  // The item's own values come first, so a copy can override what the card sets for all.
+  return [...own, ...(Array.isArray(cardVariables) ? cardVariables : [])];
+}
+
+/** Every name any item of a `for_each` list sets, for warning about what is missing. */
+export function forEachNames(items: unknown): string[] {
+  if (!Array.isArray(items)) return [];
+  const names: string[] = [];
+  for (const item of items) {
+    for (const entry of forEachVariables(item, undefined)) {
+      const name = variableName(entry);
+      if (name !== undefined && !names.includes(name)) names.push(name);
+    }
+  }
+  return names;
+}
