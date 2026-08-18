@@ -7,6 +7,7 @@ import {
   LovelaceCard,
   LovelaceCardEditor,
   LovelaceConfig,
+  navigate,
 } from 'custom-card-helpers';
 import {
   DeclutteringCardConfig,
@@ -27,6 +28,7 @@ import {
   findTemplate,
   findTemplateAnywhere,
   getTemplateSources,
+  TemplateUsages,
 } from './templates';
 import {
   diagnoseInstance,
@@ -68,6 +70,23 @@ const THING_STUBS: Record<string, unknown> = {
 // Declared variables get their own form field, and the prefix keeps a variable called
 // "template" from colliding with the field that chooses the template.
 const VARIABLE_FIELD_PREFIX = 'variable:';
+
+// One shared instance: the editor re-renders on every state change Home Assistant sends,
+// and a fresh schema object each time would mark every field dirty for no reason.
+const REPEAT_SCHEMA = [
+  {
+    name: 'for_each',
+    label: 'Repeat for each',
+    helper: 'One copy of the template per item. Example: - entity: light.hall, name: Hall',
+    selector: { object: {} },
+  },
+  {
+    name: 'columns',
+    label: 'Columns',
+    helper: 'How many copies sit side by side. One stacks them vertically',
+    selector: { number: { min: 1, max: 6, mode: 'box' } },
+  },
+];
 
 // Variables can be written as a list of entries or as one mapping; both are read the same
 // way. Anything else - a string, a number - is neither, and worth saying so about.
@@ -638,22 +657,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
    * way it always has been, through that box alone.
    */
   private _formSchema(declarations: VariableDeclaration[], repeatable: boolean): unknown[] {
-    const repeat = repeatable
-      ? [
-          {
-            name: 'for_each',
-            label: 'Repeat for each',
-            helper: 'One copy of the template per item. Example: - entity: light.hall, name: Hall',
-            selector: { object: {} },
-          },
-          {
-            name: 'columns',
-            label: 'Columns',
-            helper: 'How many copies sit side by side. One stacks them vertically',
-            selector: { number: { min: 1, max: 6, mode: 'box' } },
-          },
-        ]
-      : [];
+    const repeat = repeatable ? REPEAT_SCHEMA : [];
 
     if (!declarations.length) return [...this._schema, ...repeat];
 
@@ -702,12 +706,10 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   private _renderDiagnostics(template: TemplateConfig | undefined, readable: boolean): TemplateResult {
     if (!template || this._loadingTemplates || !readable) return html``;
 
+    // The items' names count as supplied, so a variable only the items set is not
+    // missing - but they are not the card's own, so they are never called unused.
     const repeated = forEachNames(this._config?.for_each).map((name) => ({ [name]: null }));
-    const supplied = [...normaliseVariables(this._config?.variables), ...repeated];
-    const { missing } = diagnoseInstance(supplied, template);
-    // Only what the card itself sets can be called unused; an item's values are checked
-    // together with the card's, so a name only some items set is not a mistake.
-    const { unused } = diagnoseInstance(this._config?.variables, template);
+    const { missing, unused } = diagnoseInstance(this._config?.variables, template, repeated);
     return html`
       ${
         missing.length
@@ -857,6 +859,10 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   // applies it - rewriting somebody's card is not something to do on a single click.
   @state() private _suggestion?: { card: unknown; variables: VariableDeclaration[] };
   @state() private _suggestedNothing = false;
+
+  // The Where-used counts, taken when the tab is opened and thrown away when the config
+  // changes. Not reactive state: whatever changes it also changes state that renders.
+  private _usages?: TemplateUsages;
 
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
@@ -1146,8 +1152,9 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     const name = this._config?.template;
     if (!name) return html``;
 
-    const { views, templates } = collectUsages(this.lovelace, name);
+    const { views, templates } = this._usages ?? collectUsages(this.lovelace ?? getLovelaceConfig(), name);
     const total = views.reduce((sum, view) => sum + view.count, 0);
+    const dashboard = document.location.pathname.split('/').slice(0, 2).join('/');
 
     return html`
       <div class="usages">
@@ -1164,9 +1171,14 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 </p>
                 <ul>
                   ${views.map(
+                    // A view with no path is addressed by its position, which is how Home
+                    // Assistant itself links such views.
                     (view) => html`
                       <li>
-                        <a href=${`${document.location.pathname.split('/').slice(0, 2).join('/')}/${view.path}`}>
+                        <a
+                          href=${`${dashboard}/${view.path || view.index}`}
+                          @click=${(ev: Event): void => this._openView(ev, `${dashboard}/${view.path || view.index}`)}
+                        >
                           ${view.title || view.path || 'Untitled view'}
                         </a>
                         — ${view.count === 1 ? 'once' : `${view.count} times`}
@@ -1179,14 +1191,20 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         ${
           templates.length
             ? html`<ha-alert alert-type="info">
-                ${templates.length === 1 ? 'This template is used by' : 'This template is used by'}
-                ${templates.length === 1 ? 'another template' : 'other templates'}: ${templates.join(', ')}. Changing it
-                changes ${templates.length === 1 ? 'that one' : 'those'} too.
+                This template is used by ${templates.length === 1 ? 'another template' : 'other templates'}:
+                ${templates.join(', ')}. Changing it changes ${templates.length === 1 ? 'that one' : 'those'} too.
               </ha-alert>`
             : html``
         }
       </div>
     `;
+  }
+
+  // A plain click on the link would be a full page navigation, throwing away the open
+  // dialog and any unsaved edits with it. navigate() moves within the app instead.
+  private _openView(ev: Event, href: string): void {
+    ev.preventDefault();
+    navigate(this, href);
   }
 
   /*
@@ -1271,7 +1289,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     this._importErrors = [];
 
     const name = this._importValue.template;
-    const existing = collectTemplates(this.lovelace);
+    const existing = collectTemplates(this.lovelace ?? getLovelaceConfig());
     if (!this._importClash && name !== this._config.template && name in existing) {
       this._importClash = name;
       return;
@@ -1294,6 +1312,12 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       HTMLElement | undefined;
     const panel = tab?.getAttribute('panel');
     if (panel) this._selectedTab = panel;
+    // Counted when the tab is opened rather than on every render: the dialog re-renders
+    // on every state change Home Assistant sends, and the answer only changes with the
+    // config. The fallback matters in the editor contexts that never set lovelace.
+    if (panel === 'usages' && this._config?.template) {
+      this._usages = collectUsages(this.lovelace ?? getLovelaceConfig(), this._config.template);
+    }
   }
 
   private _valueChanged(ev: CustomEvent): void {
@@ -1334,6 +1358,12 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   }
 
   private _fireConfigChanged(config: DeclutteringTemplateConfig): void {
+    // Any change invalidates a suggestion computed against the old template - applying a
+    // stale one would rewrite a card the user has since edited, or clash with a name they
+    // have since declared. The usage counts go stale the same way.
+    this._suggestion = undefined;
+    this._suggestedNothing = false;
+    this._usages = undefined;
     fireEvent(this, 'config-changed', { config });
   }
 

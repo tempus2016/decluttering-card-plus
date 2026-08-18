@@ -218,9 +218,34 @@ const USED_IN = {
 check('a template used nowhere has no usages', collectUsages(USED_IN, 'missing'), { views: [], templates: [] });
 
 check('usages are counted per view, wherever they are nested', collectUsages(USED_IN, 'tile').views, [
-  { title: 'First', path: 'one', count: 3 },
-  { title: 'two', path: 'two', count: 1 },
+  { title: 'First', path: 'one', index: 0, count: 3 },
+  { title: 'two', path: 'two', index: 1, count: 1 },
 ]);
+
+check(
+  'a view with no path still says which view it is',
+  collectUsages(
+    { views: [{ cards: [] }, { title: 'Second', cards: [{ type: 'custom:decluttering-card-plus', template: 'a' }] }] },
+    'a',
+  ).views,
+  [{ title: 'Second', path: '', index: 1, count: 1 }],
+);
+
+check(
+  'a consumer sitting in a definition default value is a use too',
+  collectUsages(
+    {
+      decluttering_templates: {
+        chrome: {
+          card: { type: 'tile' },
+          default: [{ inner: { type: 'custom:decluttering-card-plus', template: 'a' } }],
+        },
+      },
+    },
+    'a',
+  ).templates,
+  ['chrome'],
+);
 
 check('a template that calls another one is listed by name', collectUsages(USED_IN, 'tile').templates, ['wrapper']);
 

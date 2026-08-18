@@ -1,4 +1,4 @@
-import { VariableDeclaration } from './variables';
+import { PLACEHOLDER, VariableDeclaration } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -18,18 +18,29 @@ interface Candidate {
 
 const ENTITY_ID = /^[a-z_]+\.[a-z0-9_]+$/;
 
+// `entity` and `entity_id` are one candidate under two keys, so they cannot drift apart.
+const entityCandidate: Candidate = {
+  base: 'entity',
+  label: 'Entity',
+  selector: { entity: {} },
+  matches: (v) => ENTITY_ID.test(v),
+};
+
+function textCandidate(base: string, label: string): Candidate {
+  return { base, label, selector: { text: {} }, matches: (v) => v.trim().length > 0 };
+}
+
 const CANDIDATES: Record<string, Candidate> = {
-  entity: { base: 'entity', label: 'Entity', selector: { entity: {} }, matches: (v) => ENTITY_ID.test(v) },
-  entity_id: { base: 'entity', label: 'Entity', selector: { entity: {} }, matches: (v) => ENTITY_ID.test(v) },
-  name: { base: 'name', label: 'Name', selector: { text: {} }, matches: (v) => v.trim().length > 0 },
-  title: { base: 'title', label: 'Title', selector: { text: {} }, matches: (v) => v.trim().length > 0 },
-  heading: { base: 'heading', label: 'Heading', selector: { text: {} }, matches: (v) => v.trim().length > 0 },
+  entity: entityCandidate,
+  entity_id: entityCandidate,
+  name: textCandidate('name', 'Name'),
+  title: textCandidate('title', 'Title'),
+  heading: textCandidate('heading', 'Heading'),
   icon: { base: 'icon', label: 'Icon', selector: { icon: {} }, matches: (v) => v.includes(':') },
 };
 
 // A value that already refers to a variable is somebody's deliberate work, not a literal
 // waiting to be replaced.
-const PLACEHOLDER = /\[\[[^[\]]+\]\]/;
 
 function labelFor(candidate: Candidate, index: number): string {
   return index === 1 ? candidate.label : `${candidate.label} ${index}`;

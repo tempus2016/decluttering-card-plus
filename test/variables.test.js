@@ -332,4 +332,16 @@ check(
   '{"ACTION":"TOGGLE"}',
 );
 
+check(
+  'supplements count as supplied for missing, but are never called unused',
+  diagnoseInstance([{ junk: 1 }], { card: { entity: '[[entity]]' } }, [{ entity: null }]),
+  { missing: [], unused: ['junk'] },
+);
+
+check(
+  'without the supplement the same variable is missing',
+  diagnoseInstance([{ junk: 1 }], { card: { entity: '[[entity]]' } }),
+  { missing: ['entity'], unused: ['junk'] },
+);
+
 report();

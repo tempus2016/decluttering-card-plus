@@ -1,5 +1,5 @@
 import { VariablesConfig, TemplateConfig } from './types';
-import { applyTransform, resolveVariables, TRANSFORM_SUFFIX } from './variables';
+import { applyTransform, PLACEHOLDER, resolveVariables, TRANSFORM_SUFFIX } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -7,7 +7,6 @@ import { applyTransform, resolveVariables, TRANSFORM_SUFFIX } from './variables'
 // until nothing changes. The cap only matters for a variable that refers to itself,
 // which would otherwise never settle.
 const MAX_PASSES = 10;
-const PLACEHOLDER = /\[\[[^[\]]+\]\]/;
 
 // Substitution is string surgery on JSON text, so anything inserted into a JSON string
 // has to be escaped for one. Without this a value containing a newline, a double quote

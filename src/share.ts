@@ -1,10 +1,6 @@
-import { LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE } from './templates';
+import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE } from './templates';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-// The cards that consume a template, as opposed to the ones that define it. A template
-// nested inside another template is one of these, and names the template it needs.
-const CONSUMER_TYPES = ['custom:decluttering-card-plus', 'custom:decluttering-card'];
 
 // Anything this bundle provides itself, which whoever receives the export already has.
 const OWN_TYPES = [TEMPLATE_TYPE, LEGACY_TEMPLATE_TYPE, ...CONSUMER_TYPES];
