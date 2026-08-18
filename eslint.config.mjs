@@ -3,7 +3,7 @@ import prettierRecommended from 'eslint-plugin-prettier/recommended';
 
 export default [
   {
-    ignores: ['dist/**', '.test-build/**', 'node_modules/**'],
+    ignores: ['dist/**', '.test-build/**', '.tmp/**', 'node_modules/**'],
   },
   ...tseslint.configs.recommended,
   prettierRecommended,

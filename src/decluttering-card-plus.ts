@@ -18,6 +18,7 @@ import {
   LovelaceThingType,
 } from './types';
 import deepReplace from './deep-replace';
+import { buildExport, validateImport } from './share';
 import {
   collectTemplates,
   collectAllTemplates,
@@ -25,7 +26,7 @@ import {
   findTemplateAnywhere,
   getTemplateSources,
 } from './templates';
-import { getLovelaceConfig } from './utils';
+import { copyText, getLovelaceConfig } from './utils';
 import { VERSION } from './version';
 
 // Tags this bundle owns.
@@ -576,6 +577,16 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _config?: DeclutteringTemplateConfig;
   @state() private _selectedTab = 'settings';
 
+  // The Share tab's import box: what has been pasted, whether it parsed, and what is
+  // wrong with it. The name clash is held separately because it is a warning the user
+  // is allowed to overrule, not a reason to refuse.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _importValue?: any;
+  private _importParses = true;
+  @state() private _importErrors: string[] = [];
+  @state() private _importClash?: string;
+  @state() private _copyState: '' | 'done' | 'failed' = '';
+
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
 
@@ -621,6 +632,24 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         display: block;
         margin-bottom: 16px;
       }
+      .share h3 {
+        margin: 0 0 4px;
+      }
+      .share h3 ~ h3 {
+        margin-top: 24px;
+      }
+      .share .hint {
+        margin: 0 0 8px;
+        color: var(--secondary-text-color);
+        font-size: 0.9em;
+      }
+      .share ha-alert {
+        display: block;
+        margin-bottom: 8px;
+      }
+      .share mwc-button {
+        margin-top: 8px;
+      }
     `;
   }
 
@@ -661,6 +690,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               ? html`<ha-tab-group-tab slot="nav" panel="row">Row</ha-tab-group-tab>`
               : html``
         }
+        <ha-tab-group-tab slot="nav" panel="share">Share</ha-tab-group-tab>
       </ha-tab-group>
       ${
         this._selectedTab === 'settings'
@@ -701,9 +731,106 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                       @config-changed=${this._rowChanged}
                     ></hui-row-element-editor>
                   `
-                : html``
+                : this._selectedTab === 'share'
+                  ? this._renderShare()
+                  : html``
       }
     `;
+  }
+
+  /*
+   * A template is a self-contained block of configuration, so handing one to another
+   * person is mostly a matter of writing it out. What does not travel with it - the
+   * custom cards it is built from, the other templates it calls - is named above the
+   * box, because whoever receives it cannot tell from the YAML alone.
+   */
+  private _renderShare(): TemplateResult {
+    const { payload, notes } = buildExport(this._config);
+
+    return html`
+      <div class="share">
+        <h3>Export</h3>
+        <p class="hint">Copy this and send it to someone else, or paste it into another dashboard.</p>
+        ${notes.map((note) => html`<ha-alert alert-type="info">${note}</ha-alert>`)}
+        <ha-yaml-editor id="export" .hass=${this.hass} .defaultValue=${payload} read-only></ha-yaml-editor>
+        <mwc-button @click=${this._copyExport}>
+          ${
+            this._copyState === 'done'
+              ? 'Copied'
+              : this._copyState === 'failed'
+                ? 'Could not copy - select the text above instead'
+                : 'Copy to clipboard'
+          }
+        </mwc-button>
+
+        <h3>Import</h3>
+        <p class="hint">Paste a template someone shared with you. It will replace the one you are editing.</p>
+        <ha-yaml-editor .hass=${this.hass} @value-changed=${this._importChanged}></ha-yaml-editor>
+        ${this._importErrors.map((error) => html`<ha-alert alert-type="error">${error}</ha-alert>`)}
+        ${
+          this._importClash
+            ? html`<ha-alert alert-type="warning">
+                This dashboard already has a template called "${this._importClash}". Importing will give you two
+                templates with the same name, and only one of them will be used. Press Import again to go ahead.
+              </ha-alert>`
+            : html``
+        }
+        <mwc-button @click=${this._import}>${this._importClash ? 'Import anyway' : 'Import'}</mwc-button>
+      </div>
+    `;
+  }
+
+  private async _copyExport(): Promise<void> {
+    const editor = this.renderRoot.querySelector('#export');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const yaml = (editor as any)?.yaml;
+    if (!yaml) return;
+
+    const { notes } = buildExport(this._config);
+    // The notes ride along as comments, so they are still there when the text is pasted
+    // somewhere that cannot show them. YAML ignores them on the way back in.
+    const text = [...notes.map((note) => `# ${note}`), yaml].join('\n');
+
+    this._copyState = (await copyText(text)) ? 'done' : 'failed';
+    setTimeout(() => (this._copyState = ''), 3000);
+  }
+
+  private _importChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    this._importValue = ev.detail.value;
+    this._importParses = ev.detail.isValid !== false;
+    this._importErrors = [];
+    this._importClash = undefined;
+  }
+
+  private _import(): void {
+    if (!this._config) return;
+
+    if (!this._importParses) {
+      this._importErrors = ['This is not valid YAML, so it cannot be read.'];
+      return;
+    }
+
+    const result = validateImport(this._importValue);
+    if (!result.ok) {
+      this._importErrors = result.errors;
+      this._importClash = undefined;
+      return;
+    }
+    this._importErrors = [];
+
+    const name = this._importValue.template;
+    const existing = collectTemplates(this.lovelace);
+    if (!this._importClash && name !== this._config.template && name in existing) {
+      this._importClash = name;
+      return;
+    }
+
+    // Keep the card's own type: the export may have come from the legacy tag, and which
+    // tag this card uses is a property of where it lives, not of what was shared.
+    this._fireConfigChanged({ ...this._importValue, type: this._config.type });
+    this._importClash = undefined;
+    this._selectedTab = 'settings';
   }
 
   /*
