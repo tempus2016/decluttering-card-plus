@@ -10,20 +10,7 @@ const {
   collectUsages,
 } = require('../.test-build/templates.js');
 
-let passed = 0;
-let failed = 0;
-
-function check(name, actual, expected) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) {
-    passed += 1;
-    console.log(`PASS ${name}`);
-  } else {
-    failed += 1;
-    console.log(`FAIL ${name}\n  got      ${a}\n  expected ${e}`);
-  }
-}
+const { check, report } = require('./harness');
 
 check(
   'root decluttering_templates key',
@@ -281,5 +268,4 @@ check(
   [],
 );
 
-console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+report();

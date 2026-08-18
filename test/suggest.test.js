@@ -4,20 +4,7 @@
  */
 const { suggestVariables } = require('../.test-build/suggest.js');
 
-let passed = 0;
-let failed = 0;
-
-function check(name, actual, expected) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) {
-    passed += 1;
-    console.log(`PASS ${name}`);
-  } else {
-    failed += 1;
-    console.log(`FAIL ${name}\n  got      ${a}\n  expected ${e}`);
-  }
-}
+const { check, report } = require('./harness');
 
 check('a card with nothing to vary is left alone', suggestVariables({ type: 'markdown', content: 'hello' }, []), {
   card: { type: 'markdown', content: 'hello' },
@@ -108,5 +95,4 @@ check(
   },
 );
 
-console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+report();

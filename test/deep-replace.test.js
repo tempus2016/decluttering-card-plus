@@ -4,23 +4,13 @@
  */
 const deepReplace = require('../.test-build/deep-replace.js').default;
 
-let passed = 0;
-let failed = 0;
+const { check, report } = require('./harness');
+
+// The substitution code warns about variables it cannot resolve, and one test is about
+// that warning, so console.warn is captured for the length of the run.
 const warnings = [];
 const realWarn = console.warn;
 console.warn = (m) => warnings.push(m);
-
-function check(name, actual, expected) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) {
-    passed += 1;
-    realWarn.call(console, `PASS ${name}`);
-  } else {
-    failed += 1;
-    realWarn.call(console, `FAIL ${name}\n  got      ${a}\n  expected ${e}`);
-  }
-}
 
 check('plain substitution', deepReplace([{ entity: 'sun.sun' }], {}, { type: 'tile', entity: '[[entity]]' }), {
   type: 'tile',
@@ -242,5 +232,4 @@ check('a self-referencing variable terminates', elapsed < 2000, true);
 check('a self-referencing variable warns', warnings.length > 0, true);
 
 console.warn = realWarn;
-console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+report();

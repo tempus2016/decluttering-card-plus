@@ -5,20 +5,7 @@
  */
 const { scanDependencies, buildExport, validateImport } = require('../.test-build/share.js');
 
-let passed = 0;
-let failed = 0;
-
-function check(name, actual, expected) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) {
-    passed += 1;
-    console.log(`PASS ${name}`);
-  } else {
-    failed += 1;
-    console.log(`FAIL ${name}\n  got      ${a}\n  expected ${e}`);
-  }
-}
+const { check, report } = require('./harness');
 
 /* --- scanDependencies: custom cards the recipient has to install --- */
 
@@ -212,5 +199,4 @@ check(
 
 check('every problem is reported at once, not one at a time', validateImport({}).errors.length, 2);
 
-console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+report();
