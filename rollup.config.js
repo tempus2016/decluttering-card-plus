@@ -22,7 +22,12 @@ const serveopts = {
 const plugins = [
   nodeResolve({}),
   commonjs(),
-  typescript(),
+  // Explicit include: rollup-plugin-typescript2's default include patterns use the
+  // extglob `*.ts+(|x)`, which picomatch >= 2.3.2 no longer matches. That silently
+  // disables transpilation and the build fails with "Unexpected token" on TS syntax.
+  typescript({
+    include: ['**/*.ts', '**/*.tsx'],
+  }),
   json(),
   babel({
     exclude: 'node_modules/**',
