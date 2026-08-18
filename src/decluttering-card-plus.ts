@@ -1,4 +1,4 @@
-import { LitElement, html, TemplateResult, css, CSSResult } from 'lit';
+import { LitElement, html, TemplateResult, css, CSSResult, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import {
   HomeAssistant,
@@ -148,6 +148,13 @@ abstract class DeclutteringElement extends LitElement {
   @state() private _hass?: HomeAssistant;
   @state() private _thing?: LovelaceThing;
 
+  // Home Assistant sets both of these on a card element directly. They are declared so
+  // that assigning them triggers an update, which is what passes them on to the wrapped
+  // card - a preview has to render whether or not its visibility conditions are met, and
+  // the layout tells the card whether it is in a section or a panel.
+  @property({ type: Boolean }) public preview = false;
+  @property({ attribute: false }) public layout?: string;
+
   private _thingConfig?: LovelaceThingConfig;
   private _thingType?: LovelaceThingType;
   private _ro?: ResizeObserver;
@@ -183,6 +190,15 @@ abstract class DeclutteringElement extends LitElement {
     this.updateComplete.then(() => {
       this._displayHidden();
     });
+  }
+
+  protected updated(changedProperties: PropertyValues): void {
+    super.updated(changedProperties);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const thing = this._thing as any;
+    if (!thing) return;
+    if ('preview' in thing) thing.preview = this.preview;
+    if ('layout' in thing) thing.layout = this.layout;
   }
 
   // A wrapped card can hide itself with an inline style, a stylesheet rule or the hidden
@@ -304,6 +320,27 @@ abstract class DeclutteringElement extends LitElement {
     handler: (thing: LovelaceThing) => void,
   ): Promise<void> {
     let thing: LovelaceThing;
+
+    /*
+     * Cards go through Home Assistant's own hui-card wrapper, which is what its stack
+     * cards use. Creating the element directly, as this card used to, skips everything
+     * hui-card does around it: `visibility` conditions were silently ignored inside a
+     * template (upstream #85, j9brown #2), grid options were not reported, and rebuilds
+     * were handled by hand.
+     *
+     * hui-card renders into the light DOM, so a style injected into this element's shadow
+     * root still reaches the card inside it. It is internal Home Assistant API though, so
+     * if it is ever absent the original path still runs.
+     */
+    const huiCard = thingType === 'card' && thingConfig.type !== 'divider' ? customElements.get('hui-card') : undefined;
+    if (huiCard) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const card = new huiCard() as any;
+      card.config = thingConfig;
+      handler(card as LovelaceThing);
+      return;
+    }
+
     if (HELPERS) {
       if (thingType === 'card') {
         if (thingConfig.type === 'divider') thing = (await HELPERS).createRowElement(thingConfig);

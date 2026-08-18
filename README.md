@@ -335,6 +335,39 @@ cards:
 | variables | list | **Optional** | List of variables and their values to replace in the template content
 | style | string | **Optional** | CSS styles to inject into the card. Supports variable replacement.
 
+### Visibility
+
+Cards inside a template support Home Assistant's own `visibility` conditions, and those
+conditions can use variables:
+
+```yaml
+type: custom:decluttering-template-plus
+template: occupancy
+card:
+  type: tile
+  entity: '[[sensor]]'
+  visibility:
+    - condition: state
+      entity: '[[sensor]]'
+      state: '[[show_when]]'
+default:
+  - show_when: 'on'
+```
+
+```yaml
+type: custom:decluttering-card-plus
+template: occupancy
+variables:
+  - sensor: binary_sensor.hallway_motion
+```
+
+When a card is hidden by its conditions the decluttering card collapses with it, so it
+leaves no gap in the layout. While the dashboard is in edit mode the template preview is
+shown regardless of its conditions, so you can still see what you are editing.
+
+`visibility` also works on the `custom:decluttering-card-plus` card itself, where Home
+Assistant applies it in the usual way.
+
 ### Styling
 
 The card supports injecting custom CSS styles directly into the card. This is useful for customizing the appearance of templates and instances without needing external tools like `card-mod`.
