@@ -155,21 +155,13 @@ export function collectUsages(ll: LovelaceConfig | null | undefined, template: s
       });
   });
 
-  // Both ways of defining a template are checked, and only the content is walked: the
-  // definition itself carries a `template:` key that names itself, not a use. A card
-  // handed in through a default - the definition's own or a declaration's - is content
-  // too, which is what the variables entry covers.
+  // Both ways of defining a template are checked. Every value of the definition is
+  // walked rather than a hand-kept list of keys, so content-bearing keys added later
+  // cannot silently fall outside the count. The definition's own `template:` name is a
+  // bare string, which the walk ignores.
   for (const [name, definition] of Object.entries(collectTemplates(ll))) {
     if (name === template) continue;
-    const content = [
-      definition.card,
-      definition.row,
-      definition.element,
-      definition.badge,
-      definition.default,
-      definition.variables,
-    ];
-    if (countUses(content, template)) usages.templates.push(name);
+    if (countUses(Object.values(definition), template)) usages.templates.push(name);
   }
   return usages;
 }

@@ -51,13 +51,23 @@ function substitutePass(jsonConfig: string, variableArray: VariablesConfig[]): s
 
     // Every replacement goes through a function so that `$&`, `$1` and friends in a
     // variable's value are inserted literally rather than read as replacement patterns.
-    // A transformed placeholder is text whatever the value's own type, since a transform
-    // is a way of writing the value out rather than a way of choosing it.
+    // A transform shapes text, so it only applies to a scalar: slugging or uppercasing a
+    // mapping's JSON garbles its keys, so the placeholder is left visible instead - the
+    // same treatment an unrecognised transform gets.
+    const transformable = value === null || typeof value !== 'object';
     json = json.replace(wholeValue, (match: string, transform?: string) =>
-      transform ? JSON.stringify(applyTransform(transform, value)) : asWholeValue(value, match),
+      transform
+        ? transformable
+          ? JSON.stringify(applyTransform(transform, value))
+          : match
+        : asWholeValue(value, match),
     );
-    json = json.replace(withinString, (_match: string, transform?: string) =>
-      transform ? escapeForJsonString(applyTransform(transform, value)) : asPartOfString(value),
+    json = json.replace(withinString, (match: string, transform?: string) =>
+      transform
+        ? transformable
+          ? escapeForJsonString(applyTransform(transform, value))
+          : match
+        : asPartOfString(value),
     );
   });
   return json;

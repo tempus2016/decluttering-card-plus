@@ -327,9 +327,9 @@ check('a single mapping is one item, not a mistake', forEachItems({ entity: 'lig
 check('anything else is not a list to repeat over', [forEachItems('nonsense'), forEachItems(undefined)], [null, null]);
 
 check(
-  'a transform shapes the text the placeholder would otherwise insert, even for an object',
-  applyTransform('upper', { action: 'toggle' }),
-  '{"ACTION":"TOGGLE"}',
+  'a transform only shapes scalars; deep-replace leaves a transformed mapping visible',
+  applyTransform('upper', 'toggle'),
+  'TOGGLE',
 );
 
 check(
@@ -342,6 +342,19 @@ check(
   'without the supplement the same variable is missing',
   diagnoseInstance([{ junk: 1 }], { card: { entity: '[[entity]]' } }),
   { missing: ['entity'], unused: ['junk'] },
+);
+
+check(
+  'a supplement does not shadow a declared default, so its references still count as used',
+  diagnoseInstance(
+    [{ room: 'Hall' }],
+    {
+      variables: [{ name: 'label', default: '[[room]] light' }, { name: 'room' }],
+      card: { name: '[[label]]' },
+    },
+    [{ label: null }],
+  ),
+  { missing: [], unused: [] },
 );
 
 report();

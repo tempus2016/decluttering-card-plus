@@ -44,12 +44,12 @@ export const TRANSFORM_SUFFIX = `(?:\\|(${Object.keys(TRANSFORMS).join('|')}))?`
 const TRANSFORM_TAIL = new RegExp(`\\|(${Object.keys(TRANSFORMS).join('|')})$`);
 
 /**
- * The value a placeholder asks for, in the shape it asks for it. A transform shapes the
- * text the placeholder would otherwise insert, so an object transforms as its JSON text
- * rather than the useless '[object Object]'.
+ * The value a placeholder asks for, in the shape it asks for it. Only a scalar reaches
+ * here with a transform: substitution leaves a transformed mapping or list visible
+ * rather than garbling its JSON through a text transform.
  */
 export function applyTransform(transform: string | undefined, value: unknown): string {
-  const text = value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value);
+  const text = String(value);
   const fn = transform ? TRANSFORMS[transform] : undefined;
   return fn ? fn(text) : text;
 }
@@ -206,8 +206,10 @@ export function diagnoseInstance(
   // template uses, but are not the card's own to be called unused.
   supplements?: VariablesConfig[],
 ): { missing: string[]; unused: string[] } {
-  const supplied = [...normaliseVariables(variables), ...normaliseVariables(supplements)];
-  const values = variableValues(resolveVariables(supplied, template));
+  // Supplements go after full resolution, so they only fill names nothing else defines.
+  // Folded in earlier, a supplement would shadow a declared default and hide the
+  // variables that default's own value goes on to use.
+  const values = variableValues([...resolveVariables(variables, template), ...normaliseVariables(supplements)]);
   const used = reachable(template, values);
   const isUsed = new Set(used);
 
@@ -281,7 +283,9 @@ export function forEachVariables(
  */
 export function forEachItems(forEach: unknown): unknown[] | undefined {
   if (Array.isArray(forEach)) return forEach;
-  if (forEach && typeof forEach === 'object') return [forEach];
+  // An empty mapping is what an object field emits when it is opened and cleared, which
+  // is somebody saying "no list" - not a list of one copy with nothing in it.
+  if (forEach && typeof forEach === 'object' && Object.keys(forEach).length) return [forEach];
   return undefined;
 }
 
@@ -289,10 +293,8 @@ export function forEachItems(forEach: unknown): unknown[] | undefined {
 export function forEachNames(items: unknown): string[] {
   const names = new Set<string>();
   for (const item of forEachItems(items) ?? []) {
-    for (const entry of normaliseVariables(item)) {
-      const name = variableName(entry);
-      if (name !== undefined) names.add(name);
-    }
+    // normaliseVariables only ever emits single-key entries.
+    for (const entry of normaliseVariables(item)) names.add(Object.keys(entry)[0]);
   }
   return [...names];
 }

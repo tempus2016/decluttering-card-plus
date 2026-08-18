@@ -7,7 +7,6 @@ import {
   LovelaceCard,
   LovelaceCardEditor,
   LovelaceConfig,
-  navigate,
 } from 'custom-card-helpers';
 import {
   DeclutteringCardConfig,
@@ -295,11 +294,10 @@ abstract class DeclutteringElement extends LitElement {
    * grid when more than one column is asked for, rather than managed here. Everything
    * that applies to a single templated card then applies to each copy unchanged.
    */
-  protected _setForEach(templateConfig: TemplateConfig, config: DeclutteringCardConfig): void {
+  protected _setForEach(templateConfig: TemplateConfig, config: DeclutteringCardConfig, items: unknown[]): void {
     if (getThingType(templateConfig) !== 'card') {
       throw new Error('for_each needs a template that defines a card');
     }
-    const items = forEachItems(config.for_each) ?? [];
     const cards = items.map((item) =>
       deepReplace(forEachVariables(item, config.variables), templateConfig, templateConfig.card),
     );
@@ -514,7 +512,8 @@ class DeclutteringCard extends DeclutteringElement {
   // today - so it simply renders nothing rather than failing the card.
   private _applyTemplate(templateConfig: TemplateConfig, config: DeclutteringCardConfig): void {
     // A single mapping counts as a list of one, the same forgiveness `variables` gets.
-    if (forEachItems(config.for_each)) this._setForEach(templateConfig, config);
+    const items = forEachItems(config.for_each);
+    if (items) this._setForEach(templateConfig, config, items);
     else this._setTemplateConfig(templateConfig, config.variables, config.style);
   }
 
@@ -623,8 +622,9 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     const declarations = getDeclarations(template);
     const readable = isVariablesShape(this._config.variables);
     // The same gate _setForEach applies, so the editor never offers a repeat the card
-    // would refuse to render.
-    const repeatable = !!template && getThingType(template) === 'card';
+    // would refuse to render - except while a for_each is set, which must stay visible
+    // whatever the template looks like, or it could never be removed from the form.
+    const repeatable = (!!template && getThingType(template) === 'card') || this._config.for_each !== undefined;
 
     const error: Record<string, string | string[]> = {};
     // Templates borrowed from another dashboard are still on their way, so do not accuse
@@ -814,7 +814,9 @@ class DeclutteringTemplate extends DeclutteringElement {
       throw new Error('Missing template property');
     }
     this._template = config.template;
-    this._setTemplateConfig(config, undefined, config.style);
+    // The config passed here IS the template, so its style is picked up as the
+    // template's own - passing it again as the instance style would emit it twice.
+    this._setTemplateConfig(config, undefined, undefined);
   }
 
   protected render(): TemplateResult | void {
@@ -860,9 +862,11 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _suggestion?: { card: unknown; variables: VariableDeclaration[] };
   @state() private _suggestedNothing = false;
 
-  // The Where-used counts, taken when the tab is opened and thrown away when the config
-  // changes. Not reactive state: whatever changes it also changes state that renders.
-  private _usages?: TemplateUsages;
+  // The Where-used counts, keyed by what they were computed from. The dialog re-renders
+  // on every state change Home Assistant sends, and the answer only changes with the
+  // template's name or the dashboard config - so the key, not an event, decides when to
+  // recount. Not reactive state: whatever changes the key also changes state that renders.
+  private _usages?: { name: string; ll: unknown; usages: TemplateUsages };
 
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
@@ -913,6 +917,11 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
   public setConfig(config: DeclutteringTemplateConfig): void {
     this._config = config;
+    // Config can also arrive from outside - the dialog's YAML mode, an undo - and a
+    // suggestion computed against the old card must not survive that any more than it
+    // survives an edit made here.
+    this._suggestion = undefined;
+    this._suggestedNothing = false;
   }
 
   static get styles(): CSSResult {
@@ -1152,7 +1161,21 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     const name = this._config?.template;
     if (!name) return html``;
 
-    const { views, templates } = this._usages ?? collectUsages(this.lovelace ?? getLovelaceConfig(), name);
+    // The fallback matters in the editor contexts that never set lovelace. When neither
+    // source yields a config, say so - an unreadable dashboard must not present itself
+    // as one where nothing uses the template.
+    const ll = this.lovelace ?? getLovelaceConfig();
+    if (!ll) {
+      return html`<div class="usages">
+        <ha-alert alert-type="warning">
+          The dashboard configuration could not be read, so uses cannot be counted here.
+        </ha-alert>
+      </div>`;
+    }
+    if (this._usages?.name !== name || this._usages.ll !== ll) {
+      this._usages = { name, ll, usages: collectUsages(ll, name) };
+    }
+    const { views, templates } = this._usages.usages;
     const total = views.reduce((sum, view) => sum + view.count, 0);
     const dashboard = document.location.pathname.split('/').slice(0, 2).join('/');
 
@@ -1175,10 +1198,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                     // Assistant itself links such views.
                     (view) => html`
                       <li>
-                        <a
-                          href=${`${dashboard}/${view.path || view.index}`}
-                          @click=${(ev: Event): void => this._openView(ev, `${dashboard}/${view.path || view.index}`)}
-                        >
+                        <a href=${`${dashboard}/${view.path || view.index}`} target="_blank" rel="noreferrer">
                           ${view.title || view.path || 'Untitled view'}
                         </a>
                         — ${view.count === 1 ? 'once' : `${view.count} times`}
@@ -1198,13 +1218,6 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         }
       </div>
     `;
-  }
-
-  // A plain click on the link would be a full page navigation, throwing away the open
-  // dialog and any unsaved edits with it. navigate() moves within the app instead.
-  private _openView(ev: Event, href: string): void {
-    ev.preventDefault();
-    navigate(this, href);
   }
 
   /*
@@ -1312,12 +1325,6 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       HTMLElement | undefined;
     const panel = tab?.getAttribute('panel');
     if (panel) this._selectedTab = panel;
-    // Counted when the tab is opened rather than on every render: the dialog re-renders
-    // on every state change Home Assistant sends, and the answer only changes with the
-    // config. The fallback matters in the editor contexts that never set lovelace.
-    if (panel === 'usages' && this._config?.template) {
-      this._usages = collectUsages(this.lovelace ?? getLovelaceConfig(), this._config.template);
-    }
   }
 
   private _valueChanged(ev: CustomEvent): void {
@@ -1360,10 +1367,9 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   private _fireConfigChanged(config: DeclutteringTemplateConfig): void {
     // Any change invalidates a suggestion computed against the old template - applying a
     // stale one would rewrite a card the user has since edited, or clash with a name they
-    // have since declared. The usage counts go stale the same way.
+    // have since declared.
     this._suggestion = undefined;
     this._suggestedNothing = false;
-    this._usages = undefined;
     fireEvent(this, 'config-changed', { config });
   }
 

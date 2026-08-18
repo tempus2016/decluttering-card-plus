@@ -293,4 +293,17 @@ check(
   [],
 );
 
+check(
+  'every key of a definition is scanned for consumers, not a hand-kept list',
+  collectUsages(
+    {
+      decluttering_templates: {
+        holder: { card: { type: 'tile' }, header: { type: 'custom:decluttering-card-plus', template: 'a' } },
+      },
+    },
+    'a',
+  ).templates,
+  ['holder'],
+);
+
 report();

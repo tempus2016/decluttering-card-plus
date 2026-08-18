@@ -6,8 +6,9 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   variables?: VariablesConfig[];
   template: string;
   style?: string;
-  /** One copy of the template per item, each item holding that copy's variables. */
-  for_each?: unknown[];
+  /** One copy of the template per item, each item holding that copy's variables.
+   *  A single mapping counts as a list of one. */
+  for_each?: unknown[] | Record<string, unknown>;
   /** How many columns the copies are laid out in. One column stacks them vertically. */
   columns?: number;
 }
