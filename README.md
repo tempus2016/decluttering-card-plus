@@ -114,10 +114,32 @@ decluttering_templates:
   [...]
 ```
 
+### Sharing templates between dashboards
+
+A dashboard can borrow the templates defined on other dashboards. List them at the root of the
+dashboard that wants to use them, by the URL path you see in the address bar:
+
+```yaml
+decluttering_templates_from:
+  - shared-templates
+views:
+  - cards:
+      - type: custom:decluttering-card-plus
+        template: a_template_defined_on_the_other_dashboard
+```
+
+Both ways of defining a template are picked up from the other dashboard — the
+`decluttering_templates` key and `custom:decluttering-template-plus` cards. A dashboard's own
+templates always win, so borrowing can never quietly change a template you have defined
+yourself. Use `lovelace` for the original default dashboard.
+
+The other dashboards are read once per browser session, so a change to a shared template shows
+up in other dashboards after a refresh.
+
 ### Adding content to your templates
 
-You can make decluttering templates for cards, entity rows, and picture elements. Each content type
-has a different syntax and can be used in different places.
+You can make decluttering templates for cards, badges, entity rows, and picture elements. Each
+content type has a different syntax and can be used in different places.
 
 #### [Card](https://www.home-assistant.io/dashboards/cards/)
 
@@ -146,6 +168,49 @@ card:
 default:
   # An optional list of variables and their default values to substitute into the template
   - <variable_name>: <variable_value>
+  - <variable_name>: <variable_value>
+  [...]
+```
+
+#### [Badge](https://www.home-assistant.io/dashboards/badges/)
+
+A decluttering template can hold a badge. Add it to a view's `badges` list rather than its
+cards, using the same `custom:decluttering-card-plus` type.
+
+**Example:**
+
+```yaml
+type: custom:decluttering-template-plus
+template: room_badge
+badge:
+  type: entity
+  entity: '[[entity]]'
+  color: '[[colour]]'
+default:
+  - colour: red
+```
+
+**Used in a view:**
+
+```yaml
+badges:
+  - type: custom:decluttering-card-plus
+    template: room_badge
+    variables:
+      - entity: binary_sensor.front_door
+```
+
+**Syntax:**
+
+```yaml
+type: custom:decluttering-template-plus
+template: <template_name>
+badge:
+  # This is where you put your [Badge](https://www.home-assistant.io/dashboards/badges/) configuration
+  type: <badge_type>
+  [...]
+default:
+  # An optional list of variables and their default values to substitute into the template
   - <variable_name>: <variable_value>
   [...]
 ```

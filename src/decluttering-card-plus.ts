@@ -18,6 +18,13 @@ import {
   LovelaceThingType,
 } from './types';
 import deepReplace from './deep-replace';
+import {
+  collectTemplates,
+  collectAllTemplates,
+  findTemplate,
+  findTemplateAnywhere,
+  getTemplateSources,
+} from './templates';
 import { getLovelaceConfig } from './utils';
 import { VERSION } from './version';
 
@@ -31,10 +38,6 @@ const TEMPLATE_EDITOR_TAG = 'decluttering-template-plus-editor';
 // so that existing configurations keep working unchanged.
 const LEGACY_CARD_TAG = 'decluttering-card';
 const LEGACY_TEMPLATE_TAG = 'decluttering-template';
-
-function isTemplateCardType(type: string | undefined): boolean {
-  return type === `custom:${TEMPLATE_TAG}` || type === `custom:${LEGACY_TEMPLATE_TAG}`;
-}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const HELPERS = (window as any).loadCardHelpers ? (window as any).loadCardHelpers() : undefined;
@@ -72,80 +75,13 @@ async function loadRowEditor(): Promise<void> {
   if (cls && (cls as any).getConfigElement) await (cls as any).getConfigElement();
 }
 
-function getTemplateConfig(ll: LovelaceConfig, template: string): TemplateConfig | null {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const templates = (ll as any).decluttering_templates;
-  const config = templates?.[template] as TemplateConfig;
-  if (config) return config;
-
-  if (ll.views) {
-    for (const view of ll.views) {
-      if (view.cards) {
-        for (const card of view.cards) {
-          if (isTemplateCardType(card.type) && card.template === template) {
-            return card as DeclutteringTemplateConfig;
-          }
-        }
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sections = (view as any).sections;
-      if (sections) {
-        for (const section of sections) {
-          if (section.cards) {
-            for (const card of section.cards) {
-              if (isTemplateCardType(card.type) && card.template === template) {
-                return card as DeclutteringTemplateConfig;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  return null;
-}
-
-function getTemplates(ll: LovelaceConfig): Record<string, TemplateConfig> {
-  const templates: Record<string, TemplateConfig> = {};
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dt = (ll as any).decluttering_templates;
-  if (dt) Object.assign(templates, dt);
-
-  if (ll.views) {
-    for (const view of ll.views) {
-      if (view.cards) {
-        for (const card of view.cards) {
-          if (isTemplateCardType(card.type)) {
-            templates[card.template] = card as DeclutteringTemplateConfig;
-          }
-        }
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sections = (view as any).sections;
-      if (sections) {
-        for (const section of sections) {
-          if (section.cards) {
-            for (const card of section.cards) {
-              if (isTemplateCardType(card.type)) {
-                templates[card.template] = card as DeclutteringTemplateConfig;
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  return templates;
-}
-
 function getThingType(templateConfig: TemplateConfig): LovelaceThingType | undefined {
-  const thingTypes = Object.keys(templateConfig).filter((key) => ['card', 'row', 'element'].includes(key));
+  const thingTypes = Object.keys(templateConfig).filter((key) => ['card', 'row', 'element', 'badge'].includes(key));
   return thingTypes.length === 1 ? (thingTypes[0] as LovelaceThingType) : undefined;
 }
 
 abstract class DeclutteringElement extends LitElement {
-  @state() private _hass?: HomeAssistant;
+  @state() protected _hass?: HomeAssistant;
   @state() private _thing?: LovelaceThing;
 
   // Home Assistant sets both of these on a card element directly. They are declared so
@@ -161,16 +97,32 @@ abstract class DeclutteringElement extends LitElement {
   private _savedStyles?: Map<string, [string, string]>;
   @state() private _style?: string;
 
+  @state() protected _error?: string;
+
   set hass(hass: HomeAssistant) {
     if (!hass) return;
     this._hass = hass;
     if (this._thing) this._thing.hass = hass;
+    this.hassAvailable(hass);
   }
+
+  // Overridden by the card, which may need the connection to fetch a template that lives
+  // on another dashboard. setConfig runs before hass is ever set, so the work waits here.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected hassAvailable(_hass: HomeAssistant): void {}
 
   static get styles(): CSSResult {
     return css`
       :host(.child-card-hidden) {
         display: none;
+      }
+      /*
+       * A badge belongs to the flex row of badges, so this wrapper has to get out of the
+       * way rather than box it. Styles injected with the style option still reach the
+       * badge, but cannot paint on the wrapper itself.
+       */
+      :host(.decluttering-badge) {
+        display: contents;
       }
       :host(.decluttering-container) {
         display: block;
@@ -227,9 +179,9 @@ abstract class DeclutteringElement extends LitElement {
   ): void {
     const thingType = getThingType(templateConfig);
     if (!thingType) {
-      throw new Error('You must define one card, element, or row in the template');
+      throw new Error('You must define one card, badge, element, or row in the template');
     }
-    const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row;
+    const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
     const thingConfig = deepReplace(variables, templateConfig, thingContent);
 
     let styles = '';
@@ -296,9 +248,13 @@ abstract class DeclutteringElement extends LitElement {
   }
 
   protected render(): TemplateResult | void {
+    if (this._error) {
+      return html` <ha-alert alert-type="error">${this._error}</ha-alert> `;
+    }
     if (!this._hass || !this._thing) return html``;
 
-    this.classList.add('decluttering-container');
+    this.classList.toggle('decluttering-badge', this._thingType === 'badge');
+    this.classList.toggle('decluttering-container', this._thingType !== 'badge');
 
     return html`
       ${
@@ -332,12 +288,14 @@ abstract class DeclutteringElement extends LitElement {
      * root still reaches the card inside it. It is internal Home Assistant API though, so
      * if it is ever absent the original path still runs.
      */
-    const huiCard = thingType === 'card' && thingConfig.type !== 'divider' ? customElements.get('hui-card') : undefined;
-    if (huiCard) {
+    let wrapper: CustomElementConstructor | undefined;
+    if (thingType === 'card' && thingConfig.type !== 'divider') wrapper = customElements.get('hui-card');
+    else if (thingType === 'badge') wrapper = customElements.get('hui-badge');
+    if (wrapper) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const card = new huiCard() as any;
-      card.config = thingConfig;
-      handler(card as LovelaceThing);
+      const wrapped = new wrapper() as any;
+      wrapped.config = thingConfig;
+      handler(wrapped as LovelaceThing);
       return;
     }
 
@@ -349,6 +307,8 @@ abstract class DeclutteringElement extends LitElement {
         thing = (await HELPERS).createRowElement(thingConfig);
       } else if (thingType === 'element') {
         thing = (await HELPERS).createHuiElement(thingConfig);
+      } else if (thingType === 'badge') {
+        thing = (await HELPERS).createBadgeElement(thingConfig);
       } else {
         throw new Error(`Unsupported thing type '${thingType}'`);
       }
@@ -376,6 +336,8 @@ abstract class DeclutteringElement extends LitElement {
 }
 
 class DeclutteringCard extends DeclutteringElement {
+  private _pendingConfig?: DeclutteringCardConfig;
+
   static getConfigElement(): HTMLElement {
     return document.createElement(CARD_EDITOR_TAG);
   }
@@ -395,13 +357,44 @@ class DeclutteringCard extends DeclutteringElement {
     if (!ll) {
       throw new Error('Could not retrieve the lovelace configuration.');
     }
-    const templateConfig = getTemplateConfig(ll, config.template);
-    if (!templateConfig) {
+    this._error = undefined;
+    const templateConfig = findTemplate(ll, config.template);
+    if (templateConfig) {
+      this._pendingConfig = undefined;
+      this._setTemplateConfig(templateConfig, config.variables, config.style);
+      return;
+    }
+    if (!getTemplateSources(ll).length) {
       throw new Error(
         `The template "${config.template}" doesn't exist in decluttering_templates or in a custom:decluttering-template card`,
       );
     }
-    this._setTemplateConfig(templateConfig, config.variables, config.style);
+    // The template may live on a dashboard this one borrows from, which has to be fetched.
+    // setConfig cannot wait, so it is picked up as soon as hass arrives.
+    this._pendingConfig = config;
+    if (this._hass) this.hassAvailable(this._hass);
+  }
+
+  protected hassAvailable(hass: HomeAssistant): void {
+    const config = this._pendingConfig;
+    if (!config) return;
+    this._pendingConfig = undefined;
+
+    const ll = getLovelaceConfig();
+    findTemplateAnywhere(hass, ll, config.template)
+      .then((templateConfig) => {
+        if (templateConfig) {
+          this._setTemplateConfig(templateConfig, config.variables, config.style);
+        } else {
+          this._error =
+            `The template "${config.template}" doesn't exist in decluttering_templates, ` +
+            'in a custom:decluttering-template card, or on any dashboard listed in ' +
+            'decluttering_templates_from';
+        }
+      })
+      .catch((err) => {
+        this._error = `Could not resolve the template "${config.template}": ${err?.message ?? err}`;
+      });
   }
 }
 
@@ -412,6 +405,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   @property() public hass?: HomeAssistant;
 
   private _templates?: Record<string, TemplateConfig>;
+  @state() private _loadingTemplates = false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private _schema: any;
 
@@ -434,7 +428,10 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       if (!this._lovelace) return;
     }
 
-    if (!this._templates) this._templates = getTemplates(this._lovelace);
+    if (!this._templates) {
+      this._templates = collectTemplates(this._lovelace);
+      this._loadBorrowedTemplates();
+    }
     if (!this._schema) {
       this._schema = [
         {
@@ -459,7 +456,9 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     }
 
     const error: Record<string, string | string[]> = {};
-    if (!this._templates[this._config.template]) {
+    // Templates borrowed from another dashboard are still on their way, so do not accuse
+    // the user of a bad name until they have arrived.
+    if (!this._templates[this._config.template] && !this._loadingTemplates) {
       error.template = 'No template exists with this name';
     }
     if (this._config.variables !== undefined && !Array.isArray(this._config.variables)) {
@@ -481,6 +480,22 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
   private _valueChanged(ev: CustomEvent): void {
     fireEvent(this, 'config-changed', { config: ev.detail.value });
+  }
+
+  // The dropdown starts with this dashboard's templates and gains the borrowed ones once
+  // the other dashboards have been read.
+  private _loadBorrowedTemplates(): void {
+    if (!getTemplateSources(this._lovelace).length) return;
+    this._loadingTemplates = true;
+    collectAllTemplates(this.hass, this._lovelace)
+      .then((templates) => {
+        this._templates = templates;
+        this._schema = undefined;
+      })
+      .finally(() => {
+        this._loadingTemplates = false;
+        this.requestUpdate();
+      });
   }
 }
 
@@ -573,6 +588,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           mode: 'dropdown',
           options: [
             { value: 'card', label: 'Card' },
+            { value: 'badge', label: 'Badge' },
             { value: 'row', label: 'Row' },
             { value: 'element', label: 'Element' },
           ],
@@ -710,6 +726,10 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       type: 'entity',
       entity: 'sun.sun',
     });
+    DeclutteringTemplateEditor.stubMember(data.thingType === 'badge', config, 'badge', {
+      type: 'entity',
+      entity: 'sun.sun',
+    });
     DeclutteringTemplateEditor.stubMember(data.thingType === 'row', config, 'row', {
       entity: 'sun.sun',
     });
@@ -774,6 +794,9 @@ function defineElement(tag: string, cls: CustomElementConstructor): boolean {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const customCards: any[] = ((window as any).customCards = (window as any).customCards || []);
+// Home Assistant keeps a separate registry for badges, which is what its badge picker reads.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const customBadges: any[] = ((window as any).customBadges = (window as any).customBadges || []);
 
 defineElement(CARD_EDITOR_TAG, DeclutteringCardEditor);
 defineElement(TEMPLATE_EDITOR_TAG, DeclutteringTemplateEditor);
@@ -784,6 +807,12 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
     name: 'Decluttering Card Plus',
     preview: false,
     description: 'Reuse multiple times the same card configuration with variables to declutter your config.',
+  });
+  customBadges.push({
+    type: CARD_TAG,
+    name: 'Decluttering Card Plus',
+    preview: false,
+    description: 'Instantiate a template whose content is a badge.',
   });
 }
 
