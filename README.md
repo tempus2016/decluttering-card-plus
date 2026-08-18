@@ -426,6 +426,45 @@ The editors also point out the two mistakes that are easy to make and hard to se
 variable the template uses that has no value and no default, and a value set on a card that
 the template never uses. Both are warnings; neither stops you saving.
 
+#### Repeating a template
+
+A card can render its template once per item in a list, which saves pasting the same
+instance block out four times when only the entity changes.
+
+```yaml
+type: custom:decluttering-card-plus
+template: room_tile
+columns: 2
+variables:
+  - colour: amber
+for_each:
+  - entity: light.kitchen
+    name: Kitchen
+  - entity: light.hall
+    name: Hall
+  - entity: light.shed
+    name: Shed
+    colour: blue
+```
+
+Each item holds the variables for that copy. Anything set in the card's own `variables` is
+shared by every copy, and an item can override it — `colour` above is amber everywhere
+except the shed.
+
+`columns` lays the copies out side by side; leave it out, or set it to `1`, and they stack
+vertically. The copies are handed to Home Assistant's own grid and vertical-stack cards, so
+they behave exactly like any other card in your layout.
+
+`for_each` needs a template that defines a `card`. An empty list renders nothing rather than
+failing, so a list built from a helper can be empty without breaking the dashboard.
+
+**Syntax:**
+
+| Name | Type | Requirement | Description
+| ---- | ---- | ------- | -----------
+| for_each | list | **Optional** | One copy of the template per item; each item is a set of variables for that copy
+| columns | number | **Optional** | How many copies sit side by side. Defaults to 1, which stacks them
+
 #### Nested variables
 
 A variable's value can itself contain variables. Substitution repeats until nothing is left

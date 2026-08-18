@@ -12,6 +12,8 @@ const {
   mergeVariables,
   variableName,
   variableValues,
+  forEachVariables,
+  forEachNames,
 } = require('../.test-build/variables.js');
 
 let passed = 0;
@@ -212,6 +214,38 @@ check('a new name is appended rather than reordering the rest', mergeVariables([
 ]);
 
 check('merging nothing in empties the list', mergeVariables([{ a: 1 }], []), []);
+
+/* ------------------------------------------------------------------ for_each */
+
+check(
+  'an item written as a mapping becomes one entry per key, in order',
+  forEachVariables({ entity: 'light.kitchen', name: 'Kitchen' }, undefined),
+  [{ entity: 'light.kitchen' }, { name: 'Kitchen' }],
+);
+
+check(
+  "an item's own values come before the card's, so the item wins",
+  forEachVariables({ entity: 'light.hall' }, [{ entity: 'light.kitchen' }, { colour: 'red' }]),
+  [{ entity: 'light.hall' }, { entity: 'light.kitchen' }, { colour: 'red' }],
+);
+
+check(
+  'an item already written as a list of entries is taken as it is',
+  forEachVariables([{ entity: 'light.hall' }], [{ colour: 'red' }]),
+  [{ entity: 'light.hall' }, { colour: 'red' }],
+);
+
+check('an item that is not a set of values contributes nothing', forEachVariables('nonsense', [{ a: 1 }]), [{ a: 1 }]);
+
+check('an item with no card variables stands alone', forEachVariables({ a: 1 }, undefined), [{ a: 1 }]);
+
+check(
+  'every name any item sets is collected, once each',
+  forEachNames([{ entity: 'a', name: 'A' }, { entity: 'b' }, [{ colour: 'red' }]]),
+  ['entity', 'name', 'colour'],
+);
+
+check('names of nothing is nothing', forEachNames(undefined), []);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

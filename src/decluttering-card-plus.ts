@@ -29,6 +29,8 @@ import {
 import {
   diagnoseInstance,
   diagnoseTemplate,
+  forEachNames,
+  forEachVariables,
   getDeclarations,
   mergeVariables,
   variableName,
@@ -230,6 +232,29 @@ abstract class DeclutteringElement extends LitElement {
     });
   }
 
+  /*
+   * `for_each` renders the template once per item, which Home Assistant's own stack cards
+   * already know how to lay out - so the copies are handed to a vertical-stack, or to a
+   * grid when more than one column is asked for, rather than managed here. Everything
+   * that applies to a single templated card then applies to each copy unchanged.
+   */
+  protected _setForEach(templateConfig: TemplateConfig, config: DeclutteringCardConfig): void {
+    if (getThingType(templateConfig) !== 'card') {
+      throw new Error('for_each needs a template that defines a card');
+    }
+    const items = config.for_each as unknown[];
+    const cards = items.map((item) =>
+      deepReplace(forEachVariables(item, config.variables), templateConfig, templateConfig.card),
+    );
+
+    const columns = Number(config.columns) || 1;
+    const stack = columns > 1 ? { type: 'grid', columns, square: false, cards } : { type: 'vertical-stack', cards };
+
+    // The style belongs to the whole card rather than to any one copy, so it resolves
+    // against the variables the card sets for all of them.
+    this._setTemplateConfig({ card: stack, style: templateConfig.style }, config.variables, config.style);
+  }
+
   private _setThing(thing: LovelaceThing, style?: Record<string, string>): void {
     this._savedStyles?.forEach((v, k) => this.style.setProperty(k, v[0], v[1]));
     this._savedStyles = undefined;
@@ -390,7 +415,7 @@ class DeclutteringCard extends DeclutteringElement {
     const templateConfig = findTemplate(ll, config.template);
     if (templateConfig) {
       this._pendingConfig = undefined;
-      this._setTemplateConfig(templateConfig, config.variables, config.style);
+      this._applyTemplate(templateConfig, config);
       return;
     }
     if (!getTemplateSources(ll).length) {
@@ -404,6 +429,14 @@ class DeclutteringCard extends DeclutteringElement {
     if (this._hass) this.hassAvailable(this._hass);
   }
 
+  // A card renders its template once, or once per item when it is given a list to repeat
+  // over. An empty list is not an error - it is a list that happens to have nothing in it
+  // today - so it simply renders nothing rather than failing the card.
+  private _applyTemplate(templateConfig: TemplateConfig, config: DeclutteringCardConfig): void {
+    if (Array.isArray(config.for_each)) this._setForEach(templateConfig, config);
+    else this._setTemplateConfig(templateConfig, config.variables, config.style);
+  }
+
   protected hassAvailable(hass: HomeAssistant): void {
     const config = this._pendingConfig;
     if (!config) return;
@@ -413,7 +446,7 @@ class DeclutteringCard extends DeclutteringElement {
     findTemplateAnywhere(hass, ll, config.template)
       .then((templateConfig) => {
         if (templateConfig) {
-          this._setTemplateConfig(templateConfig, config.variables, config.style);
+          this._applyTemplate(templateConfig, config);
         } else {
           this._error =
             `The template "${config.template}" doesn't exist in decluttering_templates, ` +
@@ -500,6 +533,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     const template = this._templates[this._config.template];
     const declarations = getDeclarations(template);
     const listed = Array.isArray(this._config.variables);
+    const repeatable = !!template?.card;
 
     const error: Record<string, string | string[]> = {};
     // Templates borrowed from another dashboard are still on their way, so do not accuse
@@ -517,7 +551,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       <ha-form
         .hass=${this.hass}
         .data=${this._formData(declarations)}
-        .schema=${this._formSchema(declarations)}
+        .schema=${this._formSchema(declarations, repeatable)}
         .error=${error}
         .computeLabel=${(s): string => s.label ?? s.name}
         .computeHelper=${(s): string => s.helper ?? ''}
@@ -531,8 +565,25 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
    * underneath for anything else the card sets. A template that does not is edited the
    * way it always has been, through that box alone.
    */
-  private _formSchema(declarations: VariableDeclaration[]): unknown[] {
-    if (!declarations.length) return [...this._schema];
+  private _formSchema(declarations: VariableDeclaration[], repeatable: boolean): unknown[] {
+    const repeat = repeatable
+      ? [
+          {
+            name: 'for_each',
+            label: 'Repeat for each',
+            helper: 'One copy of the template per item. Example: - entity: light.hall, name: Hall',
+            selector: { object: {} },
+          },
+          {
+            name: 'columns',
+            label: 'Columns',
+            helper: 'How many copies sit side by side. One stacks them vertically',
+            selector: { number: { min: 1, max: 6, mode: 'box' } },
+          },
+        ]
+      : [];
+
+    if (!declarations.length) return [...this._schema, ...repeat];
 
     return [
       this._schema[0],
@@ -548,6 +599,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         helper: 'Anything this template does not describe. Example: - variable_name: value',
         selector: { object: {} },
       },
+      ...repeat,
     ];
   }
 
@@ -569,6 +621,8 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       return name !== undefined && !described.has(name);
     });
     if (extras.length) data.extras = extras;
+    if (this._config?.for_each !== undefined) data.for_each = this._config.for_each;
+    if (this._config?.columns !== undefined) data.columns = this._config.columns;
     return data;
   }
 
@@ -579,7 +633,12 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   private _renderDiagnostics(template: TemplateConfig | undefined, listed: boolean): TemplateResult {
     if (!template || this._loadingTemplates || (this._config?.variables !== undefined && !listed)) return html``;
 
-    const { missing, unused } = diagnoseInstance(this._config?.variables, template);
+    const repeated = forEachNames(this._config?.for_each).map((name) => ({ [name]: null }));
+    const supplied = [...(Array.isArray(this._config?.variables) ? this._config.variables : []), ...repeated];
+    const { missing } = diagnoseInstance(supplied, template);
+    // Only what the card itself sets can be called unused; an item's values are checked
+    // together with the card's, so a name only some items set is not a mistake.
+    const { unused } = diagnoseInstance(this._config?.variables, template);
     return html`
       ${
         missing.length
@@ -621,6 +680,8 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     const variables = mergeVariables(this._config?.variables, desired);
     if (variables.length) config.variables = variables;
     else delete config.variables;
+    setOrDelete(config, 'for_each', data.for_each);
+    setOrDelete(config, 'columns', data.columns);
 
     fireEvent(this, 'config-changed', { config });
   }
