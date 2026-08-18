@@ -126,13 +126,19 @@ abstract class DeclutteringElement extends LitElement {
       }
       :host(.decluttering-container) {
         display: block;
-        /*
-         * The host is an extra level between the layout and the wrapped card, so a card
-         * sized against its container - fill_container on a tile, for example - would
-         * otherwise measure itself against this wrapper's content height instead of the
-         * space the layout gave it. Against an auto-height parent this resolves to auto,
-         * so it changes nothing outside sized containers.
-         */
+      }
+      /*
+       * The host is an extra level between the layout and the wrapped card, so a card
+       * sized against its container - fill_container on a tile, for example - would
+       * otherwise measure itself against this wrapper's content height instead of the
+       * space the layout gave it. Against an auto-height parent this resolves to auto,
+       * so it changes nothing outside sized containers.
+       *
+       * Only a card is laid out that way. A picture-elements element is positioned
+       * absolutely inside the card, where height: 100% stretches it over the whole
+       * image instead of leaving it the size of its icon.
+       */
+      :host(.decluttering-card) {
         height: 100%;
       }
     `;
@@ -255,6 +261,7 @@ abstract class DeclutteringElement extends LitElement {
 
     this.classList.toggle('decluttering-badge', this._thingType === 'badge');
     this.classList.toggle('decluttering-container', this._thingType !== 'badge');
+    this.classList.toggle('decluttering-card', this._thingType === 'card');
 
     return html`
       ${
@@ -610,16 +617,9 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   static get styles(): CSSResult {
     return css`
       ${DeclutteringElement.styles}
-      .toolbar {
-        display: flex;
-        --paper-tabs-selection-bar-color: var(--primary-color);
-        --paper-tab-ink: var(--primary-color);
-      }
-      paper-tabs {
-        display: flex;
-        font-size: 14px;
-        flex-grow: 1;
-        text-transform: uppercase;
+      ha-tab-group {
+        display: block;
+        margin-bottom: 16px;
       }
     `;
   }
@@ -649,27 +649,19 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     };
 
     return html`
-      <div class="toolbar">
-        <paper-tabs
-          attr-for-selected="name"
-          fallback-selection="settings"
-          scrollable
-          .selected=${this._selectedTab}
-          @iron-activate=${this._activateTab}
-        >
-          <paper-tab name="settings">Settings</paper-tab>
-          ${
-            data.thingType === 'card'
-              ? html`
-                  <paper-tab name="card">Card</paper-tab>
-                  <paper-tab name="change_card">Change Card Type</paper-tab>
-                `
-              : data.thingType === 'row'
-                ? html` <paper-tab name="row">Row</paper-tab> `
-                : html``
-          }
-        </paper-tabs>
-      </div>
+      <ha-tab-group .active=${this._selectedTab} @click=${this._activateTab}>
+        <ha-tab-group-tab slot="nav" panel="settings">Settings</ha-tab-group-tab>
+        ${
+          data.thingType === 'card'
+            ? html`
+                <ha-tab-group-tab slot="nav" panel="card">Card</ha-tab-group-tab>
+                <ha-tab-group-tab slot="nav" panel="change_card">Change card type</ha-tab-group-tab>
+              `
+            : data.thingType === 'row'
+              ? html`<ha-tab-group-tab slot="nav" panel="row">Row</ha-tab-group-tab>`
+              : html``
+        }
+      </ha-tab-group>
       ${
         this._selectedTab === 'settings'
           ? html`
@@ -702,20 +694,28 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 `
               : this._selectedTab === 'row'
                 ? html`
-            <hui-row-element-editor
-              .hass=${this.hass}
-              .lovelace=${this.lovelace}
-              .value=${this._config.row}
-              @config-changed=${this._rowChanged}
-            ></hui-card-element-editor>
-          `
+                    <hui-row-element-editor
+                      .hass=${this.hass}
+                      .lovelace=${this.lovelace}
+                      .value=${this._config.row}
+                      @config-changed=${this._rowChanged}
+                    ></hui-row-element-editor>
+                  `
                 : html``
       }
     `;
   }
 
-  private _activateTab(ev: CustomEvent): void {
-    this._selectedTab = ev.detail.selected;
+  /*
+   * Read the panel off the clicked tab rather than listening for the tab group's own
+   * show event, whose name has followed the underlying component through several
+   * renames. A click on the tab strip is the same signal and does not move.
+   */
+  private _activateTab(ev: Event): void {
+    const tab = ev.composedPath().find((node) => (node as HTMLElement).localName === 'ha-tab-group-tab') as
+      HTMLElement | undefined;
+    const panel = tab?.getAttribute('panel');
+    if (panel) this._selectedTab = panel;
   }
 
   private _valueChanged(ev: CustomEvent): void {
