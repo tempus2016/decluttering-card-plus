@@ -4,6 +4,7 @@
  * about. Run with `npm test`.
  */
 const {
+  applyTransform,
   getDeclarations,
   usedVariables,
   resolveVariables,
@@ -14,6 +15,7 @@ const {
   variableValues,
   forEachVariables,
   forEachNames,
+  forEachItems,
   normaliseVariables,
 } = require('../.test-build/variables.js');
 
@@ -297,5 +299,37 @@ check(
 );
 
 check('names of nothing is nothing', forEachNames(undefined), []);
+
+check(
+  'card variables written as a mapping still reach every copy',
+  forEachVariables({ entity: 'light.hall' }, { name: 'Kitchen' }),
+  [{ entity: 'light.hall' }, { name: 'Kitchen' }],
+);
+
+check(
+  'a multi-key entry in a list-form item is flattened, as substitution reads it',
+  forEachVariables([{ entity: 'light.hall', name: 'Hall' }], undefined),
+  [{ entity: 'light.hall' }, { name: 'Hall' }],
+);
+
+check(
+  'every key of a multi-key entry counts as a name the items set',
+  forEachNames([[{ entity: 'light.hall', name: 'Hall' }]]),
+  ['entity', 'name'],
+);
+
+check('a list of items passes through', forEachItems([{ a: 1 }, { b: 2 }]), [{ a: 1 }, { b: 2 }]);
+
+check('a single mapping is one item, not a mistake', forEachItems({ entity: 'light.hall' }), [
+  { entity: 'light.hall' },
+]);
+
+check('anything else is not a list to repeat over', [forEachItems('nonsense'), forEachItems(undefined)], [null, null]);
+
+check(
+  'a transform shapes the text the placeholder would otherwise insert, even for an object',
+  applyTransform('upper', { action: 'toggle' }),
+  '{"ACTION":"TOGGLE"}',
+);
 
 report();

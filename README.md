@@ -578,7 +578,8 @@ pass the entity id separately.
 
 The same variable can be used raw and transformed in the same template. A word after the
 bar that is not one of these four is not a transform, so nothing is substituted and the
-mistake is visible rather than silent.
+mistake is visible rather than silent. A transform shapes the text the placeholder would
+otherwise insert, so a value that is a mapping or a list transforms as its JSON text.
 
 #### Nested variables
 
