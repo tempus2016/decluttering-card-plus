@@ -144,6 +144,40 @@ yourself. Use `lovelace` for the original default dashboard.
 The other dashboards are read once per browser session, so a change to a shared template shows
 up in other dashboards after a refresh.
 
+### Sharing templates with other people
+
+A template card's visual editor has a **Share** tab. Its top half writes the template out as
+YAML for you to send to someone else; its bottom half takes YAML somebody sent you and puts it
+into the template card you are editing.
+
+A template is only ever as portable as the things it is built from, and the YAML cannot tell
+you what those are, so the export names them for you:
+
+```yaml
+# Requires these custom cards: custom:mushroom-template-card
+# Uses these other templates, which are not included here: my_button_base
+type: custom:decluttering-template-plus
+template: room_tile
+default:
+  - entity: sun.sun
+card:
+  type: custom:mushroom-template-card
+  entity: "[[entity]]"
+```
+
+Whoever receives this needs Mushroom installed before it will render, and needs `my_button_base`
+as well — an export carries one template, so a template that calls others travels with them or
+not at all. The comment lines are ordinary YAML comments, so they can be pasted back in as they
+are.
+
+Because the exported block keeps its `type:`, it is also just a card. You can paste it straight
+into a view in the raw configuration editor instead of using the Share tab.
+
+Importing replaces the template card you are editing, and nothing is written to your dashboard
+until you save the card as usual. If the incoming template has the same name as one you already
+have, the editor says so and waits for you to press the button a second time, because two
+templates sharing a name means only one of them is ever used.
+
 ### Adding content to your templates
 
 You can make decluttering templates for cards, badges, entity rows, and picture elements. Each

@@ -39,3 +39,34 @@ export function getLovelaceConfig(): LovelaceConfig | null {
   const ll = getLovelace() || getLovelaceCast();
   return ll?.config;
 }
+
+/**
+ * Puts text on the clipboard. Home Assistant is usually reached over plain http on a
+ * local address, which is not a secure context, so navigator.clipboard is not there at
+ * all for most people. The old selection-based way still works everywhere.
+ */
+export async function copyText(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Permission refused or not allowed here; fall through to the old way.
+    }
+  }
+
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.cssText = 'position:fixed;top:-1000px;opacity:0;';
+  document.body.appendChild(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch {
+    copied = false;
+  }
+  area.remove();
+  return copied;
+}
