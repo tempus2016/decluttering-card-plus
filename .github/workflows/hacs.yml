@@ -2,15 +2,15 @@ name: HACS
 
 # Deliberately not run on pull_request. HACS resolves the repository through GitHub's API
 # and reads its metadata - description, topics, licence - from the DEFAULT branch, so a
-# pull request is graded against master rather than against itself. That makes the result
+# pull request is graded against main rather than against itself. That makes the result
 # say nothing true about the change, and each failure emails the repository owner while
-# the meaningful checks are still running. master is what actually determines HACS
+# the meaningful checks are still running. main is what actually determines HACS
 # publishability, so push, nightly and on demand gives full coverage without the noise.
 
 on:
   workflow_dispatch:
   push:
-    branches: [master, main]
+    branches: [main]
   schedule:
     - cron: '0 4 * * 1'
 
