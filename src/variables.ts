@@ -37,9 +37,13 @@ export const TRANSFORM_SUFFIX = `(?:\\|(${Object.keys(TRANSFORMS).join('|')}))?`
 
 const TRANSFORM_TAIL = new RegExp(`\\|(${Object.keys(TRANSFORMS).join('|')})$`);
 
-/** The value a placeholder asks for, in the shape it asks for it. */
+/**
+ * The value a placeholder asks for, in the shape it asks for it. A transform shapes the
+ * text the placeholder would otherwise insert, so an object transforms as its JSON text
+ * rather than the useless '[object Object]'.
+ */
 export function applyTransform(transform: string | undefined, value: unknown): string {
-  const text = String(value);
+  const text = value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value);
   const fn = transform ? TRANSFORMS[transform] : undefined;
   return fn ? fn(text) : text;
 }
@@ -250,26 +254,35 @@ export function mergeVariables(existing: VariablesConfig[] | undefined, desired:
  * item is usually written as a mapping, which reads far better than a list of one-key
  * entries when every copy sets the same three or four things.
  */
-export function forEachVariables(item: unknown, cardVariables: VariablesConfig[] | undefined): VariablesConfig[] {
-  const own: VariablesConfig[] = [];
-  if (Array.isArray(item)) {
-    own.push(...item.filter((entry) => variableName(entry) !== undefined));
-  } else if (item && typeof item === 'object') {
-    for (const [name, value] of Object.entries(item)) own.push({ [name]: value });
-  }
+export function forEachVariables(
+  item: unknown,
+  cardVariables: VariablesConfig[] | VariablesConfig | undefined,
+): VariablesConfig[] {
   // The item's own values come first, so a copy can override what the card sets for all.
-  return [...own, ...(Array.isArray(cardVariables) ? cardVariables : [])];
+  // Both go through the same normalisation substitution reads, so a mapping or a
+  // multi-key entry means the same thing here as it does everywhere else.
+  return [...normaliseVariables(item), ...normaliseVariables(cardVariables)];
+}
+
+/**
+ * The `for_each` value as a list of items, in whichever shape it was written: a list, or
+ * a single mapping standing for a list of one. Anything else is not a list to repeat
+ * over, and undefined says so.
+ */
+export function forEachItems(forEach: unknown): unknown[] | undefined {
+  if (Array.isArray(forEach)) return forEach;
+  if (forEach && typeof forEach === 'object') return [forEach];
+  return undefined;
 }
 
 /** Every name any item of a `for_each` list sets, for warning about what is missing. */
 export function forEachNames(items: unknown): string[] {
-  if (!Array.isArray(items)) return [];
-  const names: string[] = [];
-  for (const item of items) {
-    for (const entry of forEachVariables(item, undefined)) {
+  const names = new Set<string>();
+  for (const item of forEachItems(items) ?? []) {
+    for (const entry of normaliseVariables(item)) {
       const name = variableName(entry);
-      if (name !== undefined && !names.includes(name)) names.push(name);
+      if (name !== undefined) names.add(name);
     }
   }
-  return names;
+  return [...names];
 }

@@ -31,6 +31,7 @@ import {
 import {
   diagnoseInstance,
   diagnoseTemplate,
+  forEachItems,
   forEachNames,
   forEachVariables,
   getDeclarations,
@@ -234,8 +235,20 @@ abstract class DeclutteringElement extends LitElement {
       throw new Error('You must define one card, badge, element, or row in the template');
     }
     const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
-    const thingConfig = deepReplace(variables, templateConfig, thingContent);
+    this._setResolved(
+      thingType,
+      deepReplace(variables, templateConfig, thingContent),
+      this._resolveStyles(templateConfig, variables, cardStyle),
+    );
+  }
 
+  // Styles always resolve against the real template config, so a declared default or a
+  // `default:` entry reaches a style the same way it reaches the content.
+  private _resolveStyles(
+    templateConfig: TemplateConfig,
+    variables: VariablesConfig[] | undefined,
+    cardStyle?: string,
+  ): string {
     let styles = '';
     if (templateConfig.style) {
       styles += deepReplace(variables, templateConfig, templateConfig.style);
@@ -243,8 +256,11 @@ abstract class DeclutteringElement extends LitElement {
     if (cardStyle) {
       styles += deepReplace(variables, templateConfig, cardStyle);
     }
-    this._style = styles;
+    return styles;
+  }
 
+  private _setResolved(thingType: LovelaceThingType, thingConfig: LovelaceThingConfig, styles: string): void {
+    this._style = styles;
     this._thingConfig = thingConfig;
     this._thingType = thingType;
     DeclutteringElement._createThing(thingConfig, thingType, (thing: LovelaceThing) => {
@@ -264,7 +280,7 @@ abstract class DeclutteringElement extends LitElement {
     if (getThingType(templateConfig) !== 'card') {
       throw new Error('for_each needs a template that defines a card');
     }
-    const items = config.for_each as unknown[];
+    const items = forEachItems(config.for_each) ?? [];
     const cards = items.map((item) =>
       deepReplace(forEachVariables(item, config.variables), templateConfig, templateConfig.card),
     );
@@ -272,9 +288,10 @@ abstract class DeclutteringElement extends LitElement {
     const columns = Number(config.columns) || 1;
     const stack = columns > 1 ? { type: 'grid', columns, square: false, cards } : { type: 'vertical-stack', cards };
 
-    // The style belongs to the whole card rather than to any one copy, so it resolves
-    // against the variables the card sets for all of them.
-    this._setTemplateConfig({ card: stack, style: templateConfig.style }, config.variables, config.style);
+    // Each copy is already fully resolved, so the assembled stack must not go through
+    // substitution again. The styles belong to the whole card rather than to any one
+    // copy, and resolve against the real template so its declared defaults still apply.
+    this._setResolved('card', stack, this._resolveStyles(templateConfig, config.variables, config.style));
   }
 
   private _setThing(thing: LovelaceThing, style?: Record<string, string>): void {
@@ -477,7 +494,8 @@ class DeclutteringCard extends DeclutteringElement {
   // over. An empty list is not an error - it is a list that happens to have nothing in it
   // today - so it simply renders nothing rather than failing the card.
   private _applyTemplate(templateConfig: TemplateConfig, config: DeclutteringCardConfig): void {
-    if (Array.isArray(config.for_each)) this._setForEach(templateConfig, config);
+    // A single mapping counts as a list of one, the same forgiveness `variables` gets.
+    if (forEachItems(config.for_each)) this._setForEach(templateConfig, config);
     else this._setTemplateConfig(templateConfig, config.variables, config.style);
   }
 
@@ -585,7 +603,9 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     const template = this._templates[this._config.template];
     const declarations = getDeclarations(template);
     const readable = isVariablesShape(this._config.variables);
-    const repeatable = !!template?.card;
+    // The same gate _setForEach applies, so the editor never offers a repeat the card
+    // would refuse to render.
+    const repeatable = !!template && getThingType(template) === 'card';
 
     const error: Record<string, string | string[]> = {};
     // Templates borrowed from another dashboard are still on their way, so do not accuse
