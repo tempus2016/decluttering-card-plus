@@ -4,6 +4,20 @@ import nodeResolve from '@rollup/plugin-node-resolve';
 import terser from '@rollup/plugin-terser';
 import serve from 'rollup-plugin-serve';
 import json from '@rollup/plugin-json';
+import { readFileSync } from 'fs';
+
+const { version } = JSON.parse(readFileSync('./package.json', 'utf8'));
+
+// src/version.ts holds a placeholder so the module type-checks; the real value comes from
+// package.json at build time. Without this the banner keeps whatever was hardcoded, and
+// semantic-release only ever rewrites package.json.
+const injectVersion = {
+  name: 'inject-version',
+  transform(code, id) {
+    if (!id.replace(/\\/g, '/').endsWith('src/version.ts')) return null;
+    return { code: `export const VERSION = '${version}';`, map: null };
+  },
+};
 
 const dev = process.env.ROLLUP_WATCH;
 
@@ -18,6 +32,7 @@ const serveopts = {
 };
 
 const plugins = [
+  injectVersion,
   nodeResolve({}),
   commonjs(),
   // Explicit include: rollup-plugin-typescript2's default include patterns use the
