@@ -35,6 +35,7 @@ import {
   forEachVariables,
   getDeclarations,
   mergeVariables,
+  normaliseVariables,
   variableName,
   variableValues,
   VariableDeclaration,
@@ -56,6 +57,13 @@ const LEGACY_TEMPLATE_TAG = 'decluttering-template';
 // Declared variables get their own form field, and the prefix keeps a variable called
 // "template" from colliding with the field that chooses the template.
 const VARIABLE_FIELD_PREFIX = 'variable:';
+
+// Variables can be written as a list of entries or as one mapping; both are read the same
+// way. Anything else - a string, a number - is neither, and worth saying so about.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isVariablesShape(value: any): boolean {
+  return value === undefined || Array.isArray(value) || (!!value && typeof value === 'object');
+}
 
 /** Writes a value the editor produced, leaving the key out entirely when it is empty. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -558,7 +566,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
     const template = this._templates[this._config.template];
     const declarations = getDeclarations(template);
-    const listed = Array.isArray(this._config.variables);
+    const readable = isVariablesShape(this._config.variables);
     const repeatable = !!template?.card;
 
     const error: Record<string, string | string[]> = {};
@@ -567,13 +575,13 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     if (!template && !this._loadingTemplates) {
       error.template = 'No template exists with this name';
     }
-    if (this._config.variables !== undefined && !listed) {
-      error.variables = 'The list of variables must be an array of key and value pairs';
+    if (!readable) {
+      error.variables = 'Variables must be a list of key and value pairs, or a mapping of them';
     }
 
     return html`
       ${template?.description ? html`<p class="description">${template.description}</p>` : html``}
-      ${this._renderDiagnostics(template, listed)}
+      ${this._renderDiagnostics(template, readable)}
       <ha-form
         .hass=${this.hass}
         .data=${this._formData(declarations)}
@@ -639,10 +647,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       if (declaration.name in values) data[VARIABLE_FIELD_PREFIX + declaration.name] = values[declaration.name];
     }
 
-    // A `variables:` written as a mapping rather than a list is a mistake the form
-    // reports; it must not throw on the way to reporting it.
-    const listed = Array.isArray(this._config?.variables) ? (this._config?.variables as VariablesConfig[]) : [];
-    const extras = listed.filter((entry) => {
+    const extras = normaliseVariables(this._config?.variables).filter((entry) => {
       const name = variableName(entry);
       return name !== undefined && !described.has(name);
     });
@@ -656,11 +661,11 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
    * Warnings, never errors: a template can be edited after the cards that use it, so a
    * card that looks wrong now may be right again in a moment. Nothing here stops a save.
    */
-  private _renderDiagnostics(template: TemplateConfig | undefined, listed: boolean): TemplateResult {
-    if (!template || this._loadingTemplates || (this._config?.variables !== undefined && !listed)) return html``;
+  private _renderDiagnostics(template: TemplateConfig | undefined, readable: boolean): TemplateResult {
+    if (!template || this._loadingTemplates || !readable) return html``;
 
     const repeated = forEachNames(this._config?.for_each).map((name) => ({ [name]: null }));
-    const supplied = [...(Array.isArray(this._config?.variables) ? this._config.variables : []), ...repeated];
+    const supplied = [...normaliseVariables(this._config?.variables), ...repeated];
     const { missing } = diagnoseInstance(supplied, template);
     // Only what the card itself sets can be called unused; an item's values are checked
     // together with the card's, so a name only some items set is not a mistake.
@@ -703,7 +708,8 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     if (Array.isArray(data.extras)) desired.push(...data.extras);
 
     const config = { ...this._config, template: data.template } as DeclutteringCardConfig;
-    const variables = mergeVariables(this._config?.variables, desired);
+    // Whatever shape the config was written in, what is saved back is the list form.
+    const variables = mergeVariables(normaliseVariables(this._config?.variables), desired);
     if (variables.length) config.variables = variables;
     else delete config.variables;
     setOrDelete(config, 'for_each', data.for_each);
@@ -925,8 +931,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     if (!this.hass || !this._config) return html``;
 
     const error: Record<string, string | string[]> = {};
-    if (this._config.default !== undefined && !Array.isArray(this._config.default)) {
-      error.default = 'The list of variables must be an array of key and value pairs';
+    if (!isVariablesShape(this._config.default)) {
+      error.default = 'Variables must be a list of key and value pairs, or a mapping of them';
     }
     if (this._config.variables !== undefined && !Array.isArray(this._config.variables)) {
       error.variables = 'The declarations must be a list, each entry naming one variable';

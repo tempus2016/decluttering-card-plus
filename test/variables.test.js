@@ -14,6 +14,7 @@ const {
   variableValues,
   forEachVariables,
   forEachNames,
+  normaliseVariables,
 } = require('../.test-build/variables.js');
 
 let passed = 0;
@@ -108,6 +109,27 @@ check(
   { missing: [], unused: [] },
 );
 
+/* ------------------------------------------------------------ normalising */
+
+check('a mapping of variables becomes one entry per key', normaliseVariables({ entity: 'sun.sun', label: 'Sun' }), [
+  { entity: 'sun.sun' },
+  { label: 'Sun' },
+]);
+
+check(
+  'a list entry with several keys becomes one entry per key',
+  normaliseVariables([{ entity: 'sun.sun', label: 'Sun' }, { colour: 'red' }]),
+  [{ entity: 'sun.sun' }, { label: 'Sun' }, { colour: 'red' }],
+);
+
+check('a list of one-key entries is unchanged', normaliseVariables([{ a: 1 }, { b: 2 }]), [{ a: 1 }, { b: 2 }]);
+
+check('nothing normalises to nothing', normaliseVariables(undefined), []);
+
+check('a scalar has no variables in it', normaliseVariables('nonsense'), []);
+
+check('an entry that is not a mapping is dropped', normaliseVariables([{ a: 1 }, 'nonsense', null]), [{ a: 1 }]);
+
 /* -------------------------------------------------------------- resolution */
 
 check(
@@ -145,6 +167,24 @@ check(
 );
 
 check(
+  'every key of a mapping default is resolved, not just the first',
+  resolveVariables(undefined, { default: { what: 'sun.sun', how: 'Boop' }, card: {} }),
+  [{ what: 'sun.sun' }, { how: 'Boop' }],
+);
+
+check(
+  'variables written as a mapping are resolved too',
+  resolveVariables({ entity: 'sun.sun', label: 'Sun' }, { card: {} }),
+  [{ entity: 'sun.sun' }, { label: 'Sun' }],
+);
+
+check(
+  'a mapping of variables still beats the template default',
+  resolveVariables({ colour: 'blue' }, { default: [{ colour: 'red' }], card: {} }),
+  [{ colour: 'blue' }],
+);
+
+check(
   'the older default list still works on its own',
   resolveVariables([{ a: 1 }], { default: [{ b: 2 }], card: {} }),
   [{ a: 1 }, { b: 2 }],
@@ -168,6 +208,18 @@ check(
   'a placeholder with a declared default is not missing',
   diagnoseInstance(undefined, { variables: [{ name: 'entity', default: 'sun.sun' }], card: { entity: '[[entity]]' } }),
   { missing: [], unused: [] },
+);
+
+check(
+  'a mapping of variables is not reported as missing',
+  diagnoseInstance({ entity: 'sun.sun' }, { card: { entity: '[[entity]]' } }),
+  { missing: [], unused: [] },
+);
+
+check(
+  'every key of a mapping is checked for being unused, not just the first',
+  diagnoseInstance({ entity: 'sun.sun', colour: 'red' }, { card: { entity: '[[entity]]' } }),
+  { missing: [], unused: ['colour'] },
 );
 
 check(

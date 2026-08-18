@@ -381,6 +381,17 @@ default:
   how: 'Boop'
 ```
 
+Variables can be written either as a mapping, as above, or as a list of one name each:
+
+```yaml
+default:
+  - what: sun.sun
+  - how: 'Boop'
+```
+
+Both are read the same way, wherever variables appear — `default:` on a template and
+`variables:` on a card. The list form is what the visual editor writes.
+
 #### Describing your variables
 
 A template can describe the variables it takes, rather than only giving them defaults. Each

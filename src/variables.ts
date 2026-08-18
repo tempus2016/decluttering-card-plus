@@ -58,6 +58,26 @@ export function variableName(entry: VariablesConfig | undefined): string | undef
 const firstKey = variableName;
 
 /**
+ * Variables as a flat list of one name each, whatever shape they were written in.
+ *
+ * Substitution reads one name and one value per entry, so a mapping - which is how people
+ * naturally write these, and how the README's own example wrote them - used to lose every
+ * key after the first without saying anything. Flattening here fixes that everywhere at
+ * once, since resolution, substitution and the warnings all read the result.
+ */
+export function normaliseVariables(variables: unknown): VariablesConfig[] {
+  const entries: VariablesConfig[] = [];
+  const add = (entry: unknown): void => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+    for (const [name, value] of Object.entries(entry)) entries.push({ [name]: value });
+  };
+
+  if (Array.isArray(variables)) variables.forEach(add);
+  else add(variables);
+  return entries;
+}
+
+/**
  * Passed variables take precedence over the template's defaults, so only the first
  * definition of each name is kept. Order alone is not enough once substitution loops:
  * a default would otherwise win whenever the placeholder is introduced by an earlier
@@ -90,11 +110,9 @@ export function getDeclarations(template: TemplateConfig | undefined): VariableD
   return declarations;
 }
 
-/** The `default:` list, tolerating the single mapping people sometimes write instead. */
+/** The `default:` values, in whichever shape they were written. */
 function defaultList(template: TemplateConfig | undefined): VariablesConfig[] {
-  const defaults = template?.default;
-  if (!defaults) return [];
-  return Array.isArray(defaults) ? defaults : [defaults];
+  return normaliseVariables(template?.default);
 }
 
 /**
@@ -102,11 +120,11 @@ function defaultList(template: TemplateConfig | undefined): VariablesConfig[] {
  * instance passes, then what a declaration defaults to, then the older `default:` list.
  */
 export function resolveVariables(
-  variables: VariablesConfig[] | undefined,
+  variables: VariablesConfig[] | VariablesConfig | undefined,
   template: TemplateConfig | undefined,
 ): VariablesConfig[] {
   const combined: VariablesConfig[] = [];
-  if (Array.isArray(variables)) combined.push(...variables);
+  combined.push(...normaliseVariables(variables));
   for (const declaration of getDeclarations(template)) {
     // A declaration that only names a variable says nothing about its value, and must not
     // shadow a `default:` entry with undefined.
@@ -117,9 +135,9 @@ export function resolveVariables(
 }
 
 /** What each variable is set to, reading one name per entry as substitution does. */
-export function variableValues(variableArray: VariablesConfig[] | undefined): Record<string, any> {
+export function variableValues(variableArray: VariablesConfig[] | VariablesConfig | undefined): Record<string, any> {
   const map: Record<string, any> = {};
-  for (const entry of Array.isArray(variableArray) ? variableArray : []) {
+  for (const entry of normaliseVariables(variableArray)) {
     const key = firstKey(entry);
     if (key !== undefined && !(key in map)) map[key] = entry[key];
   }
@@ -172,14 +190,14 @@ export function usedVariables(template: TemplateConfig | undefined): string[] {
 
 /** What is wrong with one use of a template: nothing here should stop the card saving. */
 export function diagnoseInstance(
-  variables: VariablesConfig[] | undefined,
+  variables: VariablesConfig[] | VariablesConfig | undefined,
   template: TemplateConfig | undefined,
 ): { missing: string[]; unused: string[] } {
   const values = variableValues(resolveVariables(variables, template));
   const used = reachable(template, values);
   const isUsed = new Set(used);
 
-  const passed = Array.isArray(variables) ? variables : [];
+  const passed = normaliseVariables(variables);
   const unused: string[] = [];
   for (const entry of passed) {
     const name = firstKey(entry);
