@@ -3,19 +3,29 @@ name: CI
 on:
   workflow_dispatch:
   pull_request:
-    branches:
-      - '*'
+    branches: [master]
   push:
-    branches:
-      - '*'
+    branches: [master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   lint:
+    name: Lint and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing here pushes, and a persisted token sits in .git/config while npm
+          # install scripts and build plugins run.
+          persist-credentials: false
       - name: Use Node.js 22.x
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22.x
           cache: npm
@@ -25,7 +35,9 @@ jobs:
         run: npm run lint --if-present
       - name: Run the tests
         run: npm test --if-present
+
   build:
+    name: Build
     runs-on: ubuntu-latest
 
     strategy:
@@ -33,9 +45,11 @@ jobs:
         node-version: [20.x, 22.x]
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -43,3 +57,17 @@ jobs:
         run: npm ci
       - name: Build the project
         run: npm run build --if-present
+
+      # dist/ is committed, and HACS serves it straight from the default branch when a
+      # repository has no release. A source change that was never rebuilt would therefore
+      # ship stale code to everyone while every other check stayed green. Checked on one
+      # Node version only, so a difference in minifier output between them cannot fail the
+      # build spuriously. --ignored=matching also catches stray output .gitignore would hide.
+      - name: Fail if the committed dist/ is stale
+        if: matrix.node-version == '22.x'
+        run: |
+          if [ -n "$(git status --porcelain --ignored=matching -- dist/)" ]; then
+            echo "::error::dist/ does not match a fresh build. Run npm run build and commit the result."
+            git status --porcelain --ignored=matching -- dist/
+            exit 1
+          fi
