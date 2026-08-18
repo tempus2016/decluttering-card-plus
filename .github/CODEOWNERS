@@ -1,0 +1,10 @@
+# Auto-requests review on every pull request, including from forks.
+
+*                       @tempus2016
+
+# The places where a silent change is most expensive.
+/.github/               @tempus2016
+/src/                   @tempus2016
+/dist/                  @tempus2016
+/hacs.json              @tempus2016
+/release.config.js      @tempus2016

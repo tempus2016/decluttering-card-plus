@@ -1,0 +1,62 @@
+# Source of truth for repository labels, synced by .github/workflows/labels.yml.
+# Edit here and push to main to create or update labels. Deletion is disabled, so
+# labels not listed here are left alone.
+
+# Type
+- name: bug
+  color: d73a4a
+  description: Something isn't working
+- name: enhancement
+  color: a2eeef
+  description: New feature or request
+- name: documentation
+  color: 0075ca
+  description: README, wiki, or in-code documentation
+- name: question
+  color: d876e3
+  description: Further information is requested
+
+# Triage
+- name: needs-triage
+  color: ededed
+  description: Awaiting maintainer triage
+- name: needs-info
+  color: d4c5f9
+  description: Waiting on the reporter for more detail
+- name: confirmed
+  color: 0e8a16
+  description: Reproduced
+- name: wontfix
+  color: ffffff
+  description: Deliberately not being changed
+- name: duplicate
+  color: cfd3d7
+  description: Already reported elsewhere
+- name: stale
+  color: 795548
+  description: Inactive while waiting for information
+
+# Area
+- name: templating
+  color: 1d76db
+  description: Variables, defaults, and substitution
+- name: layout
+  color: 5319e7
+  description: Sections, grid options, sizing
+- name: editor
+  color: 006b75
+  description: The visual editors and the card picker
+- name: compatibility
+  color: e99695
+  description: Behaviour alongside the original card, or with other custom cards
+- name: ci
+  color: bfd4f2
+  description: Workflows, build, release plumbing
+- name: dependencies
+  color: 0366d6
+  description: Dependency updates
+
+# Upstream provenance — this fork answers issues raised on the projects it came from
+- name: upstream
+  color: fef2c0
+  description: Originally reported on custom-cards/decluttering-card or a fork of it

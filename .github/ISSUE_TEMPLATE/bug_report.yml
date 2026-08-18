@@ -1,0 +1,102 @@
+name: Bug Report
+description: Report a card that does not render, or behaves differently to the documentation
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+assignees:
+  - tempus2016
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. The more of the following you fill in, the
+        faster it can be reproduced.
+
+        Please check [Troubleshooting](https://github.com/tempus2016/decluttering-card-plus/wiki/Troubleshooting)
+        and the [existing issues](https://github.com/tempus2016/decluttering-card-plus/issues) first.
+
+  - type: input
+    id: card_version
+    attributes:
+      label: Decluttering Card Plus version
+      description: Press F12 and look at the browser console — the card prints its version on load.
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      description: Settings → System → About
+      placeholder: e.g. 2026.8.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: How is the card installed?
+      options:
+        - HACS
+        - Manually, as a Lovelace resource
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: original_card
+    attributes:
+      label: Is the original decluttering-card also installed?
+      description: >
+        Both register the same card types. Whichever loads first claims them, so having both
+        installed changes which one actually renders your cards.
+      options:
+        - "No"
+        - "Yes"
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and platform
+      placeholder: e.g. Chrome 141 on Windows, or the iOS companion app
+    validations:
+      required: true
+
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did you get instead? Screenshots help.
+    validations:
+      required: true
+
+  - type: textarea
+    id: template_yaml
+    attributes:
+      label: The template
+      description: The `decluttering_templates` entry or template card involved. Secrets removed.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: card_yaml
+    attributes:
+      label: The card using it
+      description: The `custom:decluttering-card-plus` card, with its variables.
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Browser console output
+      description: Press F12, reload the page, and paste anything red. Leave blank if there is nothing.
+      render: shell
+    validations:
+      required: false
