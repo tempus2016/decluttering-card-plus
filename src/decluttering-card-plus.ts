@@ -561,7 +561,10 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       if (declaration.name in values) data[VARIABLE_FIELD_PREFIX + declaration.name] = values[declaration.name];
     }
 
-    const extras = (this._config?.variables ?? []).filter((entry) => {
+    // A `variables:` written as a mapping rather than a list is a mistake the form
+    // reports; it must not throw on the way to reporting it.
+    const listed = Array.isArray(this._config?.variables) ? (this._config?.variables as VariablesConfig[]) : [];
+    const extras = listed.filter((entry) => {
       const name = variableName(entry);
       return name !== undefined && !described.has(name);
     });
