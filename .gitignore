@@ -2,3 +2,4 @@
 yarn.lock
 .rpt2_cache/
 .tmp/
+.test-build/
