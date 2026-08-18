@@ -94,6 +94,114 @@ check(
   [true, true, false, false],
 );
 
+check(
+  'a template card inside a stack is found',
+  Object.keys(
+    collectTemplates({
+      views: [
+        {
+          cards: [
+            {
+              type: 'vertical-stack',
+              cards: [{ type: 'custom:decluttering-template-plus', template: 'nested', card: {} }],
+            },
+          ],
+        },
+      ],
+    }),
+  ),
+  ['nested'],
+);
+
+check(
+  'a template card inside a grid inside a stack is found',
+  Object.keys(
+    collectTemplates({
+      views: [
+        {
+          cards: [
+            {
+              type: 'horizontal-stack',
+              cards: [
+                { type: 'grid', cards: [{ type: 'custom:decluttering-template-plus', template: 'deep', card: {} }] },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  ),
+  ['deep'],
+);
+
+check(
+  'a template card inside a conditional card is found',
+  Object.keys(
+    collectTemplates({
+      views: [
+        {
+          cards: [
+            {
+              type: 'conditional',
+              card: { type: 'custom:decluttering-template-plus', template: 'conditional', card: {} },
+            },
+          ],
+        },
+      ],
+    }),
+  ),
+  ['conditional'],
+);
+
+check(
+  'a template card nested in a section is found',
+  Object.keys(
+    collectTemplates({
+      views: [
+        {
+          sections: [
+            {
+              cards: [
+                {
+                  type: 'vertical-stack',
+                  cards: [{ type: 'custom:decluttering-template-plus', template: 'sectioned', card: {} }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  ),
+  ['sectioned'],
+);
+
+check(
+  'a template card inside a template card belongs to the outer definition, not the dashboard',
+  Object.keys(
+    collectTemplates({
+      views: [
+        {
+          cards: [
+            {
+              type: 'custom:decluttering-template-plus',
+              template: 'outer',
+              card: { type: 'custom:decluttering-template-plus', template: 'inner', card: {} },
+            },
+          ],
+        },
+      ],
+    }),
+  ),
+  ['outer'],
+);
+
+check(
+  'a view with no cards at all is not an error',
+  Object.keys(collectTemplates({ views: [{ title: 'Empty' }, { cards: null }] })),
+  [],
+);
+
 /* --- collectUsages --- */
 
 const USED_IN = {
