@@ -15,6 +15,12 @@ export interface VariableDeclaration {
 
 const PLACEHOLDER_SOURCE = '\\[\\[([^[\\]]+)\\]\\]';
 
+/**
+ * The placeholder grammar, owned here so that substitution, dependency scanning and the
+ * suggestion pass cannot drift apart. Fresh and non-global, so it carries no lastIndex.
+ */
+export const PLACEHOLDER = new RegExp(PLACEHOLDER_SOURCE);
+
 /*
  * A placeholder can ask for its value in a different shape - `[[room|slug]]` alongside
  * `[[room]]` - which is what lets one variable serve both a name and the entity id built
@@ -196,8 +202,12 @@ export function usedVariables(template: TemplateConfig | undefined): string[] {
 export function diagnoseInstance(
   variables: VariablesConfig[] | VariablesConfig | undefined,
   template: TemplateConfig | undefined,
+  // Values supplied from elsewhere - a for_each item, say - which satisfy a variable the
+  // template uses, but are not the card's own to be called unused.
+  supplements?: VariablesConfig[],
 ): { missing: string[]; unused: string[] } {
-  const values = variableValues(resolveVariables(variables, template));
+  const supplied = [...normaliseVariables(variables), ...normaliseVariables(supplements)];
+  const values = variableValues(resolveVariables(supplied, template));
   const used = reachable(template, values);
   const isUsed = new Set(used);
 

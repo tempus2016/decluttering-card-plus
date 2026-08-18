@@ -112,11 +112,12 @@ export async function findTemplateAnywhere(
 }
 
 // The cards that consume a template, as opposed to the ones that define it.
-const CONSUMER_TYPES = ['custom:decluttering-card-plus', 'custom:decluttering-card'];
+export const CONSUMER_TYPES = ['custom:decluttering-card-plus', 'custom:decluttering-card'];
 
 export interface TemplateUsages {
-  /** Each view that uses the template, and how many times. */
-  views: { title: string; path: string; count: number }[];
+  /** Each view that uses the template, and how many times. The index is the view's
+   *  position, which is how Home Assistant addresses a view that has no path. */
+  views: { title: string; path: string; index: number; count: number }[];
   /** Other templates that call this one. */
   templates: string[];
 }
@@ -143,17 +144,31 @@ export function collectUsages(ll: LovelaceConfig | null | undefined, template: s
   const usages: TemplateUsages = { views: [], templates: [] };
   if (!ll) return usages;
 
-  for (const view of ll.views ?? []) {
+  (ll.views ?? []).forEach((view, index) => {
     const count = countUses(view, template);
     if (count)
-      usages.views.push({ title: view.title ?? (view as any).path ?? '', path: (view as any).path ?? '', count });
-  }
+      usages.views.push({
+        title: view.title ?? (view as any).path ?? '',
+        path: (view as any).path ?? '',
+        index,
+        count,
+      });
+  });
 
   // Both ways of defining a template are checked, and only the content is walked: the
-  // definition itself carries a `template:` key that names itself, not a use.
+  // definition itself carries a `template:` key that names itself, not a use. A card
+  // handed in through a default - the definition's own or a declaration's - is content
+  // too, which is what the variables entry covers.
   for (const [name, definition] of Object.entries(collectTemplates(ll))) {
     if (name === template) continue;
-    const content = [definition.card, definition.row, definition.element, definition.badge];
+    const content = [
+      definition.card,
+      definition.row,
+      definition.element,
+      definition.badge,
+      definition.default,
+      definition.variables,
+    ];
     if (countUses(content, template)) usages.templates.push(name);
   }
   return usages;
