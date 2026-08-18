@@ -1,5 +1,5 @@
 resources:
-  - url: http://127.0.0.1:5000/decluttering-card.js
+  - url: http://127.0.0.1:5000/decluttering-card-plus.js
     type: module
   - url: https://cdn.jsdelivr.net/gh/thomasloven/lovelace-card-mod@master/card-mod.js
     type: module
@@ -48,28 +48,28 @@ decluttering_templates:
 
 views:
   - cards:
-      - type: custom:decluttering-card
+      - type: custom:decluttering-card-plus
         template: my_first_template
         variables:
           - name: This is a test
       - type: entities
         entities:
           - light.bed_light
-          - type: custom:decluttering-card
+          - type: custom:decluttering-card-plus
             template: large_divider
           - sun.sun
       - type: picture-elements
         image: https://www.w3schools.com/w3css/img_lights.jpg
         elements:
-          - type: custom:decluttering-card
+          - type: custom:decluttering-card-plus
             template: demo_icon
             variables:
               - entity: sun.sun
       - type: horizontal-stack
         cards:
-          - type: custom:decluttering-card
+          - type: custom:decluttering-card-plus
             template: my_first_template
             variables:
               - name: Full width when light Off
-          - type: custom:decluttering-card
+          - type: custom:decluttering-card-plus
             template: test_hidden
