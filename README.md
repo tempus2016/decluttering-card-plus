@@ -426,6 +426,68 @@ The editors also point out the two mistakes that are easy to make and hard to se
 variable the template uses that has no value and no default, and a value set on a card that
 the template never uses. Both are warnings; neither stops you saving.
 
+#### Turning a card you already have into a template
+
+The hard part of adopting this card is the first conversion: taking a card you built by
+hand and deciding which parts of it change between copies. The template editor can propose
+that for you.
+
+Put the card into a template — build it on the **Card** tab, or paste it in through the
+**Share** tab — then press **Suggest variables from the card** on the Settings tab. Every
+entity, name, title, heading and icon in it becomes a variable, described with the right
+control and defaulting to the value it replaced, so the template renders exactly what the
+card did until you pass something else in.
+
+```yaml
+# before
+card:
+  type: vertical-stack
+  cards:
+    - type: tile
+      entity: light.hall
+      name: Hall
+      icon: mdi:lamp
+    - type: tile
+      entity: light.hall
+      name: Hall again
+```
+
+```yaml
+# after
+variables:
+  - name: entity
+    label: Entity
+    selector: {entity: {}}
+    default: light.hall
+  - name: name
+    label: Name
+    selector: {text: {}}
+    default: Hall
+  - name: icon
+    label: Icon
+    selector: {icon: {}}
+    default: mdi:lamp
+  - name: name_2
+    label: Name 2
+    selector: {text: {}}
+    default: Hall again
+card:
+  type: vertical-stack
+  cards:
+    - type: tile
+      entity: '[[entity]]'
+      name: '[[name]]'
+      icon: '[[icon]]'
+    - type: tile
+      entity: '[[entity]]'
+      name: '[[name_2]]'
+```
+
+The same value in the same kind of place becomes one variable — `light.hall` appears twice
+above and is one thing to fill in, not two. Values that are already variables are left
+alone, as are variables the template already declares, so pressing it again after adding a
+card is safe. Because it rewrites your card, it asks twice before doing anything.
+
 #### Repeating a template
 
 A card can render its template once per item in a list, which saves pasting the same
