@@ -10,23 +10,31 @@
 
 This card is for [Lovelace](https://www.home-assistant.io/lovelace) on [Home Assistant](https://www.home-assistant.io/).
 
+📖 **Full documentation is in the [wiki][wiki]** — a [quick start][wiki-quickstart], a page
+per content type, [variables][wiki-variables], [recipes][wiki-recipes] and
+[troubleshooting][wiki-troubleshooting]. This README is the short version.
+
 We all use multiple times the same block of configuration across our lovelace configuration and we don't want to change the same things in a hundred places across our configuration each time we want to modify something.
 
 `decluttering-card-plus` to the rescue!! This card allows you to reuse multiple times the same configuration in your lovelace configuration to avoid repetition and supports variables and default values.
 
-## About this fork
+## Credits
 
-This is a maintained continuation of [custom-cards/decluttering-card][upstream], which has not
-had a release since April 2023. It combines the work of three people:
+`decluttering-card-plus` builds on [custom-cards/decluttering-card][upstream], which has not
+had a release since April 2023, and on the work of three people:
 
 - [RomRider][romrider] — the original card.
 - [j9brown][j9brown] — visual editors, and support for templating entity rows and picture
   elements as well as cards ([upstream PR #78][pr78], unmerged).
 - [simbaja][simbaja] — modernisation to lit 3 and TypeScript 5, plus the `style` option.
 
+It is now maintained here as its own project, with badge templates, templates shared between
+dashboards, `visibility` support inside templates, and a series of variable-substitution and
+layout fixes on top of that work.
+
 Everything here is MIT licensed, as was all of the work it builds on.
 
-### Migrating from `decluttering-card`
+## Migrating from `decluttering-card`
 
 **Your existing configuration keeps working.** As well as its own `custom:decluttering-card-plus`
 and `custom:decluttering-template-plus` types, this card also registers the original
@@ -467,11 +475,25 @@ decluttering_templates:
       type: entity
       entity: sun.sun
     style: |
-      ha-card {
-        background-color: var(--primary-background-color);
-        border-radius: 15px;
+      :host {
+        --ha-card-background: var(--primary-background-color);
+        --ha-card-border-radius: 15px;
       }
 ```
+
+#### Use CSS custom properties to style the card itself
+
+The CSS is injected into this card's shadow root, and each Home Assistant card lives in a
+shadow root of its own nested inside it. CSS does not cross a shadow boundary, so a
+selector such as `ha-card { ... }` never matches the wrapped card. Custom properties do
+cross, because they inherit — so `--ha-card-background` works where `background-color`
+on `ha-card` does not.
+
+`:host`, `:host(.decluttering-container)` and `hui-card` all refer to elements in this
+card's own shadow root, so those work normally.
+
+See [Styling][wiki-styling] in the wiki for the full explanation and a table of what does
+and does not reach the card.
 
 ## Installation
 
@@ -504,7 +526,10 @@ resources:
 
 ## Troubleshooting
 
-See this guide: [Troubleshooting](https://github.com/thomasloven/hass-config/wiki/Lovelace-Plugins)
+Common problems and their fixes are in the wiki: [Troubleshooting][wiki-troubleshooting].
+
+For dashboard plugins in general, see
+[this guide](https://github.com/thomasloven/hass-config/wiki/Lovelace-Plugins).
 
 ## Developers
 
@@ -530,3 +555,9 @@ npm start       # rebuild on change, served on :5000 for the dev container
 [romrider]: https://github.com/RomRider
 [simbaja]: https://github.com/simbaja/ha-decluttering-card
 [upstream]: https://github.com/custom-cards/decluttering-card
+[wiki]: https://github.com/tempus2016/decluttering-card-plus/wiki
+[wiki-quickstart]: https://github.com/tempus2016/decluttering-card-plus/wiki/Quick-Start
+[wiki-recipes]: https://github.com/tempus2016/decluttering-card-plus/wiki/Recipes
+[wiki-styling]: https://github.com/tempus2016/decluttering-card-plus/wiki/Styling
+[wiki-troubleshooting]: https://github.com/tempus2016/decluttering-card-plus/wiki/Troubleshooting
+[wiki-variables]: https://github.com/tempus2016/decluttering-card-plus/wiki/Variables
