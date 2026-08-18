@@ -20,6 +20,7 @@ export interface TemplateConfig {
   card?: any;
   row?: any;
   element?: any;
+  badge?: any;
   style?: string;
 }
 
@@ -46,4 +47,4 @@ export interface LovelaceRowConfig {
 
 export type LovelaceThing = LovelaceCard | LovelaceElement | LovelaceRow;
 export type LovelaceThingConfig = LovelaceCardConfig | LovelaceElementConfig | LovelaceRowConfig;
-export type LovelaceThingType = 'card' | 'row' | 'element';
+export type LovelaceThingType = 'card' | 'row' | 'element' | 'badge';
