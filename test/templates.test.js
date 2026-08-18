@@ -3,7 +3,12 @@
  * shapes a template can be declared in, and which dashboards a config borrows from.
  * Run with `npm test`.
  */
-const { collectTemplates, getTemplateSources, isTemplateCardType } = require('../.test-build/templates.js');
+const {
+  collectTemplates,
+  getTemplateSources,
+  isTemplateCardType,
+  collectUsages,
+} = require('../.test-build/templates.js');
 
 let passed = 0;
 let failed = 0;
@@ -87,6 +92,85 @@ check(
     isTemplateCardType(undefined),
   ],
   [true, true, false, false],
+);
+
+/* --- collectUsages --- */
+
+const USED_IN = {
+  views: [
+    {
+      title: 'First',
+      path: 'one',
+      cards: [
+        { type: 'custom:decluttering-card-plus', template: 'tile' },
+        { type: 'vertical-stack', cards: [{ type: 'custom:decluttering-card-plus', template: 'tile' }] },
+        { type: 'custom:decluttering-card-plus', template: 'other' },
+      ],
+      badges: [{ type: 'custom:decluttering-card-plus', template: 'tile' }],
+    },
+    {
+      path: 'two',
+      sections: [{ cards: [{ type: 'custom:decluttering-card', template: 'tile' }] }],
+    },
+    { title: 'Empty', path: 'three', cards: [{ type: 'markdown' }] },
+  ],
+  decluttering_templates: {
+    wrapper: { card: { type: 'custom:decluttering-card-plus', template: 'tile' } },
+    unrelated: { card: { type: 'markdown' } },
+  },
+};
+
+check('a template used nowhere has no usages', collectUsages(USED_IN, 'missing'), { views: [], templates: [] });
+
+check('usages are counted per view, wherever they are nested', collectUsages(USED_IN, 'tile').views, [
+  { title: 'First', path: 'one', count: 3 },
+  { title: 'two', path: 'two', count: 1 },
+]);
+
+check('a template that calls another one is listed by name', collectUsages(USED_IN, 'tile').templates, ['wrapper']);
+
+check(
+  'a template card defining the template is not a use of it',
+  collectUsages(
+    {
+      views: [{ path: 'a', cards: [{ type: 'custom:decluttering-template-plus', template: 'tile', card: {} }] }],
+    },
+    'tile',
+  ),
+  { views: [], templates: [] },
+);
+
+check(
+  'a template defined as a card is listed when it calls another',
+  collectUsages(
+    {
+      views: [
+        {
+          path: 'a',
+          cards: [
+            {
+              type: 'custom:decluttering-template-plus',
+              template: 'wrapper_card',
+              card: { type: 'custom:decluttering-card-plus', template: 'tile' },
+            },
+          ],
+        },
+      ],
+    },
+    'tile',
+  ),
+  { views: [], templates: ['wrapper_card'] },
+);
+
+check(
+  'a template does not count as using itself',
+  collectUsages(
+    {
+      decluttering_templates: { tile: { card: { type: 'custom:decluttering-card-plus', template: 'tile' } } },
+    },
+    'tile',
+  ).templates,
+  [],
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);

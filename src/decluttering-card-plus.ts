@@ -23,6 +23,7 @@ import { suggestVariables } from './suggest';
 import {
   collectTemplates,
   collectAllTemplates,
+  collectUsages,
   findTemplate,
   findTemplateAnywhere,
   getTemplateSources,
@@ -872,6 +873,17 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         display: block;
         margin-bottom: 8px;
       }
+      .usages ha-alert {
+        display: block;
+        margin-bottom: 8px;
+      }
+      .usages ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      .usages li {
+        margin-bottom: 4px;
+      }
     `;
   }
 
@@ -917,6 +929,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               ? html`<ha-tab-group-tab slot="nav" panel="row">Row</ha-tab-group-tab>`
               : html``
         }
+        <ha-tab-group-tab slot="nav" panel="usages">Where used</ha-tab-group-tab>
         <ha-tab-group-tab slot="nav" panel="share">Share</ha-tab-group-tab>
       </ha-tab-group>
       ${
@@ -959,9 +972,11 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                       @config-changed=${this._rowChanged}
                     ></hui-row-element-editor>
                   `
-                : this._selectedTab === 'share'
-                  ? this._renderShare()
-                  : html``
+                : this._selectedTab === 'usages'
+                  ? this._renderUsages()
+                  : this._selectedTab === 'share'
+                    ? this._renderShare()
+                    : html``
       }
     `;
   }
@@ -1058,6 +1073,58 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       return;
     }
     this._suggestion = suggestion;
+  }
+
+  /*
+   * What a change to this template would affect. A template is worth changing only when
+   * you know what it is holding up, and the answer is not visible from the template card
+   * itself - the cards using it can be anywhere on the dashboard.
+   */
+  private _renderUsages(): TemplateResult {
+    const name = this._config?.template;
+    if (!name) return html``;
+
+    const { views, templates } = collectUsages(this.lovelace, name);
+    const total = views.reduce((sum, view) => sum + view.count, 0);
+
+    return html`
+      <div class="usages">
+        ${
+          total === 0 && !templates.length
+            ? html`<ha-alert alert-type="info">
+                Nothing on this dashboard uses "${name}" yet. Cards on other dashboards are not counted here, even ones
+                that borrow this dashboard's templates.
+              </ha-alert>`
+            : html`
+                <p class="hint">
+                  ${total === 1 ? 'One card uses' : `${total} cards use`} "${name}" on this dashboard. Cards on other
+                  dashboards are not counted.
+                </p>
+                <ul>
+                  ${views.map(
+                    (view) => html`
+                      <li>
+                        <a href=${`${document.location.pathname.split('/').slice(0, 2).join('/')}/${view.path}`}>
+                          ${view.title || view.path || 'Untitled view'}
+                        </a>
+                        — ${view.count === 1 ? 'once' : `${view.count} times`}
+                      </li>
+                    `,
+                  )}
+                </ul>
+              `
+        }
+        ${
+          templates.length
+            ? html`<ha-alert alert-type="info">
+                ${templates.length === 1 ? 'This template is used by' : 'This template is used by'}
+                ${templates.length === 1 ? 'another template' : 'other templates'}: ${templates.join(', ')}. Changing it
+                changes ${templates.length === 1 ? 'that one' : 'those'} too.
+              </ha-alert>`
+            : html``
+        }
+      </div>
+    `;
   }
 
   private _renderShare(): TemplateResult {

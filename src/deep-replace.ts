@@ -1,5 +1,5 @@
 import { VariablesConfig, TemplateConfig } from './types';
-import { resolveVariables } from './variables';
+import { applyTransform, resolveVariables, TRANSFORM_SUFFIX } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -23,10 +23,23 @@ function escapeForRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Every replacement goes through a function so that `$&`, `$1` and friends in a variable's
-// value are inserted literally instead of being read as replacement patterns.
-function replaceAll(json: string, pattern: RegExp, replacement: string): string {
-  return json.replace(pattern, () => replacement);
+// A placeholder standing as the whole JSON value takes the place of its quotes too, so it
+// can become any JSON. A string is the exception: it is left for the pass below to put
+// inside the quotes that are already there.
+function asWholeValue(value: any, match: string): string {
+  // `typeof null` is 'object', and JSON.stringify(null) is 'null', which is what a bare
+  // `"[[name]]"` should become - so null belongs here rather than with the strings.
+  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return match;
+}
+
+// Inside a longer string an object cannot be injected as JSON structure, so it goes in as
+// its JSON text. That is what issue #83 asked for.
+function asPartOfString(value: any): string {
+  if (typeof value === 'object') return escapeForJsonString(JSON.stringify(value));
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return escapeForJsonString(String(value));
 }
 
 function substitutePass(jsonConfig: string, variableArray: VariablesConfig[]): string {
@@ -34,25 +47,19 @@ function substitutePass(jsonConfig: string, variableArray: VariablesConfig[]): s
   variableArray.forEach((variable) => {
     const key = escapeForRegExp(Object.keys(variable)[0]);
     const value = Object.values(variable)[0];
-    // `"[[name]]"` is the whole value, so the replacement takes the place of the quotes
-    // too and can be any JSON. `[[name]]` on its own sits inside a larger string.
-    const wholeValue = new RegExp(`"\\[\\[${key}\\]\\]"`, 'gm');
-    const withinString = new RegExp(`\\[\\[${key}\\]\\]`, 'gm');
+    const wholeValue = new RegExp(`"\\[\\[${key}${TRANSFORM_SUFFIX}\\]\\]"`, 'gm');
+    const withinString = new RegExp(`\\[\\[${key}${TRANSFORM_SUFFIX}\\]\\]`, 'gm');
 
-    if (typeof value === 'object') {
-      // `typeof null` is 'object', and JSON.stringify(null) is 'null', which is what a bare
-      // `"[[name]]"` should become - so null belongs here rather than with the strings.
-      const valueJson = JSON.stringify(value);
-      json = replaceAll(json, wholeValue, valueJson);
-      // Used inside a longer string an object cannot be injected as JSON structure, so
-      // it goes in as its JSON text. That is what issue #83 asked for.
-      json = replaceAll(json, withinString, escapeForJsonString(valueJson));
-    } else if (typeof value === 'number' || typeof value === 'boolean') {
-      json = replaceAll(json, wholeValue, String(value));
-      json = replaceAll(json, withinString, String(value));
-    } else {
-      json = replaceAll(json, withinString, escapeForJsonString(String(value)));
-    }
+    // Every replacement goes through a function so that `$&`, `$1` and friends in a
+    // variable's value are inserted literally rather than read as replacement patterns.
+    // A transformed placeholder is text whatever the value's own type, since a transform
+    // is a way of writing the value out rather than a way of choosing it.
+    json = json.replace(wholeValue, (match: string, transform?: string) =>
+      transform ? JSON.stringify(applyTransform(transform, value)) : asWholeValue(value, match),
+    );
+    json = json.replace(withinString, (_match: string, transform?: string) =>
+      transform ? escapeForJsonString(applyTransform(transform, value)) : asPartOfString(value),
+    );
   });
   return json;
 }
