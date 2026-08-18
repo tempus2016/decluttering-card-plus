@@ -1,7 +1,7 @@
 {
-  "name": "decluttering-card",
+  "name": "decluttering-card-plus",
   "version": "2026.2.0",
-  "description": "Decluttering Card for Lovelace",
+  "description": "Decluttering Card Plus for Lovelace",
   "main": "dist/decluttering-card.js",
   "scripts": {
     "build": "npm run lint && npm run rollup",
@@ -21,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/custom-cards/decluttering-card.git"
+    "url": "git+https://github.com/tempus2016/decluttering-card-plus.git"
   },
   "keywords": [
     "lovelace"
@@ -29,10 +29,11 @@
   "author": "RomRider",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/custom-cards/decluttering-card/issues"
+    "url": "https://github.com/tempus2016/decluttering-card-plus/issues"
   },
-  "homepage": "https://github.com/custom-cards/decluttering-card/README.md",
+  "homepage": "https://github.com/tempus2016/decluttering-card-plus#readme",
   "devDependencies": {
+    "@babel/cli": "^7.23.0",
     "@babel/core": "^7.21.4",
     "@babel/plugin-proposal-class-properties": "^7.8.3",
     "@babel/plugin-proposal-decorators": "^7.8.3",
@@ -49,16 +50,12 @@
     "@semantic-release/release-notes-generator": "^10.0.3",
     "@typescript-eslint/eslint-plugin": "^8.56.0",
     "@typescript-eslint/parser": "^8.56.0",
-    "@babel/cli": "^7.23.0",
     "conventional-changelog-conventionalcommits": "^5.0.0",
     "eslint": "^8.57.1",
-    "eslint-config-airbnb-base": "^14.1.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-import": "^2.32.0",
     "eslint-plugin-prettier": "^5.5.5",
-    "npm": "^9.6.3",
-    "prettier": "^1.19.0",
-    "prettier-eslint": "^16.4.2",
+    "prettier": "^3.6.2",
+    "rollup": "^2.79.2",
     "rollup-plugin-serve": "^1.0.1",
     "rollup-plugin-typescript2": "^0.36.0",
     "ts-lit-plugin": "^1.2.1",
@@ -69,5 +66,10 @@
     "custom-card-helpers": "^1.9.0",
     "home-assistant-js-websocket": "^9.6.0",
     "lit": "^3.3.2"
-  }
+  },
+  "contributors": [
+    "j9brown",
+    "simbaja",
+    "tempus2016"
+  ]
 }

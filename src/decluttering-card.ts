@@ -1,5 +1,5 @@
 import { LitElement, html, TemplateResult, css, CSSResult } from 'lit';
-import { customElement, property, state } from 'lit/decorators.js';
+import { property, state } from 'lit/decorators.js';
 import {
   HomeAssistant,
   createThing,
@@ -21,11 +21,26 @@ import deepReplace from './deep-replace';
 import { getLovelaceConfig } from './utils';
 import { VERSION } from './version';
 
+// Tags this bundle owns.
+const CARD_TAG = 'decluttering-card-plus';
+const CARD_EDITOR_TAG = 'decluttering-card-plus-editor';
+const TEMPLATE_TAG = 'decluttering-template-plus';
+const TEMPLATE_EDITOR_TAG = 'decluttering-template-plus-editor';
+
+// Tags of the original custom-cards/decluttering-card, claimed when it is not installed
+// so that existing configurations keep working unchanged.
+const LEGACY_CARD_TAG = 'decluttering-card';
+const LEGACY_TEMPLATE_TAG = 'decluttering-template';
+
+function isTemplateCardType(type: string | undefined): boolean {
+  return type === `custom:${TEMPLATE_TAG}` || type === `custom:${LEGACY_TEMPLATE_TAG}`;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const HELPERS = (window as any).loadCardHelpers ? (window as any).loadCardHelpers() : undefined;
 
 console.info(
-  `%c DECLUTTERING-CARD \n%c   Version ${VERSION}   `,
+  `%c DECLUTTERING-CARD-PLUS \n%c   Version ${VERSION}   `,
   'color: orange; font-weight: bold; background: black',
   'color: white; font-weight: bold; background: dimgray',
 );
@@ -67,7 +82,7 @@ function getTemplateConfig(ll: LovelaceConfig, template: string): TemplateConfig
     for (const view of ll.views) {
       if (view.cards) {
         for (const card of view.cards) {
-          if (card.type === 'custom:decluttering-template' && card.template === template) {
+          if (isTemplateCardType(card.type) && card.template === template) {
             return card as DeclutteringTemplateConfig;
           }
         }
@@ -78,7 +93,7 @@ function getTemplateConfig(ll: LovelaceConfig, template: string): TemplateConfig
         for (const section of sections) {
           if (section.cards) {
             for (const card of section.cards) {
-              if (card.type === 'custom:decluttering-template' && card.template === template) {
+              if (isTemplateCardType(card.type) && card.template === template) {
                 return card as DeclutteringTemplateConfig;
               }
             }
@@ -101,7 +116,7 @@ function getTemplates(ll: LovelaceConfig): Record<string, TemplateConfig> {
     for (const view of ll.views) {
       if (view.cards) {
         for (const card of view.cards) {
-          if (card.type === 'custom:decluttering-template') {
+          if (isTemplateCardType(card.type)) {
             templates[card.template] = card as DeclutteringTemplateConfig;
           }
         }
@@ -112,7 +127,7 @@ function getTemplates(ll: LovelaceConfig): Record<string, TemplateConfig> {
         for (const section of sections) {
           if (section.cards) {
             for (const card of section.cards) {
-              if (card.type === 'custom:decluttering-template') {
+              if (isTemplateCardType(card.type)) {
                 templates[card.template] = card as DeclutteringTemplateConfig;
               }
             }
@@ -125,7 +140,7 @@ function getTemplates(ll: LovelaceConfig): Record<string, TemplateConfig> {
 }
 
 function getThingType(templateConfig: TemplateConfig): LovelaceThingType | undefined {
-  const thingTypes = Object.keys(templateConfig).filter(key => ['card', 'row', 'element'].includes(key));
+  const thingTypes = Object.keys(templateConfig).filter((key) => ['card', 'row', 'element'].includes(key));
   return thingTypes.length === 1 ? (thingTypes[0] as LovelaceThingType) : undefined;
 }
 
@@ -206,7 +221,7 @@ abstract class DeclutteringElement extends LitElement {
 
     if (style) {
       this._savedStyles = new Map();
-      Object.keys(style).forEach(prop => {
+      Object.keys(style).forEach((prop) => {
         this._savedStyles?.set(prop, [this.style.getPropertyValue(prop), this.style.getPropertyPriority(prop)]);
         this.style.setProperty(prop, style[prop]);
       });
@@ -226,13 +241,15 @@ abstract class DeclutteringElement extends LitElement {
     this.classList.add('decluttering-container');
 
     return html`
-      ${this._style
-        ? html`
-            <style>
-              ${this._style}
-            </style>
-          `
-        : ''}
+      ${
+        this._style
+          ? html`
+              <style>
+                ${this._style}
+              </style>
+            `
+          : ''
+      }
       ${this._thing}
     `;
   }
@@ -259,7 +276,7 @@ abstract class DeclutteringElement extends LitElement {
     }
     thing.addEventListener(
       'll-rebuild',
-      ev => {
+      (ev) => {
         ev.stopPropagation();
         DeclutteringElement._createThing(thingConfig, thingType, (newThing: LovelaceThing) => {
           thing.replaceWith(newThing);
@@ -268,7 +285,6 @@ abstract class DeclutteringElement extends LitElement {
       },
       { once: true },
     );
-    thing.id = 'declutter-child';
     handler(thing);
   }
 
@@ -278,26 +294,14 @@ abstract class DeclutteringElement extends LitElement {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(window as any).customCards = (window as any).customCards || [];
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(window as any).customCards.push({
-  type: 'decluttering-card',
-  name: 'Decluttering card',
-  preview: false,
-  description: 'Reuse multiple times the same card configuration with variables to declutter your config.',
-});
-
-@customElement('decluttering-card')
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 class DeclutteringCard extends DeclutteringElement {
   static getConfigElement(): HTMLElement {
-    return document.createElement('decluttering-card-editor');
+    return document.createElement(CARD_EDITOR_TAG);
   }
 
   static getStubConfig(): DeclutteringCardConfig {
     return {
-      type: 'custom:decluttering-card',
+      type: `custom:${CARD_TAG}`,
       template: 'follow_the_sun',
     };
   }
@@ -320,8 +324,6 @@ class DeclutteringCard extends DeclutteringElement {
   }
 }
 
-@customElement('decluttering-card-editor')
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   @state() private _lovelace?: LovelaceConfig;
   @state() private _config?: DeclutteringCardConfig;
@@ -401,30 +403,18 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(window as any).customCards = (window as any).customCards || [];
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(window as any).customCards.push({
-  type: 'decluttering-template',
-  name: 'Decluttering template',
-  preview: false,
-  description: 'Define a reusable template for decluttering cards to instantiate.',
-});
-
-@customElement('decluttering-template')
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 class DeclutteringTemplate extends DeclutteringElement {
   @property({ type: Boolean, reflect: true }) preview = false;
 
   @state() private _template?: string;
 
   static getConfigElement(): HTMLElement {
-    return document.createElement('decluttering-template-editor');
+    return document.createElement(TEMPLATE_EDITOR_TAG);
   }
 
   static getStubConfig(): DeclutteringTemplateConfig {
     return {
-      type: 'custom:decluttering-template',
+      type: `custom:${TEMPLATE_TAG}`,
       template: 'follow_the_sun',
       card: {
         type: 'entity',
@@ -479,8 +469,6 @@ class DeclutteringTemplate extends DeclutteringElement {
   }
 }
 
-@customElement('decluttering-template-editor')
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
   @state() private _config?: DeclutteringTemplateConfig;
   @state() private _selectedTab = 'settings';
@@ -573,49 +561,50 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           @iron-activate=${this._activateTab}
         >
           <paper-tab name="settings">Settings</paper-tab>
-          ${data.thingType === 'card'
-            ? html`
-                <paper-tab name="card">Card</paper-tab>
-                <paper-tab name="change_card">Change Card Type</paper-tab>
-              `
-            : data.thingType === 'row'
-            ? html`
-                <paper-tab name="row">Row</paper-tab>
-              `
-            : html``}
+          ${
+            data.thingType === 'card'
+              ? html`
+                  <paper-tab name="card">Card</paper-tab>
+                  <paper-tab name="change_card">Change Card Type</paper-tab>
+                `
+              : data.thingType === 'row'
+                ? html` <paper-tab name="row">Row</paper-tab> `
+                : html``
+          }
         </paper-tabs>
       </div>
-      ${this._selectedTab === 'settings'
-        ? html`
-            <ha-form
-              .hass=${this.hass}
-              .data=${data}
-              .schema=${DeclutteringTemplateEditor.schema}
-              .error=${error}
-              .computeLabel=${(s): string => s.label ?? s.name}
-              .computeHelper=${(s): string => s.helper ?? ''}
-              @value-changed=${this._valueChanged}
-            ></ha-form>
-          `
-        : this._selectedTab === 'card'
-        ? html`
-            <hui-card-element-editor
-              .hass=${this.hass}
-              .lovelace=${this.lovelace}
-              .value=${this._config.card}
-              @config-changed=${this._cardChanged}
-            ></hui-card-element-editor>
-          `
-        : this._selectedTab === 'change_card'
-        ? html`
-            <hui-card-picker
-              .hass=${this.hass}
-              .lovelace=${this.lovelace}
-              @config-changed=${this._cardPicked}
-            ></hui-card-picker>
-          `
-        : this._selectedTab === 'row'
-        ? html`
+      ${
+        this._selectedTab === 'settings'
+          ? html`
+              <ha-form
+                .hass=${this.hass}
+                .data=${data}
+                .schema=${DeclutteringTemplateEditor.schema}
+                .error=${error}
+                .computeLabel=${(s): string => s.label ?? s.name}
+                .computeHelper=${(s): string => s.helper ?? ''}
+                @value-changed=${this._valueChanged}
+              ></ha-form>
+            `
+          : this._selectedTab === 'card'
+            ? html`
+                <hui-card-element-editor
+                  .hass=${this.hass}
+                  .lovelace=${this.lovelace}
+                  .value=${this._config.card}
+                  @config-changed=${this._cardChanged}
+                ></hui-card-element-editor>
+              `
+            : this._selectedTab === 'change_card'
+              ? html`
+                  <hui-card-picker
+                    .hass=${this.hass}
+                    .lovelace=${this.lovelace}
+                    @config-changed=${this._cardPicked}
+                  ></hui-card-picker>
+                `
+              : this._selectedTab === 'row'
+                ? html`
             <hui-row-element-editor
               .hass=${this.hass}
               .lovelace=${this.lovelace}
@@ -623,7 +612,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               @config-changed=${this._rowChanged}
             ></hui-card-element-editor>
           `
-        : html``}
+                : html``
+      }
     `;
   }
 
@@ -685,4 +675,80 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       delete dict[name];
     }
   }
+}
+
+/**
+ * Defines `tag`, unless something else already claimed it — either the original
+ * decluttering-card, or a second copy of this bundle. Returns true if this bundle
+ * ended up owning the tag.
+ */
+function defineElement(tag: string, cls: CustomElementConstructor): boolean {
+  if (customElements.get(tag)) {
+    console.warn(`decluttering-card-plus: <${tag}> is already registered by something else, skipping it.`);
+    return false;
+  }
+  customElements.define(tag, cls);
+  return true;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const customCards: any[] = ((window as any).customCards = (window as any).customCards || []);
+
+defineElement(CARD_EDITOR_TAG, DeclutteringCardEditor);
+defineElement(TEMPLATE_EDITOR_TAG, DeclutteringTemplateEditor);
+
+if (defineElement(CARD_TAG, DeclutteringCard)) {
+  customCards.push({
+    type: CARD_TAG,
+    name: 'Decluttering Card Plus',
+    preview: false,
+    description: 'Reuse multiple times the same card configuration with variables to declutter your config.',
+  });
+}
+
+if (defineElement(TEMPLATE_TAG, DeclutteringTemplate)) {
+  customCards.push({
+    type: TEMPLATE_TAG,
+    name: 'Decluttering Template Plus',
+    preview: false,
+    description: 'Define a reusable template for decluttering cards to instantiate.',
+  });
+}
+
+/*
+ * Drop-in replacement for the original card: claim `decluttering-card` and
+ * `decluttering-template` as well, so existing configurations keep working without
+ * being edited. If the original card is also installed it registers those tags first
+ * (or we do, depending on resource order) and whoever loses simply skips them.
+ *
+ * A single constructor cannot be registered under two tags, hence the subclasses.
+ */
+class LegacyDeclutteringCard extends DeclutteringCard {
+  static getStubConfig(): DeclutteringCardConfig {
+    return { ...DeclutteringCard.getStubConfig(), type: `custom:${LEGACY_CARD_TAG}` };
+  }
+}
+
+class LegacyDeclutteringTemplate extends DeclutteringTemplate {
+  static getStubConfig(): DeclutteringTemplateConfig {
+    return { ...DeclutteringTemplate.getStubConfig(), type: `custom:${LEGACY_TEMPLATE_TAG}` };
+  }
+}
+
+if (defineElement(LEGACY_CARD_TAG, LegacyDeclutteringCard)) {
+  customCards.push({
+    type: LEGACY_CARD_TAG,
+    name: 'Decluttering Card (compatibility)',
+    preview: false,
+    description: 'Compatibility alias for existing custom:decluttering-card configurations.',
+  });
+}
+
+if (defineElement(LEGACY_TEMPLATE_TAG, LegacyDeclutteringTemplate)) {
+  customCards.push({
+    type: LEGACY_TEMPLATE_TAG,
+    name: 'Decluttering Template (compatibility)',
+    preview: false,
+    description: 'Compatibility alias for existing custom:decluttering-template configurations.',
+  });
 }
