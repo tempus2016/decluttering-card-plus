@@ -8,12 +8,7 @@ export function getLovelaceCast(): any {
   root = root && root.querySelector('hc-lovelace');
   root = root && root.shadowRoot;
   root = root && root.querySelector('hui-view');
-  if (root) {
-    const ll = root.lovelace;
-    ll.current_view = root.___curView;
-    return ll;
-  }
-  return null;
+  return root ? root.lovelace : null;
 }
 
 export function getLovelace(): LovelaceConfig | null {
@@ -27,12 +22,7 @@ export function getLovelace(): LovelaceConfig | null {
   root = root && root.querySelector('ha-panel-lovelace');
   root = root && root.shadowRoot;
   root = root && root.querySelector('hui-root');
-  if (root) {
-    const ll = root.lovelace;
-    ll.current_view = root.___curView;
-    return ll;
-  }
-  return null;
+  return root ? root.lovelace : null;
 }
 
 export function getLovelaceConfig(): LovelaceConfig | null {

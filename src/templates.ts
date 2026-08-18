@@ -65,10 +65,6 @@ export function getTemplateSources(ll: LovelaceConfig | null | undefined): strin
 // dashboard needs a browser refresh to be picked up.
 const configCache = new Map<string, Promise<LovelaceConfig | null>>();
 
-export function clearTemplateCache(): void {
-  configCache.clear();
-}
-
 function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<LovelaceConfig | null> {
   const cached = configCache.get(urlPath);
   if (cached) return cached;

@@ -54,6 +54,16 @@ const TEMPLATE_EDITOR_TAG = 'decluttering-template-plus-editor';
 const LEGACY_CARD_TAG = 'decluttering-card';
 const LEGACY_TEMPLATE_TAG = 'decluttering-template';
 
+// What a template of each kind starts out as, when its type is chosen in the editor. One
+// of these is kept and the rest removed, so switching the type swaps the body for a
+// starter of the new kind - and leaves an existing body of the chosen kind alone.
+const THING_STUBS: Record<string, unknown> = {
+  card: { type: 'entity', entity: 'sun.sun' },
+  badge: { type: 'entity', entity: 'sun.sun' },
+  row: { entity: 'sun.sun' },
+  element: { type: 'icon', icon: 'mdi:weather-sunny', style: { color: 'yellow' } },
+};
+
 // Declared variables get their own form field, and the prefix keeps a variable called
 // "template" from colliding with the field that chooses the template.
 const VARIABLE_FIELD_PREFIX = 'variable:';
@@ -528,14 +538,18 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     this._config = config;
   }
 
-  protected render(): TemplateResult | void {
-    if (!this.hass || !this._config) return html``;
+  /*
+   * Working out which templates exist, and the form to offer for them, is preparation for
+   * a render rather than part of one. It lives here because all of it sets state, and Lit
+   * asks that state be settled before render rather than changed during it - doing this in
+   * render schedules another update from inside the one in progress.
+   */
+  protected willUpdate(): void {
+    if (!this.hass || !this._config) return;
 
-    if (!this._lovelace) {
-      // The lovelace property is not set when editing row elements so we retrieve it here
-      this._lovelace = getLovelaceConfig() ?? undefined;
-      if (!this._lovelace) return;
-    }
+    // The lovelace property is not set when editing row elements, so it is looked up here.
+    if (!this._lovelace) this._lovelace = getLovelaceConfig() ?? undefined;
+    if (!this._lovelace) return;
 
     if (!this._templates) {
       this._templates = collectTemplates(this._lovelace);
@@ -563,6 +577,10 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         },
       ];
     }
+  }
+
+  protected render(): TemplateResult | void {
+    if (!this.hass || !this._config || !this._templates || !this._schema) return html``;
 
     const template = this._templates[this._config.template];
     const declarations = getDeclarations(template);
@@ -1012,12 +1030,6 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   }
 
   /*
-   * A template is a self-contained block of configuration, so handing one to another
-   * person is mostly a matter of writing it out. What does not travel with it - the
-   * custom cards it is built from, the other templates it calls - is named above the
-   * box, because whoever receives it cannot tell from the YAML alone.
-   */
-  /*
    * What the template says about itself against what it actually uses. Both are worth
    * knowing while writing one, and neither is a reason to refuse the configuration.
    */
@@ -1157,6 +1169,12 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     `;
   }
 
+  /*
+   * A template is a self-contained block of configuration, so handing one to another
+   * person is mostly a matter of writing it out. What does not travel with it - the
+   * custom cards it is built from, the other templates it calls - is named above the
+   * box, because whoever receives it cannot tell from the YAML alone.
+   */
   private _renderShare(): TemplateResult {
     const { payload, notes } = buildExport(this._config);
 
@@ -1262,28 +1280,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     if (!this._config) return;
     const data = ev.detail.value;
     const config = { ...this._config, template: data.template, default: data.default };
-    // Unlike the stubs below these replace whatever is already there, so they are set
-    // outright rather than filled in only when absent.
+    // Unlike the stubs below, these replace whatever is already there rather than only
+    // filling in what is absent.
     setOrDelete(config, 'description', data.description);
     setOrDelete(config, 'variables', data.variables);
-    DeclutteringTemplateEditor.stubMember(data.thingType === 'card', config, 'card', {
-      type: 'entity',
-      entity: 'sun.sun',
-    });
-    DeclutteringTemplateEditor.stubMember(data.thingType === 'badge', config, 'badge', {
-      type: 'entity',
-      entity: 'sun.sun',
-    });
-    DeclutteringTemplateEditor.stubMember(data.thingType === 'row', config, 'row', {
-      entity: 'sun.sun',
-    });
-    DeclutteringTemplateEditor.stubMember(data.thingType === 'element', config, 'element', {
-      type: 'icon',
-      icon: 'mdi:weather-sunny',
-      style: {
-        color: 'yellow',
-      },
-    });
+    for (const [thingType, stub] of Object.entries(THING_STUBS)) {
+      DeclutteringTemplateEditor.stubMember(data.thingType === thingType, config, thingType, stub);
+    }
     this._fireConfigChanged(config);
   }
 
