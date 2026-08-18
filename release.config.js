@@ -44,6 +44,10 @@ module.exports = {
       '@semantic-release/github',
       {
         assets: 'dist/*.js',
+        // Commit messages cite issue numbers from the upstream repository, which do not
+        // exist here; the comment step fails the whole run trying to resolve them.
+        successComment: false,
+        failComment: false,
       },
     ],
   ],
