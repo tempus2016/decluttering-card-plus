@@ -546,7 +546,7 @@ failing, so a list built from a helper can be empty without breaking the dashboa
 
 | Name | Type | Requirement | Description
 | ---- | ---- | ------- | -----------
-| for_each | list | **Optional** | One copy of the template per item; each item is a set of variables for that copy
+| for_each | list | **Optional** | One copy of the template per item; each item is a set of variables for that copy. A single mapping counts as a list of one
 | columns | number | **Optional** | How many copies sit side by side. Defaults to 1, which stacks them
 
 #### Asking for a variable in a different shape
@@ -578,8 +578,9 @@ pass the entity id separately.
 
 The same variable can be used raw and transformed in the same template. A word after the
 bar that is not one of these four is not a transform, so nothing is substituted and the
-mistake is visible rather than silent. A transform shapes the text the placeholder would
-otherwise insert, so a value that is a mapping or a list transforms as its JSON text.
+mistake is visible rather than silent. A transform shapes text, so it applies to scalar
+values only: a mapping or a list under a transform is likewise left unsubstituted, since
+slugging or uppercasing its JSON would only garble it.
 
 #### Nested variables
 

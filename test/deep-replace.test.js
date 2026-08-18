@@ -232,4 +232,15 @@ check('a self-referencing variable terminates', elapsed < 2000, true);
 check('a self-referencing variable warns', warnings.length > 0, true);
 
 console.warn = realWarn;
+
+check(
+  'a transform on a mapping or list is left unsubstituted, as a visible mistake',
+  deepReplace([{ tap: { action: 'toggle' } }], {}, { a: 'x [[tap]]', b: 'x [[tap|lower]]', c: '[[tap|lower]]' }),
+  { a: 'x {"action":"toggle"}', b: 'x [[tap|lower]]', c: '[[tap|lower]]' },
+);
+
+check('a transform on a number still works, it is a scalar', deepReplace([{ n: 42 }], {}, { a: 'x [[n|upper]]' }), {
+  a: 'x 42',
+});
+
 report();

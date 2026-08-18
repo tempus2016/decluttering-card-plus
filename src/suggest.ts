@@ -39,9 +39,6 @@ const CANDIDATES: Record<string, Candidate> = {
   icon: { base: 'icon', label: 'Icon', selector: { icon: {} }, matches: (v) => v.includes(':') },
 };
 
-// A value that already refers to a variable is somebody's deliberate work, not a literal
-// waiting to be replaced.
-
 function labelFor(candidate: Candidate, index: number): string {
   return index === 1 ? candidate.label : `${candidate.label} ${index}`;
 }
@@ -87,6 +84,8 @@ export function suggestVariables(card: any, taken: string[]): { card: any; varia
       const candidate = CANDIDATES[key];
       // Only a plain string is replaced. A list of entities would have to become a list
       // of variables, and half-replacing one is worse than leaving it alone.
+      // A value that already refers to a variable is somebody's deliberate work, not a
+      // literal waiting to be replaced.
       if (candidate && typeof value === 'string' && !PLACEHOLDER.test(value) && candidate.matches(value)) {
         out[key] = `[[${nameFor(candidate, value)}]]`;
       } else {
