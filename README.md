@@ -544,7 +544,7 @@ Save [decluttering-card-plus.js][latest-release] to `<config directory>/www/decl
 **Example:**
 
 ```bash
-wget https://raw.githubusercontent.com/tempus2016/decluttering-card-plus/master/dist/decluttering-card-plus.js
+wget https://raw.githubusercontent.com/tempus2016/decluttering-card-plus/main/dist/decluttering-card-plus.js
 mv decluttering-card-plus.js /config/www/
 ```
 
@@ -577,7 +577,7 @@ npm start       # rebuild on change, served on :5000 for the dev container
 ```
 
 [commits-shield]: https://img.shields.io/github/commit-activity/y/tempus2016/decluttering-card-plus.svg?style=for-the-badge
-[commits]: https://github.com/tempus2016/decluttering-card-plus/commits/master
+[commits]: https://github.com/tempus2016/decluttering-card-plus/commits/main
 [forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge
 [forum]: https://community.home-assistant.io/t/lovelace-decluttering-card/118625
 [j9brown]: https://github.com/j9brown/decluttering-card
