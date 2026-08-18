@@ -1,13 +1,33 @@
 version: 2
 updates:
-  - package-ecosystem: 'npm'
-    directory: '/'
-    schedule:
-      interval: 'weekly'
-    open-pull-requests-limit: 0
-    target-branch: 'dev'
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
       interval: 'weekly'
-    target-branch: 'dev'
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    # Don't bump onto a release that is hours old — a freshly published action
+    # version is the one most likely to be yanked or compromised.
+    cooldown:
+      default-days: 7
+
+  # Build tooling only. lit is the one runtime dependency that ends up in the
+  # bundle, so it is deliberately left out of the group and raises its own PR.
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    cooldown:
+      default-days: 7
+    groups:
+      build-tooling:
+        dependency-type: 'development'
+        update-types:
+          - minor
+          - patch

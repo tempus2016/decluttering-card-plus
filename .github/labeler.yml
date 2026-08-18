@@ -1,0 +1,30 @@
+# Path-based pull request labels, applied by .github/workflows/labeler.yml.
+# Every label named here must exist — they are defined in .github/labels.yml.
+
+templating:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/deep-replace.ts
+          - src/templates.ts
+          - src/share.ts
+
+editor:
+  - changed-files:
+      - any-glob-to-any-file:
+          - src/decluttering-card-plus.ts
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - README.md
+          - CHANGELOG.md
+          - images/**
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**
+          - rollup.config.mjs
+          - eslint.config.mjs
+          - release.config.js
+          - tsconfig.json

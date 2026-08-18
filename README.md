@@ -1,12 +1,24 @@
-# Decluttering Card Plus
+<h1 align="center">Decluttering Card Plus</h1>
 
-📝 Reuse multiple times the same card configuration with variables to declutter your config.
+<p align="center">
+  <strong>Write a card once, use it everywhere.</strong><br>
+  A maintained Lovelace card for reusable card templates with variables, for Home Assistant.
+</p>
 
-[![GitHub Release][releases-shield]][releases]
-[![GitHub Activity][commits-shield]][commits]
-[![License][license-shield]](LICENSE)
+<p align="center">
+  <a href="https://github.com/tempus2016/decluttering-card-plus/releases"><img src="https://img.shields.io/github/v/release/tempus2016/decluttering-card-plus" alt="Latest Release"></a>
+  <a href="https://github.com/hacs/default"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
+  <a href="https://github.com/tempus2016/decluttering-card-plus/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
+  <img src="https://img.shields.io/badge/Home%20Assistant-2024.7+-blue" alt="HA Version">
+  <a href="https://github.com/tempus2016/decluttering-card-plus/releases"><img src="https://img.shields.io/github/downloads/tempus2016/decluttering-card-plus/total" alt="Downloads"></a>
+</p>
 
-[![Community Forum][forum-shield]][forum]
+<p align="center">
+  <a href="https://github.com/tempus2016/decluttering-card-plus/actions/workflows/build.yml"><img src="https://github.com/tempus2016/decluttering-card-plus/actions/workflows/build.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/tempus2016/decluttering-card-plus/actions/workflows/hacs.yml"><img src="https://github.com/tempus2016/decluttering-card-plus/actions/workflows/hacs.yml/badge.svg" alt="HACS Validation"></a>
+  <a href="https://github.com/tempus2016/decluttering-card-plus/commits/main"><img src="https://img.shields.io/github/commit-activity/y/tempus2016/decluttering-card-plus" alt="Commit activity"></a>
+  <a href="https://community.home-assistant.io/t/lovelace-decluttering-card/118625"><img src="https://img.shields.io/badge/community-forum-brightgreen" alt="Community Forum"></a>
+</p>
 
 This card is for [Lovelace](https://www.home-assistant.io/lovelace) on [Home Assistant](https://www.home-assistant.io/).
 
@@ -599,16 +611,9 @@ npm run build   # lint, then bundle into dist/
 npm start       # rebuild on change, served on :5000 for the dev container
 ```
 
-[commits-shield]: https://img.shields.io/github/commit-activity/y/tempus2016/decluttering-card-plus.svg?style=for-the-badge
-[commits]: https://github.com/tempus2016/decluttering-card-plus/commits/main
-[forum-shield]: https://img.shields.io/badge/community-forum-brightgreen.svg?style=for-the-badge
-[forum]: https://community.home-assistant.io/t/lovelace-decluttering-card/118625
 [j9brown]: https://github.com/j9brown/decluttering-card
 [latest-release]: https://github.com/tempus2016/decluttering-card-plus/releases/latest
-[license-shield]: https://img.shields.io/github/license/tempus2016/decluttering-card-plus.svg?style=for-the-badge
 [pr78]: https://github.com/custom-cards/decluttering-card/pull/78
-[releases-shield]: https://img.shields.io/github/release/tempus2016/decluttering-card-plus.svg?style=for-the-badge
-[releases]: https://github.com/tempus2016/decluttering-card-plus/releases
 [romrider]: https://github.com/RomRider
 [simbaja]: https://github.com/simbaja/ha-decluttering-card
 [upstream]: https://github.com/custom-cards/decluttering-card
