@@ -19,6 +19,7 @@ import {
 } from './types';
 import deepReplace from './deep-replace';
 import { buildExport, validateImport } from './share';
+import { suggestVariables } from './suggest';
 import {
   collectTemplates,
   collectAllTemplates,
@@ -783,6 +784,11 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _importClash?: string;
   @state() private _copyState: '' | 'done' | 'failed' = '';
 
+  // A pending suggestion, held between the press that works it out and the press that
+  // applies it - rewriting somebody's card is not something to do on a single click.
+  @state() private _suggestion?: { card: unknown; variables: VariableDeclaration[] };
+  @state() private _suggestedNothing = false;
+
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
 
@@ -859,6 +865,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       .share mwc-button {
         margin-top: 8px;
       }
+      .suggest {
+        margin-bottom: 16px;
+      }
+      .suggest ha-alert {
+        display: block;
+        margin-bottom: 8px;
+      }
     `;
   }
 
@@ -909,7 +922,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       ${
         this._selectedTab === 'settings'
           ? html`
-              ${this._renderDiagnostics()}
+              ${this._renderDiagnostics()} ${this._renderSuggest(data.thingType === 'card')}
               <ha-form
                 .hass=${this.hass}
                 .data=${data}
@@ -987,6 +1000,64 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           : html``
       }
     `;
+  }
+
+  /*
+   * Turning a card you already built into a template means deciding which parts of it
+   * change between copies. The entities, names and icons in it almost always do, so they
+   * are proposed for you - with each variable defaulting to the value it replaced, so the
+   * template still renders exactly what the card did.
+   */
+  private _renderSuggest(isCard: boolean): TemplateResult {
+    if (!isCard || !this._config?.card) return html``;
+
+    return html`
+      <div class="suggest">
+        ${
+          this._suggestedNothing
+            ? html`<ha-alert alert-type="info">
+                Nothing here looks like it varies between copies. Entities, names, titles and icons are what get
+                offered, and this card either has none or they are variables already.
+              </ha-alert>`
+            : html``
+        }
+        ${
+          this._suggestion
+            ? html`<ha-alert alert-type="warning">
+                This will rewrite the card to use
+                ${this._suggestion.variables.map((variable) => variable.name).join(', ')}, and declare
+                ${this._suggestion.variables.length === 1 ? 'it' : 'them'} with the value
+                ${this._suggestion.variables.length === 1 ? 'it has' : 'they have'} now. Press again to go ahead.
+              </ha-alert>`
+            : html``
+        }
+        <mwc-button @click=${this._suggest}>
+          ${this._suggestion ? 'Suggest variables anyway' : 'Suggest variables from the card'}
+        </mwc-button>
+      </div>
+    `;
+  }
+
+  private _suggest(): void {
+    if (!this._config?.card) return;
+
+    if (this._suggestion) {
+      const config = { ...this._config, card: this._suggestion.card };
+      // Existing declarations are kept: the suggestion was worked out around them.
+      config.variables = [...getDeclarations(this._config), ...this._suggestion.variables];
+      this._suggestion = undefined;
+      this._fireConfigChanged(config as DeclutteringTemplateConfig);
+      return;
+    }
+
+    this._suggestedNothing = false;
+    const taken = getDeclarations(this._config).map((declaration) => declaration.name);
+    const suggestion = suggestVariables(this._config.card, taken);
+    if (!suggestion.variables.length) {
+      this._suggestedNothing = true;
+      return;
+    }
+    this._suggestion = suggestion;
   }
 
   private _renderShare(): TemplateResult {
@@ -1123,6 +1194,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     ev.stopPropagation();
     if (!this._config) return;
 
+    this._suggestion = undefined;
+    this._suggestedNothing = false;
     const config = { ...this._config, card: ev.detail.config };
     this._fireConfigChanged(config);
   }
