@@ -412,7 +412,12 @@ See this guide: [Troubleshooting](https://github.com/thomasloven/hass-config/wik
 
 Fork and then clone the repo to your local machine. From the cloned directory run
 
-`npm install && npm run build`
+```bash
+npm install     # or npm ci
+npm test        # unit tests for variable substitution
+npm run build   # lint, then bundle into dist/
+npm start       # rebuild on change, served on :5000 for the dev container
+```
 
 [commits-shield]: https://img.shields.io/github/commit-activity/y/tempus2016/decluttering-card-plus.svg?style=for-the-badge
 [commits]: https://github.com/tempus2016/decluttering-card-plus/commits/master

@@ -1,6 +1,6 @@
 // See https://aka.ms/vscode-remote/devcontainer.json for format details.
 {
-  "name": "Decluttering Card Development",
+  "name": "Decluttering Card Plus Development",
   "image": "ghcr.io/ludeeus/devcontainer/generic:stable",
   "context": "..",
   "remoteUser": "vscode",
