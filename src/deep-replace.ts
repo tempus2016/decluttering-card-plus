@@ -1,4 +1,5 @@
 import { VariablesConfig, TemplateConfig } from './types';
+import { resolveVariables } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -26,20 +27,6 @@ function escapeForRegExp(value: string): string {
 // value are inserted literally instead of being read as replacement patterns.
 function replaceAll(json: string, pattern: RegExp, replacement: string): string {
   return json.replace(pattern, () => replacement);
-}
-
-// Passed variables take precedence over the template's defaults, so only the first
-// definition of each name is kept. Order alone is not enough once substitution loops:
-// a default would otherwise win whenever the placeholder is introduced by an earlier
-// substitution rather than being present in the template from the start.
-function firstDefinitionWins(variableArray: VariablesConfig[]): VariablesConfig[] {
-  const seen = new Set<string>();
-  return variableArray.filter((variable) => {
-    const key = Object.keys(variable)[0];
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 function substitutePass(jsonConfig: string, variableArray: VariablesConfig[]): string {
@@ -71,17 +58,10 @@ function substitutePass(jsonConfig: string, variableArray: VariablesConfig[]): s
 }
 
 export default (variables: VariablesConfig[] | undefined, templateConfig: TemplateConfig, content: any): any => {
-  if (!variables && !templateConfig.default) {
+  const variableArray = resolveVariables(variables, templateConfig);
+  if (!variableArray.length) {
     return content;
   }
-  let variableArray: VariablesConfig[] = [];
-  if (variables) {
-    variableArray = variables.slice(0);
-  }
-  if (templateConfig.default) {
-    variableArray = variableArray.concat(templateConfig.default);
-  }
-  variableArray = firstDefinitionWins(variableArray);
   let jsonConfig = JSON.stringify(content);
   let passes = 0;
   while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {

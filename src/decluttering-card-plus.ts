@@ -26,6 +26,15 @@ import {
   findTemplateAnywhere,
   getTemplateSources,
 } from './templates';
+import {
+  diagnoseInstance,
+  diagnoseTemplate,
+  getDeclarations,
+  mergeVariables,
+  variableName,
+  variableValues,
+  VariableDeclaration,
+} from './variables';
 import { copyText, getLovelaceConfig } from './utils';
 import { VERSION } from './version';
 
@@ -39,6 +48,18 @@ const TEMPLATE_EDITOR_TAG = 'decluttering-template-plus-editor';
 // so that existing configurations keep working unchanged.
 const LEGACY_CARD_TAG = 'decluttering-card';
 const LEGACY_TEMPLATE_TAG = 'decluttering-template';
+
+// Declared variables get their own form field, and the prefix keeps a variable called
+// "template" from colliding with the field that chooses the template.
+const VARIABLE_FIELD_PREFIX = 'variable:';
+
+/** Writes a value the editor produced, leaving the key out entirely when it is empty. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function setOrDelete(config: any, key: string, value: any): void {
+  const empty = value === undefined || value === '' || (Array.isArray(value) && value.length === 0);
+  if (empty) delete config[key];
+  else config[key] = value;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const HELPERS = (window as any).loadCardHelpers ? (window as any).loadCardHelpers() : undefined;
@@ -407,6 +428,19 @@ class DeclutteringCard extends DeclutteringElement {
 }
 
 class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
+  static get styles(): CSSResult {
+    return css`
+      .description {
+        margin: 0 0 8px;
+        color: var(--secondary-text-color);
+      }
+      ha-alert {
+        display: block;
+        margin-bottom: 8px;
+      }
+    `;
+  }
+
   @state() private _lovelace?: LovelaceConfig;
   @state() private _config?: DeclutteringCardConfig;
 
@@ -463,21 +497,27 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       ];
     }
 
+    const template = this._templates[this._config.template];
+    const declarations = getDeclarations(template);
+    const listed = Array.isArray(this._config.variables);
+
     const error: Record<string, string | string[]> = {};
     // Templates borrowed from another dashboard are still on their way, so do not accuse
     // the user of a bad name until they have arrived.
-    if (!this._templates[this._config.template] && !this._loadingTemplates) {
+    if (!template && !this._loadingTemplates) {
       error.template = 'No template exists with this name';
     }
-    if (this._config.variables !== undefined && !Array.isArray(this._config.variables)) {
+    if (this._config.variables !== undefined && !listed) {
       error.variables = 'The list of variables must be an array of key and value pairs';
     }
 
     return html`
+      ${template?.description ? html`<p class="description">${template.description}</p>` : html``}
+      ${this._renderDiagnostics(template, listed)}
       <ha-form
         .hass=${this.hass}
-        .data=${this._config}
-        .schema=${this._schema}
+        .data=${this._formData(declarations)}
+        .schema=${this._formSchema(declarations)}
         .error=${error}
         .computeLabel=${(s): string => s.label ?? s.name}
         .computeHelper=${(s): string => s.helper ?? ''}
@@ -486,8 +526,100 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     `;
   }
 
+  /*
+   * A template that describes its variables gets a real control for each one, and a box
+   * underneath for anything else the card sets. A template that does not is edited the
+   * way it always has been, through that box alone.
+   */
+  private _formSchema(declarations: VariableDeclaration[]): unknown[] {
+    if (!declarations.length) return [...this._schema];
+
+    return [
+      this._schema[0],
+      ...declarations.map((declaration) => ({
+        name: VARIABLE_FIELD_PREFIX + declaration.name,
+        label: declaration.label ?? declaration.name,
+        helper: declaration.description,
+        selector: declaration.selector ?? { text: {} },
+      })),
+      {
+        name: 'extras',
+        label: 'Other variables',
+        helper: 'Anything this template does not describe. Example: - variable_name: value',
+        selector: { object: {} },
+      },
+    ];
+  }
+
+  private _formData(declarations: VariableDeclaration[]): Record<string, unknown> {
+    if (!declarations.length) return this._config as Record<string, unknown>;
+
+    const values = variableValues(this._config?.variables);
+    const described = new Set(declarations.map((declaration) => declaration.name));
+    const data: Record<string, unknown> = { template: this._config?.template };
+    for (const declaration of declarations) {
+      if (declaration.name in values) data[VARIABLE_FIELD_PREFIX + declaration.name] = values[declaration.name];
+    }
+
+    const extras = (this._config?.variables ?? []).filter((entry) => {
+      const name = variableName(entry);
+      return name !== undefined && !described.has(name);
+    });
+    if (extras.length) data.extras = extras;
+    return data;
+  }
+
+  /*
+   * Warnings, never errors: a template can be edited after the cards that use it, so a
+   * card that looks wrong now may be right again in a moment. Nothing here stops a save.
+   */
+  private _renderDiagnostics(template: TemplateConfig | undefined, listed: boolean): TemplateResult {
+    if (!template || this._loadingTemplates || (this._config?.variables !== undefined && !listed)) return html``;
+
+    const { missing, unused } = diagnoseInstance(this._config?.variables, template);
+    return html`
+      ${
+        missing.length
+          ? html`<ha-alert alert-type="warning">
+              ${missing.length === 1 ? 'This template uses a variable' : 'This template uses variables'} with no value
+              and no default: ${missing.join(', ')}.
+            </ha-alert>`
+          : html``
+      }
+      ${
+        unused.length
+          ? html`<ha-alert alert-type="info">
+              ${unused.length === 1 ? 'This variable is' : 'These variables are'} set here but never used by the
+              template: ${unused.join(', ')}.
+            </ha-alert>`
+          : html``
+      }
+    `;
+  }
+
   private _valueChanged(ev: CustomEvent): void {
-    fireEvent(this, 'config-changed', { config: ev.detail.value });
+    const data = ev.detail.value;
+    const declarations = getDeclarations(this._templates?.[data.template]);
+    if (!declarations.length) {
+      fireEvent(this, 'config-changed', { config: data });
+      return;
+    }
+
+    const desired: VariablesConfig[] = [];
+    for (const declaration of declarations) {
+      const value = data[VARIABLE_FIELD_PREFIX + declaration.name];
+      // A field left alone or cleared sets nothing, so the template's own default keeps
+      // working. An empty string can still be set through the box below.
+      if (value !== undefined && value !== '') desired.push({ [declaration.name]: value });
+    }
+    if (Array.isArray(data.extras)) desired.push(...data.extras);
+
+    const config = { ...this._config, template: data.template } as DeclutteringCardConfig;
+    const variables = mergeVariables(this._config?.variables, desired);
+    if (variables.length) config.variables = variables;
+    else delete config.variables;
+
+    fireEvent(this, 'config-changed', { config });
   }
 
   // The dropdown starts with this dashboard's templates and gains the borrowed ones once
@@ -614,6 +746,19 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       },
     },
     {
+      name: 'description',
+      label: 'Description',
+      helper: 'What this template is for, shown to whoever uses it',
+      selector: { text: { multiline: true } },
+    },
+    {
+      name: 'variables',
+      label: 'Variable declarations',
+      helper:
+        'Describe a variable and its editor shows the right control. Example: - name: entity, selector: {entity: {}}',
+      selector: { object: {} },
+    },
+    {
       name: 'default',
       label: 'Variables',
       helper: 'Example: - variable_name: default_value',
@@ -670,10 +815,15 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     if (this._config.default !== undefined && !Array.isArray(this._config.default)) {
       error.default = 'The list of variables must be an array of key and value pairs';
     }
+    if (this._config.variables !== undefined && !Array.isArray(this._config.variables)) {
+      error.variables = 'The declarations must be a list, each entry naming one variable';
+    }
 
     const data = {
       template: this._config.template,
       thingType: getThingType(this._config) ?? 'card',
+      description: this._config.description,
+      variables: this._config.variables,
       default: this._config.default,
     };
 
@@ -695,6 +845,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       ${
         this._selectedTab === 'settings'
           ? html`
+              ${this._renderDiagnostics()}
               <ha-form
                 .hass=${this.hass}
                 .data=${data}
@@ -744,6 +895,36 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
    * custom cards it is built from, the other templates it calls - is named above the
    * box, because whoever receives it cannot tell from the YAML alone.
    */
+  /*
+   * What the template says about itself against what it actually uses. Both are worth
+   * knowing while writing one, and neither is a reason to refuse the configuration.
+   */
+  private _renderDiagnostics(): TemplateResult {
+    if (!this._config || (this._config.variables !== undefined && !Array.isArray(this._config.variables))) {
+      return html``;
+    }
+
+    const { unused, duplicated } = diagnoseTemplate(this._config);
+    return html`
+      ${
+        unused.length
+          ? html`<ha-alert alert-type="info">
+              ${unused.length === 1 ? 'This variable is declared' : 'These variables are declared'} but never used in
+              the template: ${unused.join(', ')}.
+            </ha-alert>`
+          : html``
+      }
+      ${
+        duplicated.length
+          ? html`<ha-alert alert-type="warning">
+              ${duplicated.length === 1 ? 'This variable has' : 'These variables have'} a default in both places; the
+              declaration is the one that counts: ${duplicated.join(', ')}.
+            </ha-alert>`
+          : html``
+      }
+    `;
+  }
+
   private _renderShare(): TemplateResult {
     const { payload, notes } = buildExport(this._config);
 
@@ -849,6 +1030,10 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     if (!this._config) return;
     const data = ev.detail.value;
     const config = { ...this._config, template: data.template, default: data.default };
+    // Unlike the stubs below these replace whatever is already there, so they are set
+    // outright rather than filled in only when absent.
+    setOrDelete(config, 'description', data.description);
+    setOrDelete(config, 'variables', data.variables);
     DeclutteringTemplateEditor.stubMember(data.thingType === 'card', config, 'card', {
       type: 'entity',
       entity: 'sun.sun',

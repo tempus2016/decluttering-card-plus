@@ -14,7 +14,7 @@ const THING_KEYS = ['card', 'badge', 'row', 'element'];
 
 // Read order for the exported YAML: what the template is, then what it takes, then what
 // it draws. Whatever is left over follows, so nothing is silently dropped.
-const EXPORT_KEY_ORDER = ['type', 'template', 'default', ...THING_KEYS, 'style'];
+const EXPORT_KEY_ORDER = ['type', 'template', 'description', 'variables', 'default', ...THING_KEYS, 'style'];
 
 export interface Dependencies {
   /** Custom card types the recipient has to install before the template will render. */

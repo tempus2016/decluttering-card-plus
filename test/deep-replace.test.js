@@ -163,6 +163,34 @@ check(
   { entity: 'sensor.my_entity', history: 'sensor.my_entity' },
 );
 
+check(
+  'a declared default is substituted',
+  deepReplace(undefined, { variables: [{ name: 'entity', default: 'sun.sun' }] }, { entity: '[[entity]]' }),
+  { entity: 'sun.sun' },
+);
+
+check(
+  'a passed value beats a declared default',
+  deepReplace(
+    [{ entity: 'sun.moon' }],
+    { variables: [{ name: 'entity', default: 'sun.sun' }] },
+    {
+      entity: '[[entity]]',
+    },
+  ),
+  { entity: 'sun.moon' },
+);
+
+check(
+  'a declared default beats the older default list',
+  deepReplace(
+    undefined,
+    { variables: [{ name: 'entity', default: 'sun.sun' }], default: [{ entity: 'sun.moon' }] },
+    { entity: '[[entity]]' },
+  ),
+  { entity: 'sun.sun' },
+);
+
 warnings.length = 0;
 const started = Date.now();
 deepReplace([{ a: 'x[[a]]' }], {}, { v: '[[a]]' });
