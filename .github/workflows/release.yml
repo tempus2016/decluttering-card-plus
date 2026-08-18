@@ -2,6 +2,13 @@ name: Release
 
 on: workflow_dispatch
 
+# semantic-release tags the commit, pushes the changelog and version bump back, and
+# creates the GitHub release. The default token is read-only, so all three would fail.
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
 jobs:
   release-bundle:
     runs-on: ubuntu-latest
@@ -12,9 +19,9 @@ jobs:
       new_release_version: ${{ steps.semantic.outputs.new_release_version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Use Node.js 22.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22.x
           cache: npm
