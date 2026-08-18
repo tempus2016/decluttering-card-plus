@@ -370,6 +370,62 @@ default:
   how: 'Boop'
 ```
 
+#### Describing your variables
+
+A template can describe the variables it takes, rather than only giving them defaults. Each
+description becomes a real control in the editor of every card that uses the template, so
+picking an entity is an entity picker rather than a line of hand-typed YAML.
+
+```yaml
+type: custom:decluttering-template-plus
+template: room_tile
+description: A tile for one room's light.
+variables:
+  - name: entity
+    label: Light
+    description: Which entity this tile shows
+    selector:
+      entity:
+        domain: light
+  - name: colour
+    label: Colour
+    selector:
+      select:
+        options: [red, blue, amber]
+    default: red
+card:
+  type: tile
+  entity: '[[entity]]'
+  name: '[[label]] ([[colour]])'
+```
+
+![The card editor showing an entity picker and a dropdown built from the template](images/typed-variables.png)
+
+*A template that describes its variables gets pickers, labels and helper text, and the
+template's own description above them.*
+
+**Syntax:**
+
+| Name | Type | Requirement | Description
+| ---- | ---- | ------- | -----------
+| name | string | **Required** | The variable's name, as written in `[[name]]`
+| label | string | **Optional** | What the editor calls it. Defaults to the name
+| description | string | **Optional** | Helper text shown under the control
+| selector | object | **Optional** | Any [Home Assistant selector](https://www.home-assistant.io/docs/blueprint/selectors/). Defaults to a plain text box
+| default | any | **Optional** | The value to use when a card does not set one
+
+`description:` on the template itself is shown above the controls, so whoever uses the
+template can see what it is for.
+
+Values are resolved in this order: what the card passes, then a declaration's `default`,
+then the `default:` list. Anything the template does not describe is still editable, in an
+**Other variables** box below the controls, and a template that describes nothing is edited
+exactly as before. Declaring variables is entirely optional.
+
+The editors also point out the two mistakes that are easy to make and hard to see: a
+variable the template uses that has no value and no default, and a value set on a card that
+the template never uses. Both are warnings; neither stops you saving.
+
 #### Nested variables
 
 A variable's value can itself contain variables. Substitution repeats until nothing is left

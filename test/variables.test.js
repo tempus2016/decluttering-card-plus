@@ -1,0 +1,217 @@
+/*
+ * Unit tests for src/variables.ts - how a template declares its variables, which values
+ * win when the same name is defined in more than one place, and what the editors warn
+ * about. Run with `npm test`.
+ */
+const {
+  getDeclarations,
+  usedVariables,
+  resolveVariables,
+  diagnoseInstance,
+  diagnoseTemplate,
+  mergeVariables,
+  variableName,
+  variableValues,
+} = require('../.test-build/variables.js');
+
+let passed = 0;
+let failed = 0;
+
+function check(name, actual, expected) {
+  const a = JSON.stringify(actual);
+  const e = JSON.stringify(expected);
+  if (a === e) {
+    passed += 1;
+    console.log(`PASS ${name}`);
+  } else {
+    failed += 1;
+    console.log(`FAIL ${name}\n  got      ${a}\n  expected ${e}`);
+  }
+}
+
+/* ------------------------------------------------------------------ declarations */
+
+check('a template with no variables key declares nothing', getDeclarations({ card: { type: 'tile' } }), []);
+
+check(
+  'declarations keep their order, label, description and selector',
+  getDeclarations({
+    variables: [
+      { name: 'entity', label: 'Light', description: 'Which light', selector: { entity: {} } },
+      { name: 'colour', default: 'red' },
+    ],
+    card: {},
+  }),
+  [
+    { name: 'entity', label: 'Light', description: 'Which light', selector: { entity: {} } },
+    { name: 'colour', default: 'red' },
+  ],
+);
+
+check(
+  'a declaration without a name is dropped rather than breaking the card',
+  getDeclarations({ variables: [{ label: 'Nameless' }, { name: 'kept' }], card: {} }),
+  [{ name: 'kept' }],
+);
+
+check(
+  'a declaration whose name repeats an earlier one is dropped',
+  getDeclarations({
+    variables: [
+      { name: 'a', label: 'First' },
+      { name: 'a', label: 'Second' },
+    ],
+    card: {},
+  }),
+  [{ name: 'a', label: 'First' }],
+);
+
+check('a variables key that is not a list declares nothing', getDeclarations({ variables: 'nonsense', card: {} }), []);
+
+/* ------------------------------------------------------------------- usage */
+
+check('placeholders are found anywhere in the content', usedVariables({ card: { entity: '[[entity]]' } }), ['entity']);
+
+check('placeholders are found in the style block', usedVariables({ card: {}, style: 'border: [[colour]]' }), [
+  'colour',
+]);
+
+check(
+  'a placeholder reached only through another variable counts as used',
+  usedVariables({ card: { name: '[[label]]' }, default: [{ label: '[[area]] sensor' }] }),
+  ['label', 'area'],
+);
+
+check(
+  'a placeholder inside a variable nothing refers to does not count as used',
+  usedVariables({ card: { name: 'fixed' }, default: [{ unused: '[[invisible]]' }] }),
+  [],
+);
+
+check(
+  'a variable that refers to itself does not loop',
+  usedVariables({ card: { name: '[[a]]' }, default: [{ a: '[[a]]' }] }),
+  ['a'],
+);
+
+/* -------------------------------------------------------------- resolution */
+
+check(
+  'a declared default is used when the instance says nothing',
+  resolveVariables(undefined, { variables: [{ name: 'colour', default: 'red' }], card: {} }),
+  [{ colour: 'red' }],
+);
+
+check(
+  'an instance value beats a declared default',
+  resolveVariables([{ colour: 'blue' }], { variables: [{ name: 'colour', default: 'red' }], card: {} }),
+  [{ colour: 'blue' }],
+);
+
+check(
+  'a declared default beats the older default list',
+  resolveVariables(undefined, {
+    variables: [{ name: 'colour', default: 'red' }],
+    default: [{ colour: 'green' }],
+    card: {},
+  }),
+  [{ colour: 'red' }],
+);
+
+check(
+  'a declaration with no default contributes no value',
+  resolveVariables(undefined, { variables: [{ name: 'entity' }], default: [{ entity: 'sun.sun' }], card: {} }),
+  [{ entity: 'sun.sun' }],
+);
+
+check(
+  'a declared default of false is a value, not an absence',
+  resolveVariables(undefined, { variables: [{ name: 'shown', default: false }], card: {} }),
+  [{ shown: false }],
+);
+
+check(
+  'the older default list still works on its own',
+  resolveVariables([{ a: 1 }], { default: [{ b: 2 }], card: {} }),
+  [{ a: 1 }, { b: 2 }],
+);
+
+/* ------------------------------------------------------------- diagnostics */
+
+check(
+  'a placeholder with no value anywhere is reported as missing',
+  diagnoseInstance(undefined, { card: { entity: '[[entity]]' } }),
+  { missing: ['entity'], unused: [] },
+);
+
+check(
+  'a placeholder the instance supplies is not missing',
+  diagnoseInstance([{ entity: 'sun.sun' }], { card: { entity: '[[entity]]' } }),
+  { missing: [], unused: [] },
+);
+
+check(
+  'a placeholder with a declared default is not missing',
+  diagnoseInstance(undefined, { variables: [{ name: 'entity', default: 'sun.sun' }], card: { entity: '[[entity]]' } }),
+  { missing: [], unused: [] },
+);
+
+check(
+  'a value the template never uses is reported as unused',
+  diagnoseInstance([{ colour: 'red' }], { card: { entity: '[[entity]]' } }),
+  { missing: ['entity'], unused: ['colour'] },
+);
+
+check(
+  'a declaration the template never uses is reported',
+  diagnoseTemplate({ variables: [{ name: 'colour' }], card: { entity: '[[entity]]' } }),
+  { unused: ['colour'], duplicated: [] },
+);
+
+check(
+  'a name defined both as a declaration and in the default list is reported',
+  diagnoseTemplate({
+    variables: [{ name: 'colour', default: 'red' }],
+    default: [{ colour: 'green' }],
+    card: { name: '[[colour]]' },
+  }),
+  { unused: [], duplicated: ['colour'] },
+);
+
+/* ------------------------------------------------------------------ reading */
+
+check('the name of an entry is its first key', variableName({ a: 1, b: 2 }), 'a');
+
+check('an entry that is not an object has no name', variableName('nonsense'), undefined);
+
+check('values are read one name per entry, first definition winning', variableValues([{ a: 1 }, { a: 2 }, { b: 3 }]), {
+  a: 1,
+  b: 3,
+});
+
+check('reading no variables gives nothing', variableValues(undefined), {});
+
+/* ------------------------------------------------------------------- merging */
+
+check('merging into nothing keeps the new order', mergeVariables(undefined, [{ a: 1 }, { b: 2 }]), [
+  { a: 1 },
+  { b: 2 },
+]);
+
+check(
+  'a value already in the config keeps its place when it changes',
+  mergeVariables([{ b: 1 }, { a: 2 }], [{ a: 3 }, { b: 4 }]),
+  [{ b: 4 }, { a: 3 }],
+);
+
+check('a name that is no longer wanted is dropped', mergeVariables([{ a: 1 }, { b: 2 }], [{ a: 1 }]), [{ a: 1 }]);
+
+check('a new name is appended rather than reordering the rest', mergeVariables([{ b: 1 }], [{ b: 1 }, { a: 2 }]), [
+  { b: 1 },
+  { a: 2 },
+]);
+
+check('merging nothing in empties the list', mergeVariables([{ a: 1 }], []), []);
+
+console.log(`\n${passed} passed, ${failed} failed`);
+process.exit(failed ? 1 : 0);

@@ -1,4 +1,5 @@
 import { HomeAssistant, LovelaceCard, LovelaceCardConfig } from 'custom-card-helpers';
+import { VariableDeclaration } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface DeclutteringCardConfig extends LovelaceCardConfig {
@@ -16,6 +17,10 @@ export interface VariablesConfig {
 }
 
 export interface TemplateConfig {
+  /** What the template is for, shown to whoever uses it. */
+  description?: string;
+  /** The variables the template takes, described so its editor can offer real controls. */
+  variables?: VariableDeclaration[];
   default?: VariablesConfig[];
   card?: any;
   row?: any;

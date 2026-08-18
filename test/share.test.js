@@ -124,6 +124,20 @@ check(
 );
 
 check(
+  'what a template says about itself is exported before what it draws',
+  Object.keys(
+    buildExport({
+      card: { type: 'entity' },
+      template: 'weather_tile',
+      variables: [{ name: 'entity' }],
+      description: 'A tile for the weather',
+      type: 'custom:decluttering-template-plus',
+    }).payload,
+  ),
+  ['type', 'template', 'description', 'variables', 'card'],
+);
+
+check(
   'keys the template does not use are left out of the payload',
   Object.keys(
     buildExport({ type: 'custom:decluttering-template-plus', template: 'a', badge: { type: 'entity' } }).payload,
