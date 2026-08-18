@@ -9,6 +9,10 @@
  *
  * Silent when docs/release-notes/<version>.md does not exist, which leaves the generated
  * notes standing on their own.
+ *
+ * Nothing unreleased lives in this repository. A notes file is added as part of the release
+ * itself, not merged to main ahead of time - a draft on the default branch is a public
+ * announcement of a version that does not exist yet.
  */
 const fs = require('fs');
 const path = require('path');
