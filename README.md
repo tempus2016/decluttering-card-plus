@@ -18,6 +18,10 @@ We all use multiple times the same block of configuration across our lovelace co
 
 `decluttering-card-plus` to the rescue!! This card allows you to reuse multiple times the same configuration in your lovelace configuration to avoid repetition and supports variables and default values.
 
+![Four rooms built from one template](images/overview.png)
+
+*One template, four rooms — each instance passes only the entity and the name.*
+
 ## Credits
 
 `decluttering-card-plus` builds on [custom-cards/decluttering-card][upstream], which has not
@@ -219,6 +223,10 @@ default:
 A decluttering template can hold a badge. Add it to a view's `badges` list rather than its
 cards, using the same `custom:decluttering-card-plus` type.
 
+![A templated badge beside a native one](images/badges.png)
+
+*A templated badge sits in the badge row exactly like a native one.*
+
 **Example:**
 
 ```yaml
@@ -381,6 +389,10 @@ logs a warning to the browser console rather than looping forever.
 
 If your template content is a card, add a *Custom: Decluttering Card Plus* to your dashboard
 to instantiate your template, set variables, and preview the results with the visual editor.
+
+![The visual editor for a card instance](images/editor-card-instance.png)
+
+*Picking a template and setting its variables in the visual editor, with a live preview.*
 The card type is `custom:decluttering-card-plus` in YAML.
 
 If your template content is an Entities card row, first add an *Entities card* to your dashboard or
@@ -461,6 +473,10 @@ default:
   - show_when: 'on'
 ```
 
+![The same template shown and hidden by its own visibility conditions](images/visibility.png)
+
+*The same template shown and hidden by its own visibility conditions.*
+
 ```yaml
 type: custom:decluttering-card-plus
 template: occupancy
@@ -495,6 +511,10 @@ The host element is automatically assigned the `decluttering-container` class. Y
       border: 2px solid [[color]];
     }
 ```
+
+![A template styled through the style option, with the colour passed in as a variable](images/styling.png)
+
+*A template styled through the style option, with the colour passed in as a variable.*
 
 #### Template styles
 
