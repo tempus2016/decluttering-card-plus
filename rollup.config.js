@@ -55,7 +55,7 @@ const plugins = [
 
 export default [
   {
-    input: 'src/decluttering-card.ts',
+    input: 'src/decluttering-card-plus.ts',
     output: {
       dir: './dist',
       format: 'es',

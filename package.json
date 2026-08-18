@@ -2,11 +2,11 @@
   "name": "decluttering-card-plus",
   "version": "2026.2.0",
   "description": "Decluttering Card Plus for Lovelace",
-  "main": "dist/decluttering-card.js",
+  "main": "dist/decluttering-card-plus.js",
   "scripts": {
     "build": "npm run lint && npm run rollup",
     "rollup": "rollup -c",
-    "babel": "babel dist/decluttering-card.js --out-file dist/decluttering-card.js",
+    "babel": "babel dist/decluttering-card-plus.js --out-file dist/decluttering-card-plus.js",
     "lint": "eslint src/*.ts",
     "postversion": "npm run build",
     "start": "rollup -c --watch"
