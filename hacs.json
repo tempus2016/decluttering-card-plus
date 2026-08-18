@@ -1,6 +1,6 @@
 {
   "name": "Decluttering Card Plus",
-  "homeassistant": "2024.8.0",
+  "homeassistant": "2024.7.0",
   "render_readme": true,
   "filename": "decluttering-card-plus.js"
 }

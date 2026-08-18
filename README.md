@@ -551,6 +551,9 @@ and does not reach the card.
 
 ## Installation
 
+Requires Home Assistant 2024.7 or newer. Badge templates need 2024.8, since that is when
+Home Assistant made badges configurable.
+
 ### Using HACS
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tempus2016&repository=decluttering-card-plus&category=lovelace)
