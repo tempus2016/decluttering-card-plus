@@ -34,8 +34,15 @@ and `custom:decluttering-template-plus` types, this card also registers the orig
 not installed. The `decluttering_templates` key is unchanged. So you can install this, remove
 the old card, and change nothing else.
 
-If you install both cards at once, whichever loads first claims the shared types and this one
-logs a warning for the ones it skipped. That works, but there is no reason to run both — pick one.
+If you install both cards at once, whichever loads first claims `decluttering-card` and
+`decluttering-template`. Home Assistant loads resources in the order they were added, so the
+original card usually wins and carries on serving your existing `custom:decluttering-card`
+cards — they keep working, but they get none of the fixes here until you remove the original
+card. In the other order this card serves them instead, and the original's bundle logs a
+`define` error to the console when it finds the name already taken; nothing breaks, because
+the type is already being served.
+
+Either way, there is no reason to run both. Remove the original card.
 
 New configuration should use `custom:decluttering-card-plus` and
 `custom:decluttering-template-plus`, which are always available.
