@@ -28,6 +28,9 @@ module.exports = {
       // and attached to the release carries it too.
       '@semantic-release/exec',
       {
+        // Appended to the generated notes. See scripts/release-notes.js.
+        generateNotesCmd: 'node scripts/release-notes.js ${nextRelease.version}',
+        // Rebuild once the new version is in package.json.
         prepareCmd: 'npm run build',
       },
     ],

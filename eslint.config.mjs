@@ -8,8 +8,9 @@ export default [
   ...tseslint.configs.recommended,
   prettierRecommended,
   {
-    // The test runner is a plain CommonJS Node script, not part of the bundle.
-    files: ['test/**/*.js'],
+    // The test runner and the release scripts are plain CommonJS Node scripts, not
+    // part of the bundle.
+    files: ['test/**/*.js', 'scripts/**/*.js'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
     },
