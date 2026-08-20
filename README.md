@@ -940,6 +940,36 @@ cards:
 | variables | list | **Optional** | List of variables and their values to replace in the template content
 | style | string | **Optional** | CSS styles to inject into the card. Supports variable replacement.
 
+### When a card comes out spread across the row
+
+A card that sizes itself — a `custom:button-card` given a width, say — is narrower than the
+share of a row this card is handed, and sits at the left of it. Three of them in a
+`horizontal-stack` end up evenly spread instead of packed together, which is not what the
+same three cards do on their own.
+
+`fit: contents` takes this card out of the layout, so the card inside it becomes the
+stack's own child and lays out exactly as it would without any of this:
+
+```yaml
+type: custom:decluttering-card-plus
+template: nav_button
+fit: contents
+```
+
+| Name | Type | Requirement | Description
+| ---- | ---- | ------- | -----------
+| fit | string | **Optional** | `box`, the default, keeps a box of its own. `contents` gives it up
+
+It is not the default, and cannot be, because a card with no box of its own has nothing for
+the [`style`](#styling) option to paint on — `:host(.decluttering-container) { border: ... }`
+simply stops showing. The card's editor says so if you set both. The `height: 100%` this
+card normally carries stops applying too, which matters for a card sized against its
+container.
+
+Everything else is unaffected: cards in a grid, in a sections view, and cards that fill the
+width they are given all lay out identically either way. Reach for it when a stack comes out
+looking spread out, and leave it alone otherwise.
+
 ### Visibility
 
 Cards inside a template support Home Assistant's own `visibility` conditions, and those

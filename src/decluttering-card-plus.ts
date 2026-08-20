@@ -105,6 +105,28 @@ const REPEAT_SCHEMA = [
   },
 ];
 
+// Offered for every template, described or not, since it is about where the card sits
+// rather than about what the template contains.
+const FIT_SCHEMA = [
+  {
+    name: 'fit',
+    label: 'Fit into the layout',
+    helper: 'Get out of the way if a card that sizes itself comes out spread across the row',
+    selector: {
+      select: {
+        mode: 'dropdown',
+        options: [
+          { value: 'box', label: 'Keep its own box (default)' },
+          { value: 'contents', label: 'Get out of the way' },
+        ],
+      },
+    },
+  },
+];
+
+// A style rule that paints on this card's own host rather than on the card inside it.
+const HOST_SELECTOR = /:host|\.decluttering-container/;
+
 // Variables can be written as a list of entries or as one mapping; both are read the same
 // way. Anything else - a string, a number - is neither, and worth saying so about.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -187,6 +209,9 @@ abstract class DeclutteringElement extends LitElement {
 
   @state() protected _error?: string;
 
+  /** Whether this card was asked to give up its box in the layout. */
+  @state() protected _fitContents = false;
+
   set hass(hass: HomeAssistant) {
     if (!hass) return;
     this._hass = hass;
@@ -225,6 +250,19 @@ abstract class DeclutteringElement extends LitElement {
        */
       :host(.decluttering-card) {
         height: 100%;
+      }
+      /*
+       * A card that sizes itself - a button-card given a width, say - is narrower than the
+       * share of a row this wrapper is handed, and sits at the left of it, so a stack of
+       * them ends up spread out instead of packed together. Asking it to fit its contents takes the
+       * wrapper out of the layout so the card becomes the stack's own child and lays out
+       * as it would without any of this.
+       *
+       * Not the default, and it cannot be: with no box there is nothing for the style
+       * option to paint on, and the height above stops applying.
+       */
+      :host(.decluttering-fit-contents) {
+        display: contents;
       }
       /*
        * Last, and it has to stay last. Every rule here is :host(.one-class), so they all
@@ -464,6 +502,9 @@ abstract class DeclutteringElement extends LitElement {
     this.classList.toggle('decluttering-badge', this._thingType === 'badge');
     this.classList.toggle('decluttering-container', this._thingType !== 'badge');
     this.classList.toggle('decluttering-card', this._thingType === 'card');
+    // Only a card is laid out as a box in the first place, so only a card has one to give
+    // up. A badge is already out of the way, and an element is positioned inside the card.
+    this.classList.toggle('decluttering-fit-contents', this._thingType === 'card' && this._fitContents);
 
     return html`
       ${
@@ -576,6 +617,12 @@ class DeclutteringCard extends DeclutteringElement {
       throw new Error('Could not retrieve the lovelace configuration.');
     }
     this._error = undefined;
+    /*
+     * Anything but `contents` leaves the card with a box of its own, which is what it has
+     * always had - so a value nobody recognises falls back to the way it worked before
+     * rather than to a layout they did not ask for.
+     */
+    this._fitContents = config.fit === 'contents';
     const templateConfig = findTemplate(ll, config.template);
     if (templateConfig) {
       this._pendingConfig = undefined;
@@ -904,7 +951,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   private _formSchema(declarations: VariableDeclaration[], repeatable: boolean): unknown[] {
     const repeat = repeatable ? REPEAT_SCHEMA : [];
 
-    if (!declarations.length) return [...this._schema, ...repeat];
+    if (!declarations.length) return [...this._schema, ...repeat, ...FIT_SCHEMA];
 
     return [
       this._schema[0],
@@ -922,6 +969,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         selector: { object: {} },
       },
       ...repeat,
+      ...FIT_SCHEMA,
     ];
   }
 
@@ -944,6 +992,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     if (this._config?.for_each_from !== undefined) data.for_each_from = this._config.for_each_from;
     if (this._config?.columns !== undefined) data.columns = this._config.columns;
     if (this._config?.min_column_width !== undefined) data.min_column_width = this._config.min_column_width;
+    if (this._config?.fit !== undefined) data.fit = this._config.fit;
     return data;
   }
 
@@ -970,7 +1019,22 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     // errors that block a save - the template may be edited next - but they are the ones
     // worth reading first, so they are separated out and coloured accordingly.
     const optional = missing.filter((name) => !required.includes(name));
+    /*
+     * A card that has given up its box has nothing left for the style option to paint on:
+     * the rules still exist, they just have no element with a size to apply to. Easily
+     * done, and invisible when it happens, so it is worth saying out loud.
+     */
+    const paintsOnHost = HOST_SELECTOR.test(`${template.style ?? ''}\n${this._config?.style ?? ''}`);
+    const fitHidesStyle = this._config?.fit === 'contents' && paintsOnHost;
     return html`
+      ${
+        fitHidesStyle
+          ? html`<ha-alert alert-type="warning">
+              This card is set to get out of the way, so it has no box of its own - and the styles here that paint on it
+              have nothing to paint on. Style the card inside it, or set this back to keeping its own box.
+            </ha-alert>`
+          : html``
+      }
       ${
         required.length
           ? html`<ha-alert alert-type="error">

@@ -24,16 +24,20 @@ const hidden = ruleAt('child-card-hidden');
 const container = ruleAt('decluttering-container');
 const badge = ruleAt('decluttering-badge');
 const card = ruleAt('decluttering-card');
+const fit = ruleAt('decluttering-fit-contents');
 
 check(
   'every host rule is present',
-  [hidden, container, badge, card].every((i) => i >= 0),
+  [hidden, container, badge, card, fit].every((i) => i >= 0),
   true,
 );
 
 check('the hidden rule comes after the container rule', hidden > container, true);
 check('the hidden rule comes after the badge rule', hidden > badge, true);
 check('the hidden rule comes after the card rule', hidden > card, true);
+// A card asked to get out of the way must still disappear entirely when it is hidden,
+// rather than getting its contents laid out in the row it was supposed to leave.
+check('the hidden rule comes after the fit rule', hidden > fit, true);
 
 // A rule added after this one would take the display back, which is the mistake this
 // whole file exists to catch, so nothing may follow it.
