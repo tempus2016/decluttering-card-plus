@@ -138,6 +138,7 @@ export default (
   content: any,
   templateName?: string,
   hass?: any,
+  quiet?: boolean,
 ): any => {
   if (content === undefined) return content;
   const variableArray = resolveVariables(variables, templateConfig);
@@ -155,14 +156,14 @@ export default (
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
     }
-    if (passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
+    if (!quiet && passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
       console.warn(
         `decluttering-card-plus: gave up substituting variables after ${MAX_PASSES} passes. ` +
           'Check whether a variable refers to itself.',
       );
     }
 
-    if (refused.size) {
+    if (!quiet && refused.size) {
       const each = [...refused].map(([placeholder, kind]) => `[[${placeholder}]] (${kind})`);
       // The two ways a chain gives up read differently, so say whichever applies rather
       // than a sentence that only half fits.
@@ -191,7 +192,7 @@ export default (
    * where it is the running card talking rather than the editor.
    */
   const unresolved = unresolvedPlaceholders(jsonConfig, refused);
-  if (unresolved.length) {
+  if (!quiet && unresolved.length) {
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
     const whose = templateName ? `template "${templateName}"` : 'this template';
     console.warn(

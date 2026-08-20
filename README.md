@@ -212,6 +212,18 @@ announced by Home Assistant, so the copy of it is dropped and the next card to a
 template fetches the new one — a change to a shared template reaches the dashboards
 borrowing it when they next render, without a browser refresh.
 
+### Seeing what a card builds
+
+A card's visual editor has a **Result** panel at the bottom, showing the card that is
+actually built once every variable has been put in.
+
+The template is in one place, the values are in another, and what you see on the dashboard
+is a third thing — so working out why the result is not what you meant has always meant
+reading both and doing the substitution in your head. Anything still written as
+`[[name]]` in there is a variable nothing gave a value to.
+
+It is read-only, and a card repeating over a list shows the first copy.
+
 ### Seeing what uses a template
 
 A template card's visual editor has a **Where used** tab, listing every view on the

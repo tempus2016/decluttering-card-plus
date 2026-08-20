@@ -712,6 +712,15 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         display: block;
         margin-bottom: 8px;
       }
+      ha-expansion-panel {
+        margin-top: 16px;
+      }
+      .result {
+        padding: 0 8px 8px;
+      }
+      .result .hint {
+        margin: 8px 0;
+      }
     `;
   }
 
@@ -812,6 +821,51 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         .computeHelper=${(s): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
       ></ha-form>
+      ${this._renderResult(template)}
+    `;
+  }
+
+  /*
+   * What the card is actually built from, once every variable has been put in. The
+   * template and the values are in two different places on the dashboard and the card
+   * renders a third thing, so working out why the result is not what you meant has always
+   * meant reading both and doing the substitution in your head. This does it for you.
+   */
+  private _renderResult(template: TemplateConfig | undefined): TemplateResult {
+    if (!template || !this._config) return html``;
+    const thingType = getThingType(template);
+    if (!thingType) return html``;
+
+    const content = template.card ?? template.element ?? template.row ?? template.badge;
+    // for_each renders the same template once per item, so one copy stands for all of
+    // them - showing every copy would bury the thing you opened this to look at.
+    const items = forEachItems(this._config.for_each);
+    const variables = items?.length
+      ? forEachVariables(items[0], this._config.variables, 0, items.length)
+      : this._config.variables;
+
+    let resolved: unknown;
+    try {
+      // Quietly: the editor re-renders on every keystroke, and the card itself already
+      // says what it could not resolve when it renders for real.
+      resolved = deepReplace(variables, template, content, this._config.template, this.hass, true);
+    } catch (err) {
+      return html`<ha-alert alert-type="warning">Could not work out the result: ${String(err)}</ha-alert>`;
+    }
+
+    const copies = items?.length ? ` (copy 1 of ${items.length})` : '';
+
+    return html`
+      <ha-expansion-panel outlined>
+        <span slot="header">Result${copies}</span>
+        <div class="result">
+          <p class="hint">
+            The ${thingType} this card builds, with every variable put in. Anything still written as
+            <code>[[name]]</code> is a variable nothing gave a value to.
+          </p>
+          <ha-yaml-editor .hass=${this.hass} .defaultValue=${resolved} read-only></ha-yaml-editor>
+        </div>
+      </ha-expansion-panel>
     `;
   }
 
