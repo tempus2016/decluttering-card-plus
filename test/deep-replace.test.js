@@ -473,6 +473,74 @@ warnings.length = 0;
 deepReplace([{ obj: { a: 1 } }], {}, { a: '[[obj|upper]]' }, undefined, undefined, true);
 check('quiet covers a refused transform too', warnings.length, 0);
 
+// [[name?]] - a placeholder the template can do without.
+
+warnings.length = 0;
+check(
+  'an option nothing gives a value to is taken out altogether',
+  deepReplace(undefined, {}, { type: 'tile', entity: 'light.hall', name: '[[name?]]' }),
+  { type: 'tile', entity: 'light.hall' },
+);
+check('and it is not a mistake worth warning about', warnings.length, 0);
+
+check(
+  'a value given for it is used as normal',
+  deepReplace([{ name: 'Hall' }], {}, { type: 'tile', name: '[[name?]]' }),
+  { type: 'tile', name: 'Hall' },
+);
+
+check(
+  'an empty string counts as nothing to say',
+  deepReplace([{ name: '' }], {}, { type: 'tile', name: '[[name?]]' }),
+  { type: 'tile' },
+);
+check('and so does null', deepReplace([{ name: null }], {}, { type: 'tile', name: '[[name?]]' }), { type: 'tile' });
+
+check('but a zero is a value', deepReplace([{ n: 0 }], {}, { a: '[[n?]]' }), { a: 0 });
+check('and so is false', deepReplace([{ n: false }], {}, { a: '[[n?]]' }), { a: false });
+
+check(
+  'a default fills an option the same as anything else',
+  deepReplace(undefined, { default: [{ name: 'Hall' }] }, { a: '[[name?]]' }),
+  { a: 'Hall' },
+);
+
+check('inside a longer string it just leaves quietly', deepReplace(undefined, {}, { a: 'Hall[[suffix?]]' }), {
+  a: 'Hall',
+});
+
+check(
+  'a dropped item leaves no hole in a list',
+  deepReplace([{ b: 'two' }], {}, { cards: ['[[a?]]', '[[b?]]', '[[c?]]'] }),
+  { cards: ['two'] },
+);
+
+check(
+  'it works alongside a transform',
+  deepReplace([{ room: 'Back Garden' }], {}, { a: '[[room|slug?]]', b: '[[missing|slug?]]' }),
+  { a: 'back_garden' },
+);
+
+check(
+  'and nested inside a stack',
+  deepReplace(
+    [{ name: 'Hall' }],
+    {},
+    { type: 'vertical-stack', cards: [{ type: 'tile', name: '[[name?]]', icon: '[[icon?]]' }] },
+  ),
+  { type: 'vertical-stack', cards: [{ type: 'tile', name: 'Hall' }] },
+);
+
+check('an escaped one is still just brackets', deepReplace(undefined, {}, { a: '[[!name?]]' }), { a: '[[name?]]' });
+
+warnings.length = 0;
+check(
+  'a required-looking plain placeholder still warns beside an optional one',
+  deepReplace(undefined, {}, { a: '[[gone]]', b: '[[fine?]]' }),
+  { a: '[[gone]]' },
+);
+check('naming only the plain one', /\[\[gone\]\]/.test(warnings[0]) && !/fine/.test(warnings[0]), true);
+
 console.warn = realWarn;
 
 report();

@@ -41,6 +41,7 @@ import {
   mergeVariables,
   normaliseVariables,
   POSITION_NAMES,
+  hasRequiredVariables,
   usesResolver,
   variableName,
   variableValues,
@@ -369,9 +370,16 @@ abstract class DeclutteringElement extends LitElement {
     if (getThingType(templateConfig) !== 'card') {
       throw new Error('for_each needs a template that defines a card');
     }
-    const cards = items.map((item, index) =>
+    /*
+     * A template can say which of its variables it cannot do without, and an item that
+     * leaves one of them empty describes a copy there is nothing to render - the third
+     * light in a room that has two. Those items are dropped rather than rendered as a card
+     * full of holes, which is what a dummy entity id was always standing in for.
+     */
+    const wanted = items.filter((item) => hasRequiredVariables(templateConfig, item, config.variables));
+    const cards = wanted.map((item, index) =>
       deepReplace(
-        forEachVariables(item, config.variables, index, items.length),
+        forEachVariables(item, config.variables, index, wanted.length),
         templateConfig,
         templateConfig.card,
         config.template,

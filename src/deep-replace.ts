@@ -2,6 +2,8 @@ import { VariablesConfig, TemplateConfig } from './types';
 import {
   applyTransform,
   ESCAPE,
+  isOptional,
+  OPTIONAL_SUFFIX,
   hasEscape,
   PLACEHOLDER,
   resolveVariables,
@@ -68,8 +70,8 @@ function substitutePass(
   variableArray.forEach((variable) => {
     const key = escapeForRegExp(Object.keys(variable)[0]);
     const value = Object.values(variable)[0];
-    const wholeValue = new RegExp(`"\\[\\[${key}${TRANSFORM_SUFFIX}\\]\\]"`, 'gm');
-    const withinString = new RegExp(`\\[\\[${key}${TRANSFORM_SUFFIX}\\]\\]`, 'gm');
+    const wholeValue = new RegExp(`"\\[\\[${key}${TRANSFORM_SUFFIX}${OPTIONAL_SUFFIX}\\]\\]"`, 'gm');
+    const withinString = new RegExp(`\\[\\[${key}${TRANSFORM_SUFFIX}${OPTIONAL_SUFFIX}\\]\\]`, 'gm');
 
     // Every replacement goes through a function so that `$&`, `$1` and friends in a
     // variable's value are inserted literally rather than read as replacement patterns.
@@ -96,20 +98,30 @@ function substitutePass(
       return text === undefined ? refuse(match, transform, `${NOTHING_FOR} "${value}"`) : wrap(text);
     };
 
-    json = json.replace(wholeValue, (match: string, transform?: string) =>
-      transform
+    /*
+     * An optional placeholder given nothing to say is left exactly as it was written, so
+     * that the pass at the end can take the whole option out. Empty means unset, null or
+     * the empty string - a zero and a false are values, and stay.
+     */
+    const emptyOptional = (optional?: string): boolean =>
+      !!optional && (value === undefined || value === null || value === '');
+
+    json = json.replace(wholeValue, (match: string, transform?: string, optional?: string) => {
+      if (emptyOptional(optional)) return match;
+      return transform
         ? transformable
           ? shaped(match, transform, (text) => JSON.stringify(text))
           : refuse(match, transform)
-        : asWholeValue(value, match),
-    );
-    json = json.replace(withinString, (match: string, transform?: string) =>
-      transform
+        : asWholeValue(value, match);
+    });
+    json = json.replace(withinString, (match: string, transform?: string, optional?: string) => {
+      if (emptyOptional(optional)) return match;
+      return transform
         ? transformable
           ? shaped(match, transform, escapeForJsonString)
           : refuse(match, transform)
-        : asPartOfString(value),
-    );
+        : asPartOfString(value);
+    });
   });
   return json;
 }
@@ -126,10 +138,50 @@ function unresolvedPlaceholders(json: string, refused: Map<string, string>): str
   let match = everyPlaceholder.exec(json);
   while (match) {
     const inside = match[1];
-    if (!inside.startsWith(ESCAPE) && !refused.has(inside)) names.add(inside);
+    // An optional one having no value is the point of it, not a mistake worth reporting.
+    if (!inside.startsWith(ESCAPE) && !refused.has(inside) && !isOptional(inside)) names.add(inside);
     match = everyPlaceholder.exec(json);
   }
   return [...names];
+}
+
+/** Whether this text is nothing but one optional placeholder that found no value. */
+function isEmptyOption(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const match = new RegExp(`^${PLACEHOLDER.source}$`).exec(value);
+  return !!match && !match[1].startsWith(ESCAPE) && isOptional(match[1]);
+}
+
+/*
+ * Taking the empty options out. An option that is only an unresolved optional placeholder
+ * goes altogether - the key with it, so the card is configured as though it had never been
+ * written - and one sitting inside a longer piece of text just leaves quietly.
+ *
+ * Done on the parsed config rather than on its JSON text, because removing a key from JSON
+ * by hand means getting its commas right, and getting them wrong means a card that will
+ * not parse at all.
+ */
+function pruneEmptyOptions(value: any): any {
+  if (Array.isArray(value)) {
+    // A dropped item leaves no hole: a list of cards with one missing is a shorter list,
+    // not a list with a gap in it.
+    return value.filter((item) => !isEmptyOption(item)).map((item) => pruneEmptyOptions(item));
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (isEmptyOption(entry)) continue;
+      out[key] = pruneEmptyOptions(entry);
+    }
+    return out;
+  }
+  if (typeof value === 'string') {
+    const anyOptional = new RegExp(PLACEHOLDER.source, 'g');
+    return value.replace(anyOptional, (match, inside: string) =>
+      !inside.startsWith(ESCAPE) && isOptional(inside) ? '' : match,
+    );
+  }
+  return value;
 }
 
 export default (
@@ -143,6 +195,9 @@ export default (
   if (content === undefined) return content;
   const variableArray = resolveVariables(variables, templateConfig);
   let jsonConfig = JSON.stringify(content);
+  // Worth knowing before any work is done: a template with no optional placeholder in it
+  // never needs the pruning pass at the end.
+  const hasOptional = new RegExp(`\\[\\[[^[\\]]*\\${'?'}\\]\\]`).test(jsonConfig);
 
   // Each placeholder a transform refused, and what its value turned out to be.
   const refused = new Map<string, string>();
@@ -205,6 +260,16 @@ export default (
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be
   // turned back into a placeholder and then substituted on a later pass. Nothing to do
   // and nothing substituted means the content is already what it should be.
-  if (!hasEscape(jsonConfig)) return variableArray.length ? JSON.parse(jsonConfig) : content;
-  return JSON.parse(unescapePlaceholders(jsonConfig));
+  /*
+   * Empty options come out before the escapes are unwrapped, and not after: `[[!name?]]`
+   * becomes the text `[[name?]]`, which is indistinguishable from an option that found no
+   * value once it has been unwrapped. Doing it in this order, the escaped one is still
+   * wearing its bang and is left alone.
+   */
+  const nothingToDo = !variableArray.length && !hasOptional && !hasEscape(jsonConfig);
+  if (nothingToDo) return content;
+
+  const pruned = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig)) : JSON.parse(jsonConfig);
+  if (!hasEscape(jsonConfig)) return pruned;
+  return JSON.parse(unescapePlaceholders(JSON.stringify(pruned)));
 };
