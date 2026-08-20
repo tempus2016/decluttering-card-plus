@@ -503,10 +503,11 @@ const hass = { callWS: () => Promise.resolve(lender) };
 
 collectAllTemplates(hass, borrower).then((all) => {
   const badge = all.shared_badge;
-  check(
-    'a borrowed template keeps its own default first, then the borrower, then the lender',
-    badge.default,
-    [{ own: 'template-own' }, { colour: 'amber' }, { colour: 'green' }, { shape: 'lender-shape' }],
-  );
+  check('a borrowed template keeps its own default first, then the borrower, then the lender', badge.default, [
+    { own: 'template-own' },
+    { colour: 'amber' },
+    { colour: 'green' },
+    { shape: 'lender-shape' },
+  ]);
   report();
 });
