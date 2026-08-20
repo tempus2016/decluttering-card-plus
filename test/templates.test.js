@@ -10,6 +10,7 @@ const {
   collectUsages,
   findTemplateLocation,
   renameTemplate,
+  dashboardsToForget,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -427,5 +428,26 @@ check(
   })(),
   'tile',
 );
+/* ------------------------------------------- forgetting a borrowed dashboard */
+
+check('a named dashboard is forgotten on its own', dashboardsToForget('library'), ['library']);
+
+check('the original dashboard is forgotten under every name it goes by', dashboardsToForget(null).sort(), [
+  '',
+  'default',
+  'lovelace',
+]);
+
+check('a change reported for "lovelace" forgets the same set', dashboardsToForget('lovelace').sort(), [
+  '',
+  'default',
+  'lovelace',
+]);
+
+check('a change reported with no path at all is the original dashboard', dashboardsToForget(undefined).sort(), [
+  '',
+  'default',
+  'lovelace',
+]);
 
 report();

@@ -207,8 +207,10 @@ Both ways of defining a template are picked up from the other dashboard — the
 templates always win, so borrowing can never quietly change a template you have defined
 yourself. Use `lovelace` for the original default dashboard.
 
-The other dashboards are read once per browser session, so a change to a shared template shows
-up in other dashboards after a refresh.
+Each borrowed dashboard is fetched once and kept, rather than once per card. Saving one is
+announced by Home Assistant, so the copy of it is dropped and the next card to ask for a
+template fetches the new one — a change to a shared template reaches the dashboards
+borrowing it when they next render, without a browser refresh.
 
 ### Seeing what uses a template
 
@@ -610,6 +612,20 @@ except the shed.
 vertically. The copies are handed to Home Assistant's own grid and vertical-stack cards, so
 they behave exactly like any other card in your layout.
 
+A fixed column count is cramped on a phone and wasteful on a wide screen, so `columns` can
+be paired with `min_column_width` — how narrow a copy may get, in pixels, before a column
+is dropped. `columns` then becomes the most it will ever use:
+
+```yaml
+columns: 4
+min_column_width: 250
+```
+
+Four across on a desktop, two on a tablet, one on a phone, from the one card. The count is
+worked out from the card's own width, so it is right inside a sidebar or a narrow column
+too — not just at the size of the window. Nothing is rebuilt until the count actually
+changes.
+
 Every copy is also given `[[index]]`, which counts from one, and `[[count]]`, the number of
 copies — so a template can number itself without you writing the number into each item:
 
@@ -630,7 +646,8 @@ failing, so a list built from a helper can be empty without breaking the dashboa
 | Name | Type | Requirement | Description
 | ---- | ---- | ------- | -----------
 | for_each | list | **Optional** | One copy of the template per item; each item is a set of variables for that copy. A single mapping counts as a list of one
-| columns | number | **Optional** | How many copies sit side by side. Defaults to 1, which stacks them
+| columns | number | **Optional** | How many copies sit side by side. Defaults to 1, which stacks them. With `min_column_width`, the most it will ever use
+| min_column_width | number | **Optional** | How narrow a copy may get, in pixels, before a column is dropped
 
 #### Asking for a variable in a different shape
 

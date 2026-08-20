@@ -61,11 +61,40 @@ export function getTemplateSources(ll: LovelaceConfig | null | undefined): strin
 }
 
 // Fetching another dashboard is a round trip, and a dashboard full of templated cards would
-// otherwise make one per card. Cached for the life of the page, so a change to a source
-// dashboard needs a browser refresh to be picked up.
+// otherwise make one per card, so each is fetched once and kept.
 const configCache = new Map<string, Promise<LovelaceConfig | null>>();
 
+/**
+ * The cache keys a change to one dashboard invalidates. The original dashboard has no
+ * url_path of its own and is written several ways, so a change to it has to forget all of
+ * them - otherwise a dashboard borrowing from `lovelace` would keep a copy that a change
+ * reported as `null` never cleared.
+ */
+export function dashboardsToForget(urlPath: string | null | undefined): string[] {
+  const path = urlPath ?? '';
+  return DEFAULT_DASHBOARD_PATHS.includes(path) ? [...DEFAULT_DASHBOARD_PATHS] : [path];
+}
+
+// Subscribed once for the life of the page, the first time a dashboard is borrowed from.
+let watching = false;
+
+/*
+ * A borrowed template used to be fixed until the browser was refreshed, which is a poor
+ * answer when the whole point of borrowing is to keep a template library in one place and
+ * edit it there. Home Assistant announces a saved dashboard, so the copy of it is dropped
+ * and the next card to ask for it fetches the new one.
+ */
+
+function watchForSavedDashboards(hass: any): void {
+  if (watching || typeof hass?.connection?.subscribeEvents !== 'function') return;
+  watching = true;
+  hass.connection.subscribeEvents((event: any) => {
+    for (const path of dashboardsToForget(event?.data?.url_path)) configCache.delete(path);
+  }, 'lovelace_updated');
+}
+
 function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<LovelaceConfig | null> {
+  watchForSavedDashboards(hass);
   const cached = configCache.get(urlPath);
   if (cached) return cached;
 
