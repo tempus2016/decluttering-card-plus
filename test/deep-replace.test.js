@@ -457,7 +457,14 @@ check(
 warnings.length = 0;
 check(
   'asked quietly, it still resolves what it can',
-  deepReplace([{ entity: 'light.hall' }], {}, { a: '[[entity|friendly_name]]', b: '[[missing]]' }, undefined, hass, true),
+  deepReplace(
+    [{ entity: 'light.hall' }],
+    {},
+    { a: '[[entity|friendly_name]]', b: '[[missing]]' },
+    undefined,
+    hass,
+    true,
+  ),
   { a: 'Hall Lamp', b: '[[missing]]' },
 );
 check('and says nothing at all', warnings.length, 0);
