@@ -94,11 +94,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # On a pull request the checkout is a detached merge commit, and semantic-release
-      # only generates notes on a branch its config names — so the run is pointed at a
-      # local branch called main, which also means the notes describe the merge result
-      # rather than the branch tip. --no-ci is required regardless: in CI on a pull
-      # request semantic-release otherwise stops before generateNotes.
+      # semantic-release only generates notes on a branch its config names, and it takes
+      # that name from env-ci rather than from git: on a pull_request event env-ci reports
+      # prBranch, which is the merge ref (44/merge), and checking out a local main changes
+      # nothing. Presenting the run as a push to main is what gets past that. The checkout
+      # is still pointed at main so git agrees, and because a pull request checkout is the
+      # merge commit, the notes describe the merge result rather than the branch tip.
+      # --no-ci is needed as well: on a pull request semantic-release otherwise stops
+      # before generateNotes (semantic-release/index.js:59).
       - name: Generate the notes a release would produce
         shell: bash
         run: |
@@ -106,6 +109,8 @@ jobs:
           npx semantic-release --dry-run --no-ci --branches main 2>&1 | tee /tmp/dry-run.log
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_NAME: push
+          GITHUB_REF: refs/heads/main
 
       # An empty changelog is the failure to catch, and it exits 0, so the notes have to
       # be inspected rather than the status code. Every generated entry links to its
