@@ -200,9 +200,6 @@ abstract class DeclutteringElement extends LitElement {
 
   static get styles(): CSSResult {
     return css`
-      :host(.child-card-hidden) {
-        display: none;
-      }
       /*
        * A badge belongs to the flex row of badges, so this wrapper has to get out of the
        * way rather than box it. Styles injected with the style option still reach the
@@ -227,6 +224,17 @@ abstract class DeclutteringElement extends LitElement {
        */
       :host(.decluttering-card) {
         height: 100%;
+      }
+      /*
+       * Last, and it has to stay last. Every rule here is :host(.one-class), so they all
+       * have the same specificity and the later one wins - which meant a hidden card kept
+       * the display: block above and went on holding its place in the layout. It looked
+       * right in a masonry view, where a zero-height block leaves no visible gap, and
+       * wrong in a horizontal-stack, where it still took a full share of the row and
+       * squeezed the cards either side of it.
+       */
+      :host(.child-card-hidden) {
+        display: none;
       }
     `;
   }
