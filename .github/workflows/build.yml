@@ -119,7 +119,8 @@ jobs:
           git --git-dir=/tmp/release-remote.git update-ref refs/heads/main "$(git rev-parse 'HEAD^1')"
           git config url."file:///tmp/release-remote.git".insteadOf "$origin_url"
 
-          env -u GITHUB_TOKEN -u GH_TOKEN RELEASE_NOTES_CHECK=1 \
+          env -u GITHUB_TOKEN -u GH_TOKEN \
+            GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main RELEASE_NOTES_CHECK=1 \
             npx semantic-release --dry-run --no-ci --branches main \
               --repository-url "$origin_url" 2>&1 | tee /tmp/dry-run.log
 
