@@ -1,5 +1,10 @@
-module.exports = {
-  plugins: [
+// The release-notes check in CI runs semantic-release against a throwaway local clone so
+// it needs no credentials of any kind. Only the plugins that shape the notes are wanted
+// there: the publishing ones would be verifying an access it deliberately does not have,
+// and none of them contribute a line to the changelog.
+const notesOnly = process.env.RELEASE_NOTES_CHECK === '1';
+
+const plugins = [
     '@semantic-release/commit-analyzer',
     [
       '@semantic-release/release-notes-generator',
@@ -50,7 +55,16 @@ module.exports = {
         failComment: false,
       },
     ],
-  ],
+];
+
+module.exports = {
+  plugins: notesOnly
+    ? plugins.filter((plugin) =>
+        ['@semantic-release/commit-analyzer', '@semantic-release/release-notes-generator', '@semantic-release/exec'].includes(
+          Array.isArray(plugin) ? plugin[0] : plugin,
+        ),
+      )
+    : plugins,
   preset: 'conventionalcommits',
   branches: [{ name: 'main' }, { name: 'dev', channel: 'beta', prerelease: true }],
 };

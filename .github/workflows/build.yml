@@ -94,24 +94,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # semantic-release only generates notes on a branch its config names, and it takes
-      # that name from env-ci rather than from git: on a pull_request event env-ci returns
-      # the merge ref, so checking out a local main changes nothing on its own. Presenting
-      # the run as a push to main is what gets past that, and it has to be done with env(1)
-      # rather than a step-level env: block — the runner re-injects its own GITHUB_* values
-      # over anything declared there, which is why the previous attempt still saw
-      # refs/pull/<n>/merge. The checkout is pointed at main as well so git agrees, and
-      # because a pull request checkout is the merge commit, the notes describe the merge
-      # result rather than the branch tip. --no-ci is needed too: on a pull request
-      # semantic-release otherwise stops before generateNotes (semantic-release/index.js:59).
+      # Three things stand between a pull request and generated notes. semantic-release
+      # takes the branch name from env-ci, not from git, and on a pull_request event that
+      # is the merge ref — and a step-level env: block cannot correct it, because the
+      # runner re-injects its own GITHUB_* values over anything declared there, so the
+      # override goes through env(1). --no-ci is needed too, or it stops before
+      # generateNotes (semantic-release/index.js:59). Last, it insists on being able to
+      # push, and verifyAuth failing is fatal either way — an up-to-date branch rethrows
+      # as EGITNOPERMISSION (index.js:97).
+      #
+      # Rather than hand a write-scoped token to a job that checks out pull request code,
+      # git is pointed at a throwaway bare clone whose main is the base commit, which it
+      # is trivially allowed to push to. semantic-release still gets the real GitHub URL,
+      # because the notes embed it in every commit link and a file:// URL would leave the
+      # entries unlinked; insteadOf redirects git underneath it. Which commits the notes
+      # cover is decided by the release tags, so the stand-in remote costs no fidelity.
       - name: Generate the notes a release would produce
         shell: bash
         run: |
+          origin_url=$(git remote get-url origin)
+
           git checkout -B main
-          env GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main \
-            npx semantic-release --dry-run --no-ci --branches main 2>&1 | tee /tmp/dry-run.log
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git clone --bare --quiet . /tmp/release-remote.git
+          git --git-dir=/tmp/release-remote.git update-ref refs/heads/main "$(git rev-parse 'HEAD^1')"
+          git config url."file:///tmp/release-remote.git".insteadOf "$origin_url"
+
+          env -u GITHUB_TOKEN -u GH_TOKEN RELEASE_NOTES_CHECK=1 \
+            npx semantic-release --dry-run --no-ci --branches main \
+              --repository-url "$origin_url" 2>&1 | tee /tmp/dry-run.log
 
       # An empty changelog is the failure to catch, and it exits 0, so the notes have to
       # be inspected rather than the status code. Every generated entry links to its
