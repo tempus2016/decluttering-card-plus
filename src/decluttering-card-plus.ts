@@ -277,6 +277,7 @@ abstract class DeclutteringElement extends LitElement {
     templateConfig: TemplateConfig,
     variables: VariablesConfig[] | undefined,
     cardStyle?: string,
+    templateName?: string,
   ): void {
     const thingType = getThingType(templateConfig);
     if (!thingType) {
@@ -285,8 +286,8 @@ abstract class DeclutteringElement extends LitElement {
     const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
     this._setResolved(
       thingType,
-      deepReplace(variables, templateConfig, thingContent),
-      this._resolveStyles(templateConfig, variables, cardStyle),
+      deepReplace(variables, templateConfig, thingContent, templateName),
+      this._resolveStyles(templateConfig, variables, cardStyle, templateName),
     );
   }
 
@@ -296,13 +297,14 @@ abstract class DeclutteringElement extends LitElement {
     templateConfig: TemplateConfig,
     variables: VariablesConfig[] | undefined,
     cardStyle?: string,
+    templateName?: string,
   ): string {
     let styles = '';
     if (templateConfig.style) {
-      styles += deepReplace(variables, templateConfig, templateConfig.style);
+      styles += deepReplace(variables, templateConfig, templateConfig.style, templateName);
     }
     if (cardStyle) {
-      styles += deepReplace(variables, templateConfig, cardStyle);
+      styles += deepReplace(variables, templateConfig, cardStyle, templateName);
     }
     return styles;
   }
@@ -329,7 +331,12 @@ abstract class DeclutteringElement extends LitElement {
       throw new Error('for_each needs a template that defines a card');
     }
     const cards = items.map((item, index) =>
-      deepReplace(forEachVariables(item, config.variables, index, items.length), templateConfig, templateConfig.card),
+      deepReplace(
+        forEachVariables(item, config.variables, index, items.length),
+        templateConfig,
+        templateConfig.card,
+        config.template,
+      ),
     );
 
     // The styles belong to the whole card rather than to any one copy, and resolve against
@@ -338,7 +345,7 @@ abstract class DeclutteringElement extends LitElement {
       cards,
       max: Number(config.columns) || 1,
       minWidth: Number(config.min_column_width) || undefined,
-      styles: this._resolveStyles(templateConfig, config.variables, config.style),
+      styles: this._resolveStyles(templateConfig, config.variables, config.style, config.template),
     };
     this._columnsShown = undefined;
     this._layoutForEach();
@@ -600,7 +607,7 @@ class DeclutteringCard extends DeclutteringElement {
       if (this._hass) this._resolveFromRegistry(this._hass);
       return;
     }
-    this._setTemplateConfig(templateConfig, config.variables, config.style);
+    this._setTemplateConfig(templateConfig, config.variables, config.style, config.template);
   }
 
   /*
@@ -989,7 +996,7 @@ class DeclutteringTemplate extends DeclutteringElement {
     this._template = config.template;
     // The config passed here IS the template, so its style is picked up as the
     // template's own - passing it again as the instance style would emit it twice.
-    this._setTemplateConfig(config, undefined, undefined);
+    this._setTemplateConfig(config, undefined, undefined, config.template);
   }
 
   protected render(): TemplateResult | void {
