@@ -38,3 +38,14 @@ updates:
       - dependency-name: 'typescript'
         update-types:
           - 'version-update:semver-major'
+      # conventional-changelog-conventionalcommits 10 swapped its template
+      # engine for @conventional-changelog/template, but semantic-release 25
+      # resolves conventional-changelog-writer 8, which expects the old shape.
+      # The preset loads without error and renders an empty changelog -- the
+      # release notes drop to just the version heading. It also raises
+      # engines.node to >=22, which the 20.x leg of the build matrix violates.
+      # Revisit when semantic-release moves to the v9+ conventional-changelog
+      # family. Evidence: PR #42.
+      - dependency-name: 'conventional-changelog-conventionalcommits'
+        update-types:
+          - 'version-update:semver-major'
