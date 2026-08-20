@@ -95,7 +95,7 @@ check(
 check(
   'a variable used only through a transform is not reported as missing',
   diagnoseInstance([{ room: 'Hall' }], { card: { entity: 'light.[[room|slug]]' } }),
-  { missing: [], unused: [] },
+  { missing: [], unused: [], required: [] },
 );
 
 /* ------------------------------------------------------------ normalising */
@@ -184,43 +184,43 @@ check(
 check(
   'a placeholder with no value anywhere is reported as missing',
   diagnoseInstance(undefined, { card: { entity: '[[entity]]' } }),
-  { missing: ['entity'], unused: [] },
+  { missing: ['entity'], unused: [], required: [] },
 );
 
 check(
   'a placeholder the instance supplies is not missing',
   diagnoseInstance([{ entity: 'sun.sun' }], { card: { entity: '[[entity]]' } }),
-  { missing: [], unused: [] },
+  { missing: [], unused: [], required: [] },
 );
 
 check(
   'a placeholder with a declared default is not missing',
   diagnoseInstance(undefined, { variables: [{ name: 'entity', default: 'sun.sun' }], card: { entity: '[[entity]]' } }),
-  { missing: [], unused: [] },
+  { missing: [], unused: [], required: [] },
 );
 
 check(
   'a mapping of variables is not reported as missing',
   diagnoseInstance({ entity: 'sun.sun' }, { card: { entity: '[[entity]]' } }),
-  { missing: [], unused: [] },
+  { missing: [], unused: [], required: [] },
 );
 
 check(
   'every key of a mapping is checked for being unused, not just the first',
   diagnoseInstance({ entity: 'sun.sun', colour: 'red' }, { card: { entity: '[[entity]]' } }),
-  { missing: [], unused: ['colour'] },
+  { missing: [], unused: ['colour'], required: [] },
 );
 
 check(
   'a value the template never uses is reported as unused',
   diagnoseInstance([{ colour: 'red' }], { card: { entity: '[[entity]]' } }),
-  { missing: ['entity'], unused: ['colour'] },
+  { missing: ['entity'], unused: ['colour'], required: [] },
 );
 
 check(
   'a declaration the template never uses is reported',
   diagnoseTemplate({ variables: [{ name: 'colour' }], card: { entity: '[[entity]]' } }),
-  { unused: ['colour'], duplicated: [] },
+  { unused: ['colour'], duplicated: [], contradictory: [] },
 );
 
 check(
@@ -230,7 +230,7 @@ check(
     default: [{ colour: 'green' }],
     card: { name: '[[colour]]' },
   }),
-  { unused: [], duplicated: ['colour'] },
+  { unused: [], duplicated: ['colour'], contradictory: [] },
 );
 
 /* ------------------------------------------------------------------ reading */
@@ -295,7 +295,7 @@ check('an item with no card variables stands alone', forEachVariables({ a: 1 }, 
 check(
   'every name any item sets is collected, once each',
   forEachNames([{ entity: 'a', name: 'A' }, { entity: 'b' }, [{ colour: 'red' }]]),
-  ['entity', 'name', 'colour'],
+  ['index', 'count', 'entity', 'name', 'colour'],
 );
 
 check('names of nothing is nothing', forEachNames(undefined), []);
@@ -315,7 +315,7 @@ check(
 check(
   'every key of a multi-key entry counts as a name the items set',
   forEachNames([[{ entity: 'light.hall', name: 'Hall' }]]),
-  ['entity', 'name'],
+  ['index', 'count', 'entity', 'name'],
 );
 
 check('a list of items passes through', forEachItems([{ a: 1 }, { b: 2 }]), [{ a: 1 }, { b: 2 }]);
@@ -335,13 +335,13 @@ check(
 check(
   'supplements count as supplied for missing, but are never called unused',
   diagnoseInstance([{ junk: 1 }], { card: { entity: '[[entity]]' } }, [{ entity: null }]),
-  { missing: [], unused: ['junk'] },
+  { missing: [], unused: ['junk'], required: [] },
 );
 
 check(
   'without the supplement the same variable is missing',
   diagnoseInstance([{ junk: 1 }], { card: { entity: '[[entity]]' } }),
-  { missing: ['entity'], unused: ['junk'] },
+  { missing: ['entity'], unused: ['junk'], required: [] },
 );
 
 check(
@@ -354,7 +354,97 @@ check(
     },
     [{ label: null }],
   ),
-  { missing: [], unused: [] },
+  { missing: [], unused: [], required: [] },
+);
+
+/* ------------------------------------------------------- chained transforms */
+
+check('transforms chain left to right', applyTransform('slug|upper', 'Living Room'), 'LIVING_ROOM');
+
+check(
+  'the order of a chain matters, because slug lowercases',
+  applyTransform('upper|slug', 'Living Room'),
+  'living_room',
+);
+
+check('kebab is the dashed spelling of slug', applyTransform('kebab', 'Living Room'), 'living-room');
+
+check('a chain of one is still just that transform', applyTransform('title', 'living ROOM'), 'Living Room');
+
+check('no transform leaves the value as its text', applyTransform(undefined, 42), '42');
+
+/* --------------------------------------------------------- escaped placeholders */
+
+check(
+  'an escaped placeholder is not a variable the template uses',
+  usedVariables({ card: { name: '[[!literal]]', entity: '[[entity]]' } }),
+  ['entity'],
+);
+
+check(
+  'an escaped placeholder is never reported missing',
+  diagnoseInstance(undefined, { card: { name: '[[!literal]]' } }),
+  { missing: [], unused: [], required: [] },
+);
+
+/* ------------------------------------------------------ for_each index and count */
+
+check('a copy knows its position and how many there are', forEachVariables({ entity: 'light.hall' }, undefined, 0, 3), [
+  { entity: 'light.hall' },
+  { index: 1 },
+  { count: 3 },
+]);
+
+check(
+  'index counts from one, so a copy can number itself',
+  forEachVariables({}, undefined, 2, 3).find((entry) => 'index' in entry),
+  { index: 3 },
+);
+
+check('an item setting index itself wins over the automatic one', forEachVariables({ index: 'A' }, undefined, 0, 2), [
+  { index: 'A' },
+  { index: 1 },
+  { count: 2 },
+]);
+
+check(
+  'without a position nothing extra is added, so a plain call is unchanged',
+  forEachVariables({ entity: 'light.hall' }, undefined),
+  [{ entity: 'light.hall' }],
+);
+
+check(
+  'index and count count as supplied, so a template using them is not missing them',
+  forEachNames([{ entity: 'light.hall' }, { entity: 'light.kitchen' }]).sort(),
+  ['count', 'entity', 'index'],
+);
+
+check('an empty list supplies nothing at all', forEachNames(undefined), []);
+
+/* ------------------------------------------------------------ required variables */
+
+check(
+  'a required variable with a default contradicts itself',
+  diagnoseTemplate({
+    variables: [{ name: 'entity', required: true, default: 'sun.sun' }],
+    card: { entity: '[[entity]]' },
+  }).contradictory,
+  ['entity'],
+);
+
+check(
+  'a required variable with no default is fine',
+  diagnoseTemplate({ variables: [{ name: 'entity', required: true }], card: { entity: '[[entity]]' } }),
+  { unused: [], duplicated: [], contradictory: [] },
+);
+
+check(
+  'missing values are split by whether the template insists on them',
+  diagnoseInstance(undefined, {
+    variables: [{ name: 'entity', required: true }, { name: 'name' }],
+    card: { entity: '[[entity]]', name: '[[name]]' },
+  }),
+  { missing: ['entity', 'name'], unused: [], required: ['entity'] },
 );
 
 report();

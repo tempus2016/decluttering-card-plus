@@ -298,8 +298,8 @@ abstract class DeclutteringElement extends LitElement {
     if (getThingType(templateConfig) !== 'card') {
       throw new Error('for_each needs a template that defines a card');
     }
-    const cards = items.map((item) =>
-      deepReplace(forEachVariables(item, config.variables), templateConfig, templateConfig.card),
+    const cards = items.map((item, index) =>
+      deepReplace(forEachVariables(item, config.variables, index, items.length), templateConfig, templateConfig.card),
     );
 
     const columns = Number(config.columns) || 1;
@@ -668,6 +668,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         label: declaration.label ?? declaration.name,
         helper: declaration.description,
         selector: declaration.selector ?? { text: {} },
+        required: declaration.required === true,
       })),
       {
         name: 'extras',
@@ -709,13 +710,25 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     // The items' names count as supplied, so a variable only the items set is not
     // missing - but they are not the card's own, so they are never called unused.
     const repeated = forEachNames(this._config?.for_each).map((name) => ({ [name]: null }));
-    const { missing, unused } = diagnoseInstance(this._config?.variables, template, repeated);
+    const { missing, unused, required } = diagnoseInstance(this._config?.variables, template, repeated);
+    // A template can say which of its variables it cannot do without. Those are still not
+    // errors that block a save - the template may be edited next - but they are the ones
+    // worth reading first, so they are separated out and coloured accordingly.
+    const optional = missing.filter((name) => !required.includes(name));
     return html`
       ${
-        missing.length
+        required.length
+          ? html`<ha-alert alert-type="error">
+              ${required.length === 1 ? 'This template needs a variable' : 'This template needs variables'} you have not
+              set: ${required.join(', ')}.
+            </ha-alert>`
+          : html``
+      }
+      ${
+        optional.length
           ? html`<ha-alert alert-type="warning">
-              ${missing.length === 1 ? 'This template uses a variable' : 'This template uses variables'} with no value
-              and no default: ${missing.join(', ')}.
+              ${optional.length === 1 ? 'This template uses a variable' : 'This template uses variables'} with no value
+              and no default: ${optional.join(', ')}.
             </ha-alert>`
           : html``
       }
@@ -1073,7 +1086,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       return html``;
     }
 
-    const { unused, duplicated } = diagnoseTemplate(this._config);
+    const { unused, duplicated, contradictory } = diagnoseTemplate(this._config);
     return html`
       ${
         unused.length
@@ -1088,6 +1101,14 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           ? html`<ha-alert alert-type="warning">
               ${duplicated.length === 1 ? 'This variable has' : 'These variables have'} a default in both places; the
               declaration is the one that counts: ${duplicated.join(', ')}.
+            </ha-alert>`
+          : html``
+      }
+      ${
+        contradictory.length
+          ? html`<ha-alert alert-type="warning">
+              ${contradictory.length === 1 ? 'This variable is' : 'These variables are'} marked required but have a
+              default, so they can never be unset: ${contradictory.join(', ')}.
             </ha-alert>`
           : html``
       }

@@ -481,6 +481,7 @@ template's own description above them.*
 | description | string | **Optional** | Helper text shown under the control
 | selector | object | **Optional** | Any [Home Assistant selector](https://www.home-assistant.io/docs/blueprint/selectors/). Defaults to a plain text box
 | default | any | **Optional** | The value to use when a card does not set one
+| required | boolean | **Optional** | Whether the template is unusable without it. Marks the field required, and says so loudly when it is unset
 
 `description:` on the template itself is shown above the controls, so whoever uses the
 template can see what it is for.
@@ -490,9 +491,14 @@ then the `default:` list. Anything the template does not describe is still edita
 **Other variables** box below the controls, and a template that describes nothing is edited
 exactly as before. Declaring variables is entirely optional.
 
-The editors also point out the two mistakes that are easy to make and hard to see: a
-variable the template uses that has no value and no default, and a value set on a card that
-the template never uses. Both are warnings; neither stops you saving.
+The editors also point out the mistakes that are easy to make and hard to see: a variable
+the template uses that has no value and no default, and a value set on a card that the
+template never uses. A variable declared `required: true` is called out more loudly than
+the rest when a card leaves it unset — but it is still a warning. Nothing here stops you
+saving, because a template can always be edited after the cards that use it.
+
+`required: true` alongside a `default` contradicts itself, since a variable with a default
+can never be unset. The template editor says so.
 
 #### Turning a card you already have into a template
 
@@ -585,6 +591,18 @@ except the shed.
 vertically. The copies are handed to Home Assistant's own grid and vertical-stack cards, so
 they behave exactly like any other card in your layout.
 
+Every copy is also given `[[index]]`, which counts from one, and `[[count]]`, the number of
+copies — so a template can number itself without you writing the number into each item:
+
+```yaml
+card:
+  type: markdown
+  content: 'Room [[index]] of [[count]]'
+```
+
+An item that sets `index` or `count` itself wins, so a template that already uses those
+names for something else keeps working.
+
 `for_each` needs a template that defines a `card`. An empty list renders nothing rather than
 failing, so a list built from a helper can be empty without breaking the dashboard.
 
@@ -621,12 +639,33 @@ pass the entity id separately.
 | `upper` | Upper case | `JOHN'S BACK GARDEN`
 | `lower` | Lower case | `john's back garden`
 | `title` | Capitalises each word | `John's Back Garden`
+| `kebab` | Lower case, anything that is not a letter or digit becomes `-` | `john-s-back-garden`
+
+Transforms chain, left to right: `[[room|slug|upper]]` gives `JOHN_S_BACK_GARDEN`. Order
+matters, since `slug` lower-cases — `[[room|upper|slug]]` gives `john_s_back_garden`.
 
 The same variable can be used raw and transformed in the same template. A word after the
-bar that is not one of these four is not a transform, so nothing is substituted and the
-mistake is visible rather than silent. A transform shapes text, so it applies to scalar
-values only: a mapping or a list under a transform is likewise left unsubstituted, since
-slugging or uppercasing its JSON would only garble it.
+bar that is not one of these five is not a transform, so nothing is substituted and the
+mistake is visible rather than silent — that goes for a chain too, where one unknown word
+leaves the whole placeholder alone rather than applying half of it. A transform shapes
+text, so it applies to scalar values only: a mapping or a list under a transform is
+likewise left unsubstituted, since slugging or uppercasing its JSON would only garble it.
+
+#### Writing `[[` and meaning it
+
+A placeholder written `[[!name]]` is not a variable: it renders as the literal text
+`[[name]]`. That is the only way to put those brackets in a template — worth knowing if
+yours holds markdown, or Jinja that uses them.
+
+```yaml
+card:
+  type: markdown
+  content: 'Write [[!entity]] to use a variable.'
+```
+
+The bang is dropped only once every other substitution is done, so an escaped placeholder
+can never be turned back into a real one. The editors know about it too, and will not tell
+you that `[[!entity]]` is a variable you forgot to set.
 
 #### Nested variables
 

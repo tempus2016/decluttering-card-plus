@@ -243,4 +243,38 @@ check('a transform on a number still works, it is a scalar', deepReplace([{ n: 4
   a: 'x 42',
 });
 
+check('transforms chain, left to right', deepReplace([{ room: 'Living Room' }], {}, { a: '[[room|slug|upper]]' }), {
+  a: 'LIVING_ROOM',
+});
+
+check('kebab spells a slug with dashes', deepReplace([{ room: 'Living Room' }], {}, { a: 'x-[[room|kebab]]' }), {
+  a: 'x-living-room',
+});
+
+check(
+  'an unknown transform anywhere in a chain leaves the placeholder visible',
+  deepReplace([{ room: 'Hall' }], {}, { a: '[[room|slug|shout]]' }),
+  { a: '[[room|slug|shout]]' },
+);
+
+check(
+  'an escaped placeholder is written out literally, even when the variable exists',
+  deepReplace([{ room: 'Hall' }], {}, { a: '[[!room]]', b: '[[room]]' }),
+  { a: '[[room]]', b: 'Hall' },
+);
+
+check('an escape works when there are no variables at all', deepReplace(undefined, {}, { a: '[[!room]]' }), {
+  a: '[[room]]',
+});
+
+check('an escape keeps a transform suffix intact', deepReplace([{ room: 'Hall' }], {}, { a: '[[!room|slug]]' }), {
+  a: '[[room|slug]]',
+});
+
+check(
+  'an escape inside a variable value survives to the end',
+  deepReplace([{ room: 'Hall' }, { note: 'write [[!room]] for the name' }], {}, { a: '[[note]]' }),
+  { a: 'write [[room]] for the name' },
+);
+
 report();
