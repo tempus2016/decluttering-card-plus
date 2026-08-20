@@ -71,3 +71,84 @@ jobs:
             git status --porcelain --ignored=matching -- dist/
             exit 1
           fi
+
+  # Nothing else here runs semantic-release, so a dependency that quietly breaks note
+  # generation ships a release with an empty changelog while every check stays green.
+  # That is not hypothetical: conventional-changelog-conventionalcommits 10 rendered
+  # notes down to the bare version heading, exit code 0, and PR #42 was five-for-five.
+  release-notes:
+    name: Release notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # semantic-release finds the last release from the tags and walks every commit
+          # since it. A shallow clone has neither, so it invents a first release instead.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.x
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+
+      # Three things stand between a pull request and generated notes. semantic-release
+      # takes the branch name from env-ci, not from git, and on a pull_request event that
+      # is the merge ref — and a step-level env: block cannot correct it, because the
+      # runner re-injects its own GITHUB_* values over anything declared there, so the
+      # override goes through env(1). --no-ci is needed too, or it stops before
+      # generateNotes (semantic-release/index.js:59). Last, it insists on being able to
+      # push, and verifyAuth failing is fatal either way — an up-to-date branch rethrows
+      # as EGITNOPERMISSION (index.js:97).
+      #
+      # Rather than hand a write-scoped token to a job that checks out pull request code,
+      # git is pointed at a throwaway bare clone whose main is the base commit, which it
+      # is trivially allowed to push to. semantic-release still gets the real GitHub URL,
+      # because the notes embed it in every commit link and a file:// URL would leave the
+      # entries unlinked; insteadOf redirects git underneath it. Which commits the notes
+      # cover is decided by the release tags, so the stand-in remote costs no fidelity.
+      - name: Generate the notes a release would produce
+        shell: bash
+        run: |
+          origin_url=$(git remote get-url origin)
+
+          git checkout -B main
+          git clone --bare --quiet . /tmp/release-remote.git
+          git --git-dir=/tmp/release-remote.git update-ref refs/heads/main "$(git rev-parse 'HEAD^1')"
+          git config url."file:///tmp/release-remote.git".insteadOf "$origin_url"
+
+          env -u GITHUB_TOKEN -u GH_TOKEN \
+            GITHUB_EVENT_NAME=push GITHUB_REF=refs/heads/main RELEASE_NOTES_CHECK=1 \
+            npx semantic-release --dry-run --no-ci --branches main \
+              --repository-url "$origin_url" 2>&1 | tee /tmp/dry-run.log
+
+      # An empty changelog is the failure to catch, and it exits 0, so the notes have to
+      # be inspected rather than the status code. Every generated entry links to its
+      # commit, which makes those links the thing to count.
+      - name: Fail if the notes came back empty
+        shell: bash
+        run: |
+          log=/tmp/dry-run.log
+
+          if grep -q "no new version is released" "$log"; then
+            echo "No release would be cut from these commits, so there are no notes to check."
+            exit 0
+          fi
+
+          if ! grep -q "Release note for version" "$log"; then
+            echo "::error::semantic-release reported a release but printed no notes."
+            exit 1
+          fi
+
+          notes=$(sed -n '/Release note for version/,$p' "$log")
+          entries=$(printf '%s\n' "$notes" | grep -cE '/commit/[0-9a-f]{7,}' || true)
+
+          if [ "$entries" -eq 0 ]; then
+            echo "::error::The release notes contain no commit entries. The changelog would ship empty — check whether a conventional-changelog dependency moved."
+            printf '%s\n' "$notes"
+            exit 1
+          fi
+
+          echo "Release notes carry $entries commit entries."
