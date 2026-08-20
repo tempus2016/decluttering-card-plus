@@ -40,11 +40,13 @@ import {
   getDeclarations,
   mergeVariables,
   normaliseVariables,
+  POSITION_NAMES,
   variableName,
   variableValues,
   VariableDeclaration,
 } from './variables';
 import { columnsFor } from './layout';
+import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
 import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { VERSION } from './version';
 
@@ -80,6 +82,12 @@ const REPEAT_SCHEMA = [
     name: 'for_each',
     label: 'Repeat for each',
     helper: 'One copy of the template per item. Example: - entity: light.hall, name: Hall',
+    selector: { object: {} },
+  },
+  {
+    name: 'for_each_from',
+    label: 'Repeat for each thing Home Assistant knows about',
+    helper: 'One copy per entity or area, kept up to date. Example: domain: light, area: Kitchen',
     selector: { object: {} },
   },
   {
@@ -521,6 +529,10 @@ abstract class DeclutteringElement extends LitElement {
 
 class DeclutteringCard extends DeclutteringElement {
   private _pendingConfig?: DeclutteringCardConfig;
+  // A card repeating over the registry, kept so it can be worked out again when what is
+  // registered changes - a lamp added to the kitchen should appear without an edit.
+  private _fromRegistry?: { templateConfig: TemplateConfig; config: DeclutteringCardConfig };
+  private _registry?: unknown[];
 
   static getConfigElement(): HTMLElement {
     return document.createElement(CARD_EDITOR_TAG);
@@ -563,15 +575,56 @@ class DeclutteringCard extends DeclutteringElement {
   // over. An empty list is not an error - it is a list that happens to have nothing in it
   // today - so it simply renders nothing rather than failing the card.
   private _applyTemplate(templateConfig: TemplateConfig, config: DeclutteringCardConfig): void {
-    // A single mapping counts as a list of one, the same forgiveness `variables` gets.
+    this._fromRegistry = undefined;
+    this._registry = undefined;
+
+    // A single mapping counts as a list of one, the same forgiveness `variables` gets. A
+    // written-out list wins over a registry source: it is the more particular of the two,
+    // and having both silently pick one would be worse than having it say which.
     const items = forEachItems(config.for_each);
-    if (items) this._setForEach(templateConfig, config, items);
-    else this._setTemplateConfig(templateConfig, config.variables, config.style);
+    if (items) {
+      this._setForEach(templateConfig, config, items);
+      return;
+    }
+    if (isRegistrySource(config.for_each_from)) {
+      this._fromRegistry = { templateConfig, config };
+      // setConfig runs before hass is ever set, so the first resolution usually waits.
+      if (this._hass) this._resolveFromRegistry(this._hass);
+      return;
+    }
+    this._setTemplateConfig(templateConfig, config.variables, config.style);
+  }
+
+  /*
+   * The copies a registry source asks for. hass arrives on every state change, so the work
+   * is skipped unless the registry itself has moved - otherwise a dashboard of these would
+   * rebuild itself several times a second.
+   */
+  private _resolveFromRegistry(hass: HomeAssistant): void {
+    const source = this._fromRegistry;
+    if (!source) return;
+
+    const key = registryKey(hass);
+    if (sameRegistry(this._registry, key)) return;
+    this._registry = key;
+
+    try {
+      const items = resolveRegistryItems(hass, source.config.for_each_from);
+      this._setForEach(source.templateConfig, source.config, items);
+      this._error = undefined;
+    } catch (err) {
+      // Thrown from outside setConfig, where Home Assistant would catch it, so the card
+      // has to report it itself rather than leaving the old copies on screen.
+      this._error = (err as Error)?.message ?? String(err);
+    }
   }
 
   protected hassAvailable(hass: HomeAssistant): void {
     const config = this._pendingConfig;
-    if (!config) return;
+    if (!config) {
+      this._resolveFromRegistry(hass);
+      return;
+    }
     this._pendingConfig = undefined;
 
     const ll = getLovelaceConfig();
@@ -681,7 +734,10 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     // The same gate _setForEach applies, so the editor never offers a repeat the card
     // would refuse to render - except while a for_each is set, which must stay visible
     // whatever the template looks like, or it could never be removed from the form.
-    const repeatable = (!!template && getThingType(template) === 'card') || this._config.for_each !== undefined;
+    const repeatable =
+      (!!template && getThingType(template) === 'card') ||
+      this._config.for_each !== undefined ||
+      this._config.for_each_from !== undefined;
 
     const error: Record<string, string | string[]> = {};
     // Templates borrowed from another dashboard are still on their way, so do not accuse
@@ -780,6 +836,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     });
     if (extras.length) data.extras = extras;
     if (this._config?.for_each !== undefined) data.for_each = this._config.for_each;
+    if (this._config?.for_each_from !== undefined) data.for_each_from = this._config.for_each_from;
     if (this._config?.columns !== undefined) data.columns = this._config.columns;
     if (this._config?.min_column_width !== undefined) data.min_column_width = this._config.min_column_width;
     return data;
@@ -794,7 +851,15 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
     // The items' names count as supplied, so a variable only the items set is not
     // missing - but they are not the card's own, so they are never called unused.
-    const repeated = forEachNames(this._config?.for_each).map((name) => ({ [name]: null }));
+    // Both kinds of repeat supply names to every copy, and neither is the card's own to
+    // be called missing. A registry source supplies its set whether or not anything is
+    // registered yet, so it is read from the source rather than from what it resolved to.
+    const supplied = [
+      ...forEachNames(this._config?.for_each),
+      ...registryNames(this._config?.for_each_from),
+      ...(isRegistrySource(this._config?.for_each_from) ? POSITION_NAMES : []),
+    ];
+    const repeated = supplied.map((name) => ({ [name]: null }));
     const { missing, unused, required } = diagnoseInstance(this._config?.variables, template, repeated);
     // A template can say which of its variables it cannot do without. Those are still not
     // errors that block a save - the template may be edited next - but they are the ones
@@ -851,6 +916,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     if (variables.length) config.variables = variables;
     else delete config.variables;
     setOrDelete(config, 'for_each', data.for_each);
+    setOrDelete(config, 'for_each_from', data.for_each_from);
     setOrDelete(config, 'columns', data.columns);
     setOrDelete(config, 'min_column_width', data.min_column_width);
 
