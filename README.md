@@ -22,6 +22,8 @@
 
 This card is for [Lovelace](https://www.home-assistant.io/lovelace) on [Home Assistant](https://www.home-assistant.io/).
 
+Repository: <https://github.com/tempus2016/decluttering-card-plus>
+
 📖 **Full documentation is in the [wiki][wiki]** — a [quick start][wiki-quickstart], a page
 per content type, [variables][wiki-variables], [recipes][wiki-recipes] and
 [troubleshooting][wiki-troubleshooting]. This README is the short version.
@@ -33,6 +35,50 @@ We all use multiple times the same block of configuration across our lovelace co
 ![Four rooms built from one template](images/overview.png)
 
 *One template, four rooms — each instance passes only the entity and the name.*
+
+## Installation
+
+Requires Home Assistant 2024.7 or newer. Badge templates need 2024.8, since that is when
+Home Assistant made badges configurable.
+
+### Using HACS
+
+This card is not in the HACS default list, so add it as a custom repository first.
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tempus2016&repository=decluttering-card-plus&category=lovelace)
+
+To do it by hand, open HACS, then the three-dot menu at the top right, then
+**Custom repositories**, and paste this URL in full:
+
+```text
+https://github.com/tempus2016/decluttering-card-plus
+```
+
+Set the type to **Dashboard** and click **Add**. The card then appears in HACS as
+*Decluttering Card Plus*; download it there and reload your browser.
+
+### Manually
+
+#### Step 1
+
+Save [decluttering-card-plus.js][latest-release] to `<config directory>/www/decluttering-card-plus.js` on your Home Assistant instance.
+
+**Example:**
+
+```bash
+wget https://raw.githubusercontent.com/tempus2016/decluttering-card-plus/main/dist/decluttering-card-plus.js
+mv decluttering-card-plus.js /config/www/
+```
+
+#### Step 2
+
+Link `decluttering-card-plus` inside your `ui-lovelace.yaml` or Raw Editor in the UI Editor
+
+```yaml
+resources:
+  - url: /local/decluttering-card-plus.js
+    type: module
+```
 
 ## Credits
 
@@ -776,38 +822,6 @@ card's own shadow root, so those work normally.
 
 See [Styling][wiki-styling] in the wiki for the full explanation and a table of what does
 and does not reach the card.
-
-## Installation
-
-Requires Home Assistant 2024.7 or newer. Badge templates need 2024.8, since that is when
-Home Assistant made badges configurable.
-
-### Using HACS
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tempus2016&repository=decluttering-card-plus&category=lovelace)
-
-### Manually
-
-#### Step 1
-
-Save [decluttering-card-plus.js][latest-release] to `<config directory>/www/decluttering-card-plus.js` on your Home Assistant instance.
-
-**Example:**
-
-```bash
-wget https://raw.githubusercontent.com/tempus2016/decluttering-card-plus/main/dist/decluttering-card-plus.js
-mv decluttering-card-plus.js /config/www/
-```
-
-#### Step 2
-
-Link `decluttering-card-plus` inside your `ui-lovelace.yaml` or Raw Editor in the UI Editor
-
-```yaml
-resources:
-  - url: /local/decluttering-card-plus.js
-    type: module
-```
 
 ## Troubleshooting
 
