@@ -4,6 +4,8 @@
  * Run with `npm test`.
  */
 const {
+  collectAllTemplates,
+  collectDefaults,
   collectTemplates,
   getTemplateSources,
   isTemplateCardType,
@@ -450,4 +452,61 @@ check('a change reported with no path at all is the original dashboard', dashboa
   'lovelace',
 ]);
 
-report();
+// decluttering_defaults - values every template on the dashboard falls back on.
+
+check('a dashboard with no defaults offers none', collectDefaults({ views: [] }), []);
+check(
+  'defaults are read as a flat list whichever way they are written',
+  collectDefaults({ decluttering_defaults: { colour: 'amber', size: 32 } }),
+  [{ colour: 'amber' }, { size: 32 }],
+);
+check(
+  'and a list is read the same way',
+  collectDefaults({ decluttering_defaults: [{ colour: 'amber' }, { size: 32 }] }),
+  [{ colour: 'amber' }, { size: 32 }],
+);
+
+const withShared = collectTemplates({
+  decluttering_defaults: { colour: 'amber' },
+  decluttering_templates: {
+    plain: { card: { type: 'tile' } },
+    owned: { default: [{ colour: 'blue' }], card: { type: 'tile' } },
+  },
+});
+
+check('a template with no defaults of its own picks up the shared ones', withShared.plain.default, [
+  { colour: 'amber' },
+]);
+check('and a template that sets it itself keeps its own first', withShared.owned.default, [
+  { colour: 'blue' },
+  { colour: 'amber' },
+]);
+
+const untouched = { plain: { card: { type: 'tile' } } };
+collectTemplates({ decluttering_defaults: { colour: 'amber' }, decluttering_templates: untouched });
+check('the dashboard config itself is not changed', untouched.plain.default, undefined);
+
+check(
+  'no defaults means the templates come back exactly as written',
+  collectTemplates({ decluttering_templates: { plain: { card: { type: 'tile' } } } }).plain.default,
+  undefined,
+);
+
+// Borrowing: the borrower's shared values come first, the lender's stay underneath.
+const lender = {
+  decluttering_defaults: { colour: 'green', shape: 'lender-shape' },
+  decluttering_templates: { shared_badge: { default: [{ own: 'template-own' }], card: { type: 'markdown' } } },
+};
+const borrower = { decluttering_defaults: { colour: 'amber' }, decluttering_templates_from: ['lend'], views: [] };
+
+const hass = { callWS: () => Promise.resolve(lender) };
+
+collectAllTemplates(hass, borrower).then((all) => {
+  const badge = all.shared_badge;
+  check(
+    'a borrowed template keeps its own default first, then the borrower, then the lender',
+    badge.default,
+    [{ own: 'template-own' }, { colour: 'amber' }, { colour: 'green' }, { shape: 'lender-shape' }],
+  );
+  report();
+});

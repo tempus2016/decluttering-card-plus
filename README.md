@@ -212,6 +212,35 @@ announced by Home Assistant, so the copy of it is dropped and the next card to a
 template fetches the new one — a change to a shared template reaches the dashboards
 borrowing it when they next render, without a browser refresh.
 
+### Values every template falls back on
+
+A dashboard can set values its templates fall back on, so a colour or a size shared by a
+library of them is written once instead of repeated in each template's `default:` list:
+
+```yaml
+decluttering_defaults:
+  colour: amber
+  icon_size: 32px
+decluttering_templates:
+  room_tile:
+    card:
+      type: tile
+      entity: '[[entity]]'
+      icon_color: '[[colour]]'
+views:
+```
+
+They sit at the bottom of the order, so nothing you already have changes: a value on the
+card wins, then a declaration's `default`, then the template's `default:` list, and these
+last. A template that says `colour` for itself keeps saying it.
+
+In YAML mode this is what a yaml anchor already does. In storage mode there are no anchors,
+which is the whole reason for it.
+
+A borrowed template gets both dashboards' values — yours first, the lender's underneath —
+so a template goes on working where it lives, and borrowing a library never means giving up
+what you set here.
+
 ### Seeing what a card builds
 
 A card's visual editor has a **Result** panel at the bottom, showing the card that is

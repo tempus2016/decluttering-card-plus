@@ -1,5 +1,6 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
-import { DeclutteringTemplateConfig, TemplateConfig } from './types';
+import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
+import { normaliseVariables } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -8,6 +9,11 @@ export const TEMPLATE_TYPE = 'custom:decluttering-template-plus';
 
 // The key a dashboard uses to borrow templates from other dashboards.
 const SOURCES_KEY = 'decluttering_templates_from';
+
+// Values every template on the dashboard falls back on, so that a colour or a size shared
+// by a library of templates is written once rather than repeated in each of their
+// `default:` lists. yaml anchors do this in yaml mode, and cannot in storage mode.
+const DEFAULTS_KEY = 'decluttering_defaults';
 
 // The original dashboard has no url_path of its own; the websocket API wants null for it.
 const DEFAULT_DASHBOARD_PATHS = ['lovelace', 'default', ''];
@@ -39,8 +45,28 @@ function collectFromNode(node: any, templates: Record<string, TemplateConfig>): 
   for (const value of Object.values(node)) collectFromNode(value, templates);
 }
 
-/** Every template a single dashboard configuration defines, by name. */
-export function collectTemplates(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
+/** The values this dashboard offers every template, as a flat list of one name each. */
+export function collectDefaults(ll: LovelaceConfig | null | undefined): VariablesConfig[] {
+  return normaliseVariables((ll as any)?.[DEFAULTS_KEY]);
+}
+
+/*
+ * A template's own `default:` list with the dashboard's shared values added underneath it,
+ * which is where they belong: resolution takes the first definition of a name it finds, so
+ * anything the template says for itself is reached first and a shared value is only ever
+ * the fallback.
+ *
+ * The template is copied rather than added to. It is part of the dashboard's configuration,
+ * which is handed out to whoever asks for it, and quietly growing a `default:` list on it
+ * would be a change to the dashboard that nobody made.
+ */
+function withDefaults(template: TemplateConfig, shared: VariablesConfig[]): TemplateConfig {
+  if (!shared.length) return template;
+  return { ...template, default: [...normaliseVariables(template.default), ...shared] };
+}
+
+/** Every template a single dashboard configuration defines, by name, as written. */
+function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
   const templates: Record<string, TemplateConfig> = {};
   if (!ll) return templates;
 
@@ -50,7 +76,22 @@ export function collectTemplates(ll: LovelaceConfig | null | undefined): Record<
   // The whole view is walked, so wherever a template card has been put - cards, sections,
   // nested inside either - it is found.
   if (ll.views) collectFromNode(ll.views, templates);
+
   return templates;
+}
+
+/**
+ * The same, with the dashboard's own shared values put underneath each template - which is
+ * what a card on this dashboard is rendered from.
+ */
+export function collectTemplates(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
+  const templates = collectRawTemplates(ll);
+  const shared = collectDefaults(ll);
+  if (!shared.length) return templates;
+
+  const out: Record<string, TemplateConfig> = {};
+  for (const [name, template] of Object.entries(templates)) out[name] = withDefaults(template, shared);
+  return out;
 }
 
 /** The dashboards this one borrows templates from, in the order they were listed. */
@@ -121,8 +162,21 @@ export async function collectAllTemplates(
   if (!hass || !sources.length) return local;
 
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
+  const here = collectDefaults(ll);
   const borrowed: Record<string, TemplateConfig> = {};
-  for (const config of configs) Object.assign(borrowed, collectTemplates(config));
+  for (const config of configs) {
+    /*
+     * A borrowed template is read as written and then given both sets of shared values,
+     * this dashboard's first: it goes on working where it lives, because the lender's are
+     * still there underneath, and borrowing a library never means giving up what you set
+     * here. Reading it raw is what puts them in that order - collectTemplates would have
+     * folded the lender's in already, ahead of ours.
+     */
+    const shared = [...here, ...collectDefaults(config)];
+    for (const [name, template] of Object.entries(collectRawTemplates(config))) {
+      borrowed[name] = withDefaults(template, shared);
+    }
+  }
   return { ...borrowed, ...local };
 }
 
