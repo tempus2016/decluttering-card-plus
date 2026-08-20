@@ -212,7 +212,7 @@ announced by Home Assistant, so the copy of it is dropped and the next card to a
 template fetches the new one — a change to a shared template reaches the dashboards
 borrowing it when they next render, without a browser refresh.
 
-### Values every template falls back on
+### Values every template falls back on (v1.1.0+)
 
 A dashboard can set values its templates fall back on, so a colour or a size shared by a
 library of them is written once instead of repeated in each template's `default:` list:
@@ -241,7 +241,7 @@ A borrowed template gets both dashboards' values — yours first, the lender's u
 so a template goes on working where it lives, and borrowing a library never means giving up
 what you set here.
 
-### Seeing what a card builds
+### Seeing what a card builds (v1.1.0+)
 
 A card's visual editor has a **Result** panel at the bottom, showing the card that is
 actually built once every variable has been put in.
@@ -253,7 +253,7 @@ reading both and doing the substitution in your head. Anything still written as
 
 It is read-only, and a card repeating over a list shows the first copy.
 
-### Seeing what uses a template
+### Seeing what uses a template (v1.1.0+)
 
 A template card's visual editor has a **Where used** tab, listing every view on the
 dashboard that uses the template and how many times, plus any other template that calls it.
@@ -266,7 +266,7 @@ Each view in the list links to itself, so you can go and look at what a change w
 
 Cards on other dashboards are not counted, even ones that borrow this dashboard's templates.
 
-### Renaming a template
+### Renaming a template (v1.1.0+)
 
 Renaming is the one edit a template card cannot make on its own: every card naming the old
 template would break the moment the new name was saved. So it is done from the **Where
@@ -280,7 +280,7 @@ Cards on other dashboards are not rewritten, even ones that borrow this dashboar
 templates, and a dashboard written in YAML cannot be renamed this way because it cannot be
 saved from the interface at all.
 
-### Sharing templates with other people
+### Sharing templates with other people (v1.1.0+)
 
 A template card's visual editor has a **Share** tab. Its top half writes the template out as
 YAML for you to send to someone else; its bottom half takes YAML somebody sent you and puts it
@@ -629,7 +629,7 @@ above and is one thing to fill in, not two. Values that are already variables ar
 alone, as are variables the template already declares, so pressing it again after adding a
 card is safe. Because it rewrites your card, it asks twice before doing anything.
 
-#### Repeating a template
+#### Repeating a template (v1.1.0+)
 
 A card can render its template once per item in a list, which saves pasting the same
 instance block out four times when only the entity changes.
@@ -687,7 +687,7 @@ names for something else keeps working.
 `for_each` needs a template that defines a `card`. An empty list renders nothing rather than
 failing, so a list built from a helper can be empty without breaking the dashboard.
 
-#### Repeating over what Home Assistant knows
+#### Repeating over what Home Assistant knows (v1.1.0+)
 
 A written-out list stops being true the moment you add a lamp. Home Assistant already knows
 what exists, so `for_each_from` asks it instead, and the card keeps itself up to date:
@@ -760,7 +760,7 @@ If a card sets both `for_each` and `for_each_from`, the written-out list wins.
 | floor | string or list | **Optional** | Narrows to these floors, by name or by id
 | label | string or list | **Optional** | Narrows to things carrying these labels, by name or by id
 
-#### Asking for a variable in a different shape
+#### Asking for a variable in a different shape (v1.1.0+)
 
 A placeholder can ask for its value written differently, which lets one variable serve both
 a name and the entity id built from it:
@@ -808,7 +808,7 @@ substituting. A transform only shapes text, so it needs a scalar value...
 
 It is said once per card however many times the placeholder appears.
 
-#### Asking Home Assistant for a value
+#### Asking Home Assistant for a value (v1.1.0+)
 
 A placeholder can also ask Home Assistant about the entity it names, which is what lets a
 template default a name to the entity's own name rather than making every card pass one:
@@ -853,7 +853,7 @@ entity id and asks Home Assistant, so it needs one that exists and carries what 
 asked for.
 ```
 
-#### A variable the template can do without
+#### A variable the template can do without (v1.1.0+)
 
 A placeholder written `[[name?]]` is one the card can manage without. When nothing gives it
 a value, the option it stands for is taken out of the card altogether rather than left
@@ -876,7 +876,7 @@ nothing is said about it in the console.
 
 The marker goes at the end, after any transform: `[[room|slug?]]`.
 
-#### Leaving out a copy that has nothing to show
+#### Leaving out a copy that has nothing to show (v1.1.0+)
 
 `for_each` skips an item that leaves a `required: true` variable empty, which is what lets
 one template serve a room with four lights and a room with one:
@@ -906,7 +906,7 @@ for_each:
 That renders two cards, not four. A template that requires nothing renders every item as
 before.
 
-#### Writing `[[` and meaning it
+#### Writing `[[` and meaning it (v1.1.0+)
 
 A placeholder written `[[!name]]` is not a variable: it renders as the literal text
 `[[name]]`. That is the only way to put those brackets in a template — worth knowing if
@@ -1022,7 +1022,7 @@ cards:
 | variables | list | **Optional** | List of variables and their values to replace in the template content
 | style | string | **Optional** | CSS styles to inject into the card. Supports variable replacement.
 
-### When a card comes out spread across the row
+### When a card comes out spread across the row (v1.1.0+)
 
 A card that sizes itself — a `custom:button-card` given a width, say — is narrower than the
 share of a row this card is handed, and sits at the left of it. Three of them in a
