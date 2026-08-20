@@ -17,7 +17,6 @@ documentation:
   - changed-files:
       - any-glob-to-any-file:
           - README.md
-          - CHANGELOG.md
           - images/**
 
 ci:
