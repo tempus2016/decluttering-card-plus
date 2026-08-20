@@ -367,6 +367,93 @@ deepReplace([{ room: 'Hall' }], {}, { a: '[[room]]', b: '[[missing]]' });
 check('an unset variable is still caught alongside one that resolved', warnings.length, 1);
 check('naming only the unset one', /\[\[missing\]\]/.test(warnings[0]) && !/\[\[room\]\]/.test(warnings[0]), true);
 
+// Placeholders that ask Home Assistant for a value, through the whole substitution rather
+// than a transform on its own.
+const hass = {
+  states: { 'light.hall': { attributes: { friendly_name: 'Hall Lamp', brightness: 128 } } },
+  entities: { 'light.hall': { area_id: 'hall', device_id: 'dev1' } },
+  devices: { dev1: { name: 'Lamp Module' } },
+  areas: { hall: { name: 'Hallway' } },
+};
+
+console.warn = (m) => warnings.push(m);
+
+warnings.length = 0;
+check(
+  'a name can default to the entity it is given',
+  deepReplace(
+    [{ entity: 'light.hall' }],
+    {},
+    { type: 'tile', entity: '[[entity]]', name: '[[entity|friendly_name]]' },
+    undefined,
+    hass,
+  ),
+  { type: 'tile', entity: 'light.hall', name: 'Hall Lamp' },
+);
+check('and says nothing while doing it', warnings.length, 0);
+
+check(
+  'the area comes through too',
+  deepReplace([{ entity: 'light.hall' }], {}, { a: '[[entity|area]]', b: '[[entity|device]]' }, undefined, hass),
+  { a: 'Hallway', b: 'Lamp Module' },
+);
+
+check(
+  'an attribute comes back as a number when it is one',
+  deepReplace([{ entity: 'light.hall' }], {}, { a: '[[entity|attr:brightness]]' }, undefined, hass),
+  { a: '128' },
+);
+
+check(
+  'a resolver works inside a longer string',
+  deepReplace([{ entity: 'light.hall' }], {}, { a: 'The [[entity|friendly_name]] is on' }, undefined, hass),
+  { a: 'The Hall Lamp is on' },
+);
+
+check(
+  'a resolver and a transform chain together',
+  deepReplace([{ entity: 'light.hall' }], {}, { a: '[[entity|area|slug]]' }, undefined, hass),
+  { a: 'hallway' },
+);
+
+warnings.length = 0;
+check(
+  'an entity Home Assistant does not have leaves the placeholder alone',
+  deepReplace([{ entity: 'light.nope' }], {}, { a: '[[entity|friendly_name]]' }, undefined, hass),
+  { a: '[[entity|friendly_name]]' },
+);
+check('and warns about it', warnings.length, 1);
+check('saying it asked Home Assistant', /Home Assistant/.test(warnings[0]), true);
+
+warnings.length = 0;
+check(
+  'without hass the placeholder is left as written',
+  deepReplace([{ entity: 'light.hall' }], {}, { a: '[[entity|friendly_name]]' }),
+  { a: '[[entity|friendly_name]]' },
+);
+check('and warns once', warnings.length, 1);
+
+warnings.length = 0;
+check(
+  'an escaped resolver is still just text',
+  deepReplace([{ entity: 'light.hall' }], {}, { a: '[[!entity|friendly_name]]' }, undefined, hass),
+  { a: '[[entity|friendly_name]]' },
+);
+check('and is silent', warnings.length, 0);
+
+check(
+  'a resolver reads a default the same as a passed value',
+  deepReplace(undefined, { default: [{ entity: 'light.hall' }] }, { a: '[[entity|friendly_name]]' }, undefined, hass),
+  { a: 'Hall Lamp' },
+);
+
+warnings.length = 0;
+check(
+  'an unknown word after the bar is still not a resolver',
+  deepReplace([{ entity: 'light.hall' }], {}, { a: '[[entity|friendly_nam]]' }, undefined, hass),
+  { a: '[[entity|friendly_nam]]' },
+);
+
 console.warn = realWarn;
 
 report();

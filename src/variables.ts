@@ -67,17 +67,73 @@ export const TRANSFORMS: Record<string, (value: string) => string> = {
 const TRANSFORM_NAMES = Object.keys(TRANSFORMS).join('|');
 
 /*
+ * Some of what a template wants is not in the card's config at all - it is in Home
+ * Assistant. Wanting a tile's name to default to the entity's own name is the single
+ * most asked-for thing this card does not do, and it does not need a template engine:
+ * it is the same "give me this value in a different shape" the transforms already are,
+ * with the shape coming from the registry.
+ *
+ * Deliberately absent: the entity's state. Substitution builds the card's config once,
+ * so resolving state here would rebuild the whole card on every state change. What is
+ * here comes from the registry and changes about as often as the dashboard does.
+ */
+export const RESOLVERS: Record<string, (entityId: string, hass: any) => string | undefined> = {
+  friendly_name: (entityId, hass) => {
+    const entity = hass?.entities?.[entityId];
+    return hass?.states?.[entityId]?.attributes?.friendly_name ?? entity?.name ?? entity?.original_name;
+  },
+  area: (entityId, hass) => {
+    const entity = hass?.entities?.[entityId];
+    const areaId = entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
+    return areaId ? hass?.areas?.[areaId]?.name : undefined;
+  },
+  device: (entityId, hass) => {
+    const entity = hass?.entities?.[entityId];
+    const device = hass?.devices?.[entity?.device_id];
+    return device?.name_by_user ?? device?.name;
+  },
+};
+
+/** `attr:brightness` asks for one named attribute of the entity's current state. */
+const ATTRIBUTE_PREFIX = 'attr:';
+
+const ATTRIBUTE_STEP = `${ATTRIBUTE_PREFIX}[a-zA-Z0-9_]+`;
+
+const RESOLVER_NAMES = `${Object.keys(RESOLVERS).join('|')}|${ATTRIBUTE_STEP}`;
+
+/** Whether a step of a chain asks Home Assistant for something rather than shaping text. */
+export function isResolver(step: string): boolean {
+  return step in RESOLVERS || step.startsWith(ATTRIBUTE_PREFIX);
+}
+
+/**
+ * One resolver applied, or undefined when Home Assistant has nothing to give - an entity
+ * that does not exist, an attribute it does not carry, or no area on it. Undefined means
+ * the placeholder is left alone rather than being filled with a guess.
+ */
+function resolve(step: string, entityId: string, hass: any): string | undefined {
+  if (step.startsWith(ATTRIBUTE_PREFIX)) {
+    const attribute = hass?.states?.[entityId]?.attributes?.[step.slice(ATTRIBUTE_PREFIX.length)];
+    return attribute === undefined || attribute === null ? undefined : String(attribute);
+  }
+  const found = RESOLVERS[step]?.(entityId, hass);
+  return found === undefined || found === null ? undefined : String(found);
+}
+
+/*
  * Transforms chain, so `[[room|slug|upper]]` is the slug of the room shouted. The chain is
  * one alternation of known names repeated, which keeps the set closed: a chain containing
  * one word that is not a transform matches nothing, so the placeholder stays visible
  * rather than being half-applied.
  */
-const TRANSFORM_CHAIN = `(?:${TRANSFORM_NAMES})(?:\\|(?:${TRANSFORM_NAMES}))*`;
+const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES})`;
+
+const TRANSFORM_CHAIN = `${CHAIN_STEP}(?:\\|${CHAIN_STEP})*`;
 
 /** Matches the optional `|transform` chain on a placeholder, capturing the whole chain. */
 export const TRANSFORM_SUFFIX = `(?:\\|(${TRANSFORM_CHAIN}))?`;
 
-const TRANSFORM_TAIL = new RegExp(`(?:\\|(?:${TRANSFORM_NAMES}))+$`);
+const TRANSFORM_TAIL = new RegExp(`(?:\\|${CHAIN_STEP})+$`);
 
 /**
  * The value a placeholder asks for, in the shape it asks for it, with each transform of
@@ -85,9 +141,17 @@ const TRANSFORM_TAIL = new RegExp(`(?:\\|(?:${TRANSFORM_NAMES}))+$`);
  * transform: substitution leaves a transformed mapping or list visible rather than
  * garbling its JSON through a text transform.
  */
-export function applyTransform(transform: string | undefined, value: unknown): string {
+export function applyTransform(transform: string | undefined, value: unknown, hass?: any): string | undefined {
   let text = String(value);
   for (const name of transform ? transform.split('|') : []) {
+    if (isResolver(name)) {
+      // A resolver reads the value as an entity id, so it has to run before anything has
+      // reshaped it - `[[entity|friendly_name|slug]]` resolves, then slugs.
+      const found = resolve(name, text, hass);
+      if (found === undefined) return undefined;
+      text = found;
+      continue;
+    }
     const fn = TRANSFORMS[name];
     // The grammar only ever matches known names, so this is belt and braces.
     if (!fn) return String(value);
@@ -234,6 +298,23 @@ function reachable(template: TemplateConfig | undefined, values: Record<string, 
     if (name in values) queue.push(...placeholdersIn(values[name]));
   }
   return used;
+}
+
+/**
+ * Whether anything in the template asks Home Assistant for a value. Worth knowing because
+ * those answers come from the registry, which can arrive after the card has first
+ * rendered - a template that uses one has to be built again when it does.
+ */
+export function usesResolver(template: TemplateConfig | undefined): boolean {
+  const json = JSON.stringify(contentOf(template));
+  if (typeof json !== 'string') return false;
+  const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
+  let match = pattern.exec(json);
+  while (match !== null) {
+    if (!match[1].startsWith(ESCAPE) && match[1].split('|').slice(1).some(isResolver)) return true;
+    match = pattern.exec(json);
+  }
+  return false;
 }
 
 /** Every variable the template itself uses, before any instance passes anything in. */

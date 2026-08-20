@@ -431,6 +431,11 @@ on its line, enclose it in single quotes: `'[[variable_name]]'`.
 You can also define default values for your variables in the `default` object. The visual editor uses the
 provided default values to render the preview.
 
+A variable with no value and no default is written onto the card exactly as it appears, so
+you see `[[name]]` on the dashboard. The editors point this out while you are editing, and
+the card says so in the browser console when it renders, naming the template and the
+variable.
+
 **Example:**
 
 ```yaml
@@ -761,6 +766,51 @@ substituting. A transform only shapes text, so it needs a scalar value...
 ```
 
 It is said once per card however many times the placeholder appears.
+
+#### Asking Home Assistant for a value
+
+A placeholder can also ask Home Assistant about the entity it names, which is what lets a
+template default a name to the entity's own name rather than making every card pass one:
+
+```yaml
+type: custom:decluttering-template-plus
+template: room_tile
+card:
+  type: tile
+  entity: '[[entity]]'
+  name: '[[entity|friendly_name]]'
+default:
+  - entity: light.hall
+```
+
+| Asks for | Gives | Read from
+| -------- | ----- | ---------
+| `friendly_name` | What the entity is called | Its `friendly_name`, then the name it was given, then its original name
+| `area` | The name of the area it is in | Its own area, or its device's
+| `device` | The name of its device | The name you gave the device, then the device's own
+| `attr:<name>` | One named attribute | The entity's current attributes
+
+These chain with the transforms above, and run in the order they are written — so
+`[[entity|friendly_name|slug]]` is the entity's name slugged, while `[[entity|slug|friendly_name]]`
+would slug the entity id first and then look for an entity by that name. The value a
+resolver reads is an entity id, so it has to come first.
+
+**The entity's state is deliberately not here.** A card's configuration is built once, so
+resolving state would mean rebuilding the whole card every time anything changed. What is
+here comes from the registry, which changes about as often as the dashboard does, and a
+template that uses it is rebuilt when it does — so a name that was not known yet when the
+page first painted still turns up.
+
+When Home Assistant has nothing to give — an entity that does not exist, an attribute it
+does not carry, no area on it — the placeholder is left on the card, and the console says
+which and why:
+
+```text
+decluttering-card-plus: left [[entity|area]] (nothing in Home Assistant for
+"light.hall") in the card rather than substituting. A resolver reads its value as an
+entity id and asks Home Assistant, so it needs one that exists and carries what was
+asked for.
+```
 
 #### Writing `[[` and meaning it
 

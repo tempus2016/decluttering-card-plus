@@ -11,6 +11,10 @@ import {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+// How a refusal reads when Home Assistant had nothing to give, as opposed to when a
+// transform was handed something it cannot shape.
+const NOTHING_FOR = 'nothing in Home Assistant for';
+
 // A variable's value can itself contain placeholders, so substitution runs repeatedly
 // until nothing changes. The cap only matters for a variable that refers to itself,
 // which would otherwise never settle.
@@ -54,7 +58,12 @@ function kindOf(value: unknown): string {
   return Array.isArray(value) ? 'a list' : 'a mapping';
 }
 
-function substitutePass(jsonConfig: string, variableArray: VariablesConfig[], refused: Map<string, string>): string {
+function substitutePass(
+  jsonConfig: string,
+  variableArray: VariablesConfig[],
+  refused: Map<string, string>,
+  hass?: any,
+): string {
   let json = jsonConfig;
   variableArray.forEach((variable) => {
     const key = escapeForRegExp(Object.keys(variable)[0]);
@@ -71,22 +80,33 @@ function substitutePass(jsonConfig: string, variableArray: VariablesConfig[], re
     // A placeholder left visible is the deliberate signal that something is wrong, but on
     // its own it does not say what - so each refusal is noted, to be reported once at the
     // end rather than on every pass over the same text.
-    const refuse = (match: string, transform: string): string => {
-      refused.set(`${Object.keys(variable)[0]}|${transform}`, kindOf(value));
+    const refuse = (match: string, transform: string, why?: string): string => {
+      refused.set(`${Object.keys(variable)[0]}|${transform}`, why ?? kindOf(value));
       return match;
+    };
+
+    /*
+     * A chain can ask Home Assistant for something it does not have - an entity that is
+     * not there, an attribute it does not carry - and there is no sensible value to put
+     * in its place, so the placeholder stays visible and says why, exactly as a transform
+     * refusing a mapping does.
+     */
+    const shaped = (match: string, transform: string, wrap: (text: string) => string): string => {
+      const text = applyTransform(transform, value, hass);
+      return text === undefined ? refuse(match, transform, `${NOTHING_FOR} "${value}"`) : wrap(text);
     };
 
     json = json.replace(wholeValue, (match: string, transform?: string) =>
       transform
         ? transformable
-          ? JSON.stringify(applyTransform(transform, value))
+          ? shaped(match, transform, (text) => JSON.stringify(text))
           : refuse(match, transform)
         : asWholeValue(value, match),
     );
     json = json.replace(withinString, (match: string, transform?: string) =>
       transform
         ? transformable
-          ? escapeForJsonString(applyTransform(transform, value))
+          ? shaped(match, transform, escapeForJsonString)
           : refuse(match, transform)
         : asPartOfString(value),
     );
@@ -117,6 +137,7 @@ export default (
   templateConfig: TemplateConfig,
   content: any,
   templateName?: string,
+  hass?: any,
 ): any => {
   if (content === undefined) return content;
   const variableArray = resolveVariables(variables, templateConfig);
@@ -129,7 +150,7 @@ export default (
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
       const before = jsonConfig;
-      jsonConfig = substitutePass(jsonConfig, variableArray, refused);
+      jsonConfig = substitutePass(jsonConfig, variableArray, refused, hass);
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
@@ -143,11 +164,23 @@ export default (
 
     if (refused.size) {
       const each = [...refused].map(([placeholder, kind]) => `[[${placeholder}]] (${kind})`);
-      console.warn(
-        `decluttering-card-plus: left ${each.join(', ')} in the card rather than substituting. ` +
-          'A transform only shapes text, so it needs a scalar value - applying one to a mapping ' +
-          'or a list would garble its JSON. Give the variable a scalar value, or drop the transform.',
-      );
+      // The two ways a chain gives up read differently, so say whichever applies rather
+      // than a sentence that only half fits.
+      const missing = [...refused.values()].some((kind) => kind.startsWith(NOTHING_FOR));
+      const shaping = [...refused.values()].some((kind) => !kind.startsWith(NOTHING_FOR));
+      const why = [
+        shaping
+          ? 'A transform only shapes text, so it needs a scalar value - applying one to a mapping ' +
+            'or a list would garble its JSON. Give the variable a scalar value, or drop the transform.'
+          : '',
+        missing
+          ? 'A resolver reads its value as an entity id and asks Home Assistant, so it needs one ' +
+            'that exists and carries what was asked for.'
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      console.warn(`decluttering-card-plus: left ${each.join(', ')} in the card rather than substituting. ${why}`);
     }
   }
 

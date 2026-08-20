@@ -5,6 +5,8 @@
  */
 const {
   applyTransform,
+  isResolver,
+  usesResolver,
   getDeclarations,
   usedVariables,
   resolveVariables,
@@ -445,6 +447,79 @@ check(
     card: { entity: '[[entity]]', name: '[[name]]' },
   }),
   { missing: ['entity', 'name'], unused: [], required: ['entity'] },
+);
+
+// Values that come from Home Assistant rather than from the card's own config. A small
+// house: a lamp with a friendly name, on a device, in an area.
+const houseHass = {
+  states: {
+    'light.hall': { attributes: { friendly_name: "John's Hall Lamp", brightness: 128, icon: 'mdi:lamp' } },
+    'light.bare': { attributes: {} },
+  },
+  entities: {
+    'light.hall': { area_id: 'hall', device_id: 'dev1', name: null, original_name: 'Hall' },
+    'light.bare': { device_id: 'dev2' },
+  },
+  devices: { dev1: { name: 'Lamp Module', name_by_user: 'Hall Lamp Module' }, dev2: { area_id: 'hall' } },
+  areas: { hall: { name: 'Hallway' } },
+};
+
+check(
+  'friendly_name reads the entity name',
+  applyTransform('friendly_name', 'light.hall', houseHass),
+  "John's Hall Lamp",
+);
+check('area reads the area the entity is in', applyTransform('area', 'light.hall', houseHass), 'Hallway');
+check('area falls back to the device area', applyTransform('area', 'light.bare', houseHass), 'Hallway');
+check(
+  'device prefers the name the user gave it',
+  applyTransform('device', 'light.hall', houseHass),
+  'Hall Lamp Module',
+);
+check('attr reads one named attribute', applyTransform('attr:brightness', 'light.hall', houseHass), '128');
+check('attr works for a text attribute too', applyTransform('attr:icon', 'light.hall', houseHass), 'mdi:lamp');
+
+check(
+  'a resolver runs before a transform that follows it',
+  applyTransform('friendly_name|slug', 'light.hall', houseHass),
+  'john_s_hall_lamp',
+);
+check('and chains through more than one', applyTransform('area|slug|upper', 'light.hall', houseHass), 'HALLWAY');
+
+check(
+  'an entity that does not exist resolves to nothing',
+  applyTransform('friendly_name', 'light.nope', houseHass),
+  undefined,
+);
+check(
+  'an attribute it does not carry resolves to nothing',
+  applyTransform('attr:nope', 'light.hall', houseHass),
+  undefined,
+);
+check('no area on it resolves to nothing', applyTransform('area', 'light.nope', houseHass), undefined);
+check('no hass at all resolves to nothing', applyTransform('friendly_name', 'light.hall', undefined), undefined);
+check(
+  'a transform after a resolver that found nothing gives nothing',
+  applyTransform('friendly_name|slug', 'light.nope', houseHass),
+  undefined,
+);
+
+check('a resolver is recognised as one', [isResolver('friendly_name'), isResolver('attr:x')], [true, true]);
+check('a transform is not', [isResolver('slug'), isResolver('bogus')], [false, false]);
+
+check(
+  'a template asking Home Assistant for something says so',
+  usesResolver({ card: { name: '[[entity|friendly_name]]' } }),
+  true,
+);
+check('one using only transforms does not', usesResolver({ card: { name: '[[room|slug]]' } }), false);
+check('nor does one using no placeholders', usesResolver({ card: { name: 'Hall' } }), false);
+check('an escaped placeholder does not count', usesResolver({ card: { name: '[[!entity|friendly_name]]' } }), false);
+
+check(
+  'a resolver tail is stripped when counting which variables are used',
+  usedVariables({ card: { entity: '[[entity]]', name: '[[entity|friendly_name]]', x: '[[room|slug]]' } }).sort(),
+  ['entity', 'room'],
 );
 
 report();
