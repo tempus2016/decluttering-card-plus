@@ -231,6 +231,43 @@ const elapsed = Date.now() - started;
 check('a self-referencing variable terminates', elapsed < 2000, true);
 check('a self-referencing variable warns', warnings.length > 0, true);
 
+/* ------------------------------------------- warning about a transformed mapping */
+
+warnings.length = 0;
+deepReplace([{ tap: { action: 'toggle' } }], {}, { a: '[[tap|lower]]' });
+check('a transform on a mapping says something rather than nothing', warnings.length, 1);
+
+check(
+  'the warning names the placeholder, what the value is, and what to do',
+  /\[\[tap\|lower\]\]/.test(warnings[0]) && /mapping/.test(warnings[0]) && /scalar/.test(warnings[0]),
+  true,
+);
+
+warnings.length = 0;
+deepReplace([{ items: [1, 2] }], {}, { a: '[[items|upper]]' });
+check('a list is described as a list', /list/.test(warnings[0]), true);
+
+warnings.length = 0;
+deepReplace([{ tap: { action: 'toggle' } }], {}, { a: '[[tap|lower]]', b: 'x [[tap|lower]] y', c: '[[tap|lower]]' });
+check('the same mistake in several places is said once', warnings.length, 1);
+
+warnings.length = 0;
+deepReplace([{ tap: { action: 'toggle' } }], {}, { a: '[[tap|lower]]', b: '[[tap|upper]]' });
+check('two different transforms on it are both named', warnings.length, 1);
+check('and both appear in the one warning', /tap\|lower/.test(warnings[0]) && /tap\|upper/.test(warnings[0]), true);
+
+warnings.length = 0;
+deepReplace([{ tap: { action: 'toggle' } }], {}, { a: '[[tap]]' });
+check('using a mapping without a transform is fine, and silent', warnings.length, 0);
+
+warnings.length = 0;
+deepReplace([{ room: 'Hall' }], {}, { a: '[[room|slug]]' });
+check('a transform that works says nothing', warnings.length, 0);
+
+warnings.length = 0;
+deepReplace([{ nothing: null }], {}, { a: '[[nothing|upper]]' });
+check('null is a scalar, so it transforms and stays silent', warnings.length, 0);
+
 console.warn = realWarn;
 
 check(

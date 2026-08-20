@@ -48,7 +48,12 @@ function asPartOfString(value: any): string {
   return escapeForJsonString(String(value));
 }
 
-function substitutePass(jsonConfig: string, variableArray: VariablesConfig[]): string {
+/** How to describe a value that a transform cannot shape, in a sentence about it. */
+function kindOf(value: unknown): string {
+  return Array.isArray(value) ? 'a list' : 'a mapping';
+}
+
+function substitutePass(jsonConfig: string, variableArray: VariablesConfig[], refused: Map<string, string>): string {
   let json = jsonConfig;
   variableArray.forEach((variable) => {
     const key = escapeForRegExp(Object.keys(variable)[0]);
@@ -62,18 +67,26 @@ function substitutePass(jsonConfig: string, variableArray: VariablesConfig[]): s
     // mapping's JSON garbles its keys, so the placeholder is left visible instead - the
     // same treatment an unrecognised transform gets.
     const transformable = value === null || typeof value !== 'object';
+    // A placeholder left visible is the deliberate signal that something is wrong, but on
+    // its own it does not say what - so each refusal is noted, to be reported once at the
+    // end rather than on every pass over the same text.
+    const refuse = (match: string, transform: string): string => {
+      refused.set(`${Object.keys(variable)[0]}|${transform}`, kindOf(value));
+      return match;
+    };
+
     json = json.replace(wholeValue, (match: string, transform?: string) =>
       transform
         ? transformable
           ? JSON.stringify(applyTransform(transform, value))
-          : match
+          : refuse(match, transform)
         : asWholeValue(value, match),
     );
     json = json.replace(withinString, (match: string, transform?: string) =>
       transform
         ? transformable
           ? escapeForJsonString(applyTransform(transform, value))
-          : match
+          : refuse(match, transform)
         : asPartOfString(value),
     );
   });
@@ -86,10 +99,12 @@ export default (variables: VariablesConfig[] | undefined, templateConfig: Templa
   let jsonConfig = JSON.stringify(content);
 
   if (variableArray.length) {
+    // Each placeholder a transform refused, and what its value turned out to be.
+    const refused = new Map<string, string>();
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
       const before = jsonConfig;
-      jsonConfig = substitutePass(jsonConfig, variableArray);
+      jsonConfig = substitutePass(jsonConfig, variableArray, refused);
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
@@ -98,6 +113,15 @@ export default (variables: VariablesConfig[] | undefined, templateConfig: Templa
       console.warn(
         `decluttering-card-plus: gave up substituting variables after ${MAX_PASSES} passes. ` +
           'Check whether a variable refers to itself.',
+      );
+    }
+
+    if (refused.size) {
+      const each = [...refused].map(([placeholder, kind]) => `[[${placeholder}]] (${kind})`);
+      console.warn(
+        `decluttering-card-plus: left ${each.join(', ')} in the card rather than substituting. ` +
+          'A transform only shapes text, so it needs a scalar value - applying one to a mapping ' +
+          'or a list would garble its JSON. Give the variable a scalar value, or drop the transform.',
       );
     }
   }
