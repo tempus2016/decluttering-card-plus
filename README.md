@@ -641,13 +641,78 @@ names for something else keeps working.
 `for_each` needs a template that defines a `card`. An empty list renders nothing rather than
 failing, so a list built from a helper can be empty without breaking the dashboard.
 
+#### Repeating over what Home Assistant knows
+
+A written-out list stops being true the moment you add a lamp. Home Assistant already knows
+what exists, so `for_each_from` asks it instead, and the card keeps itself up to date:
+
+```yaml
+type: custom:decluttering-card-plus
+template: light_tile
+columns: 2
+for_each_from:
+  domain: light
+  area: Kitchen
+```
+
+Every light in the kitchen, and a new one appears there by itself. Each copy is given the
+things worth templating:
+
+| Repeating over | Each copy gets
+| -------------- | --------------
+| entities | `entity`, `name`, `domain`, `area`, `area_id`
+| areas | `area_id`, `area`, `area_icon`, `floor`
+
+alongside the `index` and `count` any repeat gets.
+
+`entities` and `areas` choose which of the two you get; the rest narrow the result:
+
+```yaml
+for_each_from:
+  areas: true            # one copy per area
+  floor: Upstairs        # ...on this floor
+```
+
+```yaml
+for_each_from:
+  entities: 'light.*_ceiling'   # patterns, with * standing for anything
+  label: Night light            # ...carrying this label
+```
+
+`area`, `floor` and `label` match by the name you see in Home Assistant or by the id
+underneath it, whichever you find easier to write, and none of them care about case. A
+label put on a device counts for all of that device's entities, which is how labels are
+usually used. Hidden entities are left out.
+
+Copies are ordered by the name shown, so the dashboard does not reshuffle itself when the
+registry does, and matching nothing renders nothing rather than failing.
+
+The list is worked out again when the registry changes — an entity added, renamed, moved to
+another area, or given a label — and *not* on every state change, so a dashboard built this
+way is no more expensive than one written out by hand. A name shown in a copy is the name
+at the time it was built.
+
+If a card sets both `for_each` and `for_each_from`, the written-out list wins.
+
 **Syntax:**
 
 | Name | Type | Requirement | Description
 | ---- | ---- | ------- | -----------
 | for_each | list | **Optional** | One copy of the template per item; each item is a set of variables for that copy. A single mapping counts as a list of one
+| for_each_from | object | **Optional** | One copy per entity or area Home Assistant knows about, kept up to date
 | columns | number | **Optional** | How many copies sit side by side. Defaults to 1, which stacks them. With `min_column_width`, the most it will ever use
 | min_column_width | number | **Optional** | How narrow a copy may get, in pixels, before a column is dropped
+
+**Inside `for_each_from`:**
+
+| Name | Type | Requirement | Description
+| ---- | ---- | ------- | -----------
+| entities | string, list or true | **Optional** | Repeat over entities matching these entity id patterns. The default when `areas` is not given
+| areas | string, list or true | **Optional** | Repeat over areas matching these patterns. `true` for all of them
+| domain | string or list | **Optional** | Narrows to entities of these domains
+| area | string or list | **Optional** | Narrows to these areas, by name or by id
+| floor | string or list | **Optional** | Narrows to these floors, by name or by id
+| label | string or list | **Optional** | Narrows to things carrying these labels, by name or by id
 
 #### Asking for a variable in a different shape
 

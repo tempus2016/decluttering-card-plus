@@ -9,6 +9,8 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   /** One copy of the template per item, each item holding that copy's variables.
    *  A single mapping counts as a list of one. */
   for_each?: unknown[] | Record<string, unknown>;
+  /** What to repeat over, read from Home Assistant rather than written out. */
+  for_each_from?: unknown;
   /** How many columns the copies are laid out in. One column stacks them vertically.
    *  With `min_column_width` set, this is the most columns it will ever use. */
   columns?: number;
