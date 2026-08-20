@@ -28,6 +28,10 @@ Repository: <https://github.com/tempus2016/decluttering-card-plus>
 per content type, [variables][wiki-variables], [recipes][wiki-recipes] and
 [troubleshooting][wiki-troubleshooting]. This README is the short version.
 
+What changed in each version is on the [releases page][releases]. Headings below marked
+`(v1.1.0+)` arrived in that release, so you can tell whether the copy you have does what
+they describe.
+
 We all use multiple times the same block of configuration across our lovelace configuration and we don't want to change the same things in a hundred places across our configuration each time we want to modify something.
 
 `decluttering-card-plus` to the rescue!! This card allows you to reuse multiple times the same configuration in your lovelace configuration to avoid repetition and supports variables and default values.
@@ -1167,6 +1171,7 @@ npm start       # rebuild on change, served on :5000 for the dev container
 
 [j9brown]: https://github.com/j9brown/decluttering-card
 [latest-release]: https://github.com/tempus2016/decluttering-card-plus/releases/latest
+[releases]: https://github.com/tempus2016/decluttering-card-plus/releases
 [pr78]: https://github.com/custom-cards/decluttering-card/pull/78
 [romrider]: https://github.com/RomRider
 [simbaja]: https://github.com/simbaja/ha-decluttering-card
