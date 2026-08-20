@@ -44,6 +44,7 @@ import {
   variableValues,
   VariableDeclaration,
 } from './variables';
+import { columnsFor } from './layout';
 import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { VERSION } from './version';
 
@@ -86,6 +87,12 @@ const REPEAT_SCHEMA = [
     label: 'Columns',
     helper: 'How many copies sit side by side. One stacks them vertically',
     selector: { number: { min: 1, max: 6, mode: 'box' } },
+  },
+  {
+    name: 'min_column_width',
+    label: 'Minimum column width',
+    helper: 'Pixels. Drops a column rather than going narrower, so the card suits a phone too',
+    selector: { number: { min: 50, max: 1000, step: 10, mode: 'box' } },
   },
 ];
 
@@ -161,6 +168,11 @@ abstract class DeclutteringElement extends LitElement {
   // One observer for the element's lifetime. A new one per wrapped card leaked a live
   // observer on every reconfigure, and left them all running after the card was gone.
   private _resizes?: ResizeObserver;
+  // The copies of a repeated template, kept so the layout can change without resolving
+  // them again, and the column count currently on show so it only rebuilds when it moves.
+  private _forEach?: { cards: unknown[]; max: number; minWidth?: number; styles: string };
+  private _columnsShown?: number;
+  private _widths?: ResizeObserver;
   private _savedStyles?: Map<string, [string, string]>;
   @state() private _style?: string;
 
@@ -304,13 +316,49 @@ abstract class DeclutteringElement extends LitElement {
       deepReplace(forEachVariables(item, config.variables, index, items.length), templateConfig, templateConfig.card),
     );
 
-    const columns = Number(config.columns) || 1;
-    const stack = columns > 1 ? { type: 'grid', columns, square: false, cards } : { type: 'vertical-stack', cards };
+    // The styles belong to the whole card rather than to any one copy, and resolve against
+    // the real template so its declared defaults still apply.
+    this._forEach = {
+      cards,
+      max: Number(config.columns) || 1,
+      minWidth: Number(config.min_column_width) || undefined,
+      styles: this._resolveStyles(templateConfig, config.variables, config.style),
+    };
+    this._columnsShown = undefined;
+    this._layoutForEach();
+    if (this._forEach.minWidth) this._watchWidth();
+    else this._widths?.disconnect();
+  }
+
+  /*
+   * Lays the copies out at the number of columns the card is currently wide enough for.
+   * Rebuilding is not free, so it happens only when that number actually moves - which,
+   * with a minimum width, is when the card crosses a threshold rather than on every pixel.
+   */
+  private _layoutForEach(): void {
+    const forEach = this._forEach;
+    if (!forEach) return;
+
+    const columns = columnsFor(this.clientWidth, forEach.max, forEach.minWidth);
+    if (columns === this._columnsShown) return;
+    this._columnsShown = columns;
+
+    const stack =
+      columns > 1
+        ? { type: 'grid', columns, square: false, cards: forEach.cards }
+        : { type: 'vertical-stack', cards: forEach.cards };
 
     // Each copy is already fully resolved, so the assembled stack must not go through
-    // substitution again. The styles belong to the whole card rather than to any one
-    // copy, and resolve against the real template so its declared defaults still apply.
-    this._setResolved('card', stack, this._resolveStyles(templateConfig, config.variables, config.style));
+    // substitution again.
+    this._setResolved('card', stack, forEach.styles);
+  }
+
+  // The card's own width, which is what decides the column count - not the child's, which
+  // is the width the last layout gave it.
+  private _watchWidth(): void {
+    if (!this._widths) this._widths = new ResizeObserver(() => this._layoutForEach());
+    this._widths.disconnect();
+    this._widths.observe(this);
   }
 
   private _setThing(thing: LovelaceThing, style?: Record<string, string>): void {
@@ -349,11 +397,13 @@ abstract class DeclutteringElement extends LitElement {
     // Home Assistant moves cards between views rather than rebuilding them, so a card
     // put back on the page has to start watching again.
     if (this._thing) this._watchForHiding(this._thing);
+    if (this._forEach?.minWidth) this._watchWidth();
   }
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
     this._resizes?.disconnect();
+    this._widths?.disconnect();
   }
 
   /*
@@ -731,6 +781,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     if (extras.length) data.extras = extras;
     if (this._config?.for_each !== undefined) data.for_each = this._config.for_each;
     if (this._config?.columns !== undefined) data.columns = this._config.columns;
+    if (this._config?.min_column_width !== undefined) data.min_column_width = this._config.min_column_width;
     return data;
   }
 
@@ -801,6 +852,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     else delete config.variables;
     setOrDelete(config, 'for_each', data.for_each);
     setOrDelete(config, 'columns', data.columns);
+    setOrDelete(config, 'min_column_width', data.min_column_width);
 
     fireEvent(this, 'config-changed', { config });
   }
