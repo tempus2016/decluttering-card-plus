@@ -219,7 +219,23 @@ It is worth a look before changing a template, because what a change affects is 
 from the template card itself — the cards using it can be anywhere on the dashboard, including
 inside stacks, grids and conditional cards, all of which are counted.
 
+Each view in the list links to itself, so you can go and look at what a change would affect.
+
 Cards on other dashboards are not counted, even ones that borrow this dashboard's templates.
+
+### Renaming a template
+
+Renaming is the one edit a template card cannot make on its own: every card naming the old
+template would break the moment the new name was saved. So it is done from the **Where
+used** tab, which rewrites the definition and every use across the dashboard in one go.
+
+Type the new name, press the button, and press it again to confirm — the dashboard is saved
+straight away, which is what makes the rename and the cards using it land together. A name
+already taken by another template is refused.
+
+Cards on other dashboards are not rewritten, even ones that borrow this dashboard's
+templates, and a dashboard written in YAML cannot be renamed this way because it cannot be
+saved from the interface at all.
 
 ### Sharing templates with other people
 
@@ -484,7 +500,10 @@ template's own description above them.*
 | required | boolean | **Optional** | Whether the template is unusable without it. Marks the field required, and says so loudly when it is unset
 
 `description:` on the template itself is shown above the controls, so whoever uses the
-template can see what it is for.
+template can see what it is for. Underneath it the card editor says where the template is
+defined, linking to the view holding it — a card is often where you realise the template
+itself needs changing, and the definition can be anywhere on the dashboard, or on another
+one entirely.
 
 Values are resolved in this order: what the card passes, then a declaration's `default`,
 then the `default:` list. Anything the template does not describe is still editable, in an

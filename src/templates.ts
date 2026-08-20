@@ -165,3 +165,75 @@ export function collectUsages(ll: LovelaceConfig | null | undefined, template: s
   }
   return usages;
 }
+
+/** Where a template is defined, which is what an editor needs to offer to open it. */
+export interface TemplateLocation {
+  /** True when it comes from the root `decluttering_templates` key, which has no card. */
+  declared: boolean;
+  /** The view holding the template card, when there is one to open. */
+  view?: { title: string; path: string; index: number };
+}
+
+function definesTemplate(node: any, template: string): boolean {
+  if (Array.isArray(node)) return node.some((item) => definesTemplate(item, template));
+  if (!node || typeof node !== 'object') return false;
+  if (isTemplateCardType(node.type)) return node.template === template;
+  return Object.values(node).some((value) => definesTemplate(value, template));
+}
+
+/**
+ * Which view defines a template, so a card using it can offer a way back to it. A template
+ * declared in the root key has no card to open, and says so rather than pretending it is
+ * nowhere. The whole view is walked, so a definition tidied away inside a stack is found
+ * exactly as `collectTemplates` finds it.
+ */
+export function findTemplateLocation(ll: LovelaceConfig | null | undefined, template: string): TemplateLocation | null {
+  if (!ll) return null;
+
+  const views = ll.views ?? [];
+  for (let index = 0; index < views.length; index += 1) {
+    const view = views[index] as any;
+    if (definesTemplate(view, template)) {
+      return { declared: false, view: { title: view.title ?? view.path ?? '', path: view.path ?? '', index } };
+    }
+  }
+
+  // Checked second, because a template card is the one a person can actually open.
+  if ((ll as any).decluttering_templates?.[template] !== undefined) return { declared: true };
+  return null;
+}
+
+/**
+ * The dashboard with a template renamed: its definition, every card using it, and any use
+ * inside another template. Renaming is the one edit that cannot be done in the template
+ * card alone - every card naming the old one would break the moment it was saved.
+ *
+ * Nothing is mutated; the caller gets a new configuration to save.
+ */
+export function renameTemplate(ll: any, from: string, to: string): any {
+  const rewrite = (node: any): any => {
+    if (Array.isArray(node)) return node.map(rewrite);
+    if (!node || typeof node !== 'object') return node;
+
+    const out: any = {};
+    for (const [key, value] of Object.entries(node)) out[key] = rewrite(value);
+
+    // Both the card that defines the template and the cards that use it name it in the
+    // same key, and both have to move. A bare string elsewhere is somebody's content.
+    const names = isTemplateCardType(node.type) || CONSUMER_TYPES.includes(node.type);
+    if (names && node.template === from) out.template = to;
+    return out;
+  };
+
+  const renamed = rewrite(ll);
+
+  // The root key holds templates by name, so there the name is the key itself. Rebuilt in
+  // order, so renaming does not shuffle the rest of the list.
+  const declared = renamed?.decluttering_templates;
+  if (declared && typeof declared === 'object' && from in declared) {
+    const rebuilt: Record<string, any> = {};
+    for (const [name, definition] of Object.entries(declared)) rebuilt[name === from ? to : name] = definition;
+    renamed.decluttering_templates = rebuilt;
+  }
+  return renamed;
+}
