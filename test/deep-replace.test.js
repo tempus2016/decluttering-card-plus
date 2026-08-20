@@ -314,4 +314,59 @@ check(
   { a: 'write [[room]] for the name' },
 );
 
+// console.warn was handed back above; take it again for the warnings below.
+console.warn = (m) => warnings.push(m);
+
+// A variable nobody set renders as the literal [[name]]. The editors say so while you are
+// editing; these are about the running card saying it too.
+
+warnings.length = 0;
+check(
+  'a variable with no value at all still renders as written',
+  deepReplace(undefined, {}, { type: 'tile', name: '[[name]]' }),
+  { type: 'tile', name: '[[name]]' },
+);
+check('and warns about it', warnings.length, 1);
+check('naming the variable', /\[\[name\]\]/.test(warnings[0]), true);
+
+warnings.length = 0;
+deepReplace(undefined, {}, { name: '[[name]]' }, 'room_tile');
+check('the warning names the template when it is known', /room_tile/.test(warnings[0]), true);
+
+warnings.length = 0;
+deepReplace([{ other: 1 }], {}, { name: '[[name]]' });
+check('an unset variable warns even when other variables resolved', warnings.length, 1);
+
+warnings.length = 0;
+check('several unset variables are said once', deepReplace(undefined, {}, { a: '[[one]]', b: '[[two]]' }), {
+  a: '[[one]]',
+  b: '[[two]]',
+});
+check('in a single warning', warnings.length, 1);
+check('naming both', /\[\[one\]\]/.test(warnings[0]) && /\[\[two\]\]/.test(warnings[0]), true);
+
+warnings.length = 0;
+deepReplace([{ room: 'Hall' }], {}, { a: '[[room]]' });
+check('a variable that resolves says nothing', warnings.length, 0);
+
+warnings.length = 0;
+deepReplace(undefined, {}, { a: '[[!room]]' });
+check('an escaped placeholder is not an unset variable', warnings.length, 0);
+
+warnings.length = 0;
+deepReplace([{ room: 'Hall' }], {}, { a: '[[!room]]', b: '[[room]]' });
+check('nor is one sitting beside a real variable', warnings.length, 0);
+
+warnings.length = 0;
+deepReplace([{ tap: { action: 'toggle' } }], {}, { a: '[[tap|lower]]' });
+check('a refused transform warns once, not twice', warnings.length, 1);
+check('and it is the transform message, not this one', /transform/.test(warnings[0]), true);
+
+warnings.length = 0;
+deepReplace([{ room: 'Hall' }], {}, { a: '[[room]]', b: '[[missing]]' });
+check('an unset variable is still caught alongside one that resolved', warnings.length, 1);
+check('naming only the unset one', /\[\[missing\]\]/.test(warnings[0]) && !/\[\[room\]\]/.test(warnings[0]), true);
+
+console.warn = realWarn;
+
 report();

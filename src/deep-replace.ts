@@ -1,6 +1,7 @@
 import { VariablesConfig, TemplateConfig } from './types';
 import {
   applyTransform,
+  ESCAPE,
   hasEscape,
   PLACEHOLDER,
   resolveVariables,
@@ -93,14 +94,38 @@ function substitutePass(jsonConfig: string, variableArray: VariablesConfig[], re
   return json;
 }
 
-export default (variables: VariablesConfig[] | undefined, templateConfig: TemplateConfig, content: any): any => {
+/*
+ * The placeholders still standing once substitution has done all it can, which are the
+ * ones no variable defines. An escaped `[[!name]]` is not one of them - it is meant to be
+ * there - and neither is a placeholder a transform deliberately refused, which says so
+ * for itself in a message of its own.
+ */
+function unresolvedPlaceholders(json: string, refused: Map<string, string>): string[] {
+  const names = new Set<string>();
+  const everyPlaceholder = new RegExp(PLACEHOLDER.source, 'g');
+  let match = everyPlaceholder.exec(json);
+  while (match) {
+    const inside = match[1];
+    if (!inside.startsWith(ESCAPE) && !refused.has(inside)) names.add(inside);
+    match = everyPlaceholder.exec(json);
+  }
+  return [...names];
+}
+
+export default (
+  variables: VariablesConfig[] | undefined,
+  templateConfig: TemplateConfig,
+  content: any,
+  templateName?: string,
+): any => {
   if (content === undefined) return content;
   const variableArray = resolveVariables(variables, templateConfig);
   let jsonConfig = JSON.stringify(content);
 
+  // Each placeholder a transform refused, and what its value turned out to be.
+  const refused = new Map<string, string>();
+
   if (variableArray.length) {
-    // Each placeholder a transform refused, and what its value turned out to be.
-    const refused = new Map<string, string>();
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
       const before = jsonConfig;
@@ -124,6 +149,23 @@ export default (variables: VariablesConfig[] | undefined, templateConfig: Templa
           'or a list would garble its JSON. Give the variable a scalar value, or drop the transform.',
       );
     }
+  }
+
+  /*
+   * A variable nobody set renders as the literal `[[name]]` on the card. The editors
+   * already say so while you are editing, but a dashboard that was saved with one missing
+   * just shows the brackets and gives no clue where they came from - so say it here too,
+   * where it is the running card talking rather than the editor.
+   */
+  const unresolved = unresolvedPlaceholders(jsonConfig, refused);
+  if (unresolved.length) {
+    const which = unresolved.map((name) => `[[${name}]]`).join(', ');
+    const whose = templateName ? `template "${templateName}"` : 'this template';
+    console.warn(
+      `decluttering-card-plus: ${whose} uses ${which}, which nothing gives a value to, ` +
+        'so it is rendered as written. Set it on the card, or give it a default in the template. ' +
+        `To write those brackets on purpose, escape it as [[${ESCAPE}${unresolved[0]}]].`,
+    );
   }
 
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be
