@@ -16,6 +16,8 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   columns?: number;
   /** How narrow a copy may get, in pixels, before a column is dropped. */
   min_column_width?: number;
+  /** Whether this card keeps a box of its own in the layout, or gets out of the way. */
+  fit?: 'box' | 'contents';
 }
 
 export interface DeclutteringTemplateConfig extends LovelaceCardConfig, TemplateConfig {
