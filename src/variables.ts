@@ -11,9 +11,30 @@ export interface VariableDeclaration {
   /** A Home Assistant selector, in the same shape ha-form takes. */
   selector?: any;
   default?: any;
+  /** Whether the template is unusable without it. Warns; it never blocks a save. */
+  required?: boolean;
 }
 
 const PLACEHOLDER_SOURCE = '\\[\\[([^[\\]]+)\\]\\]';
+
+/*
+ * A placeholder written `[[!name]]` is a literal `[[name]]` rather than a variable: the
+ * bang is dropped once every substitution is done. It is the only way to write those
+ * brackets and mean them, which a template holding markdown or Jinja sometimes needs.
+ */
+export const ESCAPE = '!';
+
+const ESCAPED_SOURCE = `\\[\\[${ESCAPE}([^[\\]]+)\\]\\]`;
+
+/** Whether anything in this text is an escaped placeholder waiting to be unwrapped. */
+export function hasEscape(text: string): boolean {
+  return new RegExp(ESCAPED_SOURCE).test(text);
+}
+
+/** Every `[[!name]]` written out as the `[[name]]` it stands for. */
+export function unescapePlaceholders(text: string): string {
+  return text.replace(new RegExp(ESCAPED_SOURCE, 'g'), '[[$1]]');
+}
 
 /**
  * The placeholder grammar, owned here so that substitution, dependency scanning and the
@@ -36,22 +57,43 @@ export const TRANSFORMS: Record<string, (value: string) => string> = {
   upper: (value) => value.toUpperCase(),
   lower: (value) => value.toLowerCase(),
   title: (value) => value.replace(/\S+/g, (word) => word[0].toUpperCase() + word.slice(1).toLowerCase()),
+  kebab: (value) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, ''),
 };
 
-/** Matches the optional `|transform` on a placeholder, capturing which one it is. */
-export const TRANSFORM_SUFFIX = `(?:\\|(${Object.keys(TRANSFORMS).join('|')}))?`;
+const TRANSFORM_NAMES = Object.keys(TRANSFORMS).join('|');
 
-const TRANSFORM_TAIL = new RegExp(`\\|(${Object.keys(TRANSFORMS).join('|')})$`);
+/*
+ * Transforms chain, so `[[room|slug|upper]]` is the slug of the room shouted. The chain is
+ * one alternation of known names repeated, which keeps the set closed: a chain containing
+ * one word that is not a transform matches nothing, so the placeholder stays visible
+ * rather than being half-applied.
+ */
+const TRANSFORM_CHAIN = `(?:${TRANSFORM_NAMES})(?:\\|(?:${TRANSFORM_NAMES}))*`;
+
+/** Matches the optional `|transform` chain on a placeholder, capturing the whole chain. */
+export const TRANSFORM_SUFFIX = `(?:\\|(${TRANSFORM_CHAIN}))?`;
+
+const TRANSFORM_TAIL = new RegExp(`(?:\\|(?:${TRANSFORM_NAMES}))+$`);
 
 /**
- * The value a placeholder asks for, in the shape it asks for it. Only a scalar reaches
- * here with a transform: substitution leaves a transformed mapping or list visible
- * rather than garbling its JSON through a text transform.
+ * The value a placeholder asks for, in the shape it asks for it, with each transform of
+ * the chain applied in the order it was written. Only a scalar reaches here with a
+ * transform: substitution leaves a transformed mapping or list visible rather than
+ * garbling its JSON through a text transform.
  */
 export function applyTransform(transform: string | undefined, value: unknown): string {
-  const text = String(value);
-  const fn = transform ? TRANSFORMS[transform] : undefined;
-  return fn ? fn(text) : text;
+  let text = String(value);
+  for (const name of transform ? transform.split('|') : []) {
+    const fn = TRANSFORMS[name];
+    // The grammar only ever matches known names, so this is belt and braces.
+    if (!fn) return String(value);
+    text = fn(text);
+  }
+  return text;
 }
 
 // The parts of a template that get substituted into, and so the only places a placeholder
@@ -163,8 +205,9 @@ function placeholdersIn(value: unknown): string[] {
   const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
   let match = pattern.exec(json);
   while (match !== null) {
-    // `[[room|slug]]` is a use of `room`, not of a variable called `room|slug`.
-    names.push(match[1].replace(TRANSFORM_TAIL, ''));
+    // `[[room|slug]]` is a use of `room`, not of a variable called `room|slug`, and
+    // `[[!room]]` is not a use of anything - it is the brackets, written out.
+    if (!match[1].startsWith(ESCAPE)) names.push(match[1].replace(TRANSFORM_TAIL, ''));
     match = pattern.exec(json);
   }
   return names;
@@ -205,7 +248,7 @@ export function diagnoseInstance(
   // Values supplied from elsewhere - a for_each item, say - which satisfy a variable the
   // template uses, but are not the card's own to be called unused.
   supplements?: VariablesConfig[],
-): { missing: string[]; unused: string[] } {
+): { missing: string[]; unused: string[]; required: string[] } {
   // Supplements go after full resolution, so they only fill names nothing else defines.
   // Folded in earlier, a supplement would shadow a declared default and hide the
   // variables that default's own value goes on to use.
@@ -220,22 +263,41 @@ export function diagnoseInstance(
     if (name !== undefined && !isUsed.has(name) && !unused.includes(name)) unused.push(name);
   }
 
-  return { missing: used.filter((name) => !(name in values)), unused };
+  const missing = used.filter((name) => !(name in values));
+  // Which of the missing ones the template says it cannot do without, so an editor can
+  // say so more loudly than it says the rest.
+  const insisted = new Set(
+    getDeclarations(template)
+      .filter((declaration) => declaration.required === true)
+      .map((declaration) => declaration.name),
+  );
+  return { missing, unused, required: missing.filter((name) => insisted.has(name)) };
 }
 
 /** What is wrong with the template itself, as its own editor sees it. */
-export function diagnoseTemplate(template: TemplateConfig | undefined): { unused: string[]; duplicated: string[] } {
+export function diagnoseTemplate(template: TemplateConfig | undefined): {
+  unused: string[];
+  duplicated: string[];
+  contradictory: string[];
+} {
   const declarations = getDeclarations(template);
   const isUsed = new Set(usedVariables(template));
   const inDefaultList = new Set(defaultList(template).map(firstKey));
 
   const unused: string[] = [];
   const duplicated: string[] = [];
-  for (const { name } of declarations) {
+  const contradictory: string[] = [];
+  for (const declaration of declarations) {
+    const { name } = declaration;
     if (!isUsed.has(name)) unused.push(name);
     if (inDefaultList.has(name)) duplicated.push(name);
+    // A variable with a value of its own can never be left unset, so insisting on one
+    // says something the template cannot mean.
+    if (declaration.required === true && ('default' in declaration || inDefaultList.has(name))) {
+      contradictory.push(name);
+    }
   }
-  return { unused, duplicated };
+  return { unused, duplicated, contradictory };
 }
 
 /**
@@ -269,11 +331,18 @@ export function mergeVariables(existing: VariablesConfig[] | undefined, desired:
 export function forEachVariables(
   item: unknown,
   cardVariables: VariablesConfig[] | VariablesConfig | undefined,
+  index?: number,
+  count?: number,
 ): VariablesConfig[] {
+  // Where the copy sits in the list, counted from one because these are read by people
+  // writing "Zone [[index]] of [[count]]" rather than by programmers. They go last, so
+  // an item or a card that sets either of those names by hand still wins.
+  const position: VariablesConfig[] = index === undefined ? [] : [{ index: index + 1 }, { count: count ?? 0 }];
+
   // The item's own values come first, so a copy can override what the card sets for all.
   // Both go through the same normalisation substitution reads, so a mapping or a
   // multi-key entry means the same thing here as it does everywhere else.
-  return [...normaliseVariables(item), ...normaliseVariables(cardVariables)];
+  return [...normaliseVariables(item), ...normaliseVariables(cardVariables), ...position];
 }
 
 /**
@@ -289,10 +358,15 @@ export function forEachItems(forEach: unknown): unknown[] | undefined {
   return undefined;
 }
 
+/** The names every copy of a `for_each` gets given, whatever its items say. */
+export const POSITION_NAMES = ['index', 'count'];
+
 /** Every name any item of a `for_each` list sets, for warning about what is missing. */
 export function forEachNames(items: unknown): string[] {
-  const names = new Set<string>();
-  for (const item of forEachItems(items) ?? []) {
+  const list = forEachItems(items) ?? [];
+  // Nothing is repeated over, so nothing is supplied - not even a position.
+  const names = new Set<string>(list.length ? POSITION_NAMES : []);
+  for (const item of list) {
     // normaliseVariables only ever emits single-key entries.
     for (const entry of normaliseVariables(item)) names.add(Object.keys(entry)[0]);
   }

@@ -1,5 +1,12 @@
 import { VariablesConfig, TemplateConfig } from './types';
-import { applyTransform, PLACEHOLDER, resolveVariables, TRANSFORM_SUFFIX } from './variables';
+import {
+  applyTransform,
+  hasEscape,
+  PLACEHOLDER,
+  resolveVariables,
+  TRANSFORM_SUFFIX,
+  unescapePlaceholders,
+} from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -74,24 +81,30 @@ function substitutePass(jsonConfig: string, variableArray: VariablesConfig[]): s
 }
 
 export default (variables: VariablesConfig[] | undefined, templateConfig: TemplateConfig, content: any): any => {
+  if (content === undefined) return content;
   const variableArray = resolveVariables(variables, templateConfig);
-  if (!variableArray.length) {
-    return content;
-  }
   let jsonConfig = JSON.stringify(content);
-  let passes = 0;
-  while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
-    const before = jsonConfig;
-    jsonConfig = substitutePass(jsonConfig, variableArray);
-    passes += 1;
-    // Every remaining placeholder is one no variable defines, so further passes cannot help.
-    if (jsonConfig === before) break;
+
+  if (variableArray.length) {
+    let passes = 0;
+    while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
+      const before = jsonConfig;
+      jsonConfig = substitutePass(jsonConfig, variableArray);
+      passes += 1;
+      // Every remaining placeholder is one no variable defines, so further passes cannot help.
+      if (jsonConfig === before) break;
+    }
+    if (passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
+      console.warn(
+        `decluttering-card-plus: gave up substituting variables after ${MAX_PASSES} passes. ` +
+          'Check whether a variable refers to itself.',
+      );
+    }
   }
-  if (passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
-    console.warn(
-      `decluttering-card-plus: gave up substituting variables after ${MAX_PASSES} passes. ` +
-        'Check whether a variable refers to itself.',
-    );
-  }
-  return JSON.parse(jsonConfig);
+
+  // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be
+  // turned back into a placeholder and then substituted on a later pass. Nothing to do
+  // and nothing substituted means the content is already what it should be.
+  if (!hasEscape(jsonConfig)) return variableArray.length ? JSON.parse(jsonConfig) : content;
+  return JSON.parse(unescapePlaceholders(jsonConfig));
 };
