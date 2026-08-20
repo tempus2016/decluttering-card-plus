@@ -752,6 +752,16 @@ leaves the whole placeholder alone rather than applying half of it. A transform 
 text, so it applies to scalar values only: a mapping or a list under a transform is
 likewise left unsubstituted, since slugging or uppercasing its JSON would only garble it.
 
+A placeholder left on screen says that something is wrong but not what, so the browser
+console names it:
+
+```text
+decluttering-card-plus: left [[obj|upper]] (a mapping) in the card rather than
+substituting. A transform only shapes text, so it needs a scalar value...
+```
+
+It is said once per card however many times the placeholder appears.
+
 #### Writing `[[` and meaning it
 
 A placeholder written `[[!name]]` is not a variable: it renders as the literal text
