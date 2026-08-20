@@ -824,6 +824,59 @@ entity id and asks Home Assistant, so it needs one that exists and carries what 
 asked for.
 ```
 
+#### A variable the template can do without
+
+A placeholder written `[[name?]]` is one the card can manage without. When nothing gives it
+a value, the option it stands for is taken out of the card altogether rather than left
+showing the brackets:
+
+```yaml
+card:
+  type: tile
+  entity: '[[entity]]'
+  name: '[[name?]]'
+```
+
+Pass a `name` and the tile uses it. Leave it out and the tile has no `name` at all, so Home
+Assistant falls back to the entity's own name — which is usually what you wanted.
+
+Empty means unset, `null`, or the empty string. A `0` and a `false` are values and stay.
+Inside a longer piece of text it simply leaves quietly, and an item of a list that is
+nothing but an empty option is dropped rather than leaving a hole. It is not a mistake, so
+nothing is said about it in the console.
+
+The marker goes at the end, after any transform: `[[room|slug?]]`.
+
+#### Leaving out a copy that has nothing to show
+
+`for_each` skips an item that leaves a `required: true` variable empty, which is what lets
+one template serve a room with four lights and a room with one:
+
+```yaml
+type: custom:decluttering-template-plus
+template: room_light
+variables:
+  - name: entity
+    required: true
+card:
+  type: tile
+  entity: '[[entity]]'
+```
+
+```yaml
+type: custom:decluttering-card-plus
+template: room_light
+columns: 4
+for_each:
+  - entity: light.kitchen
+  - entity: light.hall
+  - entity: ''
+  - {}
+```
+
+That renders two cards, not four. A template that requires nothing renders every item as
+before.
+
 #### Writing `[[` and meaning it
 
 A placeholder written `[[!name]]` is not a variable: it renders as the literal text

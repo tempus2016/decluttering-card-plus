@@ -36,6 +36,29 @@ export function unescapePlaceholders(text: string): string {
   return text.replace(new RegExp(ESCAPED_SOURCE, 'g'), '[[$1]]');
 }
 
+/*
+ * A placeholder written `[[name?]]` is one the template can do without: when nothing gives
+ * it a value, the option it stands for is dropped from the card rather than left showing
+ * the brackets. It is what lets one template serve a room with four lights and a room with
+ * one, without a dummy entity id standing in for the lights that are not there.
+ */
+export const OPTIONAL = '?';
+
+/** Matches the optional marker at the end of a placeholder, after any transform chain. */
+export const OPTIONAL_SUFFIX = `(\\${OPTIONAL})?`;
+
+const OPTIONAL_TAIL = new RegExp(`\\${OPTIONAL}$`);
+
+/** A placeholder with its optional marker taken off, if it had one. */
+export function withoutOptional(inside: string): string {
+  return inside.replace(OPTIONAL_TAIL, '');
+}
+
+/** Whether this placeholder said the card can do without it. */
+export function isOptional(inside: string): boolean {
+  return OPTIONAL_TAIL.test(inside);
+}
+
 /**
  * The placeholder grammar, owned here so that substitution, dependency scanning and the
  * suggestion pass cannot drift apart. Fresh and non-global, so it carries no lastIndex.
@@ -271,7 +294,7 @@ function placeholdersIn(value: unknown): string[] {
   while (match !== null) {
     // `[[room|slug]]` is a use of `room`, not of a variable called `room|slug`, and
     // `[[!room]]` is not a use of anything - it is the brackets, written out.
-    if (!match[1].startsWith(ESCAPE)) names.push(match[1].replace(TRANSFORM_TAIL, ''));
+    if (!match[1].startsWith(ESCAPE)) names.push(withoutOptional(match[1]).replace(TRANSFORM_TAIL, ''));
     match = pattern.exec(json);
   }
   return names;
@@ -311,10 +334,31 @@ export function usesResolver(template: TemplateConfig | undefined): boolean {
   const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
   let match = pattern.exec(json);
   while (match !== null) {
-    if (!match[1].startsWith(ESCAPE) && match[1].split('|').slice(1).some(isResolver)) return true;
+    if (!match[1].startsWith(ESCAPE) && withoutOptional(match[1]).split('|').slice(1).some(isResolver)) return true;
     match = pattern.exec(json);
   }
   return false;
+}
+
+/**
+ * Whether one item of a repeat has something to say for every variable the template
+ * declares it cannot do without. A template that requires nothing accepts every item, so
+ * this only ever narrows a repeat that asked to be narrowed.
+ */
+export function hasRequiredVariables(
+  template: TemplateConfig | undefined,
+  item: unknown,
+  shared: VariablesConfig[] | undefined,
+): boolean {
+  const required = getDeclarations(template).filter((declaration) => declaration.required === true);
+  if (!required.length) return true;
+
+  const values = { ...variableValues(shared), ...variableValues(item as VariablesConfig) };
+  return required.every((declaration) => {
+    const value = values[declaration.name];
+    // The same reading of empty substitution uses: a zero and a false are values.
+    return value !== undefined && value !== null && value !== '';
+  });
 }
 
 /** Every variable the template itself uses, before any instance passes anything in. */

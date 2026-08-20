@@ -5,6 +5,9 @@
  */
 const {
   applyTransform,
+  hasRequiredVariables,
+  isOptional,
+  withoutOptional,
   isResolver,
   usesResolver,
   getDeclarations,
@@ -520,6 +523,40 @@ check(
   'a resolver tail is stripped when counting which variables are used',
   usedVariables({ card: { entity: '[[entity]]', name: '[[entity|friendly_name]]', x: '[[room|slug]]' } }).sort(),
   ['entity', 'room'],
+);
+
+// Which items of a repeat there is actually something to render for.
+const needsEntity = { variables: [{ name: 'entity', required: true }], card: { type: 'tile', entity: '[[entity]]' } };
+const needsNothing = { card: { type: 'tile', entity: '[[entity]]' } };
+
+check(
+  'an item with the required variable is wanted',
+  hasRequiredVariables(needsEntity, { entity: 'light.hall' }),
+  true,
+);
+check('one leaving it out is not', hasRequiredVariables(needsEntity, { name: 'Hall' }), false);
+check('nor is one leaving it empty', hasRequiredVariables(needsEntity, { entity: '' }), false);
+check('nor null', hasRequiredVariables(needsEntity, { entity: null }), false);
+check('a template requiring nothing wants every item', hasRequiredVariables(needsNothing, {}), true);
+check('no template at all wants every item', hasRequiredVariables(undefined, {}), true);
+check(
+  'a shared value counts for an item that does not set it',
+  hasRequiredVariables(needsEntity, { name: 'Hall' }, [{ entity: 'light.hall' }]),
+  true,
+);
+check(
+  'and the item still wins where it does set it',
+  hasRequiredVariables(needsEntity, { entity: '' }, [{ entity: 'light.hall' }]),
+  false,
+);
+
+check('the optional marker is recognised', [isOptional('name?'), isOptional('name')], [true, false]);
+check('and taken off', [withoutOptional('name?'), withoutOptional('name|slug?')], ['name', 'name|slug']);
+
+check(
+  'an optional placeholder still counts as using its variable',
+  usedVariables({ card: { a: '[[name?]]', b: '[[room|slug?]]' } }).sort(),
+  ['name', 'room'],
 );
 
 report();
