@@ -454,6 +454,18 @@ check(
   { a: '[[entity|friendly_nam]]' },
 );
 
+warnings.length = 0;
+check(
+  'asked quietly, it still resolves what it can',
+  deepReplace([{ entity: 'light.hall' }], {}, { a: '[[entity|friendly_name]]', b: '[[missing]]' }, undefined, hass, true),
+  { a: 'Hall Lamp', b: '[[missing]]' },
+);
+check('and says nothing at all', warnings.length, 0);
+
+warnings.length = 0;
+deepReplace([{ obj: { a: 1 } }], {}, { a: '[[obj|upper]]' }, undefined, undefined, true);
+check('quiet covers a refused transform too', warnings.length, 0);
+
 console.warn = realWarn;
 
 report();
