@@ -41,6 +41,7 @@ import {
   mergeVariables,
   normaliseVariables,
   POSITION_NAMES,
+  usesResolver,
   variableName,
   variableValues,
   VariableDeclaration,
@@ -286,7 +287,7 @@ abstract class DeclutteringElement extends LitElement {
     const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
     this._setResolved(
       thingType,
-      deepReplace(variables, templateConfig, thingContent, templateName),
+      deepReplace(variables, templateConfig, thingContent, templateName, this._hass),
       this._resolveStyles(templateConfig, variables, cardStyle, templateName),
     );
   }
@@ -301,10 +302,10 @@ abstract class DeclutteringElement extends LitElement {
   ): string {
     let styles = '';
     if (templateConfig.style) {
-      styles += deepReplace(variables, templateConfig, templateConfig.style, templateName);
+      styles += deepReplace(variables, templateConfig, templateConfig.style, templateName, this._hass);
     }
     if (cardStyle) {
-      styles += deepReplace(variables, templateConfig, cardStyle, templateName);
+      styles += deepReplace(variables, templateConfig, cardStyle, templateName, this._hass);
     }
     return styles;
   }
@@ -336,6 +337,7 @@ abstract class DeclutteringElement extends LitElement {
         templateConfig,
         templateConfig.card,
         config.template,
+        this._hass,
       ),
     );
 
@@ -549,6 +551,11 @@ class DeclutteringCard extends DeclutteringElement {
   private _fromRegistry?: { templateConfig: TemplateConfig; config: DeclutteringCardConfig };
   private _registry?: unknown[];
 
+  // The same pair again, for a template that reads the registry through a resolver rather
+  // than repeating over it.
+  private _fromResolvers?: { templateConfig: TemplateConfig; config: DeclutteringCardConfig };
+  private _resolverRegistry?: unknown[];
+
   static getConfigElement(): HTMLElement {
     return document.createElement(CARD_EDITOR_TAG);
   }
@@ -607,7 +614,35 @@ class DeclutteringCard extends DeclutteringElement {
       if (this._hass) this._resolveFromRegistry(this._hass);
       return;
     }
+    /*
+     * A resolver reads the registry, and the registry can arrive after the card has first
+     * rendered - so remember what to build if it changes under us, exactly as a registry
+     * source does. Templates that ask Home Assistant for nothing are built once and left.
+     */
+    this._fromResolvers = usesResolver(templateConfig) ? { templateConfig, config } : undefined;
     this._setTemplateConfig(templateConfig, config.variables, config.style, config.template);
+  }
+
+  /*
+   * A template whose placeholders ask Home Assistant for something is built again when the
+   * registry changes, so a name that was not known yet at first render turns up rather
+   * than leaving the placeholder on the card for good. Guarded the same way the registry
+   * source is: hass is replaced on every state change, the registry is not.
+   */
+  private _rebuildForResolvers(hass: HomeAssistant): void {
+    const pending = this._fromResolvers;
+    if (!pending) return;
+
+    const key = registryKey(hass);
+    if (sameRegistry(this._resolverRegistry, key)) return;
+    this._resolverRegistry = key;
+
+    this._setTemplateConfig(
+      pending.templateConfig,
+      pending.config.variables,
+      pending.config.style,
+      pending.config.template,
+    );
   }
 
   /*
@@ -638,6 +673,7 @@ class DeclutteringCard extends DeclutteringElement {
     const config = this._pendingConfig;
     if (!config) {
       this._resolveFromRegistry(hass);
+      this._rebuildForResolvers(hass);
       return;
     }
     this._pendingConfig = undefined;
