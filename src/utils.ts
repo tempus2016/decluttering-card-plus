@@ -31,6 +31,18 @@ export function getLovelaceConfig(): LovelaceConfig | null {
 }
 
 /**
+ * The dashboard itself rather than its configuration, which is the only thing that can
+ * save a change back. Null when there is nothing to save through - a cast session, or a
+ * dashboard written in YAML, which cannot be edited from the interface at all.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getLovelacePanel(): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ll: any = getLovelace() || getLovelaceCast();
+  return typeof ll?.saveConfig === 'function' ? ll : null;
+}
+
+/**
  * Puts text on the clipboard. Home Assistant is usually reached over plain http on a
  * local address, which is not a secure context, so navigator.clipboard is not there at
  * all for most people. The old selection-based way still works everywhere.

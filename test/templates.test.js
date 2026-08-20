@@ -8,6 +8,8 @@ const {
   getTemplateSources,
   isTemplateCardType,
   collectUsages,
+  findTemplateLocation,
+  renameTemplate,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -304,6 +306,126 @@ check(
     'a',
   ).templates,
   ['holder'],
+);
+
+/* ------------------------------------------------------- where a template lives */
+
+check(
+  'a template card in a view reports the view it sits in',
+  findTemplateLocation(
+    {
+      views: [
+        { title: 'One', cards: [] },
+        { title: 'Two', path: 'two', cards: [{ type: 'custom:decluttering-template-plus', template: 'tile' }] },
+      ],
+    },
+    'tile',
+  ),
+  { declared: false, view: { title: 'Two', path: 'two', index: 1 } },
+);
+
+check(
+  'a template nested inside a stack still reports its view',
+  findTemplateLocation(
+    {
+      views: [
+        {
+          title: 'One',
+          cards: [{ type: 'vertical-stack', cards: [{ type: 'custom:decluttering-template', template: 'tile' }] }],
+        },
+      ],
+    },
+    'tile',
+  ),
+  { declared: false, view: { title: 'One', path: '', index: 0 } },
+);
+
+check(
+  'a template declared in the root key has no card to open',
+  findTemplateLocation({ decluttering_templates: { tile: { card: {} } } }, 'tile'),
+  { declared: true },
+);
+
+check('a template that is nowhere reports nothing', findTemplateLocation({ views: [] }, 'tile'), null);
+
+check('no config at all reports nothing', findTemplateLocation(null, 'tile'), null);
+
+/* ------------------------------------------------------------- renaming a template */
+
+check(
+  'renaming rewrites the definition and every use',
+  renameTemplate(
+    {
+      views: [
+        {
+          cards: [
+            { type: 'custom:decluttering-template-plus', template: 'tile', card: { type: 'tile' } },
+            { type: 'custom:decluttering-card-plus', template: 'tile', variables: [{ a: 1 }] },
+            { type: 'vertical-stack', cards: [{ type: 'custom:decluttering-card', template: 'tile' }] },
+          ],
+        },
+      ],
+    },
+    'tile',
+    'room_tile',
+  ),
+  {
+    views: [
+      {
+        cards: [
+          { type: 'custom:decluttering-template-plus', template: 'room_tile', card: { type: 'tile' } },
+          { type: 'custom:decluttering-card-plus', template: 'room_tile', variables: [{ a: 1 }] },
+          { type: 'vertical-stack', cards: [{ type: 'custom:decluttering-card', template: 'room_tile' }] },
+        ],
+      },
+    ],
+  },
+);
+
+check(
+  'a use of a different template is left alone',
+  renameTemplate(
+    { views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'other' }] }] },
+    'tile',
+    'room_tile',
+  ),
+  { views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'other' }] }] },
+);
+
+check(
+  'a template declared in the root key is renamed by its key',
+  renameTemplate(
+    { decluttering_templates: { tile: { card: { type: 'tile' } }, other: { card: {} } } },
+    'tile',
+    'room_tile',
+  ),
+  { decluttering_templates: { room_tile: { card: { type: 'tile' } }, other: { card: {} } } },
+);
+
+check(
+  'a use inside another template definition is rewritten too',
+  renameTemplate(
+    { decluttering_templates: { holder: { card: { type: 'custom:decluttering-card-plus', template: 'tile' } } } },
+    'tile',
+    'room_tile',
+  ),
+  { decluttering_templates: { holder: { card: { type: 'custom:decluttering-card-plus', template: 'room_tile' } } } },
+);
+
+check(
+  'a bare string that happens to match is not a template reference',
+  renameTemplate({ views: [{ cards: [{ type: 'markdown', content: 'tile' }] }] }, 'tile', 'room_tile'),
+  { views: [{ cards: [{ type: 'markdown', content: 'tile' }] }] },
+);
+
+check(
+  'renaming does not mutate the configuration it was given',
+  (() => {
+    const original = { views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'tile' }] }] };
+    renameTemplate(original, 'tile', 'room_tile');
+    return original.views[0].cards[0].template;
+  })(),
+  'tile',
 );
 
 report();

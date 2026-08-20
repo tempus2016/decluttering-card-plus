@@ -26,7 +26,9 @@ import {
   collectUsages,
   findTemplate,
   findTemplateAnywhere,
+  findTemplateLocation,
   getTemplateSources,
+  renameTemplate,
   TemplateUsages,
 } from './templates';
 import {
@@ -42,7 +44,7 @@ import {
   variableValues,
   VariableDeclaration,
 } from './variables';
-import { copyText, getLovelaceConfig } from './utils';
+import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { VERSION } from './version';
 
 // Tags this bundle owns.
@@ -547,6 +549,11 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         margin: 0 0 8px;
         color: var(--secondary-text-color);
       }
+      .hint {
+        margin: 0 0 8px;
+        color: var(--secondary-text-color);
+        font-size: 0.9em;
+      }
       ha-alert {
         display: block;
         margin-bottom: 8px;
@@ -638,7 +645,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
     return html`
       ${template?.description ? html`<p class="description">${template.description}</p>` : html``}
-      ${this._renderDiagnostics(template, readable)}
+      ${this._renderSource(template)} ${this._renderDiagnostics(template, readable)}
       <ha-form
         .hass=${this.hass}
         .data=${this._formData(declarations)}
@@ -649,6 +656,33 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         @value-changed=${this._valueChanged}
       ></ha-form>
     `;
+  }
+
+  /*
+   * Where the template being used is defined. A card is often the place you realise the
+   * template itself needs changing, and the definition can be anywhere on the dashboard -
+   * or on another one entirely, which is worth knowing before you go looking for it.
+   */
+  private _renderSource(template: TemplateConfig | undefined): TemplateResult {
+    const name = this._config?.template;
+    if (!name || !template || this._loadingTemplates) return html``;
+
+    const location = findTemplateLocation(this._lovelace, name);
+    if (!location) {
+      return html`<p class="hint">This template is borrowed from another dashboard, so it is edited there.</p>`;
+    }
+    if (location.declared || !location.view) {
+      return html`<p class="hint">Defined in this dashboard's decluttering_templates.</p>`;
+    }
+
+    const { view } = location;
+    const dashboard = document.location.pathname.split('/').slice(0, 2).join('/');
+    return html`<p class="hint">
+      Defined in
+      <a href=${`${dashboard}/${view.path || view.index}`} target="_blank" rel="noreferrer"
+        >${view.title || view.path || 'an untitled view'}</a
+      >.
+    </p>`;
   }
 
   /*
@@ -881,6 +915,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   // recount. Not reactive state: whatever changes the key also changes state that renders.
   private _usages?: { name: string; ll: unknown; usages: TemplateUsages };
 
+  @state() private _renameTo = '';
+  @state() private _renameError?: string;
+  @state() private _renaming = false;
+  // The name the next press would rename to, set by the press before it. Renaming rewrites
+  // cards outside this editor and saves at once, so it is asked twice like a suggestion is.
+  @state() private _renamePending?: string;
+
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
 
@@ -979,6 +1020,24 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       }
       .usages li {
         margin-bottom: 4px;
+      }
+      .rename {
+        margin-top: 24px;
+      }
+      .rename h3 {
+        margin: 0 0 4px;
+      }
+      .rename .hint {
+        margin: 0 0 8px;
+        color: var(--secondary-text-color);
+        font-size: 0.9em;
+      }
+      .rename ha-textfield {
+        display: block;
+        width: 100%;
+      }
+      .rename mwc-button {
+        margin-top: 8px;
       }
     `;
   }
@@ -1237,6 +1296,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
+        ${this._renderRename(name, total)}
       </div>
     `;
   }
@@ -1281,6 +1341,89 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         <mwc-button @click=${this._import}>${this._importClash ? 'Import anyway' : 'Import'}</mwc-button>
       </div>
     `;
+  }
+
+  /*
+   * Renaming is the one edit a template card cannot make on its own: every card naming the
+   * old template would break the moment the new name was saved. So it is done here, across
+   * the whole dashboard at once, rather than by editing the name field above.
+   */
+  private _renderRename(name: string, total: number): TemplateResult {
+    const to = this._renameTo.trim();
+    const changes = total === 1 ? 'one card' : `${total} cards`;
+    const armed = !!to && this._renamePending === to;
+    return html`
+      <div class="rename">
+        <h3>Rename</h3>
+        <p class="hint">
+          Changes the name here and in every card on this dashboard that uses it. Cards on other dashboards are not
+          touched, even ones that borrow this dashboard's templates.
+        </p>
+        ${this._renameError ? html`<ha-alert alert-type="error">${this._renameError}</ha-alert>` : html``}
+        ${
+          armed
+            ? html`<ha-alert alert-type="warning">
+                This renames "${name}" to "${to}"${total ? html` and rewrites ${changes}` : html``}, and saves the
+                dashboard straight away. Press again to go ahead.
+              </ha-alert>`
+            : html``
+        }
+        <ha-textfield
+          label="New name"
+          .value=${this._renameTo}
+          .disabled=${this._renaming}
+          @input=${this._renameChanged}
+        ></ha-textfield>
+        <mwc-button .disabled=${this._renaming || !to || to === name} @click=${this._rename}>
+          ${armed ? 'Rename anyway' : total ? `Rename and update ${changes}` : 'Rename'}
+        </mwc-button>
+      </div>
+    `;
+  }
+
+  private _renameChanged(ev: Event): void {
+    this._renameTo = (ev.target as HTMLInputElement).value ?? '';
+    this._renameError = undefined;
+    // Whatever was agreed to was agreed to for the old name, not this one.
+    this._renamePending = undefined;
+  }
+
+  private async _rename(): Promise<void> {
+    const from = this._config?.template;
+    const to = this._renameTo.trim();
+    if (!from || !to || to === from) return;
+
+    // The dashboard object, not its configuration: renaming rewrites cards this editor
+    // does not own, so it has to be saved as a whole rather than through config-changed.
+    const panel = getLovelacePanel();
+    if (!panel) {
+      this._renameError = 'This dashboard cannot be saved from here, so it cannot be renamed here either.';
+      return;
+    }
+    if (collectTemplates(panel.config)[to] !== undefined) {
+      this._renameError = `A template called "${to}" already exists on this dashboard.`;
+      return;
+    }
+
+    if (this._renamePending !== to) {
+      this._renamePending = to;
+      return;
+    }
+
+    this._renaming = true;
+    this._renameError = undefined;
+    try {
+      await panel.saveConfig(renameTemplate(panel.config, from, to));
+      // The dialog still holds this card under its old name, and saving it afterwards
+      // would put that name straight back - so it is told about the change too.
+      this._fireConfigChanged({ ...this._config, template: to } as DeclutteringTemplateConfig);
+      this._renameTo = '';
+      this._renamePending = undefined;
+    } catch (err) {
+      this._renameError = `Could not save the dashboard: ${(err as Error)?.message ?? err}`;
+    } finally {
+      this._renaming = false;
+    }
   }
 
   private async _copyExport(): Promise<void> {
