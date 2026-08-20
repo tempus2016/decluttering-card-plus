@@ -31,3 +31,10 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # typescript-eslint's peer range is >=4.8.4 <6.1.0, so TypeScript 7 breaks
+      # `npm run lint` — and lint is the first half of `npm run build`. Revisit
+      # once typescript-eslint declares TS 7 support.
+      - dependency-name: 'typescript'
+        update-types:
+          - 'version-update:semver-major'
