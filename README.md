@@ -20,30 +20,24 @@
   <a href="https://community.home-assistant.io/t/decluttering-card-plus-a-maintained-continuation-of-decluttering-card-badges-cross-dashboard-templates-repeat/1021962"><img src="https://img.shields.io/badge/community-forum-brightgreen" alt="Community Forum"></a>
 </p>
 
-This card is for [Lovelace](https://www.home-assistant.io/lovelace) on [Home Assistant](https://www.home-assistant.io/).
-
-Repository: <https://github.com/tempus2016/decluttering-card-plus>
-
-📖 **Full documentation is in the [wiki][wiki]** — a [quick start][wiki-quickstart], a page
-per content type, [variables][wiki-variables], [recipes][wiki-recipes] and
-[troubleshooting][wiki-troubleshooting]. This README is the short version.
-
-What changed in each version is on the [releases page][releases]. Headings below marked
-`(v1.1.0+)` arrived in that release, so you can tell whether the copy you have does what
-they describe.
-
-We all use multiple times the same block of configuration across our lovelace configuration and we don't want to change the same things in a hundred places across our configuration each time we want to modify something.
-
-`decluttering-card-plus` to the rescue!! This card allows you to reuse multiple times the same configuration in your lovelace configuration to avoid repetition and supports variables and default values.
+We all use the same block of configuration over and over across a Lovelace dashboard, and none
+of us want to change the same thing in a hundred places. Define it once as a template, pass in
+what differs, and use it everywhere.
 
 ![Four rooms built from one template](images/overview.png)
 
 *One template, four rooms — each instance passes only the entity and the name.*
 
+📖 **The documentation is in the [wiki][wiki]**: a [quick start][wiki-quickstart], a page per
+content type, [variables][wiki-variables], [recipes][wiki-recipes] and
+[troubleshooting][wiki-troubleshooting]. This page is the summary.
+
+What changed in each version is on the [releases page][releases].
+
 ## Installation
 
-Requires Home Assistant 2024.7 or newer. Badge templates need 2024.8, since that is when
-Home Assistant made badges configurable.
+Requires Home Assistant 2024.7 or newer. Badge templates need 2024.8, since that is when Home
+Assistant made badges configurable.
 
 ### Using HACS
 
@@ -51,32 +45,20 @@ This card is not in the HACS default list, so add it as a custom repository firs
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tempus2016&repository=decluttering-card-plus&category=lovelace)
 
-To do it by hand, open HACS, then the three-dot menu at the top right, then
-**Custom repositories**, and paste this URL in full:
+To do it by hand, open HACS, then the three-dot menu at the top right, then **Custom
+repositories**, and paste this URL in full:
 
 ```text
 https://github.com/tempus2016/decluttering-card-plus
 ```
 
-Set the type to **Dashboard** and click **Add**. The card then appears in HACS as
-*Decluttering Card Plus*; download it there and reload your browser.
+Set the type to **Dashboard** and click **Add**. The card then appears in HACS as *Decluttering
+Card Plus*; download it there and reload your browser.
 
 ### Manually
 
-#### Step 1
-
-Save [decluttering-card-plus.js][latest-release] to `<config directory>/www/decluttering-card-plus.js` on your Home Assistant instance.
-
-**Example:**
-
-```bash
-wget https://raw.githubusercontent.com/tempus2016/decluttering-card-plus/main/dist/decluttering-card-plus.js
-mv decluttering-card-plus.js /config/www/
-```
-
-#### Step 2
-
-Link `decluttering-card-plus` inside your `ui-lovelace.yaml` or Raw Editor in the UI Editor
+Save [decluttering-card-plus.js][latest-release] to `<config directory>/www/` on your Home
+Assistant instance, then add it as a dashboard resource:
 
 ```yaml
 resources:
@@ -84,10 +66,89 @@ resources:
     type: module
 ```
 
+Full instructions, including how to check it loaded, are in [Installation][wiki-installation].
+
+## A first template
+
+Define the template at the root of your dashboard configuration, level with `views:`:
+
+```yaml
+decluttering_templates:
+  room_light:
+    card:
+      type: tile
+      entity: '[[light]]'
+      name: '[[room]]'
+```
+
+Then use it as many times as you like, filling in the holes:
+
+```yaml
+type: custom:decluttering-card-plus
+template: room_light
+variables:
+  - light: light.living_room
+  - room: Living Room
+```
+
+Templates can also be defined as a card on the dashboard itself, with a visual editor and a
+live preview, if you would rather not touch YAML. Both ways are covered in [Defining
+Templates][wiki-defining].
+
+![The visual editor for a card instance](images/editor-card-instance.png)
+
+*Picking a template and setting its variables in the visual editor, with a live preview.*
+
+## What it can do
+
+- **[Cards][wiki-cards], [badges][wiki-badges], [Entities rows][wiki-rows] and
+  [Picture elements][wiki-elements]** — a template can hold any of the four, and goes wherever
+  that kind of content goes.
+- **[Variables][wiki-variables]** with defaults, nesting, transforms (`[[room|slug]]`), values
+  read from Home Assistant, optional placeholders, and dashboard-wide fallbacks.
+- **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity in
+  an area, device or label.
+
+  ![Four room tiles in two columns, all from one card](images/repeat.png)
+
+  *One `for_each` card, four copies of the same template.*
+
+- **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
+  every other dashboard.
+- **[Visibility][wiki-visibility]** conditions inside a template, including leaving out a copy
+  that has nothing to show.
+- **[Styling][wiki-styling]** with a `style` option and CSS custom properties, and a
+  `decluttering-container` class to hang CSS off.
+- **[Visual editors][wiki-editors]** for both the template and the instance — see what a card
+  actually builds, see what uses a template before you change it, rename a template and have
+  its uses follow, and [export a template][wiki-sharing] to give to someone else.
+
+## Migrating from `decluttering-card`
+
+**Your existing configuration keeps working.** As well as its own `custom:decluttering-card-plus`
+and `custom:decluttering-template-plus` types, this card also registers the original
+`custom:decluttering-card` and `custom:decluttering-template` types when the original card is not
+installed. The `decluttering_templates` key is unchanged. So you can install this, remove the old
+card, and change nothing else.
+
+Do not run both. Whichever loads first claims the original type names, and which one that is
+depends on the order the resources were added rather than on anything you can see.
+[Migrating from decluttering-card][wiki-migrating] has the detail.
+
+New configuration should use `custom:decluttering-card-plus` and
+`custom:decluttering-template-plus`, which are always available.
+
+## Troubleshooting
+
+Common problems and their fixes are in the wiki: [Troubleshooting][wiki-troubleshooting].
+
+For dashboard plugins in general, see
+[this guide](https://github.com/thomasloven/hass-config/wiki/Lovelace-Plugins).
+
 ## Credits
 
-`decluttering-card-plus` builds on [custom-cards/decluttering-card][upstream], which has not
-had a release since April 2023, and on the work of three people:
+`decluttering-card-plus` builds on [custom-cards/decluttering-card][upstream], which has not had
+a release since April 2023, and on the work of three people:
 
 - [RomRider][romrider] — the original card.
 - [j9brown][j9brown] — visual editors, and support for templating entity rows and picture
@@ -98,1065 +159,10 @@ It is now maintained here as its own project, with badge templates, templates sh
 dashboards, `visibility` support inside templates, and a series of variable-substitution and
 layout fixes on top of that work.
 
-This project is maintained by [tempus2016](https://github.com/tempus2016) and is copyright
-2026 John MacKinnon. It began as a fork of RomRider's `decluttering-card`, which is copyright
-2018 Alexandre Garcia, and parts of that original card remain in it — so both notices are
-carried in [LICENSE](LICENSE). Everything here is MIT licensed, as was all of the work it
-builds on.
-
-## Migrating from `decluttering-card`
-
-**Your existing configuration keeps working.** As well as its own `custom:decluttering-card-plus`
-and `custom:decluttering-template-plus` types, this card also registers the original
-`custom:decluttering-card` and `custom:decluttering-template` types when the original card is
-not installed. The `decluttering_templates` key is unchanged. So you can install this, remove
-the old card, and change nothing else.
-
-If you install both cards at once, whichever loads first claims `decluttering-card` and
-`decluttering-template`. Home Assistant loads resources in the order they were added, so the
-original card usually wins and carries on serving your existing `custom:decluttering-card`
-cards — they keep working, but they get none of the fixes here until you remove the original
-card. In the other order this card serves them instead, and the original's bundle logs a
-`define` error to the console when it finds the name already taken; nothing breaks, because
-the type is already being served.
-
-Either way, there is no reason to run both. Remove the original card.
-
-New configuration should use `custom:decluttering-card-plus` and
-`custom:decluttering-template-plus`, which are always available.
-
-## Configuration
-
-### Defining your templates
-
-There are two ways to define your templates. You can use both methods together.
-
-#### Option 1. Create a template as a card with the visual editor or with YAML
-
-Add a *Custom: Decluttering Template Plus* card in any view of your dashboard to define your template,
-set variables with their default values, and preview the results with those defaults with the
-visual editor. The card type is `custom:decluttering-template-plus` in YAML.
-
-You can place the template card anywhere and it will only be visible when the dashboard is in edit mode.
-Each template must have a unique name.
-
-**Example:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: follow_the_sun
-card:
-  type: entity
-  entity: sun.sun
-```
-
-#### Option 2. Create a template at the root of your lovelace configuration
-
-Open your dashboard's YAML configuration file or click on the *Raw configuration editor* menu item
-in the dashboard.
-
-The templates are defined in an object at the root of your lovelace configuration. This object is
-named `decluttering_templates` and it contains your template declarations. Each template must have
-a unique name.
-
-**Example:**
-
-```yaml
-title: Example Dashboard
-decluttering_templates:
-  follow_the_sun:
-    card:
-      type: entity
-      entity: sun.sun
-  touch_the_sun:
-    row:
-      type: button
-      entity: sun.sun
-      action_name: Boop
-  hello_sunshine:
-    element:
-      type: icon
-      icon: mdi:weather-sunny
-      title: Hello!
-      style:
-        color: yellow
-views:
-```
-
-**Syntax:**
-
-```yaml
-decluttering_templates:
-  <template name>:
-    <template content>
-  [...]
-```
-
-### Sharing templates between dashboards
-
-A dashboard can borrow the templates defined on other dashboards. List them at the root of the
-dashboard that wants to use them, by the URL path you see in the address bar:
-
-```yaml
-decluttering_templates_from:
-  - shared-templates
-views:
-  - cards:
-      - type: custom:decluttering-card-plus
-        template: a_template_defined_on_the_other_dashboard
-```
-
-Both ways of defining a template are picked up from the other dashboard — the
-`decluttering_templates` key and `custom:decluttering-template-plus` cards. A dashboard's own
-templates always win, so borrowing can never quietly change a template you have defined
-yourself. Use `lovelace` for the original default dashboard.
-
-Each borrowed dashboard is fetched once and kept, rather than once per card. Saving one is
-announced by Home Assistant, so the copy of it is dropped and the next card to ask for a
-template fetches the new one — a change to a shared template reaches the dashboards
-borrowing it when they next render, without a browser refresh.
-
-### Values every template falls back on (v1.1.0+)
-
-A dashboard can set values its templates fall back on, so a colour or a size shared by a
-library of them is written once instead of repeated in each template's `default:` list:
-
-```yaml
-decluttering_defaults:
-  colour: amber
-  icon_size: 32px
-decluttering_templates:
-  room_tile:
-    card:
-      type: tile
-      entity: '[[entity]]'
-      icon_color: '[[colour]]'
-views:
-```
-
-They sit at the bottom of the order, so nothing you already have changes: a value on the
-card wins, then a declaration's `default`, then the template's `default:` list, and these
-last. A template that says `colour` for itself keeps saying it.
-
-In YAML mode this is what a yaml anchor already does. In storage mode there are no anchors,
-which is the whole reason for it.
-
-A borrowed template gets both dashboards' values — yours first, the lender's underneath —
-so a template goes on working where it lives, and borrowing a library never means giving up
-what you set here.
-
-### Seeing what a card builds (v1.1.0+)
-
-A card's visual editor has a **Result** panel at the bottom, showing the card that is
-actually built once every variable has been put in.
-
-The template is in one place, the values are in another, and what you see on the dashboard
-is a third thing — so working out why the result is not what you meant has always meant
-reading both and doing the substitution in your head. Anything still written as
-`[[name]]` in there is a variable nothing gave a value to.
-
-It is read-only, and a card repeating over a list shows the first copy.
-
-### Seeing what uses a template (v1.1.0+)
-
-A template card's visual editor has a **Where used** tab, listing every view on the
-dashboard that uses the template and how many times, plus any other template that calls it.
-
-It is worth a look before changing a template, because what a change affects is not visible
-from the template card itself — the cards using it can be anywhere on the dashboard, including
-inside stacks, grids and conditional cards, all of which are counted.
-
-Each view in the list links to itself, so you can go and look at what a change would affect.
-
-Cards on other dashboards are not counted, even ones that borrow this dashboard's templates.
-
-### Renaming a template (v1.1.0+)
-
-Renaming is the one edit a template card cannot make on its own: every card naming the old
-template would break the moment the new name was saved. So it is done from the **Where
-used** tab, which rewrites the definition and every use across the dashboard in one go.
-
-Type the new name, press the button, and press it again to confirm — the dashboard is saved
-straight away, which is what makes the rename and the cards using it land together. A name
-already taken by another template is refused.
-
-Cards on other dashboards are not rewritten, even ones that borrow this dashboard's
-templates, and a dashboard written in YAML cannot be renamed this way because it cannot be
-saved from the interface at all.
-
-### Sharing templates with other people (v1.1.0+)
-
-A template card's visual editor has a **Share** tab. Its top half writes the template out as
-YAML for you to send to someone else; its bottom half takes YAML somebody sent you and puts it
-into the template card you are editing.
-
-A template is only ever as portable as the things it is built from, and the YAML cannot tell
-you what those are, so the export names them for you:
-
-```yaml
-# Requires these custom cards: custom:mushroom-template-card
-# Uses these other templates, which are not included here: my_button_base
-type: custom:decluttering-template-plus
-template: room_tile
-default:
-  - entity: sun.sun
-card:
-  type: custom:mushroom-template-card
-  entity: "[[entity]]"
-```
-
-Whoever receives this needs Mushroom installed before it will render, and needs `my_button_base`
-as well — an export carries one template, so a template that calls others travels with them or
-not at all. The comment lines are ordinary YAML comments, so they can be pasted back in as they
-are.
-
-Because the exported block keeps its `type:`, it is also just a card. You can paste it straight
-into a view in the raw configuration editor instead of using the Share tab.
-
-Importing replaces the template card you are editing, and nothing is written to your dashboard
-until you save the card as usual. If the incoming template has the same name as one you already
-have, the editor says so and waits for you to press the button a second time, because two
-templates sharing a name means only one of them is ever used.
-
-### Adding content to your templates
-
-You can make decluttering templates for cards, badges, entity rows, and picture elements. Each
-content type has a different syntax and can be used in different places.
-
-#### [Card](https://www.home-assistant.io/dashboards/cards/)
-
-A decluttering template can hold a standard dashboard card, custom card, or another decluttering card.
-It is particularly useful for complex cards such as stacks, grids, and tiles.
-
-**Example:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: follow_the_sun
-card:
-  type: entity
-  entity: sun.sun
-```
-
-**Syntax:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: <template_name>
-card:
-  # This is where you put your [Card](https://www.home-assistant.io/dashboards/cards/) configuration (it can be a card embedding other cards)
-  type: <card_type>
-  [...]
-default:
-  # An optional list of variables and their default values to substitute into the template
-  - <variable_name>: <variable_value>
-  - <variable_name>: <variable_value>
-  [...]
-```
-
-#### [Badge](https://www.home-assistant.io/dashboards/badges/)
-
-A decluttering template can hold a badge. Add it to a view's `badges` list rather than its
-cards, using the same `custom:decluttering-card-plus` type.
-
-![A templated badge beside a native one](images/badges.png)
-
-*A templated badge sits in the badge row exactly like a native one.*
-
-**Example:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: room_badge
-badge:
-  type: entity
-  entity: '[[entity]]'
-  color: '[[colour]]'
-default:
-  - colour: red
-```
-
-**Used in a view:**
-
-```yaml
-badges:
-  - type: custom:decluttering-card-plus
-    template: room_badge
-    variables:
-      - entity: binary_sensor.front_door
-```
-
-**Syntax:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: <template_name>
-badge:
-  # This is where you put your [Badge](https://www.home-assistant.io/dashboards/badges/) configuration
-  type: <badge_type>
-  [...]
-default:
-  # An optional list of variables and their default values to substitute into the template
-  - <variable_name>: <variable_value>
-  [...]
-```
-
-#### [Entities card](https://www.home-assistant.io/dashboards/entities/) row
-
-A decluttering template can hold an Entities card row such as a Button row or a Conditional row.
-
-**Example:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: touch_the_sun
-row:
-  type: button
-  entity: sun.sun
-  action_name: Boop
-```
-
-**Syntax:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: <template_name>
-row:
-  # This is where you put your [Entities card](https://www.home-assistant.io/dashboards/entities/) row
-  type: <element_type>
-  [...]
-default:
-  # An optional list of variables and their default values to substitute into the template
-  - <variable_name>: <variable_value>
-  - <variable_name>: <variable_value>
-  [...]
-```
-
-#### [Picture elements card](https://www.home-assistant.io/dashboards/picture-elements/) element
-
-A decluttering template can hold a Picture elements card element such as an Icon or an Image.
-
-**Example:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: hello_sunshine
-element:
-  type: icon
-  icon: mdi:weather-sunny
-  title: Hello!
-  style:
-    color: yellow
-```
-
-**Syntax:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: <template_name>
-element:
-  # This is where you put your [Picture elements card](https://www.home-assistant.io/dashboards/picture-elements/) element configuration
-  type: <element_type>
-  [...]
-default:
-  # An optional list of variables and their default values to substitute into the template
-  - <variable_name>: <variable_value>
-  - <variable_name>: <variable_value>
-  [...]
-```
-
-#### Variables
-
-Templates can contain variables. Each variable will later be replaced by a real value when you
-instantiate a card which uses this template.
-
-A variable needs to be enclosed in double square brackets `[[variable_name]]`. If a variable is alone
-on its line, enclose it in single quotes: `'[[variable_name]]'`.
-
-You can also define default values for your variables in the `default` object. The visual editor uses the
-provided default values to render the preview.
-
-A variable with no value and no default is written onto the card exactly as it appears, so
-you see `[[name]]` on the dashboard. The editors point this out while you are editing, and
-the card says so in the browser console when it renders, naming the template and the
-variable.
-
-**Example:**
-
-```yaml
-type: custom:decluttering-template-plus
-template: touch_anything
-row:
-  type: button
-  entity: '[[what]]'
-  action_name: '[[how]]'
-default:
-  what: sun.sun
-  how: 'Boop'
-```
-
-Variables can be written either as a mapping, as above, or as a list of one name each:
-
-```yaml
-default:
-  - what: sun.sun
-  - how: 'Boop'
-```
-
-Both are read the same way, wherever variables appear — `default:` on a template and
-`variables:` on a card. The list form is what the visual editor writes.
-
-#### Describing your variables
-
-A template can describe the variables it takes, rather than only giving them defaults. Each
-description becomes a real control in the editor of every card that uses the template, so
-picking an entity is an entity picker rather than a line of hand-typed YAML.
-
-```yaml
-type: custom:decluttering-template-plus
-template: room_tile
-description: A tile for one room's light.
-variables:
-  - name: entity
-    label: Light
-    description: Which entity this tile shows
-    selector:
-      entity:
-        domain: light
-  - name: colour
-    label: Colour
-    selector:
-      select:
-        options: [red, blue, amber]
-    default: red
-card:
-  type: tile
-  entity: '[[entity]]'
-  name: '[[label]] ([[colour]])'
-```
-
-![The card editor showing an entity picker and a dropdown built from the template](images/typed-variables.png)
-
-*A template that describes its variables gets pickers, labels and helper text, and the
-template's own description above them.*
-
-**Syntax:**
-
-| Name | Type | Requirement | Description
-| ---- | ---- | ------- | -----------
-| name | string | **Required** | The variable's name, as written in `[[name]]`
-| label | string | **Optional** | What the editor calls it. Defaults to the name
-| description | string | **Optional** | Helper text shown under the control
-| selector | object | **Optional** | Any [Home Assistant selector](https://www.home-assistant.io/docs/blueprint/selectors/). Defaults to a plain text box
-| default | any | **Optional** | The value to use when a card does not set one
-| required | boolean | **Optional** | Whether the template is unusable without it. Marks the field required, and says so loudly when it is unset
-
-`description:` on the template itself is shown above the controls, so whoever uses the
-template can see what it is for. Underneath it the card editor says where the template is
-defined, linking to the view holding it — a card is often where you realise the template
-itself needs changing, and the definition can be anywhere on the dashboard, or on another
-one entirely.
-
-Values are resolved in this order: what the card passes, then a declaration's `default`,
-then the `default:` list. Anything the template does not describe is still editable, in an
-**Other variables** box below the controls, and a template that describes nothing is edited
-exactly as before. Declaring variables is entirely optional.
-
-The editors also point out the mistakes that are easy to make and hard to see: a variable
-the template uses that has no value and no default, and a value set on a card that the
-template never uses. A variable declared `required: true` is called out more loudly than
-the rest when a card leaves it unset — but it is still a warning. Nothing here stops you
-saving, because a template can always be edited after the cards that use it.
-
-`required: true` alongside a `default` contradicts itself, since a variable with a default
-can never be unset. The template editor says so.
-
-#### Turning a card you already have into a template
-
-The hard part of adopting this card is the first conversion: taking a card you built by
-hand and deciding which parts of it change between copies. The template editor can propose
-that for you.
-
-Put the card into a template — build it on the **Card** tab, or paste it in through the
-**Share** tab — then press **Suggest variables from the card** on the Settings tab. Every
-entity, name, title, heading and icon in it becomes a variable, described with the right
-control and defaulting to the value it replaced, so the template renders exactly what the
-card did until you pass something else in.
-
-```yaml
-# before
-card:
-  type: vertical-stack
-  cards:
-    - type: tile
-      entity: light.hall
-      name: Hall
-      icon: mdi:lamp
-    - type: tile
-      entity: light.hall
-      name: Hall again
-```
-
-```yaml
-# after
-variables:
-  - name: entity
-    label: Entity
-    selector: {entity: {}}
-    default: light.hall
-  - name: name
-    label: Name
-    selector: {text: {}}
-    default: Hall
-  - name: icon
-    label: Icon
-    selector: {icon: {}}
-    default: mdi:lamp
-  - name: name_2
-    label: Name 2
-    selector: {text: {}}
-    default: Hall again
-card:
-  type: vertical-stack
-  cards:
-    - type: tile
-      entity: '[[entity]]'
-      name: '[[name]]'
-      icon: '[[icon]]'
-    - type: tile
-      entity: '[[entity]]'
-      name: '[[name_2]]'
-```
-
-The same value in the same kind of place becomes one variable — `light.hall` appears twice
-above and is one thing to fill in, not two. Values that are already variables are left
-alone, as are variables the template already declares, so pressing it again after adding a
-card is safe. Because it rewrites your card, it asks twice before doing anything.
-
-#### Repeating a template (v1.1.0+)
-
-A card can render its template once per item in a list, which saves pasting the same
-instance block out four times when only the entity changes.
-
-```yaml
-type: custom:decluttering-card-plus
-template: room_tile
-columns: 2
-variables:
-  - colour: amber
-for_each:
-  - entity: light.kitchen
-    name: Kitchen
-  - entity: light.hall
-    name: Hall
-  - entity: light.shed
-    name: Shed
-    colour: blue
-```
-
-Each item holds the variables for that copy. Anything set in the card's own `variables` is
-shared by every copy, and an item can override it — `colour` above is amber everywhere
-except the shed.
-
-`columns` lays the copies out side by side; leave it out, or set it to `1`, and they stack
-vertically. The copies are handed to Home Assistant's own grid and vertical-stack cards, so
-they behave exactly like any other card in your layout.
-
-A fixed column count is cramped on a phone and wasteful on a wide screen, so `columns` can
-be paired with `min_column_width` — how narrow a copy may get, in pixels, before a column
-is dropped. `columns` then becomes the most it will ever use:
-
-```yaml
-columns: 4
-min_column_width: 250
-```
-
-Four across on a desktop, two on a tablet, one on a phone, from the one card. The count is
-worked out from the card's own width, so it is right inside a sidebar or a narrow column
-too — not just at the size of the window. Nothing is rebuilt until the count actually
-changes.
-
-Every copy is also given `[[index]]`, which counts from one, and `[[count]]`, the number of
-copies — so a template can number itself without you writing the number into each item:
-
-```yaml
-card:
-  type: markdown
-  content: 'Room [[index]] of [[count]]'
-```
-
-An item that sets `index` or `count` itself wins, so a template that already uses those
-names for something else keeps working.
-
-`for_each` needs a template that defines a `card`. An empty list renders nothing rather than
-failing, so a list built from a helper can be empty without breaking the dashboard.
-
-#### Repeating over what Home Assistant knows (v1.1.0+)
-
-A written-out list stops being true the moment you add a lamp. Home Assistant already knows
-what exists, so `for_each_from` asks it instead, and the card keeps itself up to date:
-
-```yaml
-type: custom:decluttering-card-plus
-template: light_tile
-columns: 2
-for_each_from:
-  domain: light
-  area: Kitchen
-```
-
-Every light in the kitchen, and a new one appears there by itself. Each copy is given the
-things worth templating:
-
-| Repeating over | Each copy gets
-| -------------- | --------------
-| entities | `entity`, `name`, `domain`, `area`, `area_id`
-| areas | `area_id`, `area`, `area_icon`, `floor`
-
-alongside the `index` and `count` any repeat gets.
-
-`entities` and `areas` choose which of the two you get; the rest narrow the result:
-
-```yaml
-for_each_from:
-  areas: true            # one copy per area
-  floor: Upstairs        # ...on this floor
-```
-
-```yaml
-for_each_from:
-  entities: 'light.*_ceiling'   # patterns, with * standing for anything
-  label: Night light            # ...carrying this label
-```
-
-`area`, `floor` and `label` match by the name you see in Home Assistant or by the id
-underneath it, whichever you find easier to write, and none of them care about case. A
-label put on a device counts for all of that device's entities, which is how labels are
-usually used. Hidden entities are left out.
-
-Copies are ordered by the name shown, so the dashboard does not reshuffle itself when the
-registry does, and matching nothing renders nothing rather than failing.
-
-The list is worked out again when the registry changes — an entity added, renamed, moved to
-another area, or given a label — and *not* on every state change, so a dashboard built this
-way is no more expensive than one written out by hand. A name shown in a copy is the name
-at the time it was built.
-
-If a card sets both `for_each` and `for_each_from`, the written-out list wins.
-
-**Syntax:**
-
-| Name | Type | Requirement | Description
-| ---- | ---- | ------- | -----------
-| for_each | list | **Optional** | One copy of the template per item; each item is a set of variables for that copy. A single mapping counts as a list of one
-| for_each_from | object | **Optional** | One copy per entity or area Home Assistant knows about, kept up to date
-| columns | number | **Optional** | How many copies sit side by side. Defaults to 1, which stacks them. With `min_column_width`, the most it will ever use
-| min_column_width | number | **Optional** | How narrow a copy may get, in pixels, before a column is dropped
-
-**Inside `for_each_from`:**
-
-| Name | Type | Requirement | Description
-| ---- | ---- | ------- | -----------
-| entities | string, list or true | **Optional** | Repeat over entities matching these entity id patterns. The default when `areas` is not given
-| areas | string, list or true | **Optional** | Repeat over areas matching these patterns. `true` for all of them
-| domain | string or list | **Optional** | Narrows to entities of these domains
-| area | string or list | **Optional** | Narrows to these areas, by name or by id
-| floor | string or list | **Optional** | Narrows to these floors, by name or by id
-| label | string or list | **Optional** | Narrows to things carrying these labels, by name or by id
-
-#### Asking for a variable in a different shape (v1.1.0+)
-
-A placeholder can ask for its value written differently, which lets one variable serve both
-a name and the entity id built from it:
-
-```yaml
-type: custom:decluttering-template-plus
-template: room_tile
-card:
-  type: tile
-  entity: 'light.[[room|slug]]'
-  name: '[[room|title]]'
-default:
-  - room: Back Garden
-```
-
-`light.[[room|slug]]` becomes `light.back_garden`, and `[[room|title]]` becomes
-`Back Garden`. Passing `room: John's Shed` gives `light.john_s_shed` without you having to
-pass the entity id separately.
-
-| Transform | Does | `John's Back Garden` becomes
-| --------- | ---- | ---------------------------
-| `slug` | Lower case, anything that is not a letter or digit becomes `_` | `john_s_back_garden`
-| `upper` | Upper case | `JOHN'S BACK GARDEN`
-| `lower` | Lower case | `john's back garden`
-| `title` | Capitalises each word | `John's Back Garden`
-| `kebab` | Lower case, anything that is not a letter or digit becomes `-` | `john-s-back-garden`
-
-Transforms chain, left to right: `[[room|slug|upper]]` gives `JOHN_S_BACK_GARDEN`. Order
-matters, since `slug` lower-cases — `[[room|upper|slug]]` gives `john_s_back_garden`.
-
-The same variable can be used raw and transformed in the same template. A word after the
-bar that is not one of these five is not a transform, so nothing is substituted and the
-mistake is visible rather than silent — that goes for a chain too, where one unknown word
-leaves the whole placeholder alone rather than applying half of it. A transform shapes
-text, so it applies to scalar values only: a mapping or a list under a transform is
-likewise left unsubstituted, since slugging or uppercasing its JSON would only garble it.
-
-A placeholder left on screen says that something is wrong but not what, so the browser
-console names it:
-
-```text
-decluttering-card-plus: left [[obj|upper]] (a mapping) in the card rather than
-substituting. A transform only shapes text, so it needs a scalar value...
-```
-
-It is said once per card however many times the placeholder appears.
-
-#### Asking Home Assistant for a value (v1.1.0+)
-
-A placeholder can also ask Home Assistant about the entity it names, which is what lets a
-template default a name to the entity's own name rather than making every card pass one:
-
-```yaml
-type: custom:decluttering-template-plus
-template: room_tile
-card:
-  type: tile
-  entity: '[[entity]]'
-  name: '[[entity|friendly_name]]'
-default:
-  - entity: light.hall
-```
-
-| Asks for | Gives | Read from
-| -------- | ----- | ---------
-| `friendly_name` | What the entity is called | Its `friendly_name`, then the name it was given, then its original name
-| `area` | The name of the area it is in | Its own area, or its device's
-| `device` | The name of its device | The name you gave the device, then the device's own
-| `attr:<name>` | One named attribute | The entity's current attributes
-
-These chain with the transforms above, and run in the order they are written — so
-`[[entity|friendly_name|slug]]` is the entity's name slugged, while `[[entity|slug|friendly_name]]`
-would slug the entity id first and then look for an entity by that name. The value a
-resolver reads is an entity id, so it has to come first.
-
-**The entity's state is deliberately not here.** A card's configuration is built once, so
-resolving state would mean rebuilding the whole card every time anything changed. What is
-here comes from the registry, which changes about as often as the dashboard does, and a
-template that uses it is rebuilt when it does — so a name that was not known yet when the
-page first painted still turns up.
-
-When Home Assistant has nothing to give — an entity that does not exist, an attribute it
-does not carry, no area on it — the placeholder is left on the card, and the console says
-which and why:
-
-```text
-decluttering-card-plus: left [[entity|area]] (nothing in Home Assistant for
-"light.hall") in the card rather than substituting. A resolver reads its value as an
-entity id and asks Home Assistant, so it needs one that exists and carries what was
-asked for.
-```
-
-#### A variable the template can do without (v1.1.0+)
-
-A placeholder written `[[name?]]` is one the card can manage without. When nothing gives it
-a value, the option it stands for is taken out of the card altogether rather than left
-showing the brackets:
-
-```yaml
-card:
-  type: tile
-  entity: '[[entity]]'
-  name: '[[name?]]'
-```
-
-Pass a `name` and the tile uses it. Leave it out and the tile has no `name` at all, so Home
-Assistant falls back to the entity's own name — which is usually what you wanted.
-
-Empty means unset, `null`, or the empty string. A `0` and a `false` are values and stay.
-Inside a longer piece of text it simply leaves quietly, and an item of a list that is
-nothing but an empty option is dropped rather than leaving a hole. It is not a mistake, so
-nothing is said about it in the console.
-
-The marker goes at the end, after any transform: `[[room|slug?]]`.
-
-#### Leaving out a copy that has nothing to show (v1.1.0+)
-
-`for_each` skips an item that leaves a `required: true` variable empty, which is what lets
-one template serve a room with four lights and a room with one:
-
-```yaml
-type: custom:decluttering-template-plus
-template: room_light
-variables:
-  - name: entity
-    required: true
-card:
-  type: tile
-  entity: '[[entity]]'
-```
-
-```yaml
-type: custom:decluttering-card-plus
-template: room_light
-columns: 4
-for_each:
-  - entity: light.kitchen
-  - entity: light.hall
-  - entity: ''
-  - {}
-```
-
-That renders two cards, not four. A template that requires nothing renders every item as
-before.
-
-#### Writing `[[` and meaning it (v1.1.0+)
-
-A placeholder written `[[!name]]` is not a variable: it renders as the literal text
-`[[name]]`. That is the only way to put those brackets in a template — worth knowing if
-yours holds markdown, or Jinja that uses them.
-
-```yaml
-card:
-  type: markdown
-  content: 'Write [[!entity]] to use a variable.'
-```
-
-The bang is dropped only once every other substitution is done, so an escaped placeholder
-can never be turned back into a real one. The editors know about it too, and will not tell
-you that `[[!entity]]` is a variable you forgot to set.
-
-#### Nested variables
-
-A variable's value can itself contain variables. Substitution repeats until nothing is left
-to replace, so the order you declare them in does not matter.
-
-```yaml
-type: custom:decluttering-template-plus
-template: area_sensor
-card:
-  type: tile
-  entity: '[[entity]]'
-  name: '[[label]]'
-default:
-  - label: '[[area]] sensor'
-  - area: Garden
-  - entity: sun.sun
-```
-
-Used like this, `label` resolves to `Shed sensor` — a value you pass in always wins over the
-template's default, including when the placeholder only appears because of another substitution:
-
-```yaml
-type: custom:decluttering-card-plus
-template: area_sensor
-variables:
-  - area: Shed
-```
-
-A variable that refers to itself cannot be resolved. Substitution gives up after 10 passes and
-logs a warning to the browser console rather than looping forever.
-
-### Using the card
-
-If your template content is a card, add a *Custom: Decluttering Card Plus* to your dashboard
-to instantiate your template, set variables, and preview the results with the visual editor.
-
-![The visual editor for a card instance](images/editor-card-instance.png)
-
-*Picking a template and setting its variables in the visual editor, with a live preview.*
-The card type is `custom:decluttering-card-plus` in YAML.
-
-If your template content is an Entities card row, first add an *Entities card* to your dashboard or
-open an existing one. Then switch to the code editor and add a new item to the `entities`
-list in YAML as shown below.
-
-If your template content is a Picture elements card element, first add a *Picture elements* card to your
-dashboard or open an existing one. Then switch to the code editor and add a new item to the
-`elements` list in YAML as shown below.
-
-You can also use templates in different places than they were intended. For example, an
-Entities card row or Picture elements card element can be displayed as a card in the dashboard but
-it might not look right.
-
-**Example which references the previous templates:**
-
-```yaml
-type: vertical-stack
-cards:
-  # A card
-  - type: custom:decluttering-card-plus
-    template: follow_the_sun
-  # An Entities card
-  - type: entities
-    entities:
-      # An entity row
-      - type: custom:decluttering-card-plus
-        template: touch_the_sun
-      # An entity row with variables using default values
-      - type: custom:decluttering-card-plus
-        template: touch_anything
-      # An entity row with variables using specified values
-      - type: custom:decluttering-card-plus
-        template: touch_anything
-        variables:
-          - what: sensor.moon_phase
-          - how: 'Kiss'
-  # A Picture elements card
-  - type: picture-elements
-    elements:
-      - type: custom:decluttering-card-plus
-        template: hello_sunshine
-        style:
-          top: 50%
-          left: 33%
-      - type: custom:decluttering-card-plus
-        template: hello_sunshine
-        style:
-          top: 50%
-          left: 66%
-```
-
-**Syntax:**
-
-| Name | Type | Requirement | Description
-| ---- | ---- | ------- | -----------
-| type | string | **Required** | `custom:decluttering-card-plus`
-| template | object | **Required** | Name of your template
-| variables | list | **Optional** | List of variables and their values to replace in the template content
-| style | string | **Optional** | CSS styles to inject into the card. Supports variable replacement.
-
-### When a card comes out spread across the row (v1.1.0+)
-
-A card that sizes itself — a `custom:button-card` given a width, say — is narrower than the
-share of a row this card is handed, and sits at the left of it. Three of them in a
-`horizontal-stack` end up evenly spread instead of packed together, which is not what the
-same three cards do on their own.
-
-`fit: contents` takes this card out of the layout, so the card inside it becomes the
-stack's own child and lays out exactly as it would without any of this:
-
-```yaml
-type: custom:decluttering-card-plus
-template: nav_button
-fit: contents
-```
-
-| Name | Type | Requirement | Description
-| ---- | ---- | ------- | -----------
-| fit | string | **Optional** | `box`, the default, keeps a box of its own. `contents` gives it up
-
-It is not the default, and cannot be, because a card with no box of its own has nothing for
-the [`style`](#styling) option to paint on — `:host(.decluttering-container) { border: ... }`
-simply stops showing. The card's editor says so if you set both. The `height: 100%` this
-card normally carries stops applying too, which matters for a card sized against its
-container.
-
-Everything else is unaffected: cards in a grid, in a sections view, and cards that fill the
-width they are given all lay out identically either way. Reach for it when a stack comes out
-looking spread out, and leave it alone otherwise.
-
-### Visibility
-
-Cards inside a template support Home Assistant's own `visibility` conditions, and those
-conditions can use variables:
-
-```yaml
-type: custom:decluttering-template-plus
-template: occupancy
-card:
-  type: tile
-  entity: '[[sensor]]'
-  visibility:
-    - condition: state
-      entity: '[[sensor]]'
-      state: '[[show_when]]'
-default:
-  - show_when: 'on'
-```
-
-![The same template shown and hidden by its own visibility conditions](images/visibility.png)
-
-*The same template shown and hidden by its own visibility conditions.*
-
-```yaml
-type: custom:decluttering-card-plus
-template: occupancy
-variables:
-  - sensor: binary_sensor.hallway_motion
-```
-
-When a card is hidden by its conditions the decluttering card collapses with it, so it
-leaves no gap in the layout. While the dashboard is in edit mode the template preview is
-shown regardless of its conditions, so you can still see what you are editing.
-
-`visibility` also works on the `custom:decluttering-card-plus` card itself, where Home
-Assistant applies it in the usual way.
-
-### Styling
-
-The card supports injecting custom CSS styles directly into the card. This is useful for customizing the appearance of templates and instances without needing external tools like `card-mod`.
-
-#### `decluttering-container` class
-
-The host element is automatically assigned the `decluttering-container` class. You can use this class to target the card itself in your styles.
-
-**Example:**
-
-```yaml
-- type: custom:decluttering-card-plus
-  template: my_styled_card
-  variables:
-    - color: red
-  style: |
-    :host(.decluttering-container) {
-      border: 2px solid [[color]];
-    }
-```
-
-![A template styled through the style option, with the colour passed in as a variable](images/styling.png)
-
-*A template styled through the style option, with the colour passed in as a variable.*
-
-#### Template styles
-
-You can also define styles within your templates. These styles will be injected whenever the template is used.
-
-**Example:**
-
-```yaml
-decluttering_templates:
-  my_styled_card:
-    card:
-      type: entity
-      entity: sun.sun
-    style: |
-      :host {
-        --ha-card-background: var(--primary-background-color);
-        --ha-card-border-radius: 15px;
-      }
-```
-
-#### Use CSS custom properties to style the card itself
-
-The CSS is injected into this card's shadow root, and each Home Assistant card lives in a
-shadow root of its own nested inside it. CSS does not cross a shadow boundary, so a
-selector such as `ha-card { ... }` never matches the wrapped card. Custom properties do
-cross, because they inherit — so `--ha-card-background` works where `background-color`
-on `ha-card` does not.
-
-`:host`, `:host(.decluttering-container)` and `hui-card` all refer to elements in this
-card's own shadow root, so those work normally.
-
-See [Styling][wiki-styling] in the wiki for the full explanation and a table of what does
-and does not reach the card.
-
-## Troubleshooting
-
-Common problems and their fixes are in the wiki: [Troubleshooting][wiki-troubleshooting].
-
-For dashboard plugins in general, see
-[this guide](https://github.com/thomasloven/hass-config/wiki/Lovelace-Plugins).
+This project is maintained by [tempus2016](https://github.com/tempus2016) and is copyright 2026
+John MacKinnon. It began as a fork of RomRider's `decluttering-card`, which is copyright 2018
+Alexandre Garcia, and parts of that original card remain in it — so both notices are carried in
+[LICENSE](LICENSE). Everything here is MIT licensed, as was all of the work it builds on.
 
 ## Developers
 
@@ -1177,8 +183,20 @@ npm start       # rebuild on change, served on :5000 for the dev container
 [simbaja]: https://github.com/simbaja/ha-decluttering-card
 [upstream]: https://github.com/custom-cards/decluttering-card
 [wiki]: https://github.com/tempus2016/decluttering-card-plus/wiki
+[wiki-badges]: https://github.com/tempus2016/decluttering-card-plus/wiki/Badges
+[wiki-cards]: https://github.com/tempus2016/decluttering-card-plus/wiki/Cards
+[wiki-defining]: https://github.com/tempus2016/decluttering-card-plus/wiki/Defining-Templates
+[wiki-editors]: https://github.com/tempus2016/decluttering-card-plus/wiki/Visual-Editors
+[wiki-elements]: https://github.com/tempus2016/decluttering-card-plus/wiki/Elements
+[wiki-installation]: https://github.com/tempus2016/decluttering-card-plus/wiki/Installation
+[wiki-migrating]: https://github.com/tempus2016/decluttering-card-plus/wiki/Migrating-from-decluttering-card
 [wiki-quickstart]: https://github.com/tempus2016/decluttering-card-plus/wiki/Quick-Start
 [wiki-recipes]: https://github.com/tempus2016/decluttering-card-plus/wiki/Recipes
+[wiki-repeating]: https://github.com/tempus2016/decluttering-card-plus/wiki/Repeating-a-Template
+[wiki-rows]: https://github.com/tempus2016/decluttering-card-plus/wiki/Rows
+[wiki-sharing]: https://github.com/tempus2016/decluttering-card-plus/wiki/Sharing-a-Template
+[wiki-sharing-between]: https://github.com/tempus2016/decluttering-card-plus/wiki/Sharing-Templates-Between-Dashboards
 [wiki-styling]: https://github.com/tempus2016/decluttering-card-plus/wiki/Styling
 [wiki-troubleshooting]: https://github.com/tempus2016/decluttering-card-plus/wiki/Troubleshooting
 [wiki-variables]: https://github.com/tempus2016/decluttering-card-plus/wiki/Variables
+[wiki-visibility]: https://github.com/tempus2016/decluttering-card-plus/wiki/Visibility
