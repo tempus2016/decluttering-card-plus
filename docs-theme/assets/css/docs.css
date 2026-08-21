@@ -191,17 +191,20 @@ code {
   background: color-mix(in srgb, var(--ink) 7%, transparent);
   padding: .1em .35em; border-radius: 4px;
 }
-pre, .highlight, .highlighter-rouge {
+/* kramdown puts `highlighter-rouge` on inline code spans as well as on block wrappers,
+   so the slab is scoped to the block ones by element. */
+pre, div.highlighter-rouge, div.highlight {
   background: var(--slab); color: var(--slab-ink);
   border-radius: 8px; margin: 0 0 1.25rem;
 }
-.highlighter-rouge { border: 1px solid var(--slab-rule); }
-.highlight { border: 0; }
+div.highlighter-rouge { border: 1px solid var(--slab-rule); }
+div.highlight { border: 0; margin: 0; }
 pre {
   border: 0; padding: 1rem 1.125rem; overflow-x: auto;
   font-size: .8125rem; line-height: 1.6;
 }
 .highlighter-rouge pre { margin: 0; }
+code.highlighter-rouge { border: 0; }
 pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
 
 /* Rouge, on the slab. Only the shapes YAML actually produces are worth naming. */
@@ -336,6 +339,7 @@ blockquote > :last-child { margin-bottom: 0; }
 #start-here + table td:first-child { font-size: .9375rem; color: var(--ink-soft); margin-bottom: .25rem; }
 #start-here + table td:last-child { font-family: var(--serif); font-weight: 600; font-size: 1rem; }
 #start-here + table td:last-child a { color: var(--ink); text-decoration: none; }
+#start-here + table td:last-child a:last-child::after { content: ' \2192'; }
 #start-here + table tr:hover td:last-child a { color: var(--amber-dim); text-decoration: underline; }
 
 /* ============================================================
