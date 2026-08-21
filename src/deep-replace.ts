@@ -230,6 +230,7 @@ export default (
   templateName?: string,
   hass?: any,
   quiet?: boolean,
+  onUnresolved?: (names: string[]) => void,
 ): any => {
   if (content === undefined) return content;
   const variableArray = resolveVariables(variables, templateConfig);
@@ -291,6 +292,12 @@ export default (
    * where it is the running card talking rather than the editor.
    */
   const unresolved = unresolvedPlaceholders(jsonConfig, refused);
+  /*
+   * Reported here rather than worked out from the result, because by the time the result
+   * exists an escaped `[[!name]]` has become the text `[[name]]` and is indistinguishable
+   * from a variable nobody set. This is the only place that still knows the difference.
+   */
+  if (onUnresolved && unresolved.length) onUnresolved(unresolved);
   if (!quiet && unresolved.length) {
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
     const whose = templateName ? `template "${templateName}"` : 'this template';

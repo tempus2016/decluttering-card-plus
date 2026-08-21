@@ -18,6 +18,14 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   min_column_width?: number;
   /** What to show instead when a repeat produces no copies at all. */
   empty?: unknown;
+  /** The space between repeated copies, in pixels. */
+  gap?: number;
+  /** How much of a sections grid the card asks for, overriding what the template says. */
+  grid_options?: unknown;
+  /** Renders what the card builds instead of the card itself, for working out why. */
+  debug?: boolean;
+  /** Turns what is normally a warning into a card that refuses to render. */
+  strict?: boolean;
   /** Whether this card keeps a box of its own in the layout, or gets out of the way. */
   fit?: 'box' | 'contents';
 }
@@ -41,6 +49,8 @@ export interface TemplateConfig {
   element?: any;
   badge?: any;
   style?: string;
+  /** How much of a sections grid a card built from this template asks for. */
+  grid_options?: any;
 }
 
 export interface LovelaceElement extends HTMLElement {
