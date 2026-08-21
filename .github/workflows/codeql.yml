@@ -1,0 +1,40 @@
+name: CodeQL
+
+# This card runs inside everybody's Home Assistant, so it is worth having a machine look
+# at it as well as a person.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, so a newly published rule finds old code rather than waiting for a change.
+    - cron: '41 5 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    name: Analyse
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # dist/ is the bundle, generated from src/ - analysing it would report every
+          # finding twice and point at a line nobody edits.
+          config: |
+            paths-ignore:
+              - dist
+              - node_modules
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'

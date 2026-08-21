@@ -3,3 +3,5 @@ yarn.lock
 .rpt2_cache/
 .tmp/
 .test-build/
+coverage/
+.nyc_output/

@@ -133,6 +133,36 @@ Templates][wiki-defining].
   actually builds, see what uses a template before you change it, rename a template and have
   its uses follow, and [export a template][wiki-sharing] to give to someone else.
 
+## Is this the right card?
+
+| You want | Reach for |
+| --- | --- |
+| The same block of card YAML in a dozen places, with a few values changed | **this card** |
+| A card per light, room or sensor, kept up to date as you add things | **this card** — [`for_each_from`][wiki-repeating] |
+| A list that reorders itself by what is on, or hides what is off *right now* | [auto-entities][auto-entities] — this card builds once and does not follow state |
+| One button styled every possible way, with heavy CSS and JS templating | [button-card][button-card] and its own templates |
+| To compute a value from several entities | a Home Assistant [template sensor][template-sensor], then show it with any card |
+
+They coexist happily: a template here can hold a button-card, and an auto-entities card can
+hold cards built from a template here.
+
+## Which Home Assistant
+
+| You need | For |
+| --- | --- |
+| 2024.7 | everything, unless it is listed below |
+| 2024.8 | `badge:` templates — Home Assistant made badges configurable in that release |
+| 2024.11 | `grid_options`, on a template or a card, which is what the sections view reads |
+
+Newer releases are fine. If a feature quietly does nothing, check this table first.
+
+## Try it without committing to anything
+
+[`examples/demo-dashboard.yaml`](examples/demo-dashboard.yaml) is a whole dashboard that
+exercises most of what the card does. Make a new dashboard, open its raw configuration
+editor, and paste it in — everything it needs is either built into the card or taken from
+your own Home Assistant.
+
 ## Migrating from `decluttering-card`
 
 **Your existing configuration keeps working.** As well as its own `custom:decluttering-card-plus`
@@ -216,6 +246,12 @@ John MacKinnon. It began as a fork of RomRider's `decluttering-card`, which is c
 Alexandre Garcia, and parts of that original card remain in it — so both notices are carried in
 [LICENSE](LICENSE). Everything here is MIT licensed, as was all of the work it builds on.
 
+## Contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md) covers building, testing, the commit format releases are
+cut from, and the handful of changes that tend to get pushed back. Security reports go
+through [SECURITY.md](SECURITY.md).
+
 ## Developers
 
 Fork and then clone the repo to your local machine. From the cloned directory run
@@ -252,3 +288,7 @@ npm start       # rebuild on change, served on :5000 for the dev container
 [wiki-troubleshooting]: https://github.com/tempus2016/decluttering-card-plus/wiki/Troubleshooting
 [wiki-variables]: https://github.com/tempus2016/decluttering-card-plus/wiki/Variables
 [wiki-visibility]: https://github.com/tempus2016/decluttering-card-plus/wiki/Visibility
+
+[auto-entities]: https://github.com/thomasloven/lovelace-auto-entities
+[button-card]: https://github.com/custom-cards/button-card
+[template-sensor]: https://www.home-assistant.io/integrations/template/

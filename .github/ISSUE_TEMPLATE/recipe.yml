@@ -1,0 +1,43 @@
+name: Share a template, or ask how to build one
+description: A template you have made that others might want, or a dashboard shape you cannot work out
+title: '[Recipe] '
+labels: ['recipe']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things belong here: a template you have built that somebody else would want, and
+        a "how would I do X" that has no answer yet. Both end up as something searchable,
+        which is the point.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Which is this?
+      options:
+        - Something I built
+        - Something I am trying to build
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What it does, or should do
+      description: A sentence or two. What would somebody see on their dashboard?
+    validations:
+      required: true
+  - type: textarea
+    id: template
+    attributes:
+      label: The template
+      description: However far you got. Leave it empty if you have not started.
+      render: yaml
+  - type: textarea
+    id: card
+    attributes:
+      label: The card that uses it
+      render: yaml
+  - type: input
+    id: version
+    attributes:
+      label: Which version of the card
+      placeholder: '1.1.0'

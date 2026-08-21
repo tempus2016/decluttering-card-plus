@@ -35,6 +35,10 @@ jobs:
         run: npm run lint --if-present
       - name: Run the tests
         run: npm test --if-present
+      - name: Check how much of the source the tests reach
+        # Thresholds are in package.json, set below what the suite manages today so this
+        # catches a real slide rather than failing on a rounding difference.
+        run: npm run coverage --if-present
 
   build:
     name: Build

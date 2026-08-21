@@ -1,0 +1,139 @@
+# A dashboard that exercises most of what this card does. Paste it into a new dashboard's
+# raw configuration editor (three dots, "Raw configuration editor") and it should render
+# without further edits - everything it needs is either built in or taken from your own
+# Home Assistant.
+#
+# The one thing to change: DEMO_ENTITY, if you have no `sun.sun`.
+
+decluttering_defaults:
+  - accent: '#2E5EA8'
+
+decluttering_templates:
+  # A tile that names itself, and falls back when nothing is set.
+  demo_tile:
+    description: One entity, named after itself unless told otherwise.
+    variables:
+      - name: entity
+        label: Entity
+        selector: { entity: {} }
+        required: true
+      - name: name
+        label: Name
+        description: Leave empty to use the entity's own name
+        selector: { text: {} }
+    card:
+      type: tile
+      entity: '[[entity]]'
+      name: '[[name|or:entity|friendly_name|default:Unnamed]]'
+
+  # Shows off the grammar: transforms, escapes, positions.
+  demo_grammar:
+    description: What the placeholder grammar can do.
+    default:
+      - room: John's Back Garden
+    card:
+      type: markdown
+      content: |
+        ### Grammar
+
+        - slug: `[[room|slug]]`
+        - kebab: `[[room|kebab]]`
+        - chained: `[[room|slug|upper]]`
+        - written out on purpose: `[[!room]]`
+        - where this copy sits: [[index]] of [[count]]
+
+  # A card per area, listing the lights in it.
+  demo_room:
+    description: One card per area, with a tile per light in it.
+    card:
+      type: vertical-stack
+      cards:
+        - type: markdown
+          content: '## [[area]] — [[entity_count]] lights'
+        - type: custom:decluttering-card-plus
+          template: demo_tile
+          for_each: '[[items]]'
+
+views:
+  - title: Demo
+    path: demo
+    cards:
+      - type: markdown
+        content: >
+          ## Decluttering Card Plus
+
+          Every card below comes from a template defined at the top of this dashboard's raw
+          configuration. Open any of them in the editor to see how it is put together.
+
+      # `range` repeats a fixed number of times with only the position to go on, which is
+      # what gives [[index]] and [[count]] something to say.
+      - type: custom:decluttering-card-plus
+        template: demo_grammar
+        for_each_from:
+          range: 2
+
+      # Repeating over the registry: every light you have, three across, dropping to fewer
+      # columns rather than getting narrower than 220px.
+      - type: custom:decluttering-card-plus
+        template: demo_tile
+        for_each_from:
+          domain: light
+          sort: name
+        columns: 3
+        min_column_width: 220
+        gap: 12
+        empty:
+          type: markdown
+          content: You have no `light` entities, so this card has nothing to show.
+
+      # Grouping: a card per area that knows what is in it.
+      - type: custom:decluttering-card-plus
+        template: demo_room
+        for_each_from:
+          areas: true
+          with:
+            domain: light
+
+      # A written-out list still works, and each copy can override what the card sets.
+      - type: custom:decluttering-card-plus
+        template: demo_tile
+        columns: 2
+        variables:
+          - name: Shared name
+        for_each:
+          - entity: sun.sun
+          - entity: sun.sun
+            name: Overridden here
+
+      # What the card actually builds, on the dashboard.
+      - type: custom:decluttering-card-plus
+        template: demo_tile
+        variables:
+          - entity: sun.sun
+        debug: true
+
+    badges:
+      - type: custom:decluttering-card-plus
+        template: demo_badge
+
+  - title: Templates
+    path: templates
+    cards:
+      - type: markdown
+        content: >
+          ## Where templates live
+
+          A template can be defined in the `decluttering_templates` key, as above, or as a
+          card like the one below. Both work the same way; a card is easier to build
+          visually.
+
+      - type: custom:decluttering-template-plus
+        template: demo_badge
+        description: A badge that only appears when the sun is up.
+        badge:
+          type: entity
+          entity: sun.sun
+          visibility:
+            - condition: state
+              entity: sun.sun
+              state: above_horizon
