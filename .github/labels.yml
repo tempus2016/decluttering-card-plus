@@ -60,3 +60,14 @@
 - name: upstream
   color: fef2c0
   description: Originally reported on custom-cards/decluttering-card or a fork of it
+
+# Ways in for somebody who wants to help
+- name: good first issue
+  color: 7057ff
+  description: Small, self-contained, and someone new to the project could take it
+- name: help wanted
+  color: 008672
+  description: Worth doing, and not currently being worked on
+- name: recipe
+  color: c2e0c6
+  description: A template somebody shared, or a dashboard shape to work out
