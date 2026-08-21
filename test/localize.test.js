@@ -86,6 +86,7 @@ check('hass chooses the language', localize('share.import_header', undefined, { 
 check('French is wired in', localize('tools.rename_header', undefined, { language: 'fr' }), 'Renommer');
 check('Spanish is wired in', localize('tools.rename_header', undefined, { language: 'es' }), 'Renombrar');
 check('German is wired in', localize('tools.rename_header', undefined, { language: 'de' }), 'Umbenennen');
+check('Dutch is wired in', localize('tools.rename_header', undefined, { language: 'nl' }), 'Hernoemen');
 check(
   'a regional language falls back to its base',
   localize('share.import_header', undefined, { language: 'pt-BR' }),

@@ -2,6 +2,7 @@ import de from './locales/de.json';
 import en from './locales/en.json';
 import es from './locales/es.json';
 import fr from './locales/fr.json';
+import nl from './locales/nl.json';
 import pt from './locales/pt.json';
 
 /*
@@ -15,7 +16,7 @@ import pt from './locales/pt.json';
  * translation is better than none rather than broken.
  */
 
-const LANGUAGES: Record<string, Record<string, string>> = { de, en, es, fr, pt };
+const LANGUAGES: Record<string, Record<string, string>> = { de, en, es, fr, nl, pt };
 
 const FALLBACK = 'en';
 
