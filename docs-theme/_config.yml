@@ -1,0 +1,22 @@
+title: Decluttering Card Plus
+description: Write a card once, use it everywhere. Reusable Lovelace card templates for Home Assistant.
+lang: en
+
+# Set here rather than by actions/configure-pages, so a pull-request build produces
+# exactly the site that main would.
+url: https://tempus2016.github.io
+baseurl: /decluttering-card-plus
+
+# _Sidebar and _Footer are wiki furniture. The sidebar is included as the navigation on
+# every page instead; publishing either as a page of its own would be nonsense.
+exclude:
+  - _Sidebar.md
+  - _Footer.md
+  - Home.md          # published as index.md instead
+
+defaults:
+  - scope: { path: '' }
+    values: { layout: wiki }
+
+kramdown:
+  syntax_highlighter: rouge

@@ -1,0 +1,372 @@
+/* ============================================================
+   Decluttering Card Plus — documentation
+   The accent is the amber of a lit light in Home Assistant, on cool dashboard paper:
+   the card's own output, rather than a colour picked from nowhere.
+   Every colour below is at least 4.5:1 on its background, in both schemes.
+   ============================================================ */
+
+@font-face {
+  font-family: 'Plex Sans'; src: url('../fonts/plex-sans-var.woff2') format('woff2');
+  font-weight: 100 700; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Serif'; src: url('../fonts/plex-serif-600.woff2') format('woff2');
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Mono'; src: url('../fonts/plex-mono-400.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Mono'; src: url('../fonts/plex-mono-500.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'Plex Mono'; src: url('../fonts/plex-mono-400-italic.woff2') format('woff2');
+  font-weight: 400; font-style: italic; font-display: swap;
+}
+
+:root {
+  --paper:     #F2F5F7;
+  --surface:   #FFFFFF;
+  --ink:       #141E28;
+  --ink-soft:  #5B6B7A;
+  --ink-faint: #606F7D;
+  --rule:      #DCE3E9;
+  --rule-soft: #E9EEF2;
+  --amber:     #E39400;
+  --amber-dim: #8F5F00;
+  --link:      #0B5FA5;
+  --slab:      #131C25;
+  --slab-ink:  #C9D6E0;
+  --slab-rule: #24313D;
+  --slab-mute: #818F9B;
+
+  --sans:  'Plex Sans', system-ui, -apple-system, sans-serif;
+  --serif: 'Plex Serif', Georgia, serif;
+  --mono:  'Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --nav-w: 16.5rem;
+  --toc-w: 13rem;
+  --measure: 44rem;
+  --bar-h: 3.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:     #0D141A;
+    --surface:   #141D25;
+    --ink:       #DEE6EC;
+    --ink-soft:  #93A3B1;
+    --ink-faint: #7A8A97;
+    --rule:      #24303B;
+    --rule-soft: #1C2731;
+    --amber:     #F5AB1D;
+    --amber-dim: #F5AB1D;
+    --link:      #74B8EF;
+    --slab:      #0A1017;
+    --slab-rule: #1E2A35;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 2px; }
+
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 60;
+  background: var(--surface); color: var(--ink); padding: .625rem 1rem;
+  border: 1px solid var(--rule); border-radius: 0 0 6px 0;
+}
+.skip:focus { left: 0; }
+
+/* ------------------------------------------------------------ top bar */
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  height: var(--bar-h);
+  display: flex; align-items: center; gap: 1rem;
+  padding: 0 1.5rem;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+}
+.brand { display: flex; align-items: center; gap: .625rem; text-decoration: none; color: var(--ink); }
+.mark { font-family: var(--mono); font-size: .875rem; font-weight: 600; color: var(--amber-dim); letter-spacing: -.04em; }
+.brand-name { font-family: var(--serif); font-weight: 600; font-size: 1rem; letter-spacing: -.01em; white-space: nowrap; }
+.topbar .spacer { flex: 1; }
+.topbar-link { font-size: .8125rem; color: var(--ink-soft); text-decoration: none; white-space: nowrap; }
+.topbar-link:hover { color: var(--ink); text-decoration: underline; }
+.jump { display: none; }
+
+/* ------------------------------------------------------------ shell */
+.shell {
+  display: grid;
+  grid-template-columns: var(--nav-w) minmax(0, 1fr) var(--toc-w);
+  gap: 3rem;
+  max-width: 84rem; margin: 0 auto; padding: 0 1.5rem;
+  align-items: start;
+}
+
+/* ------------------------------------------------------------ navigation
+   Set as the config document it describes. The markup is whatever markdownify made of
+   _Sidebar.md: `**Group**` -> <p><strong>, the list under it -> <ul>. */
+.nav {
+  position: sticky; top: var(--bar-h);
+  padding: 2rem 0 3rem;
+  max-height: calc(100vh - var(--bar-h)); overflow-y: auto;
+}
+.nav-root { font-family: var(--mono); font-size: .75rem; color: var(--ink-faint); letter-spacing: -.02em; margin-bottom: 1.25rem; }
+.nav h3 { display: none; }           /* the sidebar repeats the project name; the bar has it */
+.nav p {
+  font-family: var(--mono); font-size: .6875rem; font-weight: 500;
+  text-transform: lowercase; letter-spacing: .02em;
+  color: var(--ink-soft); margin: 1.5rem 0 .5rem .75rem;
+}
+.nav p strong { font-weight: 500; }
+.nav p::after { content: ':'; color: var(--ink-faint); }
+.nav ul { list-style: none; margin: 0; padding: 0 0 0 .75rem; border-left: 1px solid var(--rule); }
+.nav li { margin: 0; }
+.nav a {
+  display: block; padding: .1875rem 0 .1875rem .75rem;
+  margin-left: -1px; border-left: 2px solid transparent;
+  font-size: .875rem; line-height: 1.45; color: var(--ink-soft); text-decoration: none;
+}
+.nav a:hover { color: var(--ink); border-left-color: var(--rule); }
+.nav a[aria-current='page'] { color: var(--ink); font-weight: 500; border-left-color: var(--amber); }
+
+/* ------------------------------------------------------------ content */
+.content { padding: 2.5rem 0 5rem; min-width: 0; max-width: var(--measure); }
+.content-wide { max-width: 58rem; }
+.content > *:first-child { margin-top: 0; }
+
+h1, h2, h3, h4, h5 { font-family: var(--serif); font-weight: 600; letter-spacing: -.015em; line-height: 1.2; }
+h1 { font-size: 2.5rem; margin: 0 0 .75rem; }
+h2 { font-size: 1.5rem; margin: 3.25rem 0 1rem; padding-top: 1.5rem; border-top: 1px solid var(--rule-soft); }
+h3 { font-size: 1.1875rem; margin: 2.25rem 0 .625rem; }
+h4 { font-size: 1rem; margin: 1.75rem 0 .5rem; }
+p { margin: 0 0 1.125rem; }
+strong { font-weight: 600; }
+ul, ol { margin: 0 0 1.125rem; padding-left: 1.25rem; }
+li { margin: .25rem 0; }
+
+hr { border: 0; height: 1px; background: var(--rule); margin: 2.75rem 0; }
+/* The wiki writes `---` before some sections; one rule between them is enough. */
+hr + h2 { border-top: 0; padding-top: 0; margin-top: 0; }
+
+/* The release a section arrived in, written `*(v1.1.0+)*` in the wiki. */
+h2 em, h3 em, h4 em, td em {
+  font-family: var(--mono); font-style: normal; font-size: .6875rem; font-weight: 500;
+  color: var(--amber-dim); border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  border-radius: 100px; padding: .0625rem .4375rem; vertical-align: .3em; margin-left: .375rem;
+}
+
+/* headings are link targets; give them a quiet handle */
+.anchor {
+  float: left; margin-left: -1.1em; padding-right: .35em;
+  color: var(--ink-faint); text-decoration: none; opacity: 0;
+}
+h2:hover .anchor, h3:hover .anchor, h4:hover .anchor, .anchor:focus { opacity: 1; }
+
+/* ------------------------------------------------------------ code */
+code {
+  font-family: var(--mono); font-size: .875em;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  padding: .1em .35em; border-radius: 4px;
+}
+/* kramdown puts `highlighter-rouge` on inline code spans as well as on block wrappers,
+   so the slab is scoped to the block ones by element. */
+pre, div.highlighter-rouge, div.highlight {
+  background: var(--slab); color: var(--slab-ink);
+  border-radius: 8px; margin: 0 0 1.25rem;
+}
+div.highlighter-rouge { border: 1px solid var(--slab-rule); }
+div.highlight { border: 0; margin: 0; }
+pre {
+  border: 0; padding: 1rem 1.125rem; overflow-x: auto;
+  font-size: .8125rem; line-height: 1.6;
+}
+.highlighter-rouge pre { margin: 0; }
+code.highlighter-rouge { border: 0; }
+pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+
+/* Rouge, on the slab. Only the shapes YAML actually produces are worth naming. */
+.highlight .na, .highlight .nt { color: #8FC6E8; }                    /* keys */
+.highlight .s, .highlight .s1, .highlight .s2, .highlight .sb { color: #A8D8A0; }
+.highlight .c, .highlight .c1, .highlight .cm { color: var(--slab-mute); font-style: italic; }
+.highlight .p, .highlight .pi { color: var(--slab-mute); }
+.highlight .m, .highlight .mi, .highlight .mf { color: #E0B0E8; }
+.highlight .k, .highlight .kc { color: #E8A9A0; }
+
+/* The placeholder is the product. It is the one thing lit in a code block —
+   wrapped by assets/js/docs.js, which runs after Rouge has done its part. */
+.ph-var { color: var(--amber); font-weight: 600; }
+code .ph-var { color: var(--amber-dim); }
+
+/* ------------------------------------------------------------ tables */
+table { width: 100%; border-collapse: collapse; margin: 0 0 1.5rem; font-size: .9375rem; }
+th {
+  text-align: left; font-family: var(--mono); font-weight: 500;
+  font-size: .6875rem; text-transform: uppercase; letter-spacing: .08em;
+  color: var(--ink-soft); padding: 0 1rem .5rem 0; border-bottom: 1px solid var(--rule);
+}
+td { padding: .625rem 1rem .625rem 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th:last-child, td:last-child { padding-right: 0; }
+
+/* ------------------------------------------------------------ notes */
+blockquote {
+  margin: 0 0 1.5rem; padding: .875rem 1.125rem;
+  background: color-mix(in srgb, var(--amber) 8%, var(--surface));
+  border-left: 2px solid var(--amber);
+  border-radius: 0 6px 6px 0;
+  font-size: .9375rem;
+}
+blockquote > :last-child { margin-bottom: 0; }
+
+/* ------------------------------------------------------------ figures */
+.content img {
+  max-width: 100%; height: auto; display: block;
+  border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
+  margin: 1.75rem 0 .625rem;
+}
+/* The wiki captions a screenshot with an italic paragraph under it. Needs :has(); where
+   that is missing the caption simply stays italic body text, which still reads. */
+.content p:has(> img:only-child) { margin: 0; }
+.content p:has(> img:only-child) + p > em:only-child,
+.content figcaption {
+  display: block; font-family: var(--mono); font-size: .6875rem; line-height: 1.6;
+  font-style: normal; color: var(--ink-faint); letter-spacing: .02em;
+}
+.content p:has(> img:only-child) + p { margin-bottom: 2rem; }
+
+/* ------------------------------------------------------------ on this page */
+.toc {
+  position: sticky; top: var(--bar-h); padding: 2.75rem 0 3rem;
+  max-height: calc(100vh - var(--bar-h)); overflow-y: auto;
+}
+.toc-label { font-family: var(--mono); font-size: .625rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-faint); margin-bottom: .75rem; }
+.toc ul { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--rule); }
+.toc li { margin: 0; }
+.toc a {
+  display: block; padding: .1875rem 0 .1875rem .75rem; margin-left: -1px;
+  border-left: 2px solid transparent;
+  font-size: .8125rem; line-height: 1.4; color: var(--ink-soft); text-decoration: none;
+}
+.toc a:hover { color: var(--ink); }
+.toc a.here { color: var(--ink); border-left-color: var(--amber); }
+
+/* ------------------------------------------------------------ footer */
+.foot {
+  border-top: 1px solid var(--rule); margin-top: 2rem;
+  padding: 1.75rem 1.5rem 3rem;
+  font-size: .8125rem; color: var(--ink-soft); text-align: center;
+}
+.foot p { margin: 0; }
+
+/* ============================================================
+   Home page
+   ============================================================ */
+.hero { padding: 3.5rem 0 0; }
+.eyebrow {
+  font-family: var(--mono); font-size: .6875rem; text-transform: uppercase;
+  letter-spacing: .12em; color: var(--ink-soft); margin: 0 0 1.25rem;
+}
+.eyebrow b { color: var(--amber-dim); font-weight: 500; }
+.hero h1 { font-size: clamp(2.25rem, 5.5vw, 3.75rem); line-height: 1.05; margin: 0 0 1.25rem; max-width: 20ch; }
+
+/* The placeholder, standing in for the part that changes. */
+.ph { color: var(--amber); white-space: nowrap; }
+.ph::before, .ph::after {
+  font-family: var(--mono); font-weight: 400; font-size: .62em;
+  opacity: .5; vertical-align: .14em; letter-spacing: -.08em;
+}
+.ph::before { content: '[['; }
+.ph::after  { content: ']]'; }
+
+.hero-lede { font-size: 1.1875rem; color: var(--ink-soft); max-width: 40rem; margin: 0 0 2.25rem; }
+.hero-lede p { margin: 0; }
+.hero-lede strong { color: var(--ink); font-weight: 600; }
+
+.cta-row { display: flex; gap: .75rem; flex-wrap: wrap; margin: 0 0 3.5rem; }
+.btn {
+  display: inline-flex; align-items: center; min-height: 2.75rem;
+  padding: 0 1.25rem; border-radius: 6px; font-size: .9375rem; font-weight: 500;
+  text-decoration: none; border: 1px solid transparent;
+}
+.btn-primary { background: var(--ink); color: var(--paper); }
+.btn-primary:hover { background: var(--amber-dim); color: #fff; }
+.btn-secondary { border-color: var(--rule); color: var(--ink); background: var(--surface); }
+.btn-secondary:hover { border-color: var(--ink-faint); }
+
+/* The thesis: one template, four cards. */
+.thesis {
+  display: grid; grid-template-columns: minmax(0, 21rem) 2rem minmax(0, 1fr);
+  align-items: center;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 10px;
+  padding: 1.5rem; margin-bottom: 1rem;
+}
+.thesis pre { margin: 0; border-radius: 8px; }
+.thesis-arrow { text-align: center; color: var(--ink-faint); font-family: var(--mono); font-size: 1.125rem; }
+.thesis img { margin: 0; width: 100%; border: 0; border-radius: 6px; }
+.thesis-cap { font-family: var(--mono); font-size: .6875rem; color: var(--ink-faint); letter-spacing: .02em; margin-bottom: 3.5rem; }
+
+/* Home.md's "Start here" table is a router, not data — one card per row.
+   Keyed off the heading id kramdown gives it; rename the heading in the wiki and it
+   quietly goes back to being a table, which is still fine. */
+#start-here + table { display: block; margin-top: 1.25rem; }
+#start-here + table thead { display: none; }
+#start-here + table tbody { display: grid; grid-template-columns: repeat(2, 1fr); gap: .75rem; }
+#start-here + table tr {
+  display: block; padding: 1rem 1.125rem;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+}
+#start-here + table tr:hover { border-color: var(--amber); }
+#start-here + table td { display: block; padding: 0; border: 0; }
+#start-here + table td:first-child { font-size: .9375rem; color: var(--ink-soft); margin-bottom: .25rem; }
+#start-here + table td:last-child { font-family: var(--serif); font-weight: 600; font-size: 1rem; }
+#start-here + table td:last-child a { color: var(--ink); text-decoration: none; }
+#start-here + table td:last-child a:last-child::after { content: ' \2192'; }
+#start-here + table tr:hover td:last-child a { color: var(--amber-dim); text-decoration: underline; }
+
+/* ============================================================
+   Narrower than three columns
+   ============================================================ */
+@media (max-width: 78rem) {
+  .shell { grid-template-columns: var(--nav-w) minmax(0, 1fr); gap: 2.5rem; }
+  .toc { display: none; }
+}
+@media (max-width: 56rem) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 1.25rem; }
+  /* Navigation after what you came to read; `Contents ↓` in the bar reaches it. */
+  .nav { position: static; max-height: none; overflow: visible; order: 2; border-top: 1px solid var(--rule); padding: 1.75rem 0 3rem; }
+  .content { order: 1; padding-bottom: 2rem; }
+  .jump { display: inline; }
+  .hero { padding-top: 2.25rem; }
+  .thesis { grid-template-columns: 1fr; gap: 1rem; padding: 1rem; }
+  .thesis-arrow { transform: rotate(90deg); }
+  #start-here + table tbody { grid-template-columns: 1fr; }
+  h1 { font-size: 2rem; }
+}
+@media (max-width: 30rem) {
+  .topbar { padding: 0 1rem; gap: .75rem; }
+  /* On the narrowest phones the name wraps the bar onto two lines; the mark is enough. */
+  .brand-name { display: none; }
+}

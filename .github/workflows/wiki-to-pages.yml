@@ -3,20 +3,77 @@ name: Publish the wiki
 # The wiki is the documentation, and GitHub wikis are poorly indexed by search engines -
 # which matters when people find this by searching for the thing they are trying to build.
 # This publishes the same pages to GitHub Pages, so the wiki stays the one place they are
-# written and there is nothing to keep in step by hand.
+# written and there is nothing to keep in step by hand. How the published site looks lives
+# in docs-theme/ in this repo.
 on:
   gollum: # fires when a wiki page is edited
+  push:
+    branches: [main]
+    paths: ['docs-theme/**', '.github/workflows/wiki-to-pages.yml']
+  pull_request:
+    paths: ['docs-theme/**', '.github/workflows/wiki-to-pages.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  publish:
+  # Builds on pull requests too, so a change to the theme is known to produce a site
+  # before it reaches main. Only the deploy job below is skipped there.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Take a copy of the theme
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: docs-theme
+          path: repo
+
+      - name: Take a copy of the wiki
+        run: |
+          git clone --depth 1 https://github.com/${{ github.repository }}.wiki.git site
+          rm -rf site/.git
+
+      - name: Turn wiki pages into site pages
+        run: python3 repo/docs-theme/build.py site
+
+      - name: Lay the theme over it
+        run: |
+          cp -r repo/docs-theme/_config.yml \
+                repo/docs-theme/_layouts \
+                repo/docs-theme/_includes \
+                repo/docs-theme/assets \
+                site/
+
+      # No configure-pages step: url and baseurl are set in docs-theme/_config.yml, so the
+      # build is the same on a pull request as it is on main.
+      #
+      # Without this the artifact is raw markdown and the site serves a 404, because
+      # nothing turns index.md into index.html - deploy-pages publishes files as they are.
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./site
+          destination: ./_site
+
+      - name: Check the build produced pages, not markdown
+        run: |
+          test -f _site/index.html || { echo "no index.html - Jekyll did not render"; exit 1; }
+          test -f _site/Variables.html || { echo "no Variables.html"; exit 1; }
+          test -f _site/assets/css/docs.css || { echo "theme assets missing"; exit 1; }
+          grep -q 'class="ph"' _site/index.html || { echo "hero did not build"; exit 1; }
+          echo "$(ls _site/*.html | wc -l) pages built"
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: ./_site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -25,93 +82,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - name: Take a copy of the wiki
-        run: git clone --depth 1 https://github.com/${{ github.repository }}.wiki.git site
-
-      - name: Point the links at pages a web server can serve
-        # A wiki links to `[Variables](Variables)`, which works because GitHub's wiki
-        # serves extensionless URLs. Jekyll produces Variables.html, so every one of those
-        # links would 404. Rewritten here rather than in the wiki, which has to keep
-        # working as a wiki.
-        run: |
-          python3 - <<'PY'
-          import re, glob, os
-          pattern = re.compile(r'\]\(([A-Za-z0-9][A-Za-z0-9_-]*)(#[^)]*)?\)')
-          for path in glob.glob('site/*.md'):
-              text = open(path, encoding='utf-8').read()
-              # Only bare page names match: anything with a slash or a dot - images/,
-              # http://, a mailto: - has no chance of hitting this.
-              rewritten = pattern.sub(lambda m: f']({m.group(1)}.html{m.group(2) or ""})', text)
-              open(path, 'w', encoding='utf-8').write(rewritten)
-              if rewritten != text:
-                  print('rewrote links in', os.path.basename(path))
-          PY
-
-      - name: Give it a front page, a theme and the wiki's own navigation
-        run: |
-          cd site
-          rm -rf .git
-          # A wiki's Home page is its front page; a web server wants an index.
-          if [ -f Home.md ]; then cp Home.md index.md; fi
-
-          # The wiki's sidebar becomes navigation on every page rather than a page of its
-          # own. Copied after the link rewrite above, so its links point at .html too.
-          mkdir -p _includes _layouts
-          if [ -f _Sidebar.md ]; then cp _Sidebar.md _includes/sidebar.md; fi
-
-          # Inherits the theme's own layout and adds a column beside it, so the styling is
-          # still Primer's and only the navigation is ours.
-          cat > _layouts/wiki.html <<'HTML'
-          ---
-          layout: default
-          ---
-          <div class="wiki-page">
-            <nav class="wiki-nav">
-              {% capture sidebar %}{% include sidebar.md %}{% endcapture %}
-              {{ sidebar | markdownify }}
-            </nav>
-            <div class="wiki-content">{{ content }}</div>
-          </div>
-          <style>
-            .wiki-page { display: flex; gap: 2rem; align-items: flex-start; }
-            .wiki-nav { flex: 0 0 15rem; position: sticky; top: 1rem; font-size: 0.9rem; }
-            .wiki-nav ul { list-style: none; padding-left: 0; margin: 0 0 1rem; }
-            .wiki-nav li { margin: 0.15rem 0; }
-            .wiki-nav h3 { margin-top: 0; }
-            .wiki-content { flex: 1 1 auto; min-width: 0; }
-            /* One column on a phone, with the navigation after what you came to read. */
-            @media (max-width: 46rem) {
-              .wiki-page { display: block; }
-              .wiki-nav { position: static; border-top: 1px solid #d1d9e0; margin-top: 2rem; padding-top: 1rem; }
-            }
-          </style>
-          HTML
-
-          cat > _config.yml <<'YAML'
-          title: Decluttering Card Plus
-          description: Reusable Lovelace card templates for Home Assistant
-          theme: jekyll-theme-primer
-          # _Sidebar and _Footer are wiki furniture. The sidebar is included as navigation
-          # instead; publishing either as a page of its own would be nonsense.
-          exclude:
-            - _Sidebar.md
-            - _Footer.md
-          defaults:
-            - scope: { path: '' }
-              values: { layout: wiki }
-          YAML
-
-      - uses: actions/configure-pages@v5
-
-      # Without this the artifact is raw markdown and the site serves a 404, because
-      # nothing turns Home.md into index.html - deploy-pages publishes files as they are.
-      - uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./site
-          destination: ./_site
-
-      - uses: actions/upload-pages-artifact@v4
-        with:
-          path: ./_site
       - id: deploy
         uses: actions/deploy-pages@v4
