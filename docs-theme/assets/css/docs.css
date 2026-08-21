@@ -110,7 +110,7 @@ a:hover { text-decoration-thickness: 2px; }
 }
 .brand { display: flex; align-items: center; gap: .625rem; text-decoration: none; color: var(--ink); }
 .mark { font-family: var(--mono); font-size: .875rem; font-weight: 600; color: var(--amber-dim); letter-spacing: -.04em; }
-.brand-name { font-family: var(--serif); font-weight: 600; font-size: 1rem; letter-spacing: -.01em; }
+.brand-name { font-family: var(--serif); font-weight: 600; font-size: 1rem; letter-spacing: -.01em; white-space: nowrap; }
 .topbar .spacer { flex: 1; }
 .topbar-link { font-size: .8125rem; color: var(--ink-soft); text-decoration: none; white-space: nowrap; }
 .topbar-link:hover { color: var(--ink); text-decoration: underline; }
@@ -247,11 +247,15 @@ blockquote > :last-child { margin-bottom: 0; }
   border: 1px solid var(--rule); border-radius: 8px; background: var(--surface);
   margin: 1.75rem 0 .625rem;
 }
-.content p > img:only-child + em,
+/* The wiki captions a screenshot with an italic paragraph under it. Needs :has(); where
+   that is missing the caption simply stays italic body text, which still reads. */
+.content p:has(> img:only-child) { margin: 0; }
+.content p:has(> img:only-child) + p > em:only-child,
 .content figcaption {
-  display: block; font-family: var(--mono); font-size: .6875rem;
+  display: block; font-family: var(--mono); font-size: .6875rem; line-height: 1.6;
   font-style: normal; color: var(--ink-faint); letter-spacing: .02em;
 }
+.content p:has(> img:only-child) + p { margin-bottom: 2rem; }
 
 /* ------------------------------------------------------------ on this page */
 .toc {
@@ -360,4 +364,9 @@ blockquote > :last-child { margin-bottom: 0; }
   .thesis-arrow { transform: rotate(90deg); }
   #start-here + table tbody { grid-template-columns: 1fr; }
   h1 { font-size: 2rem; }
+}
+@media (max-width: 30rem) {
+  .topbar { padding: 0 1rem; gap: .75rem; }
+  /* On the narrowest phones the name wraps the bar onto two lines; the mark is enough. */
+  .brand-name { display: none; }
 }
