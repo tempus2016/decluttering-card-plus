@@ -1,4 +1,5 @@
 import { CONSUMER_TYPES } from './templates';
+import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -50,18 +51,13 @@ export function findCycle(chain: string[] | undefined, name: string | undefined)
 export function describeCycle(cycle: string[]): string {
   const path = cycle.join(' → ');
   return cycle.length === 2
-    ? `The template "${cycle[0]}" uses itself (${path}), which would never finish. ` +
-        'A template cannot contain a card that uses it.'
-    : `These templates use each other in a loop (${path}), which would never finish. ` +
-        'One of them has to stop using the next.';
+    ? localize('error.cycle_self', { first: cycle[0], path })
+    : localize('error.cycle_loop', { path });
 }
 
 /** What to tell somebody about nesting that never loops but never stops either. */
 export function describeTooDeep(chain: string[]): string {
-  return (
-    `Templates are nested more than ${MAX_NESTING} deep (${chain.slice(0, 3).join(' → ')} → …), ` +
-    'which is deeper than anything is meant to go. Check whether a template ends up using itself.'
-  );
+  return localize('error.too_deep', { max: MAX_NESTING, start: chain.slice(0, 3).join(' → ') });
 }
 
 /** Whether anything in here is a card that would need telling. */

@@ -1,4 +1,5 @@
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE } from './templates';
+import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -62,9 +63,9 @@ export function buildExport(config: any): { payload: Record<string, any>; notes:
 
   const { customTypes, templateRefs } = scanDependencies(config);
   const notes: string[] = [];
-  if (customTypes.length) notes.push(`Requires these custom cards: ${customTypes.join(', ')}`);
+  if (customTypes.length) notes.push(localize('share.requires_custom_cards', { types: customTypes.join(', ') }));
   if (templateRefs.length) {
-    notes.push(`Uses these other templates, which are not included here: ${templateRefs.join(', ')}`);
+    notes.push(localize('share.uses_other_templates', { names: templateRefs.join(', ') }));
   }
 
   return { payload, notes };
@@ -76,19 +77,19 @@ export function buildExport(config: any): { payload: Record<string, any>; notes:
  */
 export function validateImport(parsed: any): { ok: boolean; errors: string[] } {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { ok: false, errors: ['This does not look like a template: it should be a block of YAML keys and values.'] };
+    return { ok: false, errors: [localize('share.import_not_a_template')] };
   }
 
   const errors: string[] = [];
   if (typeof parsed.template !== 'string' || !parsed.template.trim()) {
-    errors.push('This template has no name: it needs a "template:" line.');
+    errors.push(localize('share.import_no_name'));
   }
 
   const things = THING_KEYS.filter((key) => parsed[key] !== undefined);
   if (things.length === 0) {
-    errors.push('This template defines nothing: it needs one of "card:", "badge:", "row:" or "element:".');
+    errors.push(localize('share.import_defines_nothing'));
   } else if (things.length > 1) {
-    errors.push(`This template defines both "${things[0]}" and "${things[1]}": it can only define one of them.`);
+    errors.push(localize('share.import_defines_both', { first: things[0], second: things[1] }));
   }
 
   return { ok: errors.length === 0, errors };

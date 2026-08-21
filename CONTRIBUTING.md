@@ -50,6 +50,17 @@ a real slide rather than a rounding difference. CI runs it on every pull request
 Write the test first when you can. On this project it has repeatedly caught the thing that
 was actually wrong rather than the thing that looked wrong.
 
+## Translations
+
+The easiest contribution there is: copy `src/locales/en.json` to `src/locales/<code>.json`,
+translate the values, and register the file in `src/localize.ts` (one import, one entry in
+`LANGUAGES`). Keep every `{placeholder}` and `[[name]]` as written — the card fills those
+in — and leave out any key you are not sure of; it falls back to English. `npm test`
+verifies the placeholders survived.
+
+New user-facing text in the card goes through `localize()` with a key in `en.json` rather
+than as a string literal, or it can never be translated.
+
 ## What tends to get pushed back
 
 - **A change that rebuilds the card on every state change.** Substitution builds the card's

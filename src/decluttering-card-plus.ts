@@ -57,6 +57,7 @@ import { chainOf, chainWith, describeCycle, describeTooDeep, findCycle, MAX_NEST
 import { columnsFor } from './layout';
 import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
 import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
+import { localize } from './localize';
 import { VERSION } from './version';
 
 // Tags this bundle owns.
@@ -92,65 +93,83 @@ const MANY_COPIES = 50;
 // few enough that a sweep of the whole house does not fill the dialog.
 const MATCHES_SHOWN = 12;
 
-// One shared instance: the editor re-renders on every state change Home Assistant sends,
-// and a fresh schema object each time would mark every field dirty for no reason.
-const REPEAT_SCHEMA = [
-  {
-    name: 'for_each',
-    label: 'Repeat for each',
-    helper: 'One copy of the template per item. Example: - entity: light.hall, name: Hall',
-    selector: { object: {} },
-  },
-  {
-    name: 'for_each_from',
-    label: 'Repeat for each thing Home Assistant knows about',
-    helper: 'One copy per entity or area, kept up to date. Example: domain: light, area: Kitchen',
-    selector: { object: {} },
-  },
-  {
-    name: 'gap',
-    label: 'Space between copies',
-    helper: 'Pixels. Leave it out for the spacing Home Assistant uses everywhere else',
-    selector: { number: { min: 0, max: 64, mode: 'box' } },
-  },
-  {
-    name: 'empty',
-    label: 'Show instead when nothing matches',
-    helper: 'A card to render when the repeat produces no copies. Example: type: markdown, content: Nothing here',
-    selector: { object: {} },
-  },
-  {
-    name: 'columns',
-    label: 'Columns',
-    helper: 'How many copies sit side by side. One stacks them vertically',
-    selector: { number: { min: 1, max: 6, mode: 'box' } },
-  },
-  {
-    name: 'min_column_width',
-    label: 'Minimum column width',
-    helper: 'Pixels. Drops a column rather than going narrower, so the card suits a phone too',
-    selector: { number: { min: 50, max: 1000, step: 10, mode: 'box' } },
-  },
-];
+// One shared instance, built on first use so it speaks the user's language: the editor
+// re-renders on every state change Home Assistant sends, and a fresh schema object each
+// time would mark every field dirty for no reason.
+let REPEAT_SCHEMA: unknown[] | undefined;
+function repeatSchema(): unknown[] {
+  REPEAT_SCHEMA ??= [
+    {
+      name: 'for_each',
+      label: localize('editor.for_each_label'),
+      helper: localize('editor.for_each_helper'),
+      selector: { object: {} },
+    },
+    {
+      name: 'for_each_from',
+      label: localize('editor.for_each_from_label'),
+      helper: localize('editor.for_each_from_helper'),
+      selector: { object: {} },
+    },
+    {
+      name: 'gap',
+      label: localize('editor.gap_label'),
+      helper: localize('editor.gap_helper'),
+      selector: { number: { min: 0, max: 64, mode: 'box' } },
+    },
+    {
+      name: 'empty',
+      label: localize('editor.empty_label'),
+      helper: localize('editor.empty_helper'),
+      selector: { object: {} },
+    },
+    {
+      name: 'columns',
+      label: localize('editor.columns_label'),
+      helper: localize('editor.columns_helper'),
+      selector: { number: { min: 1, max: 6, mode: 'box' } },
+    },
+    {
+      name: 'min_column_width',
+      label: localize('editor.min_column_width_label'),
+      helper: localize('editor.min_column_width_helper'),
+      selector: { number: { min: 50, max: 1000, step: 10, mode: 'box' } },
+    },
+  ];
+  return REPEAT_SCHEMA;
+}
 
 // Offered for every template, described or not, since it is about where the card sits
 // rather than about what the template contains.
-const FIT_SCHEMA = [
-  {
-    name: 'fit',
-    label: 'Fit into the layout',
-    helper: 'Get out of the way if a card that sizes itself comes out spread across the row',
-    selector: {
-      select: {
-        mode: 'dropdown',
-        options: [
-          { value: 'box', label: 'Keep its own box (default)' },
-          { value: 'contents', label: 'Get out of the way' },
-        ],
+let FIT_SCHEMA: unknown[] | undefined;
+function fitSchema(): unknown[] {
+  FIT_SCHEMA ??= [
+    {
+      name: 'fit',
+      label: localize('editor.fit_label'),
+      helper: localize('editor.fit_helper'),
+      selector: {
+        select: {
+          mode: 'dropdown',
+          options: [
+            { value: 'box', label: localize('editor.fit_box') },
+            { value: 'contents', label: localize('editor.fit_contents') },
+          ],
+        },
       },
     },
-  },
-];
+  ];
+  return FIT_SCHEMA;
+}
+
+/**
+ * Splits a translated sentence at the one part that has to be rendered as markup - a
+ * link, a `<code>` - so the words either side stay in the translator's order.
+ */
+function splitAt(sentence: string, token: string): [string, string] {
+  const at = sentence.indexOf(token);
+  return at === -1 ? [sentence, ''] : [sentence.slice(0, at), sentence.slice(at + token.length)];
+}
 
 // A style rule that paints on this card's own host rather than on the card inside it.
 const HOST_SELECTOR = /:host|\.decluttering-container/;
@@ -379,9 +398,8 @@ abstract class DeclutteringElement extends LitElement {
       const defined = THING_TYPE_KEYS.filter((key) => (templateConfig as Record<string, unknown>)[key] !== undefined);
       throw new Error(
         defined.length
-          ? `This template defines both "${defined[0]}" and "${defined[1]}". A template can only define one of ` +
-              'card, badge, element or row.'
-          : 'You must define one card, badge, element, or row in the template',
+          ? localize('error.defines_both', { first: defined[0], second: defined[1] }, this._hass)
+          : localize('error.defines_nothing', undefined, this._hass),
       );
     }
     this._templateName = templateName ?? this._templateName;
@@ -405,9 +423,7 @@ abstract class DeclutteringElement extends LitElement {
   protected _refuseIfStrict(unresolved: string[]): void {
     if (!this._strict || !unresolved.length) return;
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
-    this._error =
-      `${unresolved.length === 1 ? 'This variable has' : 'These variables have'} no value: ${which}. ` +
-      'The card is set to strict, so it refuses rather than rendering the brackets.';
+    this._error = localize(unresolved.length === 1 ? 'error.strict_one' : 'error.strict_many', { which }, this._hass);
   }
 
   // Styles always resolve against the real template config, so a declared default or a
@@ -457,9 +473,14 @@ abstract class DeclutteringElement extends LitElement {
        * else.
        */
       throw new Error(
-        `for_each needs a template that defines a card. "${config.template}" defines a ` +
-          `${getThingType(templateConfig) ?? 'different kind of thing'}, which Home Assistant gives one ` +
-          'slot - put what you want repeated inside a card template instead.',
+        localize(
+          'error.for_each_not_card',
+          {
+            template: config.template,
+            kind: getThingType(templateConfig) ?? localize('error.a_different_kind', undefined, this._hass),
+          },
+          this._hass,
+        ),
       );
     }
     /*
@@ -667,7 +688,13 @@ abstract class DeclutteringElement extends LitElement {
       return html`
         <ha-card>
           <div class="debug">
-            <p>Debug: what this card builds${this._templateName ? html` from "${this._templateName}"` : html``}.</p>
+            <p>
+              ${
+                this._templateName
+                  ? localize('card.debug_builds_from', { template: this._templateName }, this._hass)
+                  : localize('card.debug_builds', undefined, this._hass)
+              }
+            </p>
             <pre>${JSON.stringify(this._thingConfig, null, 2)}</pre>
           </div>
         </ha-card>
@@ -737,7 +764,7 @@ abstract class DeclutteringElement extends LitElement {
       } else if (thingType === 'badge') {
         thing = (await HELPERS).createBadgeElement(thingConfig);
       } else {
-        throw new Error(`Unsupported thing type '${thingType}'`);
+        throw new Error(localize('error.unsupported_thing_type', { kind: thingType }));
       }
     } else {
       thing = createThing(thingConfig, thingType === 'row');
@@ -787,7 +814,7 @@ class DeclutteringCard extends DeclutteringElement {
 
   public setConfig(config: DeclutteringCardConfig): void {
     if (!config.template) {
-      throw new Error('Missing template object in your config');
+      throw new Error(localize('error.missing_template'));
     }
 
     /*
@@ -811,7 +838,7 @@ class DeclutteringCard extends DeclutteringElement {
 
     const ll = getLovelaceConfig();
     if (!ll) {
-      throw new Error('Could not retrieve the lovelace configuration.');
+      throw new Error(localize('error.no_lovelace'));
     }
     this._error = undefined;
     /*
@@ -828,7 +855,7 @@ class DeclutteringCard extends DeclutteringElement {
     }
     if (!getTemplateSources(ll).length) {
       throw new Error(
-        `The template "${config.template}" doesn't exist in decluttering_templates or in a custom:decluttering-template card.` +
+        localize('error.template_missing', { template: config.template }, this._hass) +
           didYouMean(config.template, Object.keys(collectTemplates(ll))),
       );
     }
@@ -945,10 +972,7 @@ class DeclutteringCard extends DeclutteringElement {
         if (templateConfig) {
           this._applyTemplate(templateConfig, config);
         } else {
-          this._error =
-            `The template "${config.template}" doesn't exist in decluttering_templates, ` +
-            'in a custom:decluttering-template card, or on any dashboard listed in ' +
-            'decluttering_templates_from.';
+          this._error = localize('error.template_missing_anywhere', { template: config.template }, hass);
           // Every name there is, borrowed ones included, is known by the time this runs.
           collectAllTemplates(hass, ll).then((all) => {
             this._error += didYouMean(config.template, Object.keys(all));
@@ -956,7 +980,11 @@ class DeclutteringCard extends DeclutteringElement {
         }
       })
       .catch((err) => {
-        this._error = `Could not resolve the template "${config.template}": ${err?.message ?? err}`;
+        this._error = localize(
+          'error.template_resolve_failed',
+          { template: config.template, message: err?.message ?? err },
+          hass,
+        );
       });
   }
 }
@@ -1030,7 +1058,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       this._schema = [
         {
           name: 'template',
-          label: 'Template to use',
+          label: localize('editor.template_label', undefined, this.hass),
           selector: {
             select: {
               mode: 'dropdown',
@@ -1048,8 +1076,8 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         },
         {
           name: 'variables',
-          label: 'Variables',
-          helper: 'Example: - variable_name: value',
+          label: localize('editor.variables_label', undefined, this.hass),
+          helper: localize('editor.variables_helper', undefined, this.hass),
           selector: { object: {} },
         },
       ];
@@ -1074,10 +1102,10 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     // Templates borrowed from another dashboard are still on their way, so do not accuse
     // the user of a bad name until they have arrived.
     if (!template && !this._loadingTemplates) {
-      error.template = 'No template exists with this name';
+      error.template = localize('editor.no_such_template', undefined, this.hass);
     }
     if (!readable) {
-      error.variables = 'Variables must be a list of key and value pairs, or a mapping of them';
+      error.variables = localize('error.variables_shape', undefined, this.hass);
     }
 
     return html`
@@ -1121,19 +1149,20 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       // says what it could not resolve when it renders for real.
       resolved = deepReplace(variables, template, content, this._config.template, this.hass, true);
     } catch (err) {
-      return html`<ha-alert alert-type="warning">Could not work out the result: ${String(err)}</ha-alert>`;
+      return html`<ha-alert alert-type="warning">
+        ${localize('editor.result_error', { error: String(err) }, this.hass)}
+      </ha-alert>`;
     }
 
-    const copies = items?.length ? ` (copy 1 of ${items.length})` : '';
+    const copies = items?.length ? localize('editor.result_copies', { total: items.length }, this.hass) : '';
+    // Translated whole, then split so the [[name]] in the middle can be set in code.
+    const [hintBefore, hintAfter] = splitAt(localize('editor.result_hint', { kind: thingType }, this.hass), '[[name]]');
 
     return html`
       <ha-expansion-panel outlined>
-        <span slot="header">Result${copies}</span>
+        <span slot="header">${localize('editor.result_header', undefined, this.hass)}${copies}</span>
         <div class="result">
-          <p class="hint">
-            The ${thingType} this card builds, with every variable put in. Anything still written as
-            <code>[[name]]</code> is a variable nothing gave a value to.
-          </p>
+          <p class="hint">${hintBefore}<code>[[name]]</code>${hintAfter}</p>
           <ha-yaml-editor .hass=${this.hass} .defaultValue=${resolved} read-only></ha-yaml-editor>
         </div>
       </ha-expansion-panel>
@@ -1151,19 +1180,21 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
     const location = findTemplateLocation(this._lovelace, name);
     if (!location) {
-      return html`<p class="hint">This template is borrowed from another dashboard, so it is edited there.</p>`;
+      return html`<p class="hint">${localize('editor.source_borrowed', undefined, this.hass)}</p>`;
     }
     if (location.declared || !location.view) {
-      return html`<p class="hint">Defined in this dashboard's decluttering_templates.</p>`;
+      return html`<p class="hint">${localize('editor.source_declared', undefined, this.hass)}</p>`;
     }
 
     const { view } = location;
     const dashboard = document.location.pathname.split('/').slice(0, 2).join('/');
+    // Translated whole, then split where the link goes, so the sentence keeps the
+    // translator's word order around it.
+    const [before, after] = splitAt(localize('editor.source_view', { view: '\u0001' }, this.hass), '\u0001');
     return html`<p class="hint">
-      Defined in
-      <a href=${`${dashboard}/${view.path || view.index}`} target="_blank" rel="noreferrer"
-        >${view.title || view.path || 'an untitled view'}</a
-      >.
+      ${before}<a href=${`${dashboard}/${view.path || view.index}`} target="_blank" rel="noreferrer"
+        >${view.title || view.path || localize('editor.untitled_view', undefined, this.hass)}</a
+      >${after}
     </p>`;
   }
 
@@ -1186,9 +1217,11 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
     if (!matched.length) {
       return html`<ha-alert alert-type="warning">
-        Nothing matches this right now, so the card renders
-        nothing${this._config?.empty ? ' but what you set below' : ''}. Check the domain, area or label against what
-        Home Assistant actually has.
+        ${localize(
+          'editor.matches_none',
+          { but: this._config?.empty ? localize('editor.matches_none_but_empty', undefined, this.hass) : '' },
+          this.hass,
+        )}
       </ha-alert>`;
     }
 
@@ -1201,7 +1234,11 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     return html`
       <ha-expansion-panel outlined>
         <span slot="header">
-          Matches ${matched.length === 1 ? 'one thing' : `${matched.length} things`} right now
+          ${
+            matched.length === 1
+              ? localize('editor.matches_header_one', undefined, this.hass)
+              : localize('editor.matches_header_many', { count: matched.length }, this.hass)
+          }
         </span>
         <div class="matches">
           <ul>
@@ -1209,13 +1246,12 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
           </ul>
           ${
             matched.length > shown.length
-              ? html`<p class="hint">and ${matched.length - shown.length} more.</p>`
+              ? html`<p class="hint">
+                  ${localize('editor.matches_more', { count: matched.length - shown.length }, this.hass)}
+                </p>`
               : html``
           }
-          <p class="hint">
-            What it matches is worked out again whenever Home Assistant's registry changes, so this list is what the
-            card would build now.
-          </p>
+          <p class="hint">${localize('editor.matches_hint', undefined, this.hass)}</p>
         </div>
       </ha-expansion-panel>
     `;
@@ -1227,9 +1263,9 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
    * way it always has been, through that box alone.
    */
   private _formSchema(declarations: VariableDeclaration[], repeatable: boolean): unknown[] {
-    const repeat = repeatable ? REPEAT_SCHEMA : [];
+    const repeat = repeatable ? repeatSchema() : [];
 
-    if (!declarations.length) return [...this._schema, ...repeat, ...FIT_SCHEMA];
+    if (!declarations.length) return [...this._schema, ...repeat, ...fitSchema()];
 
     return [
       this._schema[0],
@@ -1242,12 +1278,12 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       })),
       {
         name: 'extras',
-        label: 'Other variables',
-        helper: 'Anything this template does not describe. Example: - variable_name: value',
+        label: localize('editor.extras_label', undefined, this.hass),
+        helper: localize('editor.extras_helper', undefined, this.hass),
         selector: { object: {} },
       },
       ...repeat,
-      ...FIT_SCHEMA,
+      ...fitSchema(),
     ];
   }
 
@@ -1309,33 +1345,39 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     return html`
       ${
         fitHidesStyle
-          ? html`<ha-alert alert-type="warning">
-              This card is set to get out of the way, so it has no box of its own - and the styles here that paint on it
-              have nothing to paint on. Style the card inside it, or set this back to keeping its own box.
-            </ha-alert>`
+          ? html`<ha-alert alert-type="warning">${localize('editor.fit_hides_style', undefined, this.hass)}</ha-alert>`
           : html``
       }
       ${
         required.length
           ? html`<ha-alert alert-type="error">
-              ${required.length === 1 ? 'This template needs a variable' : 'This template needs variables'} you have not
-              set: ${required.join(', ')}.
+              ${localize(
+                required.length === 1 ? 'editor.required_one' : 'editor.required_many',
+                { names: required.join(', ') },
+                this.hass,
+              )}
             </ha-alert>`
           : html``
       }
       ${
         optional.length
           ? html`<ha-alert alert-type="warning">
-              ${optional.length === 1 ? 'This template uses a variable' : 'This template uses variables'} with no value
-              and no default: ${optional.join(', ')}.
+              ${localize(
+                optional.length === 1 ? 'editor.optional_one' : 'editor.optional_many',
+                { names: optional.join(', ') },
+                this.hass,
+              )}
             </ha-alert>`
           : html``
       }
       ${
         unused.length
           ? html`<ha-alert alert-type="info">
-              ${unused.length === 1 ? 'This variable is' : 'These variables are'} set here but never used by the
-              template: ${unused.join(', ')}.
+              ${localize(
+                unused.length === 1 ? 'editor.unused_one' : 'editor.unused_many',
+                { names: unused.join(', ') },
+                this.hass,
+              )}
             </ha-alert>`
           : html``
       }
@@ -1432,7 +1474,7 @@ class DeclutteringTemplate extends DeclutteringElement {
     this._templateName = config.template;
 
     if (!config.template) {
-      throw new Error('Missing template property');
+      throw new Error(localize('error.missing_template_property'));
     }
     this._template = config.template;
     // The config passed here IS the template, so its style is picked up as the
@@ -1507,47 +1549,52 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
   private _loadedElements = false;
 
-  private static schema = [
-    {
-      name: 'template',
-      label: 'Template to define',
-      selector: { text: {} },
-    },
-    {
-      name: 'thingType',
-      label: 'Type of thing to template',
-      selector: {
-        select: {
-          mode: 'dropdown',
-          options: [
-            { value: 'card', label: 'Card' },
-            { value: 'badge', label: 'Badge' },
-            { value: 'row', label: 'Row' },
-            { value: 'element', label: 'Element' },
-          ],
+  // One shared instance, built on first use so it speaks the user's language - a fresh
+  // schema object per render would mark every field dirty for no reason.
+  private static _schema?: unknown[];
+  private static schema(): unknown[] {
+    DeclutteringTemplateEditor._schema ??= [
+      {
+        name: 'template',
+        label: localize('template_editor.template_label'),
+        selector: { text: {} },
+      },
+      {
+        name: 'thingType',
+        label: localize('template_editor.type_label'),
+        selector: {
+          select: {
+            mode: 'dropdown',
+            options: [
+              { value: 'card', label: localize('template_editor.type_card') },
+              { value: 'badge', label: localize('template_editor.type_badge') },
+              { value: 'row', label: localize('template_editor.type_row') },
+              { value: 'element', label: localize('template_editor.type_element') },
+            ],
+          },
         },
       },
-    },
-    {
-      name: 'description',
-      label: 'Description',
-      helper: 'What this template is for, shown to whoever uses it',
-      selector: { text: { multiline: true } },
-    },
-    {
-      name: 'variables',
-      label: 'Variable declarations',
-      helper:
-        'Describe a variable and its editor shows the right control. Example: - name: entity, selector: {entity: {}}',
-      selector: { object: {} },
-    },
-    {
-      name: 'default',
-      label: 'Variables',
-      helper: 'Example: - variable_name: default_value',
-      selector: { object: {} },
-    },
-  ];
+      {
+        name: 'description',
+        label: localize('template_editor.description_label'),
+        helper: localize('template_editor.description_helper'),
+        selector: { text: { multiline: true } },
+      },
+      {
+        name: 'variables',
+        label: localize('template_editor.declarations_label'),
+        helper: localize('template_editor.declarations_helper'),
+        selector: { object: {} },
+      },
+      {
+        name: 'default',
+        label: localize('template_editor.defaults_label'),
+        helper: localize('template_editor.defaults_helper'),
+        selector: { object: {} },
+      },
+    ];
+    return DeclutteringTemplateEditor._schema;
+  }
 
   public setConfig(config: DeclutteringTemplateConfig): void {
     this._config = config;
@@ -1661,10 +1708,10 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
     const error: Record<string, string | string[]> = {};
     if (!isVariablesShape(this._config.default)) {
-      error.default = 'Variables must be a list of key and value pairs, or a mapping of them';
+      error.default = localize('error.variables_shape', undefined, this.hass);
     }
     if (this._config.variables !== undefined && !Array.isArray(this._config.variables)) {
-      error.variables = 'The declarations must be a list, each entry naming one variable';
+      error.variables = localize('template_editor.declarations_shape', undefined, this.hass);
     }
 
     const data = {
@@ -1677,19 +1724,31 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
     return html`
       <ha-tab-group .active=${this._selectedTab} @click=${this._activateTab}>
-        <ha-tab-group-tab slot="nav" panel="settings">Settings</ha-tab-group-tab>
+        <ha-tab-group-tab slot="nav" panel="settings">
+          ${localize('template_editor.tab_settings', undefined, this.hass)}
+        </ha-tab-group-tab>
         ${
           data.thingType === 'card'
             ? html`
-                <ha-tab-group-tab slot="nav" panel="card">Card</ha-tab-group-tab>
-                <ha-tab-group-tab slot="nav" panel="change_card">Change card type</ha-tab-group-tab>
+                <ha-tab-group-tab slot="nav" panel="card">
+                  ${localize('template_editor.tab_card', undefined, this.hass)}
+                </ha-tab-group-tab>
+                <ha-tab-group-tab slot="nav" panel="change_card">
+                  ${localize('template_editor.tab_change_card', undefined, this.hass)}
+                </ha-tab-group-tab>
               `
             : data.thingType === 'row'
-              ? html`<ha-tab-group-tab slot="nav" panel="row">Row</ha-tab-group-tab>`
+              ? html`<ha-tab-group-tab slot="nav" panel="row">
+                  ${localize('template_editor.tab_row', undefined, this.hass)}
+                </ha-tab-group-tab>`
               : html``
         }
-        <ha-tab-group-tab slot="nav" panel="usages">Where used</ha-tab-group-tab>
-        <ha-tab-group-tab slot="nav" panel="share">Share</ha-tab-group-tab>
+        <ha-tab-group-tab slot="nav" panel="usages">
+          ${localize('template_editor.tab_usages', undefined, this.hass)}
+        </ha-tab-group-tab>
+        <ha-tab-group-tab slot="nav" panel="share">
+          ${localize('template_editor.tab_share', undefined, this.hass)}
+        </ha-tab-group-tab>
       </ha-tab-group>
       ${
         this._selectedTab === 'settings'
@@ -1699,7 +1758,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               <ha-form
                 .hass=${this.hass}
                 .data=${data}
-                .schema=${DeclutteringTemplateEditor.schema}
+                .schema=${DeclutteringTemplateEditor.schema()}
                 .error=${error}
                 .computeLabel=${(s): string => s.label ?? s.name}
                 .computeHelper=${(s): string => s.helper ?? ''}
@@ -1755,24 +1814,33 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       ${
         unused.length
           ? html`<ha-alert alert-type="info">
-              ${unused.length === 1 ? 'This variable is declared' : 'These variables are declared'} but never used in
-              the template: ${unused.join(', ')}.
+              ${localize(
+                unused.length === 1 ? 'template_editor.declared_unused_one' : 'template_editor.declared_unused_many',
+                { names: unused.join(', ') },
+                this.hass,
+              )}
             </ha-alert>`
           : html``
       }
       ${
         duplicated.length
           ? html`<ha-alert alert-type="warning">
-              ${duplicated.length === 1 ? 'This variable has' : 'These variables have'} a default in both places; the
-              declaration is the one that counts: ${duplicated.join(', ')}.
+              ${localize(
+                duplicated.length === 1 ? 'template_editor.duplicated_one' : 'template_editor.duplicated_many',
+                { names: duplicated.join(', ') },
+                this.hass,
+              )}
             </ha-alert>`
           : html``
       }
       ${
         contradictory.length
           ? html`<ha-alert alert-type="warning">
-              ${contradictory.length === 1 ? 'This variable is' : 'These variables are'} marked required but have a
-              default, so they can never be unset: ${contradictory.join(', ')}.
+              ${localize(
+                contradictory.length === 1 ? 'template_editor.contradictory_one' : 'template_editor.contradictory_many',
+                { names: contradictory.join(', ') },
+                this.hass,
+              )}
             </ha-alert>`
           : html``
       }
@@ -1790,7 +1858,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
     return html`
       <div class="order">
-        <p class="hint">The order these appear in is the order every card using the template shows them in.</p>
+        <p class="hint">${localize('template_editor.order_hint', undefined, this.hass)}</p>
         <ul>
           ${declarations.map(
             (declaration, index) => html`
@@ -1800,13 +1868,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 <ha-icon-button
                   .path=${'M7,15L12,10L17,15H7Z'}
                   .disabled=${index === 0}
-                  .label=${`Move ${declaration.name} up`}
+                  .label=${localize('template_editor.move_up', { name: declaration.name }, this.hass)}
                   @click=${(): void => this._move(index, -1)}
                 ></ha-icon-button>
                 <ha-icon-button
                   .path=${'M7,10L12,15L17,10H7Z'}
                   .disabled=${index === declarations.length - 1}
-                  .label=${`Move ${declaration.name} down`}
+                  .label=${localize('template_editor.move_down', { name: declaration.name }, this.hass)}
                   @click=${(): void => this._move(index, 1)}
                 ></ha-icon-button>
               </li>
@@ -1840,9 +1908,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     if (!total) return html``;
 
     return html`<ha-alert alert-type="info">
-      ${total === 1 ? 'One card or template uses' : `${total} cards and templates use`} this. Changing it changes
-      ${total === 1 ? 'that one' : 'them all'}, and deleting this card leaves ${total === 1 ? 'it' : 'them'} pointing at
-      a template that is not there.
+      ${localize(total === 1 ? 'template_editor.in_use_one' : 'template_editor.in_use_many', { total }, this.hass)}
     </ha-alert>`;
   }
 
@@ -1860,23 +1926,29 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         ${
           this._suggestedNothing
             ? html`<ha-alert alert-type="info">
-                Nothing here looks like it varies between copies. Entities, names, titles and icons are what get
-                offered, and this card either has none or they are variables already.
+                ${localize('template_editor.suggest_nothing', undefined, this.hass)}
               </ha-alert>`
             : html``
         }
         ${
           this._suggestion
             ? html`<ha-alert alert-type="warning">
-                This will rewrite the card to use
-                ${this._suggestion.variables.map((variable) => variable.name).join(', ')}, and declare
-                ${this._suggestion.variables.length === 1 ? 'it' : 'them'} with the value
-                ${this._suggestion.variables.length === 1 ? 'it has' : 'they have'} now. Press again to go ahead.
+                ${localize(
+                  this._suggestion.variables.length === 1
+                    ? 'template_editor.suggest_confirm_one'
+                    : 'template_editor.suggest_confirm_many',
+                  { names: this._suggestion.variables.map((variable) => variable.name).join(', ') },
+                  this.hass,
+                )}
               </ha-alert>`
             : html``
         }
         <mwc-button @click=${this._suggest}>
-          ${this._suggestion ? 'Suggest variables anyway' : 'Suggest variables from the card'}
+          ${localize(
+            this._suggestion ? 'template_editor.suggest_anyway' : 'template_editor.suggest_button',
+            undefined,
+            this.hass,
+          )}
         </mwc-button>
       </div>
     `;
@@ -1919,9 +1991,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     const ll = this.lovelace ?? getLovelaceConfig();
     if (!ll) {
       return html`<div class="usages">
-        <ha-alert alert-type="warning">
-          The dashboard configuration could not be read, so uses cannot be counted here.
-        </ha-alert>
+        <ha-alert alert-type="warning">${localize('template_editor.usages_unreadable', undefined, this.hass)}</ha-alert>
       </div>`;
     }
     if (this._usages?.name !== name || this._usages.ll !== ll) {
@@ -1936,13 +2006,15 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         ${
           total === 0 && !templates.length
             ? html`<ha-alert alert-type="info">
-                Nothing on this dashboard uses "${name}" yet. Cards on other dashboards are not counted here, even ones
-                that borrow this dashboard's templates.
+                ${localize('template_editor.usages_none', { name }, this.hass)}
               </ha-alert>`
             : html`
                 <p class="hint">
-                  ${total === 1 ? 'One card uses' : `${total} cards use`} "${name}" on this dashboard. Cards on other
-                  dashboards are not counted.
+                  ${localize(
+                    total === 1 ? 'template_editor.usages_one' : 'template_editor.usages_many',
+                    { total, name },
+                    this.hass,
+                  )}
                 </p>
                 <ul>
                   ${views.map(
@@ -1951,9 +2023,14 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                     (view) => html`
                       <li>
                         <a href=${`${dashboard}/${view.path || view.index}`} target="_blank" rel="noreferrer">
-                          ${view.title || view.path || 'Untitled view'}
+                          ${view.title || view.path || localize('template_editor.untitled_view', undefined, this.hass)}
                         </a>
-                        — ${view.count === 1 ? 'once' : `${view.count} times`}
+                        —
+                        ${
+                          view.count === 1
+                            ? localize('template_editor.used_once', undefined, this.hass)
+                            : localize('template_editor.used_times', { count: view.count }, this.hass)
+                        }
                       </li>
                     `,
                   )}
@@ -1963,8 +2040,11 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         ${
           templates.length
             ? html`<ha-alert alert-type="info">
-                This template is used by ${templates.length === 1 ? 'another template' : 'other templates'}:
-                ${templates.join(', ')}. Changing it changes ${templates.length === 1 ? 'that one' : 'those'} too.
+                ${localize(
+                  templates.length === 1 ? 'template_editor.used_by_template' : 'template_editor.used_by_templates',
+                  { names: templates.join(', ') },
+                  this.hass,
+                )}
               </ha-alert>`
             : html``
         }
@@ -1985,39 +2065,37 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
     return html`
       <div class="share">
-        <h3>Export</h3>
-        <p class="hint">Copy this and send it to someone else, or paste it into another dashboard.</p>
+        <h3>${localize('share.export_header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('share.export_hint', undefined, this.hass)}</p>
         ${notes.map((note) => html`<ha-alert alert-type="info">${note}</ha-alert>`)}
         <ha-yaml-editor id="export" .hass=${this.hass} .defaultValue=${payload} read-only></ha-yaml-editor>
         <mwc-button @click=${this._copyExport}>
           ${
             this._copyState === 'done'
-              ? 'Copied'
+              ? localize('share.copied', undefined, this.hass)
               : this._copyState === 'failed'
-                ? 'Could not copy - select the text above instead'
-                : 'Copy to clipboard'
+                ? localize('share.copy_failed', undefined, this.hass)
+                : localize('share.copy', undefined, this.hass)
           }
         </mwc-button>
 
-        <h3>Import</h3>
-        <p class="hint">Paste a template someone shared with you. It will replace the one you are editing.</p>
+        <h3>${localize('share.import_header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('share.import_hint', undefined, this.hass)}</p>
         <ha-yaml-editor .hass=${this.hass} @value-changed=${this._importChanged}></ha-yaml-editor>
         ${this._importErrors.map((error) => html`<ha-alert alert-type="error">${error}</ha-alert>`)}
         ${
           this._importClash
             ? html`<ha-alert alert-type="warning">
-                This dashboard already has a template called "${this._importClash}". Importing will give you two
-                templates with the same name, and only one of them will be used. Press Import again to go ahead.
+                ${localize('share.import_clash', { name: this._importClash }, this.hass)}
               </ha-alert>`
             : html``
         }
-        <mwc-button @click=${this._import}>${this._importClash ? 'Import anyway' : 'Import'}</mwc-button>
+        <mwc-button @click=${this._import}>
+          ${localize(this._importClash ? 'share.import_anyway' : 'share.import', undefined, this.hass)}
+        </mwc-button>
 
-        <h3>Start from one of these</h3>
-        <p class="hint">
-          Worked examples of the shapes people build most. Installing one adds it to this view as its own template card,
-          leaving the one you are editing alone.
-        </p>
+        <h3>${localize('share.library_header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('share.library_hint', undefined, this.hass)}</p>
         ${this._renderLibrary()}
       </div>
     `;
@@ -2041,15 +2119,21 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
             <li>
               <div>
                 <strong>${entry.name}</strong>
-                <span class="hint">${entry.summary}</span>
+                <span class="hint">${localize(`library.${entry.name}.summary`, undefined, this.hass)}</span>
                 ${
                   needs.length
-                    ? html`<span class="hint">Also installs ${needs.join(', ')}, which it uses.</span>`
+                    ? html`<span class="hint">
+                        ${localize('share.library_needs', { names: needs.join(', ') }, this.hass)}
+                      </span>`
                     : html``
                 }
               </div>
               <mwc-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
-                ${already ? 'Already here' : armed ? 'Install anyway' : 'Install'}
+                ${localize(
+                  already ? 'share.already_here' : armed ? 'share.install_anyway' : 'share.install',
+                  undefined,
+                  this.hass,
+                )}
               </mwc-button>
             </li>
           `;
@@ -2090,32 +2174,40 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
    */
   private _renderRename(name: string, total: number): TemplateResult {
     const to = this._renameTo.trim();
-    const changes = total === 1 ? 'one card' : `${total} cards`;
     const armed = !!to && this._renamePending === to;
+    const rewrites = total
+      ? total === 1
+        ? localize('tools.rewrites_one', undefined, this.hass)
+        : localize('tools.rewrites_many', { count: total }, this.hass)
+      : '';
     return html`
       <div class="rename">
-        <h3>Rename</h3>
-        <p class="hint">
-          Changes the name here and in every card on this dashboard that uses it. Cards on other dashboards are not
-          touched, even ones that borrow this dashboard's templates.
-        </p>
+        <h3>${localize('tools.rename_header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('tools.rename_hint', undefined, this.hass)}</p>
         ${this._renameError ? html`<ha-alert alert-type="error">${this._renameError}</ha-alert>` : html``}
         ${
           armed
             ? html`<ha-alert alert-type="warning">
-                This renames "${name}" to "${to}"${total ? html` and rewrites ${changes}` : html``}, and saves the
-                dashboard straight away. Press again to go ahead.
+                ${localize('tools.rename_confirm', { from: name, to, rewrites }, this.hass)}
               </ha-alert>`
             : html``
         }
         <ha-textfield
-          label="New name"
+          label=${localize('tools.new_name', undefined, this.hass)}
           .value=${this._renameTo}
           .disabled=${this._renaming}
           @input=${this._renameChanged}
         ></ha-textfield>
         <mwc-button .disabled=${this._renaming || !to || to === name} @click=${this._rename}>
-          ${armed ? 'Rename anyway' : total ? `Rename and update ${changes}` : 'Rename'}
+          ${
+            armed
+              ? localize('tools.rename_anyway', undefined, this.hass)
+              : total === 1
+                ? localize('tools.rename_update_one', undefined, this.hass)
+                : total
+                  ? localize('tools.rename_update_many', { count: total }, this.hass)
+                  : localize('tools.rename', undefined, this.hass)
+          }
         </mwc-button>
       </div>
     `;
@@ -2129,7 +2221,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   private async _saveDashboard(build: (config: unknown) => unknown): Promise<boolean> {
     const panel = getLovelacePanel();
     if (!panel) {
-      this._toolError = 'This dashboard cannot be saved from here, so it cannot be changed here either.';
+      this._toolError = localize('tools.cannot_save_here', undefined, this.hass);
       return false;
     }
     this._busy = true;
@@ -2138,7 +2230,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       await panel.saveConfig(build(panel.config));
       return true;
     } catch (err) {
-      this._toolError = `Could not save the dashboard: ${(err as Error)?.message ?? err}`;
+      this._toolError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, this.hass);
       return false;
     } finally {
       this._busy = false;
@@ -2158,22 +2250,31 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
     return html`
       <div class="rename">
-        <h3>Move off the original card's names</h3>
+        <h3>${localize('tools.modernise_header', undefined, this.hass)}</h3>
         <p class="hint">
-          ${old === 1 ? 'One card on this dashboard still uses' : `${old} cards on this dashboard still use`} the
-          original decluttering-card type names. They work, because this card answers to both - but they would stop
-          working the day the original is installed alongside it.
+          ${localize(old === 1 ? 'tools.modernise_hint_one' : 'tools.modernise_hint_many', { count: old }, this.hass)}
         </p>
         ${
           this._modernisePending
             ? html`<ha-alert alert-type="warning">
-                This rewrites ${old === 1 ? 'that card' : `all ${old} of them`} to this card's own names, and saves the
-                dashboard straight away. Press again to go ahead.
+                ${localize(
+                  old === 1 ? 'tools.modernise_confirm_one' : 'tools.modernise_confirm_many',
+                  { count: old },
+                  this.hass,
+                )}
               </ha-alert>`
             : html``
         }
         <mwc-button .disabled=${this._busy} @click=${this._modernise}>
-          ${this._modernisePending ? 'Move them anyway' : `Move ${old === 1 ? 'it' : 'them'} over`}
+          ${localize(
+            this._modernisePending
+              ? 'tools.modernise_anyway'
+              : old === 1
+                ? 'tools.modernise_one'
+                : 'tools.modernise_many',
+            undefined,
+            this.hass,
+          )}
         </mwc-button>
       </div>
     `;
@@ -2204,11 +2305,11 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     // does not own, so it has to be saved as a whole rather than through config-changed.
     const panel = getLovelacePanel();
     if (!panel) {
-      this._renameError = 'This dashboard cannot be saved from here, so it cannot be renamed here either.';
+      this._renameError = localize('tools.cannot_rename_here', undefined, this.hass);
       return;
     }
     if (collectTemplates(panel.config)[to] !== undefined) {
-      this._renameError = `A template called "${to}" already exists on this dashboard.`;
+      this._renameError = localize('tools.name_taken', { name: to }, this.hass);
       return;
     }
 
@@ -2227,7 +2328,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       this._renameTo = '';
       this._renamePending = undefined;
     } catch (err) {
-      this._renameError = `Could not save the dashboard: ${(err as Error)?.message ?? err}`;
+      this._renameError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, this.hass);
     } finally {
       this._renaming = false;
     }
@@ -2242,27 +2343,23 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     const armed = !!to && this._duplicatePending === to;
     return html`
       <div class="rename">
-        <h3>Duplicate</h3>
-        <p class="hint">
-          Adds a copy of this template to this view under a new name, and saves the dashboard. The copy is yours to
-          change; nothing using this one is touched.
-        </p>
+        <h3>${localize('tools.duplicate_header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('tools.duplicate_hint', undefined, this.hass)}</p>
         ${
           armed
             ? html`<ha-alert alert-type="warning">
-                This adds "${to}" to this view as a copy of "${name}", and saves the dashboard straight away. Press
-                again to go ahead.
+                ${localize('tools.duplicate_confirm', { to, name }, this.hass)}
               </ha-alert>`
             : html``
         }
         <ha-textfield
-          label="Name for the copy"
+          label=${localize('tools.copy_name', undefined, this.hass)}
           .value=${this._duplicateTo}
           .disabled=${this._busy}
           @input=${this._duplicateChanged}
         ></ha-textfield>
         <mwc-button .disabled=${this._busy || !to || to === name} @click=${this._duplicate}>
-          ${armed ? 'Duplicate anyway' : 'Duplicate'}
+          ${localize(armed ? 'tools.duplicate_anyway' : 'tools.duplicate', undefined, this.hass)}
         </mwc-button>
       </div>
     `;
@@ -2281,7 +2378,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
     const panel = getLovelacePanel();
     if (panel && collectTemplates(panel.config)[to] !== undefined) {
-      this._toolError = `A template called "${to}" already exists on this dashboard.`;
+      this._toolError = localize('tools.name_taken', { name: to }, this.hass);
       return;
     }
     if (this._duplicatePending !== to) {
@@ -2326,7 +2423,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     if (!this._config) return;
 
     if (!this._importParses) {
-      this._importErrors = ['This is not valid YAML, so it cannot be read.'];
+      this._importErrors = [localize('share.import_not_yaml', undefined, this.hass)];
       return;
     }
 
@@ -2452,14 +2549,14 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
     documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Card Plus',
     preview: false,
-    description: 'Reuse multiple times the same card configuration with variables to declutter your config.',
+    description: localize('picker.card_description'),
   });
   customBadges.push({
     type: CARD_TAG,
     documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Card Plus',
     preview: false,
-    description: 'Instantiate a template whose content is a badge.',
+    description: localize('picker.badge_description'),
   });
 }
 
@@ -2469,7 +2566,7 @@ if (defineElement(TEMPLATE_TAG, DeclutteringTemplate)) {
     documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Template Plus',
     preview: false,
-    description: 'Define a reusable template for decluttering cards to instantiate.',
+    description: localize('picker.template_description'),
   });
 }
 
@@ -2499,7 +2596,7 @@ if (defineElement(LEGACY_CARD_TAG, LegacyDeclutteringCard)) {
     documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Card (compatibility)',
     preview: false,
-    description: 'Compatibility alias for existing custom:decluttering-card configurations.',
+    description: localize('picker.legacy_card_description'),
   });
 }
 
@@ -2509,6 +2606,6 @@ if (defineElement(LEGACY_TEMPLATE_TAG, LegacyDeclutteringTemplate)) {
     documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Template (compatibility)',
     preview: false,
-    description: 'Compatibility alias for existing custom:decluttering-template configurations.',
+    description: localize('picker.legacy_template_description'),
   });
 }
