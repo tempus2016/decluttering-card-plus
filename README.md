@@ -123,8 +123,9 @@ Templates][wiki-defining].
   every other dashboard.
 - **[Visibility][wiki-visibility]** conditions inside a template, including leaving out a copy
   that has nothing to show.
-- **[Styling][wiki-styling]** with a `style` option and CSS custom properties, and a
-  `decluttering-container` class to hang CSS off.
+- **[Styling][wiki-styling]** with a `style` option and CSS custom properties, a `gap`
+  between repeated copies, `grid_options` a template can declare once for every card using
+  it, and a `decluttering-container` class to hang CSS off.
 - **[Visual editors][wiki-editors]** for both the template and the instance — see what a card
   actually builds, see what uses a template before you change it, rename a template and have
   its uses follow, and [export a template][wiki-sharing] to give to someone else.
@@ -161,6 +162,16 @@ are values and keep their place.
 
 That is different from `[[name?]]`, which removes the key from the card entirely. Use `?`
 when the option should not be there at all, and `default:` when something should be shown.
+
+## Working out what a card built
+
+`debug: true` on a card renders what it built instead of the card itself, with every
+variable put in. The editor's **Result** view answers the same question, but not when the
+card only misbehaves on a phone, or in a view whose editor is awkward to reach.
+
+`strict: true` turns the usual warnings into a card that refuses. Nothing normally stops a
+card rendering — a template can be edited after the cards that use it — but somebody
+building a template for other people wants the opposite.
 
 ## When something is wrong
 

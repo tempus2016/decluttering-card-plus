@@ -99,6 +99,12 @@ const REPEAT_SCHEMA = [
     selector: { object: {} },
   },
   {
+    name: 'gap',
+    label: 'Space between copies',
+    helper: 'Pixels. Leave it out for the spacing Home Assistant uses everywhere else',
+    selector: { number: { min: 0, max: 64, mode: 'box' } },
+  },
+  {
     name: 'empty',
     label: 'Show instead when nothing matches',
     helper: 'A card to render when the repeat produces no copies. Example: type: markdown, content: Nothing here',
@@ -210,7 +216,7 @@ abstract class DeclutteringElement extends LitElement {
   @property({ type: Boolean }) public preview = false;
   @property({ attribute: false }) public layout?: string;
 
-  private _thingConfig?: LovelaceThingConfig;
+  protected _thingConfig?: LovelaceThingConfig;
   private _thingType?: LovelaceThingType;
   // One observer for the element's lifetime. A new one per wrapped card leaked a live
   // observer on every reconfigure, and left them all running after the card was gone.
@@ -218,6 +224,9 @@ abstract class DeclutteringElement extends LitElement {
   // The template this element renders, and the ones already open above it. Together they
   // are what stops a template that uses itself from building levels forever.
   protected _templateName?: string;
+  protected _gridOptions?: unknown;
+  protected _strict = false;
+  @state() protected _debug = false;
   protected _openTemplates: string[] = [];
   // The copies of a repeated template, kept so the layout can change without resolving
   // them again, and the column count currently on show so it only rebuilds when it moves.
@@ -258,6 +267,22 @@ abstract class DeclutteringElement extends LitElement {
       }
       :host(.decluttering-container) {
         display: block;
+      }
+      .debug {
+        padding: 12px 16px;
+      }
+      .debug p {
+        margin: 0 0 8px;
+        color: var(--secondary-text-color);
+        font-size: 0.9em;
+      }
+      .debug pre {
+        margin: 0;
+        overflow: auto;
+        font-family: var(--ha-font-family-code, monospace);
+        font-size: 0.85em;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
       /*
        * The host is an extra level between the layout and the wrapped card, so a card
@@ -352,11 +377,28 @@ abstract class DeclutteringElement extends LitElement {
     }
     this._templateName = templateName ?? this._templateName;
     const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
+    const unresolved: string[] = [];
     this._setResolved(
       thingType,
-      deepReplace(variables, templateConfig, thingContent, templateName, this._hass),
+      deepReplace(variables, templateConfig, thingContent, templateName, this._hass, false, (names) =>
+        unresolved.push(...names),
+      ),
       this._resolveStyles(templateConfig, variables, cardStyle, templateName),
     );
+    this._refuseIfStrict(unresolved);
+  }
+
+  /*
+   * Nothing here normally stops a card rendering: a template can be edited after the cards
+   * that use it, so a card that looks wrong now may be right in a moment. Somebody building
+   * a template for other people wants the opposite, and `strict: true` is how they say so.
+   */
+  protected _refuseIfStrict(unresolved: string[]): void {
+    if (!this._strict || !unresolved.length) return;
+    const which = unresolved.map((name) => `[[${name}]]`).join(', ');
+    this._error =
+      `${unresolved.length === 1 ? 'This variable has' : 'These variables have'} no value: ${which}. ` +
+      'The card is set to strict, so it refuses rather than rendering the brackets.';
   }
 
   // Styles always resolve against the real template config, so a declared default or a
@@ -503,6 +545,22 @@ abstract class DeclutteringElement extends LitElement {
     this._widths.observe(this);
   }
 
+  /*
+   * The space between repeated copies. Home Assistant's grid and stack cards both read it
+   * from a custom property - `--grid-card-gap` and `--stack-card-gap` - and custom
+   * properties cross into a shadow root where a rule of our own could never reach.
+   */
+  protected _applyGap(gap: number | undefined): void {
+    const value = Number(gap);
+    if (Number.isFinite(value) && value >= 0) {
+      this.style.setProperty('--grid-card-gap', `${value}px`);
+      this.style.setProperty('--stack-card-gap', `${value}px`);
+    } else {
+      this.style.removeProperty('--grid-card-gap');
+      this.style.removeProperty('--stack-card-gap');
+    }
+  }
+
   private _setThing(thing: LovelaceThing, style?: Record<string, string>): void {
     this._savedStyles?.forEach((v, k) => this.style.setProperty(k, v[0], v[1]));
     this._savedStyles = undefined;
@@ -564,6 +622,20 @@ abstract class DeclutteringElement extends LitElement {
     delete self.getGridOptions;
     delete self.getLayoutOptions;
     if (this._thingType !== 'card' || !thing) return;
+
+    /*
+     * A template that knows what size it wants says so once, rather than every card using
+     * it repeating the same grid_options. What the card itself sets still wins, since that
+     * is the more particular of the two, and both win over whatever the wrapped card would
+     * have asked for on its own.
+     */
+    if (this._gridOptions !== undefined) {
+      self.getGridOptions = (): unknown => this._gridOptions;
+      if (typeof thing.getLayoutOptions === 'function') {
+        self.getLayoutOptions = (): unknown => thing.getLayoutOptions();
+      }
+      return;
+    }
     if (typeof thing.getGridOptions === 'function') {
       self.getGridOptions = (): unknown => thing.getGridOptions();
     }
@@ -576,6 +648,23 @@ abstract class DeclutteringElement extends LitElement {
     if (this._error) {
       return html` <ha-alert alert-type="error">${this._error}</ha-alert> `;
     }
+
+    /*
+     * What the card actually built, on the dashboard rather than only in the editor. The
+     * editor's Result view answers the same question, but not when the card only misbehaves
+     * on a phone, or in a view whose editor is awkward to reach.
+     */
+    if (this._debug && this._thingConfig) {
+      return html`
+        <ha-card>
+          <div class="debug">
+            <p>Debug: what this card builds${this._templateName ? html` from "${this._templateName}"` : html``}.</p>
+            <pre>${JSON.stringify(this._thingConfig, null, 2)}</pre>
+          </div>
+        </ha-card>
+      `;
+    }
+
     if (!this._hass || !this._thing) return html``;
 
     this.classList.toggle('decluttering-badge', this._thingType === 'badge');
@@ -746,6 +835,11 @@ class DeclutteringCard extends DeclutteringElement {
   private _applyTemplate(templateConfig: TemplateConfig, config: DeclutteringCardConfig): void {
     this._fromRegistry = undefined;
     this._registry = undefined;
+    this._applyGap(config.gap);
+    this._strict = config.strict === true;
+    this._debug = config.debug === true;
+    // What the card asks for beats what the template says it wants.
+    this._gridOptions = config.grid_options ?? (templateConfig as { grid_options?: unknown }).grid_options;
 
     // A single mapping counts as a list of one, the same forgiveness `variables` gets. A
     // written-out list wins over a registry source: it is the more particular of the two,
@@ -1097,6 +1191,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     if (this._config?.columns !== undefined) data.columns = this._config.columns;
     if (this._config?.min_column_width !== undefined) data.min_column_width = this._config.min_column_width;
     if (this._config?.empty !== undefined) data.empty = this._config.empty;
+    if (this._config?.gap !== undefined) data.gap = this._config.gap;
     if (this._config?.fit !== undefined) data.fit = this._config.fit;
     return data;
   }
@@ -1194,6 +1289,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     setOrDelete(config, 'columns', data.columns);
     setOrDelete(config, 'min_column_width', data.min_column_width);
     setOrDelete(config, 'empty', data.empty);
+    setOrDelete(config, 'gap', data.gap);
 
     fireEvent(this, 'config-changed', { config });
   }
