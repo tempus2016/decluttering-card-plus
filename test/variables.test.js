@@ -612,4 +612,28 @@ check(
   ['other', 'room'],
 );
 
+/* ------------------------------------------------ reaching into a nested value */
+
+check(
+  'a mapping can be reached whole and a piece at a time',
+  normaliseVariables({ room: { light: 'light.hall', name: 'Hall' } }),
+  [{ room: { light: 'light.hall', name: 'Hall' } }, { 'room.light': 'light.hall' }, { 'room.name': 'Hall' }],
+);
+
+check(
+  'nesting goes down as far as three',
+  normaliseVariables({ a: { b: { c: { d: 1 } } } }).map((e) => Object.keys(e)[0]),
+  ['a', 'a.b', 'a.b.c', 'a.b.c.d'],
+);
+
+check('a list is reached whole or not at all', normaliseVariables({ items: [1, 2] }), [{ items: [1, 2] }]);
+
+check('a plain value gains nothing', normaliseVariables({ name: 'Hall' }), [{ name: 'Hall' }]);
+
+check(
+  'a for_each item can carry a room together',
+  forEachVariables({ room: { light: 'light.hall' } }, undefined).map((e) => Object.keys(e)[0]),
+  ['room', 'room.light'],
+);
+
 report();

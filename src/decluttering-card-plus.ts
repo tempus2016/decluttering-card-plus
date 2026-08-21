@@ -399,7 +399,17 @@ abstract class DeclutteringElement extends LitElement {
    */
   protected _setForEach(templateConfig: TemplateConfig, config: DeclutteringCardConfig, items: unknown[]): void {
     if (getThingType(templateConfig) !== 'card') {
-      throw new Error('for_each needs a template that defines a card');
+      /*
+       * Only a card can repeat. Home Assistant gives a row, a badge or a picture element a
+       * single slot to fill, so there is nowhere for a second copy to go - the way to
+       * repeat rows is a card template holding them, which repeats as a card like anything
+       * else.
+       */
+      throw new Error(
+        `for_each needs a template that defines a card. "${config.template}" defines a ` +
+          `${getThingType(templateConfig) ?? 'different kind of thing'}, which Home Assistant gives one ` +
+          'slot - put what you want repeated inside a card template instead.',
+      );
     }
     /*
      * A template can say which of its variables it cannot do without, and an item that

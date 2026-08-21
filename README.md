@@ -112,6 +112,8 @@ Templates][wiki-defining].
   or area Home Assistant knows about, narrowed by domain, area, floor, label, device class or
   integration, with anything you name excluded, sorted, limited, and a card of your own to
   show when nothing matches.
+- **Grouping** — a copy per area that knows what is in it, so one card becomes a tile per
+  room, each listing that room's lights.
 
   ![Four room tiles in two columns, all from one card](images/repeat.png)
 
