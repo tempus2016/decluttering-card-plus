@@ -220,6 +220,20 @@ The card tries to say what, rather than leaving you to work it out:
 - **A repeat producing more than 50 copies** is mentioned in the browser console. It is not
   an error — it may be exactly what you asked for — but it is worth a look.
 
+## Languages (v1.2.0+)
+
+Everything the card says — its editors, its error messages, its Share and Where-used
+tools — follows the language set in your Home Assistant profile. English and Portuguese
+are included; anything a translation does not cover falls back to English.
+
+Adding a language is one file and no code. Copy
+[`src/locales/en.json`](src/locales/en.json) to `src/locales/<code>.json` — `de.json`,
+`fr.json` — translate the values, and register it in
+[`src/localize.ts`](src/localize.ts) by adding one import and one entry to `LANGUAGES`.
+Leave the `{placeholders}` and any `[[name]]` brackets exactly as they are: the card fills
+those in. A partial translation is fine, and `npm test` checks that what you did translate
+keeps its placeholders.
+
 ## Troubleshooting
 
 Common problems and their fixes are in the wiki: [Troubleshooting][wiki-troubleshooting].

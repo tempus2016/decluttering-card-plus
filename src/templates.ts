@@ -1,6 +1,7 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
 import { normaliseVariables } from './variables';
+import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -367,7 +368,7 @@ export function closestTemplate(wanted: string, available: string[]): string | u
 /** How that reads on the end of a "doesn't exist" message. */
 export function didYouMean(wanted: string, available: string[]): string {
   const closest = closestTemplate(wanted, available);
-  return closest ? ` Did you mean "${closest}"?` : '';
+  return closest ? localize('error.did_you_mean', { closest }) : '';
 }
 
 /** Every card on the dashboard still using the original card's type names. */

@@ -22,10 +22,11 @@
     "noImplicitAny": false,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "esModuleInterop": true,
     "experimentalDecorators": true,
     "sourceMap": true,
   },
   "include": [
-    "src/*"
+    "src/**/*"
   ]
 }
