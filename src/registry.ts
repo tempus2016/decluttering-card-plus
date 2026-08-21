@@ -21,9 +21,36 @@ export interface RegistrySource {
   floor?: string | string[];
   /** Narrows to things carrying these labels, by label id or by name. */
   label?: string | string[];
+  /** Narrows to entities of these device classes. */
+  device_class?: string | string[];
+  /** Narrows to entities provided by these integrations. */
+  integration?: string | string[];
+  /** What to leave out. Patterns for entity ids, or a mapping of the same filters. */
+  exclude?: string | string[] | RegistrySource;
+  /** What to order the copies by. Defaults to the name shown. */
+  sort?: string;
+  /** Reverses whatever order was chosen. */
+  reverse?: boolean;
+  /** At most this many copies, after everything else has been applied. */
+  limit?: number;
+  /** Repeat a fixed number of times, with nothing but the position to go on. */
+  range?: number;
 }
 
-const SOURCE_KEYS = ['areas', 'entities', 'domain', 'area', 'floor', 'label'];
+// `sort`, `reverse` and `limit` are deliberately not here: on their own they say nothing
+// about what to repeat over, so a mapping holding only those is not a source.
+const SOURCE_KEYS = [
+  'areas',
+  'entities',
+  'domain',
+  'area',
+  'floor',
+  'label',
+  'device_class',
+  'integration',
+  'exclude',
+  'range',
+];
 
 /** Whether a `for_each_from:` value is a description of what to repeat over. */
 export function isRegistrySource(value: any): boolean {
@@ -98,15 +125,57 @@ function byName(a: Record<string, any>, b: Record<string, any>): number {
   return shown(a).localeCompare(shown(b)) || id(a).localeCompare(id(b));
 }
 
+/** What each `sort:` orders by. Anything else is not an order, and is ignored. */
+const SORTS: Record<string, (item: Record<string, any>) => string> = {
+  name: (item) => String(item.name ?? item.area ?? ''),
+  entity: (item) => String(item.entity ?? item.area_id ?? ''),
+  id: (item) => String(item.entity ?? item.area_id ?? ''),
+  area: (item) => String(item.area ?? ''),
+  domain: (item) => String(item.domain ?? ''),
+  floor: (item) => String(item.floor ?? ''),
+};
+
+/**
+ * The copies in the order they should be drawn, and no more of them than were asked for.
+ * `total` goes on every copy before the limit is applied, so a template can say "8 of 23"
+ * rather than "8 of 8".
+ */
+function ordered(items: Record<string, any>[], source: RegistrySource): Record<string, any>[] {
+  const key = typeof source.sort === 'string' ? SORTS[source.sort] : undefined;
+  // `sort: none` - or anything unrecognised - keeps the registry's own order, which is
+  // the only way to ask for "however Home Assistant listed them".
+  const sorted =
+    source.sort === undefined
+      ? [...items].sort(byName)
+      : key
+        ? [...items].sort((a, b) => key(a).localeCompare(key(b)) || byName(a, b))
+        : [...items];
+  if (source.reverse) sorted.reverse();
+
+  const total = sorted.length;
+  const withTotal = sorted.map((item) => ({ ...item, total }));
+  const limit = Number(source.limit);
+  return Number.isFinite(limit) && limit >= 0 ? withTotal.slice(0, limit) : withTotal;
+}
+
+/** Whether one area answers to a set of filters. */
+function areaMatches(hass: any, area: any, source: RegistrySource): boolean {
+  if (!matchesAny([area.area_id, area.name], asList(source.areas))) return false;
+  if (!matchesAny([area.area_id, area.name], asList(source.area))) return false;
+  if (!floorMatches(hass, area, asList(source.floor))) return false;
+  if (!labelMatches(hass, area.labels ?? [], asList(source.label))) return false;
+  return true;
+}
+
 function areaItems(hass: any, source: RegistrySource): Record<string, any>[] {
-  const patterns = asList(source.areas);
+  const drop = excluded(source.exclude);
+  // An area is left out by name or id, so patterns mean areas here rather than entities.
+  const dropAreas = drop?.entities !== undefined ? { areas: drop.entities, ...drop } : drop;
   const items: Record<string, any>[] = [];
 
   for (const area of Object.values(hass?.areas ?? {}) as any[]) {
-    if (!matchesAny([area.area_id, area.name], patterns)) continue;
-    if (!matchesAny([area.area_id, area.name], asList(source.area))) continue;
-    if (!floorMatches(hass, area, asList(source.floor))) continue;
-    if (!labelMatches(hass, area.labels ?? [], asList(source.label))) continue;
+    if (!areaMatches(hass, area, source)) continue;
+    if (dropAreas && areaMatches(hass, area, dropAreas)) continue;
 
     const floor = area.floor_id ? hass?.floors?.[area.floor_id] : undefined;
     items.push({
@@ -116,50 +185,82 @@ function areaItems(hass: any, source: RegistrySource): Record<string, any>[] {
       floor: floor?.name ?? '',
     });
   }
-  return items.sort(byName);
+  return items;
+}
+
+/** The device class an entity reports, which is on its state rather than its registry entry. */
+function deviceClassOf(hass: any, entityId: string, entity: any): string | undefined {
+  return hass?.states?.[entityId]?.attributes?.device_class ?? entity?.device_class;
+}
+
+/** Whether one entity answers to a set of filters. Shared by what to keep and what to drop. */
+function entityMatches(hass: any, entityId: string, entity: any, source: RegistrySource): boolean {
+  const patterns = asList(source.entities);
+  if (!matchesAny([entityId], patterns)) return false;
+
+  const domains = asList(source.domain);
+  if (domains && !matches(entityId.split('.')[0], domains)) return false;
+
+  const classes = asList(source.device_class);
+  if (classes && !matches(deviceClassOf(hass, entityId, entity), classes)) return false;
+
+  const integrations = asList(source.integration);
+  if (integrations && !matchesAny([entity?.platform], integrations)) return false;
+
+  const area = areaOf(hass, entity);
+  const areas = asList(source.area);
+  if (areas && !matchesAny([area?.area_id, area?.name], areas)) return false;
+  if (!floorMatches(hass, area, asList(source.floor))) return false;
+  if (!labelMatches(hass, labelsOf(hass, entity), asList(source.label))) return false;
+  return true;
+}
+
+/**
+ * What a source says to leave out, as a set of filters. Written as patterns it means entity
+ * ids, which is what it is nearly always used for; written as a mapping it can narrow by
+ * anything the source itself can.
+ */
+function excluded(exclude: RegistrySource['exclude']): RegistrySource | undefined {
+  if (exclude === undefined || exclude === null) return undefined;
+  if (typeof exclude === 'object' && !Array.isArray(exclude)) return exclude as RegistrySource;
+  return { entities: exclude as string | string[] };
 }
 
 function entityItems(hass: any, source: RegistrySource): Record<string, any>[] {
-  const patterns = asList(source.entities);
-  const domains = asList(source.domain);
-  const areas = asList(source.area);
-  const floors = asList(source.floor);
-  const labels = asList(source.label);
+  const drop = excluded(source.exclude);
   const items: Record<string, any>[] = [];
 
   for (const [entityId, entity] of Object.entries(hass?.entities ?? {}) as [string, any][]) {
     // Something hidden was hidden on purpose, and a dashboard built from the registry
     // should no more show it than Home Assistant's own automatic dashboards do.
     if (entity?.hidden) continue;
-    if (!matchesAny([entityId], patterns)) continue;
-
-    const domain = entityId.split('.')[0];
-    if (domains && !matches(domain, domains)) continue;
+    if (!entityMatches(hass, entityId, entity, source)) continue;
+    // What to leave out wins over what to take in, so one sweep can say "all of these
+    // except those three" without listing everything it does want.
+    if (drop && entityMatches(hass, entityId, entity, drop)) continue;
 
     const area = areaOf(hass, entity);
-    if (areas && !matchesAny([area?.area_id, area?.name], areas)) continue;
-    if (!floorMatches(hass, area, floors)) continue;
-    if (!labelMatches(hass, labelsOf(hass, entity), labels)) continue;
-
     items.push({
       entity: entityId,
       name: nameOf(hass, entityId, entity),
-      domain,
+      domain: entityId.split('.')[0],
       area: area?.name ?? '',
       area_id: area?.area_id ?? '',
     });
   }
-  return items.sort(byName);
+  return items;
 }
 
 // What each kind of copy is given, which is also what an editor must not report as a
 // variable the card has forgotten to set.
-const ENTITY_NAMES = ['entity', 'name', 'domain', 'area', 'area_id'];
-const AREA_NAMES = ['area_id', 'area', 'area_icon', 'floor'];
+const ENTITY_NAMES = ['entity', 'name', 'domain', 'area', 'area_id', 'total'];
+const AREA_NAMES = ['area_id', 'area', 'area_icon', 'floor', 'total'];
+const RANGE_NAMES = ['total'];
 
 /** The variable names a source supplies to every copy, whatever the registry holds. */
 export function registryNames(source: any): string[] {
   if (!isRegistrySource(source)) return [];
+  if (source.range !== undefined) return [...RANGE_NAMES];
   return source.areas !== undefined ? [...AREA_NAMES] : [...ENTITY_NAMES];
 }
 
@@ -169,7 +270,20 @@ export function registryNames(source: any): string[] {
  */
 export function resolveRegistryItems(hass: any, source: any): Record<string, any>[] {
   if (!isRegistrySource(source)) return [];
-  return source.areas !== undefined ? areaItems(hass, source) : entityItems(hass, source);
+
+  /*
+   * A plain count, with nothing but the position to go on. Useful for a row of slots, or
+   * for laying something out before the entities behind it exist. Asked for at all, it is
+   * the whole answer - a range of none is none, not a sweep of everything there is.
+   */
+  if (source.range !== undefined) {
+    const range = Number(source.range);
+    const count = Number.isFinite(range) && range > 0 ? Math.floor(range) : 0;
+    return Array.from({ length: count }, () => ({ total: count }));
+  }
+
+  const items = source.areas !== undefined ? areaItems(hass, source) : entityItems(hass, source);
+  return ordered(items, source);
 }
 
 /**

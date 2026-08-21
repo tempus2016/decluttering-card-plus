@@ -99,6 +99,12 @@ const REPEAT_SCHEMA = [
     selector: { object: {} },
   },
   {
+    name: 'empty',
+    label: 'Show instead when nothing matches',
+    helper: 'A card to render when the repeat produces no copies. Example: type: markdown, content: Nothing here',
+    selector: { object: {} },
+  },
+  {
     name: 'columns',
     label: 'Columns',
     helper: 'How many copies sit side by side. One stacks them vertically',
@@ -402,6 +408,22 @@ abstract class DeclutteringElement extends LitElement {
      * full of holes, which is what a dummy entity id was always standing in for.
      */
     const wanted = items.filter((item) => hasRequiredVariables(templateConfig, item, config.variables));
+
+    /*
+     * A repeat that matches nothing renders nothing, which is right - a dashboard should
+     * not break because a room has no motion sensor yet - but silence is indistinguishable
+     * from breakage. `empty:` is how a card says "there is nothing here" on purpose.
+     */
+    if (!wanted.length && config.empty) {
+      this._forEach = undefined;
+      this._widths?.disconnect();
+      this._setResolved(
+        'card',
+        config.empty as LovelaceThingConfig,
+        this._resolveStyles(templateConfig, config.variables, config.style, config.template),
+      );
+      return;
+    }
 
     /*
      * A registry sweep that matches half the house builds half the house, which reads as a
@@ -1064,6 +1086,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     if (this._config?.for_each_from !== undefined) data.for_each_from = this._config.for_each_from;
     if (this._config?.columns !== undefined) data.columns = this._config.columns;
     if (this._config?.min_column_width !== undefined) data.min_column_width = this._config.min_column_width;
+    if (this._config?.empty !== undefined) data.empty = this._config.empty;
     if (this._config?.fit !== undefined) data.fit = this._config.fit;
     return data;
   }
@@ -1160,6 +1183,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     setOrDelete(config, 'for_each_from', data.for_each_from);
     setOrDelete(config, 'columns', data.columns);
     setOrDelete(config, 'min_column_width', data.min_column_width);
+    setOrDelete(config, 'empty', data.empty);
 
     fireEvent(this, 'config-changed', { config });
   }
