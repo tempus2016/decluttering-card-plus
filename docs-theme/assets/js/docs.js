@@ -8,7 +8,8 @@
      Runs over text nodes rather than innerHTML so Rouge's own spans survive intact. */
   function lightPlaceholders(root) {
     var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    var nodes = [], n;
+    var nodes = [],
+      n;
     while ((n = walker.nextNode())) if (n.nodeValue.indexOf('[[') !== -1) nodes.push(n);
 
     nodes.forEach(function (node) {
@@ -60,7 +61,10 @@
       var a = document.createElement('a');
       a.href = '#' + h.id;
       // Drop the *(v1.1.0+)* tag; the column is for finding your place, not for detail.
-      a.textContent = h.textContent.replace(/^#/, '').replace(/\(v[\d.]+\+\)/, '').trim();
+      a.textContent = h.textContent
+        .replace(/^#/, '')
+        .replace(/\(v[\d.]+\+\)/, '')
+        .trim();
       li.appendChild(a);
       list.appendChild(li);
     });
@@ -68,18 +72,28 @@
 
     if ('IntersectionObserver' in window) {
       var links = {};
-      list.querySelectorAll('a').forEach(function (a) { links[a.hash.slice(1)] = a; });
+      list.querySelectorAll('a').forEach(function (a) {
+        links[a.hash.slice(1)] = a;
+      });
       var seen = new Set();
-      var observer = new IntersectionObserver(function (entries) {
-        entries.forEach(function (e) {
-          if (e.isIntersecting) seen.add(e.target.id); else seen.delete(e.target.id);
-        });
-        var first = headings.filter(function (h) { return seen.has(h.id); })[0];
-        Object.keys(links).forEach(function (id) {
-          links[id].classList.toggle('here', !!first && id === first.id);
-        });
-      }, { rootMargin: '-4rem 0px -70% 0px' });
-      headings.forEach(function (h) { observer.observe(h); });
+      var observer = new IntersectionObserver(
+        function (entries) {
+          entries.forEach(function (e) {
+            if (e.isIntersecting) seen.add(e.target.id);
+            else seen.delete(e.target.id);
+          });
+          var first = headings.filter(function (h) {
+            return seen.has(h.id);
+          })[0];
+          Object.keys(links).forEach(function (id) {
+            links[id].classList.toggle('here', !!first && id === first.id);
+          });
+        },
+        { rootMargin: '-4rem 0px -70% 0px' },
+      );
+      headings.forEach(function (h) {
+        observer.observe(h);
+      });
     }
   }
 })();
