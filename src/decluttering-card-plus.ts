@@ -24,6 +24,7 @@ import {
   collectTemplates,
   collectAllTemplates,
   collectUsages,
+  didYouMean,
   findTemplate,
   findTemplateAnywhere,
   findTemplateLocation,
@@ -47,6 +48,7 @@ import {
   variableValues,
   VariableDeclaration,
 } from './variables';
+import { chainOf, chainWith, describeCycle, describeTooDeep, findCycle, MAX_NESTING, withChain } from './cycles';
 import { columnsFor } from './layout';
 import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
 import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
@@ -76,6 +78,10 @@ const THING_STUBS: Record<string, unknown> = {
 // Declared variables get their own form field, and the prefix keeps a variable called
 // "template" from colliding with the field that chooses the template.
 const VARIABLE_FIELD_PREFIX = 'variable:';
+
+// Past this many copies on one card a repeat is worth mentioning. Well above a house's
+// worth of lights, so an ordinary dashboard never sees it.
+const MANY_COPIES = 50;
 
 // One shared instance: the editor re-renders on every state change Home Assistant sends,
 // and a fresh schema object each time would mark every field dirty for no reason.
@@ -179,8 +185,11 @@ async function loadRowEditor(): Promise<void> {
   if (cls && (cls as any).getConfigElement) await (cls as any).getConfigElement();
 }
 
+// The four things a template can define, exactly one of which it must.
+const THING_TYPE_KEYS = ['card', 'row', 'element', 'badge'];
+
 function getThingType(templateConfig: TemplateConfig): LovelaceThingType | undefined {
-  const thingTypes = Object.keys(templateConfig).filter((key) => ['card', 'row', 'element', 'badge'].includes(key));
+  const thingTypes = Object.keys(templateConfig).filter((key) => THING_TYPE_KEYS.includes(key));
   return thingTypes.length === 1 ? (thingTypes[0] as LovelaceThingType) : undefined;
 }
 
@@ -200,10 +209,16 @@ abstract class DeclutteringElement extends LitElement {
   // One observer for the element's lifetime. A new one per wrapped card leaked a live
   // observer on every reconfigure, and left them all running after the card was gone.
   private _resizes?: ResizeObserver;
+  // The template this element renders, and the ones already open above it. Together they
+  // are what stops a template that uses itself from building levels forever.
+  protected _templateName?: string;
+  protected _openTemplates: string[] = [];
   // The copies of a repeated template, kept so the layout can change without resolving
   // them again, and the column count currently on show so it only rebuilds when it moves.
   private _forEach?: { cards: unknown[]; max: number; minWidth?: number; styles: string };
   private _columnsShown?: number;
+  // The size a repeat was last mentioned at, so a rebuild does not say it all over again.
+  private _manyWarnedFor?: number;
   private _widths?: ResizeObserver;
   private _savedStyles?: Map<string, [string, string]>;
   @state() private _style?: string;
@@ -321,8 +336,15 @@ abstract class DeclutteringElement extends LitElement {
   ): void {
     const thingType = getThingType(templateConfig);
     if (!thingType) {
-      throw new Error('You must define one card, badge, element, or row in the template');
+      const defined = THING_TYPE_KEYS.filter((key) => (templateConfig as Record<string, unknown>)[key] !== undefined);
+      throw new Error(
+        defined.length
+          ? `This template defines both "${defined[0]}" and "${defined[1]}". A template can only define one of ` +
+              'card, badge, element or row.'
+          : 'You must define one card, badge, element, or row in the template',
+      );
     }
+    this._templateName = templateName ?? this._templateName;
     const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
     this._setResolved(
       thingType,
@@ -350,11 +372,14 @@ abstract class DeclutteringElement extends LitElement {
   }
 
   private _setResolved(thingType: LovelaceThingType, thingConfig: LovelaceThingConfig, styles: string): void {
+    // Anything inside this card is told which templates are open above it, so a card that
+    // ends up using a template already being drawn can refuse instead of going round again.
+    const stamped = withChain(thingConfig, chainWith(this._openTemplates, this._templateName));
     this._style = styles;
-    this._thingConfig = thingConfig;
+    this._thingConfig = stamped;
     this._thingType = thingType;
-    DeclutteringElement._createThing(thingConfig, thingType, (thing: LovelaceThing) => {
-      if (this._thingConfig === thingConfig) {
+    DeclutteringElement._createThing(stamped, thingType, (thing: LovelaceThing) => {
+      if (this._thingConfig === stamped) {
         this._setThing(thing, thingType === 'element' ? thingConfig.style : undefined);
       }
     });
@@ -377,6 +402,20 @@ abstract class DeclutteringElement extends LitElement {
      * full of holes, which is what a dummy entity id was always standing in for.
      */
     const wanted = items.filter((item) => hasRequiredVariables(templateConfig, item, config.variables));
+
+    /*
+     * A registry sweep that matches half the house builds half the house, which reads as a
+     * broken dashboard rather than a big one. Said once, naming the count, because the card
+     * cannot know whether it was meant - only that it is worth a look.
+     */
+    if (wanted.length > MANY_COPIES && this._manyWarnedFor !== wanted.length) {
+      this._manyWarnedFor = wanted.length;
+      console.warn(
+        `decluttering-card-plus: the template "${config.template}" is being repeated ${wanted.length} times on ` +
+          'one card. That is a lot to build and a lot to scroll - narrow what it repeats over.',
+      );
+    }
+
     const cards = wanted.map((item, index) =>
       deepReplace(
         forEachVariables(item, config.variables, index, wanted.length),
@@ -620,6 +659,26 @@ class DeclutteringCard extends DeclutteringElement {
     if (!config.template) {
       throw new Error('Missing template object in your config');
     }
+
+    /*
+     * What is already being drawn above this card. A template that uses itself, directly
+     * or through another template, would otherwise build the next level forever - each one
+     * while it is still detached from the page, so nothing in the layout ever gets the
+     * chance to stop it and the tab simply stops responding.
+     */
+    this._openTemplates = chainOf(config);
+    this._templateName = config.template;
+
+    // Said here rather than thrown: Home Assistant collapses a card that throws in
+    // setConfig to "Configuration error" with the reason hidden, and the reason - which
+    // templates loop, and in what order - is the whole of what makes this fixable.
+    const cycle = findCycle(this._openTemplates, config.template);
+    const tooDeep = this._openTemplates.length >= MAX_NESTING;
+    if (cycle || tooDeep) {
+      this._error = cycle ? describeCycle(cycle) : describeTooDeep(this._openTemplates);
+      return;
+    }
+
     const ll = getLovelaceConfig();
     if (!ll) {
       throw new Error('Could not retrieve the lovelace configuration.');
@@ -639,7 +698,8 @@ class DeclutteringCard extends DeclutteringElement {
     }
     if (!getTemplateSources(ll).length) {
       throw new Error(
-        `The template "${config.template}" doesn't exist in decluttering_templates or in a custom:decluttering-template card`,
+        `The template "${config.template}" doesn't exist in decluttering_templates or in a custom:decluttering-template card.` +
+          didYouMean(config.template, Object.keys(collectTemplates(ll))),
       );
     }
     // The template may live on a dashboard this one borrows from, which has to be fetched.
@@ -742,7 +802,11 @@ class DeclutteringCard extends DeclutteringElement {
           this._error =
             `The template "${config.template}" doesn't exist in decluttering_templates, ` +
             'in a custom:decluttering-template card, or on any dashboard listed in ' +
-            'decluttering_templates_from';
+            'decluttering_templates_from.';
+          // Every name there is, borrowed ones included, is known by the time this runs.
+          collectAllTemplates(hass, ll).then((all) => {
+            this._error += didYouMean(config.template, Object.keys(all));
+          });
         }
       })
       .catch((err) => {
@@ -1152,6 +1216,11 @@ class DeclutteringTemplate extends DeclutteringElement {
   }
 
   public setConfig(config: DeclutteringTemplateConfig): void {
+    // A template card draws its own definition, so it is the outermost open template for
+    // whatever that definition contains.
+    this._openTemplates = chainOf(config);
+    this._templateName = config.template;
+
     if (!config.template) {
       throw new Error('Missing template property');
     }

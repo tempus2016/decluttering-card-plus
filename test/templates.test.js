@@ -13,6 +13,8 @@ const {
   findTemplateLocation,
   renameTemplate,
   dashboardsToForget,
+  closestTemplate,
+  didYouMean,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -499,6 +501,38 @@ const lender = {
 };
 const borrower = { decluttering_defaults: { colour: 'amber' }, decluttering_templates_from: ['lend'], views: [] };
 
+/* ------------------------------------------------------------- did you mean */
+
+check('a single letter wrong is a typo', closestTemplate('room_tiel', ['room_tile', 'weather']), 'room_tile');
+
+check('a missing letter is a typo', closestTemplate('room_tle', ['room_tile', 'weather']), 'room_tile');
+
+check('a wrong case is a typo', closestTemplate('Room_Tile', ['room_tile']), 'room_tile');
+
+check(
+  'something unrelated is not a typo of anything',
+  [closestTemplate('completely_different', ['room_tile', 'weather'])],
+  [null],
+);
+
+check('a name that exists needs no suggestion', [closestTemplate('room_tile', ['room_tile'])], [null]);
+
+check('nothing to suggest from suggests nothing', [closestTemplate('room_tile', [])], [null]);
+
+check('an empty name suggests nothing', [closestTemplate('', ['room_tile'])], [null]);
+
+check(
+  'the closest of several is the one offered',
+  closestTemplate('room_tilx', ['weather', 'room_tile', 'room_tiles_extra']),
+  'room_tile',
+);
+
+check('the sentence reads as a question', didYouMean('room_tiel', ['room_tile']), ' Did you mean "room_tile"?');
+
+check('with nothing close it adds nothing at all', didYouMean('zzzz', ['room_tile']), '');
+
+// The borrowing checks are asynchronous and call report() when they settle, so anything
+// added after this point would run after the totals were printed.
 const hass = { callWS: () => Promise.resolve(lender) };
 
 collectAllTemplates(hass, borrower).then((all) => {

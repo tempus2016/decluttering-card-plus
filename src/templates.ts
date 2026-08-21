@@ -320,3 +320,52 @@ export function renameTemplate(ll: any, from: string, to: string): any {
   }
   return renamed;
 }
+
+/*
+ * How many single-character edits turn one name into the other, capped: past a couple of
+ * edits two names are not a typo of each other, and stopping early keeps a dashboard full
+ * of templates cheap to check.
+ */
+function editDistance(a: string, b: string, cap: number): number {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      row[j] = a[i - 1] === b[j - 1] ? previous[j - 1] : 1 + Math.min(previous[j - 1], previous[j], row[j - 1]);
+    }
+    if (Math.min(...row) > cap) return cap + 1;
+    previous = row;
+  }
+  return previous[b.length];
+}
+
+/**
+ * The name somebody probably meant, out of the ones that exist. A missing template is
+ * nearly always a typo or a rename, and the card already knows every name there is - so
+ * saying "did you mean" turns a hunt through the dashboard into a glance.
+ */
+export function closestTemplate(wanted: string, available: string[]): string | undefined {
+  if (!wanted) return undefined;
+  // Two edits on a short name, three on a long one: enough for a transposition and a
+  // missing letter, not enough to start pointing at unrelated templates.
+  const cap = wanted.length > 8 ? 3 : 2;
+
+  let best: string | undefined;
+  let bestScore = cap + 1;
+  for (const name of available) {
+    if (name === wanted) return undefined;
+    const score = editDistance(wanted.toLowerCase(), name.toLowerCase(), cap);
+    if (score < bestScore) {
+      bestScore = score;
+      best = name;
+    }
+  }
+  return bestScore <= cap ? best : undefined;
+}
+
+/** How that reads on the end of a "doesn't exist" message. */
+export function didYouMean(wanted: string, available: string[]): string {
+  const closest = closestTemplate(wanted, available);
+  return closest ? ` Did you mean "${closest}"?` : '';
+}
