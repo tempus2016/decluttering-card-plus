@@ -1,4 +1,5 @@
 import { VariablesConfig, TemplateConfig } from './types';
+import { localize } from './localize';
 import {
   applyTransform,
   ESCAPE,
@@ -18,9 +19,13 @@ import {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// How a refusal reads when Home Assistant had nothing to give, as opposed to when a
-// transform was handed something it cannot shape.
-const NOTHING_FOR = 'nothing in Home Assistant for';
+// What a refusal says, and which of the two ways it happened: Home Assistant had nothing
+// to give, or a transform was handed something it cannot shape. The flag carries the
+// difference so the wording never has to - the wording is translated.
+interface Refusal {
+  text: string;
+  missing: boolean;
+}
 
 // A variable's value can itself contain placeholders, so substitution runs repeatedly
 // until nothing changes. The cap only matters for a variable that refers to itself,
@@ -62,13 +67,13 @@ function asPartOfString(value: any): string {
 
 /** How to describe a value that a transform cannot shape, in a sentence about it. */
 function kindOf(value: unknown): string {
-  return Array.isArray(value) ? 'a list' : 'a mapping';
+  return localize(Array.isArray(value) ? 'warn.kind_list' : 'warn.kind_mapping');
 }
 
 function substitutePass(
   jsonConfig: string,
   variableArray: VariablesConfig[],
-  refused: Map<string, string>,
+  refused: Map<string, Refusal>,
   hass?: any,
 ): string {
   let json = jsonConfig;
@@ -90,8 +95,8 @@ function substitutePass(
     // A placeholder left visible is the deliberate signal that something is wrong, but on
     // its own it does not say what - so each refusal is noted, to be reported once at the
     // end rather than on every pass over the same text.
-    const refuse = (match: string, transform: string, why?: string): string => {
-      refused.set(`${Object.keys(variable)[0]}|${transform}`, why ?? kindOf(value));
+    const refuse = (match: string, transform: string, why?: string, missing = false): string => {
+      refused.set(`${Object.keys(variable)[0]}|${transform}`, { text: why ?? kindOf(value), missing });
       return match;
     };
 
@@ -103,7 +108,7 @@ function substitutePass(
      */
     const shaped = (match: string, transform: string, wrap: (text: string) => string): string => {
       const text = applyTransform(transform, value, hass);
-      return text === undefined ? refuse(match, transform, `${NOTHING_FOR} "${value}"`) : wrap(text);
+      return text === undefined ? refuse(match, transform, localize('warn.nothing_for', { value }), true) : wrap(text);
     };
 
     /*
@@ -140,7 +145,7 @@ function substitutePass(
  * there - and neither is a placeholder a transform deliberately refused, which says so
  * for itself in a message of its own.
  */
-function unresolvedPlaceholders(json: string, refused: Map<string, string>): string[] {
+function unresolvedPlaceholders(json: string, refused: Map<string, Refusal>): string[] {
   const names = new Set<string>();
   const everyPlaceholder = new RegExp(PLACEHOLDER.source, 'g');
   let match = everyPlaceholder.exec(json);
@@ -240,7 +245,7 @@ export default (
   const hasOptional = new RegExp(`\\[\\[[^[\\]]*\\${'?'}\\]\\]`).test(jsonConfig);
 
   // Each placeholder a transform refused, and what its value turned out to be.
-  const refused = new Map<string, string>();
+  const refused = new Map<string, Refusal>();
 
   if (variableArray.length) {
     let passes = 0;
@@ -252,31 +257,19 @@ export default (
       if (jsonConfig === before) break;
     }
     if (!quiet && passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
-      console.warn(
-        `decluttering-card-plus: gave up substituting variables after ${MAX_PASSES} passes. ` +
-          'Check whether a variable refers to itself.',
-      );
+      console.warn(localize('warn.gave_up', { passes: MAX_PASSES }));
     }
 
     if (!quiet && refused.size) {
-      const each = [...refused].map(([placeholder, kind]) => `[[${placeholder}]] (${kind})`);
+      const each = [...refused].map(([placeholder, refusal]) => `[[${placeholder}]] (${refusal.text})`);
       // The two ways a chain gives up read differently, so say whichever applies rather
       // than a sentence that only half fits.
-      const missing = [...refused.values()].some((kind) => kind.startsWith(NOTHING_FOR));
-      const shaping = [...refused.values()].some((kind) => !kind.startsWith(NOTHING_FOR));
-      const why = [
-        shaping
-          ? 'A transform only shapes text, so it needs a scalar value - applying one to a mapping ' +
-            'or a list would garble its JSON. Give the variable a scalar value, or drop the transform.'
-          : '',
-        missing
-          ? 'A resolver reads its value as an entity id and asks Home Assistant, so it needs one ' +
-            'that exists and carries what was asked for.'
-          : '',
-      ]
+      const missing = [...refused.values()].some((refusal) => refusal.missing);
+      const shaping = [...refused.values()].some((refusal) => !refusal.missing);
+      const why = [shaping ? localize('warn.refused_transform') : '', missing ? localize('warn.refused_resolver') : '']
         .filter(Boolean)
         .join(' ');
-      console.warn(`decluttering-card-plus: left ${each.join(', ')} in the card rather than substituting. ${why}`);
+      console.warn(localize('warn.refused', { which: each.join(', '), why }));
     }
   }
 
@@ -300,12 +293,10 @@ export default (
   if (onUnresolved && unresolved.length) onUnresolved(unresolved);
   if (!quiet && unresolved.length) {
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
-    const whose = templateName ? `template "${templateName}"` : 'this template';
-    console.warn(
-      `decluttering-card-plus: ${whose} uses ${which}, which nothing gives a value to, ` +
-        'so it is rendered as written. Set it on the card, or give it a default in the template. ' +
-        `To write those brackets on purpose, escape it as [[${ESCAPE}${unresolved[0]}]].`,
-    );
+    const whose = templateName
+      ? localize('warn.unresolved_template', { name: templateName })
+      : localize('warn.unresolved_this');
+    console.warn(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${unresolved[0]}` }));
   }
 
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be

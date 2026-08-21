@@ -44,6 +44,13 @@ for (const { code, strings } of locales) {
     ),
     [],
   );
+  // The runtime forgives a missing key, but the files shipped here are kept complete -
+  // this is what says a new en.json sentence still needs its translations written.
+  check(
+    `${code}.json translates every en.json key`,
+    Object.keys(en).filter((key) => !(key in strings)),
+    [],
+  );
 }
 
 // The library list renders its summaries through these keys, so each entry needs one.
@@ -76,6 +83,8 @@ check(
 
 // hass answers for the user, which is how the other languages are reached.
 check('hass chooses the language', localize('share.import_header', undefined, { language: 'pt' }), 'Importar');
+check('French is wired in', localize('tools.rename_header', undefined, { language: 'fr' }), 'Renommer');
+check('Spanish is wired in', localize('tools.rename_header', undefined, { language: 'es' }), 'Renombrar');
 check(
   'a regional language falls back to its base',
   localize('share.import_header', undefined, { language: 'pt-BR' }),

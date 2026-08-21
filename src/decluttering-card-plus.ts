@@ -514,10 +514,7 @@ abstract class DeclutteringElement extends LitElement {
      */
     if (wanted.length > MANY_COPIES && this._manyWarnedFor !== wanted.length) {
       this._manyWarnedFor = wanted.length;
-      console.warn(
-        `decluttering-card-plus: the template "${config.template}" is being repeated ${wanted.length} times on ` +
-          'one card. That is a lot to build and a lot to scroll - narrow what it repeats over.',
-      );
+      console.warn(localize('warn.many_copies', { template: config.template, count: wanted.length }, this._hass));
     }
 
     const cards = wanted.map((item, index) =>
@@ -2524,7 +2521,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
  */
 function defineElement(tag: string, cls: CustomElementConstructor): boolean {
   if (customElements.get(tag)) {
-    console.warn(`decluttering-card-plus: <${tag}> is already registered by something else, skipping it.`);
+    console.warn(localize('warn.tag_taken', { tag }));
     return false;
   }
   customElements.define(tag, cls);

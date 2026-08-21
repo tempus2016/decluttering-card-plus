@@ -223,16 +223,20 @@ The card tries to say what, rather than leaving you to work it out:
 ## Languages (v1.2.0+)
 
 Everything the card says — its editors, its error messages, its Share and Where-used
-tools — follows the language set in your Home Assistant profile. English and Portuguese
-are included; anything a translation does not cover falls back to English.
+tools, even its console warnings — follows the language set in your Home Assistant
+profile. English, French, Portuguese and Spanish are included; anything a translation
+does not cover falls back to English.
 
 Adding a language is one file and no code. Copy
 [`src/locales/en.json`](src/locales/en.json) to `src/locales/<code>.json` — `de.json`,
-`fr.json` — translate the values, and register it in
+`it.json` — translate the values, and register it in
 [`src/localize.ts`](src/localize.ts) by adding one import and one entry to `LANGUAGES`.
 Leave the `{placeholders}` and any `[[name]]` brackets exactly as they are: the card fills
-those in. A partial translation is fine, and `npm test` checks that what you did translate
-keeps its placeholders.
+those in. `npm test` lists any keys you have missed and checks that every placeholder
+survived. The wiki's [Translations page][wiki-translations] walks through it, including
+how to send one in without touching git.
+
+[wiki-translations]: https://github.com/tempus2016/decluttering-card-plus/wiki/Translations
 
 ## Troubleshooting
 
