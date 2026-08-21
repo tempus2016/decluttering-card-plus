@@ -47,20 +47,58 @@ jobs:
                   print('rewrote links in', os.path.basename(path))
           PY
 
-      - name: Give it a front page and a theme
+      - name: Give it a front page, a theme and the wiki's own navigation
         run: |
           cd site
           rm -rf .git
           # A wiki's Home page is its front page; a web server wants an index.
           if [ -f Home.md ]; then cp Home.md index.md; fi
+
+          # The wiki's sidebar becomes navigation on every page rather than a page of its
+          # own. Copied after the link rewrite above, so its links point at .html too.
+          mkdir -p _includes _layouts
+          if [ -f _Sidebar.md ]; then cp _Sidebar.md _includes/sidebar.md; fi
+
+          # Inherits the theme's own layout and adds a column beside it, so the styling is
+          # still Primer's and only the navigation is ours.
+          cat > _layouts/wiki.html <<'HTML'
+          ---
+          layout: default
+          ---
+          <div class="wiki-page">
+            <nav class="wiki-nav">
+              {% capture sidebar %}{% include sidebar.md %}{% endcapture %}
+              {{ sidebar | markdownify }}
+            </nav>
+            <div class="wiki-content">{{ content }}</div>
+          </div>
+          <style>
+            .wiki-page { display: flex; gap: 2rem; align-items: flex-start; }
+            .wiki-nav { flex: 0 0 15rem; position: sticky; top: 1rem; font-size: 0.9rem; }
+            .wiki-nav ul { list-style: none; padding-left: 0; margin: 0 0 1rem; }
+            .wiki-nav li { margin: 0.15rem 0; }
+            .wiki-nav h3 { margin-top: 0; }
+            .wiki-content { flex: 1 1 auto; min-width: 0; }
+            /* One column on a phone, with the navigation after what you came to read. */
+            @media (max-width: 46rem) {
+              .wiki-page { display: block; }
+              .wiki-nav { position: static; border-top: 1px solid #d1d9e0; margin-top: 2rem; padding-top: 1rem; }
+            }
+          </style>
+          HTML
+
           cat > _config.yml <<'YAML'
           title: Decluttering Card Plus
           description: Reusable Lovelace card templates for Home Assistant
           theme: jekyll-theme-primer
-          # _Sidebar and _Footer are wiki furniture; Jekyll would publish them as pages.
+          # _Sidebar and _Footer are wiki furniture. The sidebar is included as navigation
+          # instead; publishing either as a page of its own would be nonsense.
           exclude:
             - _Sidebar.md
             - _Footer.md
+          defaults:
+            - scope: { path: '' }
+              values: { layout: wiki }
           YAML
 
       - uses: actions/configure-pages@v5
