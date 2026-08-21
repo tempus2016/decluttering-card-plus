@@ -105,7 +105,9 @@ Templates][wiki-defining].
   [Picture elements][wiki-elements]** — a template can hold any of the four, and goes wherever
   that kind of content goes.
 - **[Variables][wiki-variables]** with defaults, nesting, transforms (`[[room|slug]]`), values
-  read from Home Assistant, optional placeholders, and dashboard-wide fallbacks.
+  read from Home Assistant (`[[entity|friendly_name]]`, its area, floor or device), stand-ins
+  for what nothing sets (`[[name|default:Unnamed]]`), optional placeholders, and
+  dashboard-wide fallbacks.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity in
   an area, device or label.
 
@@ -137,6 +139,24 @@ depends on the order the resources were added rather than on anything you can se
 
 New configuration should use `custom:decluttering-card-plus` and
 `custom:decluttering-template-plus`, which are always available.
+
+## Filling the gaps
+
+A placeholder can say what to do when nothing sets it, rather than rendering its own
+brackets:
+
+```yaml
+name: '[[name|default:Unnamed]]'          # this text instead
+name: '[[name|or:label|default:Unnamed]]' # try another variable first
+```
+
+`default:` supplies the text itself and `or:` names another variable to try. Both chain
+with the transforms, and with each other, so the last word is always something. A variable
+set to nothing — unset, `null` or an empty string — counts as a gap; a `0` and a `false`
+are values and keep their place.
+
+That is different from `[[name?]]`, which removes the key from the card entirely. Use `?`
+when the option should not be there at all, and `default:` when something should be shown.
 
 ## When something is wrong
 

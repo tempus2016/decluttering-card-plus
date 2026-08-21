@@ -87,7 +87,14 @@ export const TRANSFORMS: Record<string, (value: string) => string> = {
       .replace(/^-+|-+$/g, ''),
 };
 
-const TRANSFORM_NAMES = Object.keys(TRANSFORMS).join('|');
+/*
+ * The one step that takes a mapping or a list on purpose. Every other transform shapes
+ * text and refuses anything else, which leaves no way to put a mapping into a markdown
+ * card even when that is exactly what is wanted - `json` is that way.
+ */
+export const JSON_STEP = 'json';
+
+const TRANSFORM_NAMES = [...Object.keys(TRANSFORMS), JSON_STEP].join('|');
 
 /*
  * Some of what a template wants is not in the card's config at all - it is in Home
@@ -115,14 +122,53 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
     const device = hass?.devices?.[entity?.device_id];
     return device?.name_by_user ?? device?.name;
   },
+  floor: (entityId, hass) => {
+    const entity = hass?.entities?.[entityId];
+    const areaId = entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
+    const floorId = areaId ? hass?.areas?.[areaId]?.floor_id : undefined;
+    return floorId ? hass?.floors?.[floorId]?.name : undefined;
+  },
+  // The ids underneath the names. A name is for showing; an id is for building another
+  // entity id out of - `binary_sensor.[[entity|area_id]]_motion` - which is the other half
+  // of what people template with.
+  area_id: (entityId, hass) => {
+    const entity = hass?.entities?.[entityId];
+    return entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
+  },
+  device_id: (entityId, hass) => hass?.entities?.[entityId]?.device_id,
 };
+
+/*
+ * A value can stand in for another when there is nothing to show. `default:` supplies the
+ * text itself; `or:` names another variable to try. Both are how a template covers the
+ * gaps without every card having to fill them in - and unlike `?`, which drops the key
+ * entirely, they put something there.
+ */
+const DEFAULT_PREFIX = 'default:';
+const OR_PREFIX = 'or:';
+
+// Anything but a bar or a bracket, so `default:Living Room` reads as it is written.
+const DEFAULT_STEP = `${DEFAULT_PREFIX}[^|\\]]*`;
+const OR_STEP = `${OR_PREFIX}[A-Za-z0-9_-]+`;
+
+/** Whether a step supplies a value rather than reshaping one. */
+export function isFallback(step: string): boolean {
+  return step.startsWith(DEFAULT_PREFIX) || step.startsWith(OR_PREFIX);
+}
+
+/** The variable an `or:` step names, for counting it as used. */
+export function orTarget(step: string): string | undefined {
+  return step.startsWith(OR_PREFIX) ? step.slice(OR_PREFIX.length) : undefined;
+}
 
 /** `attr:brightness` asks for one named attribute of the entity's current state. */
 const ATTRIBUTE_PREFIX = 'attr:';
 
 const ATTRIBUTE_STEP = `${ATTRIBUTE_PREFIX}[a-zA-Z0-9_]+`;
 
-const RESOLVER_NAMES = `${Object.keys(RESOLVERS).join('|')}|${ATTRIBUTE_STEP}`;
+const RESOLVER_NAMES = `${Object.keys(RESOLVERS)
+  .sort((a, b) => b.length - a.length)
+  .join('|')}|${ATTRIBUTE_STEP}`;
 
 /** Whether a step of a chain asks Home Assistant for something rather than shaping text. */
 export function isResolver(step: string): boolean {
@@ -149,7 +195,7 @@ function resolve(step: string, entityId: string, hass: any): string | undefined 
  * one word that is not a transform matches nothing, so the placeholder stays visible
  * rather than being half-applied.
  */
-const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES})`;
+const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES}|${OR_STEP}|${DEFAULT_STEP})`;
 
 const TRANSFORM_CHAIN = `${CHAIN_STEP}(?:\\|${CHAIN_STEP})*`;
 
@@ -164,23 +210,74 @@ const TRANSFORM_TAIL = new RegExp(`(?:\\|${CHAIN_STEP})+$`);
  * transform: substitution leaves a transformed mapping or list visible rather than
  * garbling its JSON through a text transform.
  */
-export function applyTransform(transform: string | undefined, value: unknown, hass?: any): string | undefined {
-  let text = String(value);
-  for (const name of transform ? transform.split('|') : []) {
+export function applyTransform(
+  transform: string | undefined,
+  value: unknown,
+  hass?: any,
+  values?: Record<string, any>,
+): string | undefined {
+  const steps = transform ? transform.split('|') : [];
+
+  // `json` is the one step that wants the value as it was rather than as text, so it is
+  // read off the front before anything turns a mapping into "[object Object]".
+  const takesJson = steps[0] === JSON_STEP;
+  let text: string | undefined = takesJson ? JSON.stringify(value) : value === undefined ? undefined : String(value);
+
+  /*
+   * Whether there is anything to show, which is not the same as whether there is a value.
+   * A stand-in is for gaps, and unset, null and the empty string are all gaps - while a
+   * zero and a false are values and keep their place. Tracked from the value rather than
+   * from the text, so a null still shapes as "null" for a plain transform, which is what
+   * it has always done.
+   */
+  let empty = value === undefined || value === null || value === '';
+
+  for (const name of steps.slice(takesJson ? 1 : 0)) {
+    if (isFallback(name)) {
+      if (empty) {
+        const or = orTarget(name);
+        const fallback = or === undefined ? name.slice(DEFAULT_PREFIX.length) : values?.[or];
+        // A mapping cannot stand in as text; `[[a|or:b]]` supplies words, not structure.
+        const usable = fallback !== undefined && fallback !== null && typeof fallback !== 'object';
+        text = usable ? String(fallback) : undefined;
+        empty = text === undefined || text === '';
+      }
+      continue;
+    }
+
+    // Nothing to work on. Left rather than abandoned, so a `default:` further along the
+    // chain still gets its turn.
+    if (text === undefined) continue;
+
     if (isResolver(name)) {
       // A resolver reads the value as an entity id, so it has to run before anything has
       // reshaped it - `[[entity|friendly_name|slug]]` resolves, then slugs.
-      const found = resolve(name, text, hass);
-      if (found === undefined) return undefined;
-      text = found;
+      text = resolve(name, text, hass);
+      empty = text === undefined || text === '';
       continue;
     }
+
     const fn = TRANSFORMS[name];
     // The grammar only ever matches known names, so this is belt and braces.
-    if (!fn) return String(value);
+    if (!fn) return value === undefined ? undefined : String(value);
     text = fn(text);
+    empty = text === '';
   }
   return text;
+}
+
+/*
+ * A placeholder naming a variable nothing sets is normally left alone - there is no value
+ * to put there. One carrying `default:` or `or:` is the exception: it says what to do in
+ * exactly that case, so it is worked out separately once ordinary substitution has run out
+ * of things to replace.
+ */
+export function resolveFallback(inside: string, values: Record<string, any>, hass?: any): string | undefined {
+  if (inside.startsWith(ESCAPE)) return undefined;
+
+  const [name, ...steps] = withoutOptional(inside).split('|');
+  if (!steps.some(isFallback)) return undefined;
+  return applyTransform(steps.join('|'), values[name], hass, values);
 }
 
 // The parts of a template that get substituted into, and so the only places a placeholder
@@ -294,7 +391,15 @@ function placeholdersIn(value: unknown): string[] {
   while (match !== null) {
     // `[[room|slug]]` is a use of `room`, not of a variable called `room|slug`, and
     // `[[!room]]` is not a use of anything - it is the brackets, written out.
-    if (!match[1].startsWith(ESCAPE)) names.push(withoutOptional(match[1]).replace(TRANSFORM_TAIL, ''));
+    if (!match[1].startsWith(ESCAPE)) {
+      const inside = withoutOptional(match[1]);
+      names.push(inside.replace(TRANSFORM_TAIL, ''));
+      // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing.
+      for (const step of inside.split('|').slice(1)) {
+        const or = orTarget(step);
+        if (or) names.push(or);
+      }
+    }
     match = pattern.exec(json);
   }
   return names;
@@ -462,7 +567,21 @@ export function forEachVariables(
   // Where the copy sits in the list, counted from one because these are read by people
   // writing "Zone [[index]] of [[count]]" rather than by programmers. They go last, so
   // an item or a card that sets either of those names by hand still wins.
-  const position: VariablesConfig[] = index === undefined ? [] : [{ index: index + 1 }, { count: count ?? 0 }];
+  // Where the copy sits in the list, counted from one because these are read by people
+  // writing "Zone [[index]] of [[count]]" rather than by programmers - with index0 beside
+  // it for the times a list is being indexed into, and first/last for the ends, which is
+  // what a rounded corner or a divider hangs off. They go last, so an item or a card that
+  // sets any of those names by hand still wins.
+  const position: VariablesConfig[] =
+    index === undefined
+      ? []
+      : [
+          { index: index + 1 },
+          { index0: index },
+          { count: count ?? 0 },
+          { first: index === 0 },
+          { last: index === (count ?? 0) - 1 },
+        ];
 
   // The item's own values come first, so a copy can override what the card sets for all.
   // Both go through the same normalisation substitution reads, so a mapping or a
@@ -484,7 +603,7 @@ export function forEachItems(forEach: unknown): unknown[] | undefined {
 }
 
 /** The names every copy of a `for_each` gets given, whatever its items say. */
-export const POSITION_NAMES = ['index', 'count'];
+export const POSITION_NAMES = ['index', 'index0', 'count', 'first', 'last'];
 
 /** Every name any item of a `for_each` list sets, for warning about what is missing. */
 export function forEachNames(items: unknown): string[] {
