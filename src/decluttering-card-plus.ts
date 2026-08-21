@@ -850,6 +850,15 @@ class DeclutteringCard extends DeclutteringElement {
     // What the card asks for beats what the template says it wants.
     this._gridOptions = config.grid_options ?? (templateConfig as { grid_options?: unknown }).grid_options;
 
+    /*
+     * A resolver reads the registry, and the registry can arrive after the card has first
+     * rendered - so remember what to build if it changes under us. Recorded before the
+     * branching, not after: a template using `[[entity|friendly_name]]` needs building
+     * again whether it is rendered once or repeated, and recording it only on the plain
+     * path left every copy of a repeat showing the brackets for good.
+     */
+    this._fromResolvers = usesResolver(templateConfig) ? { templateConfig, config } : undefined;
+
     // A single mapping counts as a list of one, the same forgiveness `variables` gets. A
     // written-out list wins over a registry source: it is the more particular of the two,
     // and having both silently pick one would be worse than having it say which.
@@ -859,17 +868,13 @@ class DeclutteringCard extends DeclutteringElement {
       return;
     }
     if (isRegistrySource(config.for_each_from)) {
+      // It works itself out again on a registry change already, which covers its resolvers.
+      this._fromResolvers = undefined;
       this._fromRegistry = { templateConfig, config };
       // setConfig runs before hass is ever set, so the first resolution usually waits.
       if (this._hass) this._resolveFromRegistry(this._hass);
       return;
     }
-    /*
-     * A resolver reads the registry, and the registry can arrive after the card has first
-     * rendered - so remember what to build if it changes under us, exactly as a registry
-     * source does. Templates that ask Home Assistant for nothing are built once and left.
-     */
-    this._fromResolvers = usesResolver(templateConfig) ? { templateConfig, config } : undefined;
     this._setTemplateConfig(templateConfig, config.variables, config.style, config.template);
   }
 
@@ -887,6 +892,12 @@ class DeclutteringCard extends DeclutteringElement {
     if (sameRegistry(this._resolverRegistry, key)) return;
     this._resolverRegistry = key;
 
+    // Built the same way it was built the first time, so a repeat comes back as a repeat.
+    const items = forEachItems(pending.config.for_each);
+    if (items) {
+      this._setForEach(pending.templateConfig, pending.config, items);
+      return;
+    }
     this._setTemplateConfig(
       pending.templateConfig,
       pending.config.variables,
