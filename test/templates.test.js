@@ -15,6 +15,9 @@ const {
   dashboardsToForget,
   closestTemplate,
   didYouMean,
+  countLegacyTypes,
+  addCardToView,
+  moderniseTypes,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -530,6 +533,91 @@ check(
 check('the sentence reads as a question', didYouMean('room_tiel', ['room_tile']), ' Did you mean "room_tile"?');
 
 check('with nothing close it adds nothing at all', didYouMean('zzzz', ['room_tile']), '');
+
+/* --------------------------------------------------- moving off the original names */
+
+const OLD = {
+  decluttering_templates: { tile: { card: { type: 'custom:decluttering-card', template: 'other' } } },
+  views: [
+    {
+      cards: [
+        { type: 'custom:decluttering-template', template: 'tile', card: { type: 'tile' } },
+        { type: 'custom:decluttering-card', template: 'tile' },
+        { type: 'vertical-stack', cards: [{ type: 'custom:decluttering-card-plus', template: 'tile' }] },
+      ],
+    },
+  ],
+};
+
+check('every card still on the old names is counted', countLegacyTypes(OLD), 3);
+
+check('a dashboard already moved over counts none', countLegacyTypes(moderniseTypes(OLD)), 0);
+
+check(
+  'the definition and the uses both move',
+  moderniseTypes(OLD).views[0].cards.map((c) => c.type),
+  ['custom:decluttering-template-plus', 'custom:decluttering-card-plus', 'vertical-stack'],
+);
+
+check(
+  'a use inside a template definition moves too',
+  moderniseTypes(OLD).decluttering_templates.tile.card.type,
+  'custom:decluttering-card-plus',
+);
+
+check(
+  'a card already on the new names is left exactly as it was',
+  moderniseTypes(OLD).views[0].cards[2].cards[0].type,
+  'custom:decluttering-card-plus',
+);
+
+check(
+  'moving over does not mutate what it was given',
+  (() => {
+    const before = JSON.stringify(OLD);
+    moderniseTypes(OLD);
+    return JSON.stringify(OLD) === before;
+  })(),
+  true,
+);
+
+/* --------------------------------------------------------- dropping a card into a view */
+
+check(
+  'a card is added to the end of the view asked for',
+  addCardToView({ views: [{ cards: [{ type: 'a' }] }, { cards: [] }] }, 0, { type: 'b' }).views[0].cards,
+  [{ type: 'a' }, { type: 'b' }],
+);
+
+check(
+  'a view with no cards yet gets its first',
+  addCardToView({ views: [{ title: 'One' }] }, 0, { type: 'b' }).views[0].cards,
+  [{ type: 'b' }],
+);
+
+check(
+  'the other views are left exactly as they were',
+  addCardToView({ views: [{ cards: [] }, { cards: [{ type: 'keep' }] }] }, 0, { type: 'b' }).views[1].cards,
+  [{ type: 'keep' }],
+);
+
+check(
+  'a view that is not there changes nothing rather than inventing one',
+  addCardToView({ views: [{ cards: [] }] }, 7, { type: 'b' }).views.length,
+  1,
+);
+
+check('a dashboard with no views at all is left alone', addCardToView({}, 0, { type: 'b' }), {});
+
+check(
+  'adding does not mutate what it was given',
+  (() => {
+    const original = { views: [{ cards: [] }] };
+    addCardToView(original, 0, { type: 'b' });
+    return original.views[0].cards.length;
+  })(),
+  0,
+);
 
 // The borrowing checks are asynchronous and call report() when they settle, so anything
 // added after this point would run after the totals were printed.

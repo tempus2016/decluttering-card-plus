@@ -20,11 +20,16 @@ import {
 import deepReplace from './deep-replace';
 import { buildExport, validateImport } from './share';
 import { suggestVariables } from './suggest';
+import { LIBRARY, libraryEntry, libraryNeeds } from './library';
 import {
   collectTemplates,
   collectAllTemplates,
+  addCardToView,
   collectUsages,
+  countLegacyTypes,
   didYouMean,
+  moderniseTypes,
+  TEMPLATE_TYPE,
   findTemplate,
   findTemplateAnywhere,
   findTemplateLocation,
@@ -1479,6 +1484,12 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   // The name the next press would rename to, set by the press before it. Renaming rewrites
   // cards outside this editor and saves at once, so it is asked twice like a suggestion is.
   @state() private _renamePending?: string;
+  @state() private _duplicateTo = '';
+  @state() private _duplicatePending?: string;
+  @state() private _toolError?: string;
+  @state() private _busy = false;
+  @state() private _modernisePending = false;
+  @state() private _installPending?: string;
 
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
@@ -1597,6 +1608,30 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       .rename mwc-button {
         margin-top: 8px;
       }
+      .order ul,
+      .library {
+        margin: 0 0 8px;
+        padding: 0;
+        list-style: none;
+      }
+      .order li,
+      .library li {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 1px solid var(--divider-color);
+      }
+      .order .spacer,
+      .library li > div {
+        flex: 1;
+      }
+      .library li .hint {
+        display: block;
+        margin: 0;
+        color: var(--secondary-text-color);
+        font-size: 0.9em;
+      }
     `;
   }
 
@@ -1648,7 +1683,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       ${
         this._selectedTab === 'settings'
           ? html`
-              ${this._renderDiagnostics()} ${this._renderSuggest(data.thingType === 'card')}
+              ${this._renderInUse()} ${this._renderDiagnostics()} ${this._renderSuggest(data.thingType === 'card')}
+              ${this._renderOrder()}
               <ha-form
                 .hass=${this.hass}
                 .data=${data}
@@ -1730,6 +1766,73 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           : html``
       }
     `;
+  }
+
+  /*
+   * A declaration's place in the list is its place in the form every card using the
+   * template gets, so changing the order meant hand-editing the YAML underneath - the very
+   * thing the visual editor is for.
+   */
+  private _renderOrder(): TemplateResult {
+    const declarations = getDeclarations(this._config);
+    if (declarations.length < 2) return html``;
+
+    return html`
+      <div class="order">
+        <p class="hint">The order these appear in is the order every card using the template shows them in.</p>
+        <ul>
+          ${declarations.map(
+            (declaration, index) => html`
+              <li>
+                <span>${declaration.label ?? declaration.name}</span>
+                <span class="spacer"></span>
+                <ha-icon-button
+                  .path=${'M7,15L12,10L17,15H7Z'}
+                  .disabled=${index === 0}
+                  .label=${`Move ${declaration.name} up`}
+                  @click=${(): void => this._move(index, -1)}
+                ></ha-icon-button>
+                <ha-icon-button
+                  .path=${'M7,10L12,15L17,10H7Z'}
+                  .disabled=${index === declarations.length - 1}
+                  .label=${`Move ${declaration.name} down`}
+                  @click=${(): void => this._move(index, 1)}
+                ></ha-icon-button>
+              </li>
+            `,
+          )}
+        </ul>
+      </div>
+    `;
+  }
+
+  private _move(index: number, by: number): void {
+    const declarations = [...getDeclarations(this._config)];
+    const to = index + by;
+    if (to < 0 || to >= declarations.length) return;
+    [declarations[index], declarations[to]] = [declarations[to], declarations[index]];
+    this._fireConfigChanged({ ...(this._config as DeclutteringTemplateConfig), variables: declarations });
+  }
+
+  /*
+   * What a change to this template would break. The Where used tab says the same thing, but
+   * only if you go and look - and the moment that matters is when the card is open in front
+   * of you, about to be edited or deleted.
+   */
+  private _renderInUse(): TemplateResult {
+    const name = this._config?.template;
+    const ll = this.lovelace ?? getLovelaceConfig();
+    if (!name || !ll) return html``;
+
+    const { views, templates } = collectUsages(ll, name);
+    const total = views.reduce((sum, view) => sum + view.count, 0) + templates.length;
+    if (!total) return html``;
+
+    return html`<ha-alert alert-type="info">
+      ${total === 1 ? 'One card or template uses' : `${total} cards and templates use`} this. Changing it changes
+      ${total === 1 ? 'that one' : 'them all'}, and deleting this card leaves ${total === 1 ? 'it' : 'them'} pointing at
+      a template that is not there.
+    </ha-alert>`;
   }
 
   /*
@@ -1854,7 +1957,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        ${this._renderRename(name, total)}
+        ${this._renderRename(name, total)} ${this._renderDuplicate(name)} ${this._renderModernise()}
+        ${this._toolError ? html`<ha-alert alert-type="error">${this._toolError}</ha-alert>` : html``}
       </div>
     `;
   }
@@ -1897,8 +2001,75 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
             : html``
         }
         <mwc-button @click=${this._import}>${this._importClash ? 'Import anyway' : 'Import'}</mwc-button>
+
+        <h3>Start from one of these</h3>
+        <p class="hint">
+          Worked examples of the shapes people build most. Installing one adds it to this view as its own template card,
+          leaving the one you are editing alone.
+        </p>
+        ${this._renderLibrary()}
       </div>
     `;
+  }
+
+  /*
+   * The hard part of this card has never been the syntax - it is the blank page. These are
+   * carried in the bundle rather than fetched, so a dashboard never has to reach the
+   * internet to show one, and nobody has to think about what it is talking to.
+   */
+  private _renderLibrary(): TemplateResult {
+    const existing = Object.keys(collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()));
+
+    return html`
+      <ul class="library">
+        ${LIBRARY.map((entry) => {
+          const already = existing.includes(entry.name);
+          const armed = this._installPending === entry.name;
+          const needs = libraryNeeds(entry, existing);
+          return html`
+            <li>
+              <div>
+                <strong>${entry.name}</strong>
+                <span class="hint">${entry.summary}</span>
+                ${
+                  needs.length
+                    ? html`<span class="hint">Also installs ${needs.join(', ')}, which it uses.</span>`
+                    : html``
+                }
+              </div>
+              <mwc-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
+                ${already ? 'Already here' : armed ? 'Install anyway' : 'Install'}
+              </mwc-button>
+            </li>
+          `;
+        })}
+      </ul>
+    `;
+  }
+
+  private async _install(name: string): Promise<void> {
+    const entry = libraryEntry(name);
+    if (!entry) return;
+    if (this._installPending !== name) {
+      this._installPending = name;
+      return;
+    }
+
+    const panel = getLovelacePanel();
+    const existing = Object.keys(collectTemplates(panel?.config ?? this.lovelace ?? getLovelaceConfig()));
+    // What it calls comes with it, or the card it adds would point at a name that is not
+    // there. Anything already on the dashboard is left exactly as it is.
+    const wanted = [...libraryNeeds(entry, existing), entry.name].filter((each) => !existing.includes(each));
+    const here = findTemplateLocation(panel?.config ?? this.lovelace, this._config?.template ?? '');
+    const view = here?.view?.index ?? 0;
+
+    const saved = await this._saveDashboard((config) =>
+      wanted.reduce((built, each) => {
+        const one = libraryEntry(each);
+        return one ? addCardToView(built, view, { type: TEMPLATE_TYPE, template: one.name, ...one.template }) : built;
+      }, config),
+    );
+    if (saved) this._installPending = undefined;
   }
 
   /*
@@ -1937,6 +2108,73 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         </mwc-button>
       </div>
     `;
+  }
+
+  /**
+   * Saves a rewritten dashboard, and says what went wrong if it cannot. Everything here
+   * changes cards this editor does not own, so it goes through the dashboard itself rather
+   * than through config-changed.
+   */
+  private async _saveDashboard(build: (config: unknown) => unknown): Promise<boolean> {
+    const panel = getLovelacePanel();
+    if (!panel) {
+      this._toolError = 'This dashboard cannot be saved from here, so it cannot be changed here either.';
+      return false;
+    }
+    this._busy = true;
+    this._toolError = undefined;
+    try {
+      await panel.saveConfig(build(panel.config));
+      return true;
+    } catch (err) {
+      this._toolError = `Could not save the dashboard: ${(err as Error)?.message ?? err}`;
+      return false;
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  /*
+   * Installing this card over the original needs no changes - it answers to both sets of
+   * names. But a dashboard still saying `custom:decluttering-card` everywhere breaks the
+   * day the original is installed alongside it, because Home Assistant loads resources in
+   * the order they were added and the original would win.
+   */
+  private _renderModernise(): TemplateResult {
+    const ll = getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig();
+    const old = ll ? countLegacyTypes(ll) : 0;
+    if (!old) return html``;
+
+    return html`
+      <div class="rename">
+        <h3>Move off the original card's names</h3>
+        <p class="hint">
+          ${old === 1 ? 'One card on this dashboard still uses' : `${old} cards on this dashboard still use`} the
+          original decluttering-card type names. They work, because this card answers to both - but they would stop
+          working the day the original is installed alongside it.
+        </p>
+        ${
+          this._modernisePending
+            ? html`<ha-alert alert-type="warning">
+                This rewrites ${old === 1 ? 'that card' : `all ${old} of them`} to this card's own names, and saves the
+                dashboard straight away. Press again to go ahead.
+              </ha-alert>`
+            : html``
+        }
+        <mwc-button .disabled=${this._busy} @click=${this._modernise}>
+          ${this._modernisePending ? 'Move them anyway' : `Move ${old === 1 ? 'it' : 'them'} over`}
+        </mwc-button>
+      </div>
+    `;
+  }
+
+  private async _modernise(): Promise<void> {
+    if (!this._modernisePending) {
+      this._modernisePending = true;
+      return;
+    }
+    const saved = await this._saveDashboard((config) => moderniseTypes(config));
+    if (saved) this._modernisePending = false;
   }
 
   private _renameChanged(ev: Event): void {
@@ -1981,6 +2219,72 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       this._renameError = `Could not save the dashboard: ${(err as Error)?.message ?? err}`;
     } finally {
       this._renaming = false;
+    }
+  }
+
+  /*
+   * Most new templates start life as a variant of one that exists. There was no way to make
+   * one but to export it from the Share tab, paste it back, and rename it by hand.
+   */
+  private _renderDuplicate(name: string): TemplateResult {
+    const to = this._duplicateTo.trim();
+    const armed = !!to && this._duplicatePending === to;
+    return html`
+      <div class="rename">
+        <h3>Duplicate</h3>
+        <p class="hint">
+          Adds a copy of this template to this view under a new name, and saves the dashboard. The copy is yours to
+          change; nothing using this one is touched.
+        </p>
+        ${
+          armed
+            ? html`<ha-alert alert-type="warning">
+                This adds "${to}" to this view as a copy of "${name}", and saves the dashboard straight away. Press
+                again to go ahead.
+              </ha-alert>`
+            : html``
+        }
+        <ha-textfield
+          label="Name for the copy"
+          .value=${this._duplicateTo}
+          .disabled=${this._busy}
+          @input=${this._duplicateChanged}
+        ></ha-textfield>
+        <mwc-button .disabled=${this._busy || !to || to === name} @click=${this._duplicate}>
+          ${armed ? 'Duplicate anyway' : 'Duplicate'}
+        </mwc-button>
+      </div>
+    `;
+  }
+
+  private _duplicateChanged(ev: Event): void {
+    this._duplicateTo = (ev.target as HTMLInputElement).value ?? '';
+    this._toolError = undefined;
+    this._duplicatePending = undefined;
+  }
+
+  private async _duplicate(): Promise<void> {
+    const from = this._config?.template;
+    const to = this._duplicateTo.trim();
+    if (!from || !to || to === from) return;
+
+    const panel = getLovelacePanel();
+    if (panel && collectTemplates(panel.config)[to] !== undefined) {
+      this._toolError = `A template called "${to}" already exists on this dashboard.`;
+      return;
+    }
+    if (this._duplicatePending !== to) {
+      this._duplicatePending = to;
+      return;
+    }
+
+    const copy = { ...(this._config as DeclutteringTemplateConfig), template: to };
+    // Beside the one being copied, which is where somebody would look for it.
+    const here = findTemplateLocation(panel?.config ?? this.lovelace, from);
+    const saved = await this._saveDashboard((config) => addCardToView(config, here?.view?.index ?? 0, copy));
+    if (saved) {
+      this._duplicateTo = '';
+      this._duplicatePending = undefined;
     }
   }
 

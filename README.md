@@ -126,6 +126,9 @@ Templates][wiki-defining].
 - **[Styling][wiki-styling]** with a `style` option and CSS custom properties, a `gap`
   between repeated copies, `grid_options` a template can declare once for every card using
   it, and a `decluttering-container` class to hang CSS off.
+- **A starter library** — worked examples of the shapes people build most, installed from
+  the editor in one press. Carried in the card, so a dashboard never reaches the internet
+  to show one.
 - **[Visual editors][wiki-editors]** for both the template and the instance — see what a card
   actually builds, see what uses a template before you change it, rename a template and have
   its uses follow, and [export a template][wiki-sharing] to give to someone else.
