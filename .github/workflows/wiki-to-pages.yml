@@ -1,0 +1,52 @@
+name: Publish the wiki
+
+# The wiki is the documentation, and GitHub wikis are poorly indexed by search engines -
+# which matters when people find this by searching for the thing they are trying to build.
+# This publishes the same pages to GitHub Pages, so the wiki stays the one place they are
+# written and there is nothing to keep in step by hand.
+on:
+  gollum: # fires when a wiki page is edited
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Take a copy of the wiki
+        run: git clone --depth 1 https://github.com/${{ github.repository }}.wiki.git site
+
+      - name: Give it a front page and a theme
+        run: |
+          cd site
+          rm -rf .git
+          # A wiki's Home page is its front page; Pages wants index.md.
+          if [ -f Home.md ]; then cp Home.md index.md; fi
+          cat > _config.yml <<'YAML'
+          title: Decluttering Card Plus
+          description: Reusable Lovelace card templates for Home Assistant
+          theme: jekyll-theme-primer
+          # _Sidebar and _Footer are wiki furniture; Jekyll would publish them as pages.
+          exclude:
+            - _Sidebar.md
+            - _Footer.md
+          YAML
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
