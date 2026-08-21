@@ -1540,6 +1540,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _busy = false;
   @state() private _modernisePending = false;
   @state() private _installPending?: string;
+  @state() private _librarySelected?: string;
 
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
@@ -1663,29 +1664,31 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       .rename mwc-button {
         margin-top: 8px;
       }
-      .order ul,
-      .library {
+      .order ul {
         margin: 0 0 8px;
         padding: 0;
         list-style: none;
       }
-      .order li,
-      .library li {
+      .order li {
         display: flex;
         align-items: center;
         gap: 8px;
         padding: 4px 0;
         border-bottom: 1px solid var(--divider-color);
       }
-      .order .spacer,
-      .library li > div {
+      .order .spacer {
         flex: 1;
       }
-      .library li .hint {
-        display: block;
-        margin: 0;
+      .library {
+        margin: 0 0 8px;
+      }
+      .library .hint {
+        margin: 8px 0 0;
         color: var(--secondary-text-color);
         font-size: 0.9em;
+      }
+      .library mwc-button {
+        margin-top: 8px;
       }
     `;
   }
@@ -2105,38 +2108,62 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
    */
   private _renderLibrary(): TemplateResult {
     const existing = Object.keys(collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()));
+    const entry = this._librarySelected ? libraryEntry(this._librarySelected) : undefined;
+    const already = !!entry && existing.includes(entry.name);
+    const armed = !!entry && this._installPending === entry.name;
+    const needs = entry ? libraryNeeds(entry, existing) : [];
 
     return html`
-      <ul class="library">
-        ${LIBRARY.map((entry) => {
-          const already = existing.includes(entry.name);
-          const armed = this._installPending === entry.name;
-          const needs = libraryNeeds(entry, existing);
-          return html`
-            <li>
-              <div>
-                <strong>${entry.name}</strong>
-                <span class="hint">${localize(`library.${entry.name}.summary`, undefined, this.hass)}</span>
+      <div class="library">
+        <ha-form
+          .hass=${this.hass}
+          .data=${{ entry: this._librarySelected ?? '' }}
+          .schema=${[
+            {
+              name: 'entry',
+              selector: {
+                select: {
+                  mode: 'dropdown',
+                  options: LIBRARY.map((each) => ({ value: each.name, label: each.name })),
+                },
+              },
+            },
+          ]}
+          .computeLabel=${(): string => localize('share.library_pick', undefined, this.hass)}
+          @value-changed=${this._libraryPicked}
+        ></ha-form>
+        ${
+          entry
+            ? html`
+                <p class="hint">${localize(`library.${entry.name}.summary`, undefined, this.hass)}</p>
                 ${
                   needs.length
-                    ? html`<span class="hint">
+                    ? html`<p class="hint">
                         ${localize('share.library_needs', { names: needs.join(', ') }, this.hass)}
-                      </span>`
+                      </p>`
                     : html``
                 }
-              </div>
-              <mwc-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
-                ${localize(
-                  already ? 'share.already_here' : armed ? 'share.install_anyway' : 'share.install',
-                  undefined,
-                  this.hass,
-                )}
-              </mwc-button>
-            </li>
-          `;
-        })}
-      </ul>
+                <mwc-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
+                  ${localize(
+                    already ? 'share.already_here' : armed ? 'share.install_anyway' : 'share.install',
+                    undefined,
+                    this.hass,
+                  )}
+                </mwc-button>
+              `
+            : html``
+        }
+      </div>
     `;
+  }
+
+  private _libraryPicked(ev: CustomEvent): void {
+    // The template editor's own settings form also listens for value-changed; this one is
+    // not part of the card's configuration, so it must not reach that handler. Switching
+    // entries also disarms a half-confirmed install of the previous one.
+    ev.stopPropagation();
+    this._librarySelected = (ev.detail.value as { entry?: string }).entry || undefined;
+    this._installPending = undefined;
   }
 
   private async _install(name: string): Promise<void> {
