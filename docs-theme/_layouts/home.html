@@ -1,0 +1,31 @@
+---
+layout: wiki
+---
+{%- comment -%}
+  The hero is the wiki's own front page taken apart: Home.md's tagline becomes the
+  headline, its opening paragraph the lede, its first image the proof. The publish
+  workflow lifts those into this page's front matter, so editing Home.md edits the hero.
+{%- endcomment -%}
+<section class="hero">
+  <p class="eyebrow">A Lovelace card for <b>Home Assistant</b></p>
+
+  <h1>{{ page.hero_headline_html | default: site.title }}</h1>
+
+  {% if page.hero_lede %}<div class="hero-lede">{{ page.hero_lede | markdownify }}</div>{% endif %}
+
+  <p class="cta-row">
+    <a class="btn btn-primary" href="{{ '/Quick-Start.html' | relative_url }}">Build your first template</a>
+    <a class="btn btn-secondary" href="{{ '/Installation.html' | relative_url }}">Install it</a>
+  </p>
+
+  {% if page.hero_image %}
+  <div class="thesis">
+    <div class="thesis-code">{% include hero-template.html %}</div>
+    <div class="thesis-arrow" aria-hidden="true">→</div>
+    <img src="{{ page.hero_image | relative_url }}" alt="{{ page.hero_image_alt }}">
+  </div>
+  {% if page.hero_caption %}<p class="thesis-cap">{{ page.hero_caption }}</p>{% endif %}
+  {% endif %}
+</section>
+
+{{ content }}
