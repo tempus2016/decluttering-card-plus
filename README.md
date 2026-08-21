@@ -224,8 +224,8 @@ The card tries to say what, rather than leaving you to work it out:
 
 Everything the card says — its editors, its error messages, its Share and Where-used
 tools, even its console warnings — follows the language set in your Home Assistant
-profile. English, French, Portuguese and Spanish are included; anything a translation
-does not cover falls back to English.
+profile. English, French, German, Portuguese and Spanish are included; anything a
+translation does not cover falls back to English.
 
 Adding a language is one file and no code. Copy
 [`src/locales/en.json`](src/locales/en.json) to `src/locales/<code>.json` — `de.json`,
