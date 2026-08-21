@@ -28,11 +28,30 @@ jobs:
       - name: Take a copy of the wiki
         run: git clone --depth 1 https://github.com/${{ github.repository }}.wiki.git site
 
+      - name: Point the links at pages a web server can serve
+        # A wiki links to `[Variables](Variables)`, which works because GitHub's wiki
+        # serves extensionless URLs. Jekyll produces Variables.html, so every one of those
+        # links would 404. Rewritten here rather than in the wiki, which has to keep
+        # working as a wiki.
+        run: |
+          python3 - <<'PY'
+          import re, glob, os
+          pattern = re.compile(r'\]\(([A-Za-z0-9][A-Za-z0-9_-]*)(#[^)]*)?\)')
+          for path in glob.glob('site/*.md'):
+              text = open(path, encoding='utf-8').read()
+              # Only bare page names match: anything with a slash or a dot - images/,
+              # http://, a mailto: - has no chance of hitting this.
+              rewritten = pattern.sub(lambda m: f']({m.group(1)}.html{m.group(2) or ""})', text)
+              open(path, 'w', encoding='utf-8').write(rewritten)
+              if rewritten != text:
+                  print('rewrote links in', os.path.basename(path))
+          PY
+
       - name: Give it a front page and a theme
         run: |
           cd site
           rm -rf .git
-          # A wiki's Home page is its front page; Pages wants index.md.
+          # A wiki's Home page is its front page; a web server wants an index.
           if [ -f Home.md ]; then cp Home.md index.md; fi
           cat > _config.yml <<'YAML'
           title: Decluttering Card Plus
@@ -45,8 +64,16 @@ jobs:
           YAML
 
       - uses: actions/configure-pages@v5
+
+      # Without this the artifact is raw markdown and the site serves a 404, because
+      # nothing turns Home.md into index.html - deploy-pages publishes files as they are.
+      - uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./site
+          destination: ./_site
+
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: site
+          path: ./_site
       - id: deploy
         uses: actions/deploy-pages@v4
