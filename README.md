@@ -108,8 +108,10 @@ Templates][wiki-defining].
   read from Home Assistant (`[[entity|friendly_name]]`, its area, floor or device), stand-ins
   for what nothing sets (`[[name|default:Unnamed]]`), optional placeholders, and
   dashboard-wide fallbacks.
-- **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity in
-  an area, device or label.
+- **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
+  or area Home Assistant knows about, narrowed by domain, area, floor, label, device class or
+  integration, with anything you name excluded, sorted, limited, and a card of your own to
+  show when nothing matches.
 
   ![Four room tiles in two columns, all from one card](images/repeat.png)
 
