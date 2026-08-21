@@ -543,4 +543,123 @@ check('naming only the plain one', /\[\[gone\]\]/.test(warnings[0]) && !/fine/.t
 
 console.warn = realWarn;
 
+/* ------------------------------------------------- default: and or: stand-ins */
+
+const HOUSE = {
+  entities: {
+    'light.kitchen': { entity_id: 'light.kitchen', area_id: 'kitchen', device_id: 'dev1' },
+    'light.loose': { entity_id: 'light.loose' },
+  },
+  devices: { dev1: { id: 'dev1', area_id: 'kitchen', name_by_user: 'Ceiling unit' } },
+  areas: { kitchen: { area_id: 'kitchen', name: 'Kitchen', floor_id: 'ground' } },
+  floors: { ground: { floor_id: 'ground', name: 'Ground floor' } },
+  states: { 'light.kitchen': { attributes: { friendly_name: 'Kitchen light' } } },
+};
+
+check(
+  'a variable nothing sets falls back to the text given',
+  deepReplace(undefined, {}, { a: '[[room|default:Somewhere]]' }),
+  {
+    a: 'Somewhere',
+  },
+);
+
+check(
+  'a variable that is set ignores the stand-in',
+  deepReplace([{ room: 'Hall' }], {}, { a: '[[room|default:Somewhere]]' }),
+  { a: 'Hall' },
+);
+
+check(
+  'an empty string counts as nothing to show',
+  deepReplace([{ room: '' }], {}, { a: '[[room|default:Somewhere]]' }),
+  { a: 'Somewhere' },
+);
+
+check('a stand-in can contain spaces', deepReplace(undefined, {}, { a: '[[room|default:Living Room]]' }), {
+  a: 'Living Room',
+});
+
+check(
+  'transforms after a stand-in apply to it',
+  deepReplace(undefined, {}, { a: '[[room|default:Living Room|slug]]' }),
+  { a: 'living_room' },
+);
+
+check(
+  'a stand-in inside a longer string lands in the right place',
+  deepReplace(undefined, {}, { a: 'The [[room|default:hall]] light' }),
+  { a: 'The hall light' },
+);
+
+check('or: falls back to another variable', deepReplace([{ fallback: 'Hall' }], {}, { a: '[[name|or:fallback]]' }), {
+  a: 'Hall',
+});
+
+check(
+  'or: leaves the first value alone when it has one',
+  deepReplace([{ name: 'Kitchen' }, { fallback: 'Hall' }], {}, { a: '[[name|or:fallback]]' }),
+  { a: 'Kitchen' },
+);
+
+check(
+  'or: and default: chain, so the last word is always something',
+  deepReplace(undefined, {}, { a: '[[name|or:fallback|default:Nothing]]' }),
+  { a: 'Nothing' },
+);
+
+check(
+  'a variable used only through or: is not reported as unused',
+  deepReplace([{ fallback: 'Hall' }], {}, { a: '[[name|or:fallback]]' }),
+  { a: 'Hall' },
+);
+
+check(
+  'a stand-in rescues a resolver that found nothing',
+  deepReplace([{ e: 'light.loose' }], {}, { a: '[[e|area|default:Unassigned]]' }, undefined, HOUSE),
+  { a: 'Unassigned' },
+);
+
+/* ----------------------------------------------------------------- new resolvers */
+
+check(
+  'floor reaches the floor through the area',
+  deepReplace([{ e: 'light.kitchen' }], {}, { a: '[[e|floor]]' }, undefined, HOUSE),
+  { a: 'Ground floor' },
+);
+
+check(
+  'area_id gives the id, for building another entity id from',
+  deepReplace([{ e: 'light.kitchen' }], {}, { a: 'binary_sensor.[[e|area_id]]_motion' }, undefined, HOUSE),
+  { a: 'binary_sensor.kitchen_motion' },
+);
+
+check(
+  'device_id gives the device the entity belongs to',
+  deepReplace([{ e: 'light.kitchen' }], {}, { a: '[[e|device_id]]' }, undefined, HOUSE),
+  { a: 'dev1' },
+);
+
+check(
+  'area_id is not half-read as area',
+  deepReplace([{ e: 'light.kitchen' }], {}, { a: '[[e|area]]/[[e|area_id]]' }, undefined, HOUSE),
+  { a: 'Kitchen/kitchen' },
+);
+
+/* ------------------------------------------------------------------- json on purpose */
+
+check(
+  'json puts a mapping in as its JSON text',
+  deepReplace([{ tap: { action: 'toggle' } }], {}, { a: 'Tap does [[tap|json]]' }),
+  { a: 'Tap does {"action":"toggle"}' },
+);
+
+check('json works on a list too', deepReplace([{ items: [1, 2] }], {}, { a: '[[items|json]]' }), { a: '[1,2]' });
+
+check(
+  'a mapping without json is still refused, as before',
+  deepReplace([{ tap: { action: 'toggle' } }], {}, { a: '[[tap|upper]]' }),
+  { a: '[[tap|upper]]' },
+);
+
 report();

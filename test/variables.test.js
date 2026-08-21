@@ -5,6 +5,9 @@
  */
 const {
   applyTransform,
+  resolveFallback,
+  isFallback,
+  orTarget,
   hasRequiredVariables,
   isOptional,
   withoutOptional,
@@ -300,7 +303,7 @@ check('an item with no card variables stands alone', forEachVariables({ a: 1 }, 
 check(
   'every name any item sets is collected, once each',
   forEachNames([{ entity: 'a', name: 'A' }, { entity: 'b' }, [{ colour: 'red' }]]),
-  ['index', 'count', 'entity', 'name', 'colour'],
+  ['index', 'index0', 'count', 'first', 'last', 'entity', 'name', 'colour'],
 );
 
 check('names of nothing is nothing', forEachNames(undefined), []);
@@ -320,7 +323,7 @@ check(
 check(
   'every key of a multi-key entry counts as a name the items set',
   forEachNames([[{ entity: 'light.hall', name: 'Hall' }]]),
-  ['index', 'count', 'entity', 'name'],
+  ['index', 'index0', 'count', 'first', 'last', 'entity', 'name'],
 );
 
 check('a list of items passes through', forEachItems([{ a: 1 }, { b: 2 }]), [{ a: 1 }, { b: 2 }]);
@@ -397,7 +400,10 @@ check(
 check('a copy knows its position and how many there are', forEachVariables({ entity: 'light.hall' }, undefined, 0, 3), [
   { entity: 'light.hall' },
   { index: 1 },
+  { index0: 0 },
   { count: 3 },
+  { first: true },
+  { last: false },
 ]);
 
 check(
@@ -409,7 +415,10 @@ check(
 check('an item setting index itself wins over the automatic one', forEachVariables({ index: 'A' }, undefined, 0, 2), [
   { index: 'A' },
   { index: 1 },
+  { index0: 0 },
   { count: 2 },
+  { first: true },
+  { last: false },
 ]);
 
 check(
@@ -421,7 +430,7 @@ check(
 check(
   'index and count count as supplied, so a template using them is not missing them',
   forEachNames([{ entity: 'light.hall' }, { entity: 'light.kitchen' }]).sort(),
-  ['count', 'entity', 'index'],
+  ['count', 'entity', 'first', 'index', 'index0', 'last'],
 );
 
 check('an empty list supplies nothing at all', forEachNames(undefined), []);
@@ -557,6 +566,50 @@ check(
   'an optional placeholder still counts as using its variable',
   usedVariables({ card: { a: '[[name?]]', b: '[[room|slug?]]' } }).sort(),
   ['name', 'room'],
+);
+
+/* --------------------------------------------------- stand-ins for what is missing */
+
+check('a default step is a stand-in', [isFallback('default:Hall'), isFallback('or:other')], [true, true]);
+
+check('a transform is not', [isFallback('slug'), isFallback('friendly_name')], [false, false]);
+
+check('or: names the variable to try', orTarget('or:fallback'), 'fallback');
+
+check('anything else names nothing', [orTarget('slug'), orTarget('default:x')], [null, null]);
+
+check('a placeholder with no stand-in is left for someone else', [resolveFallback('room|slug', {})], [null]);
+
+check('a stand-in fills a name nothing sets', resolveFallback('room|default:Hall', {}), 'Hall');
+
+check(
+  'a value that is set wins over the stand-in',
+  resolveFallback('room|default:Hall', { room: 'Kitchen' }),
+  'Kitchen',
+);
+
+check('null counts as nothing to show', resolveFallback('room|default:Hall', { room: null }), 'Hall');
+
+check('a zero is a value, not a gap', resolveFallback('room|default:Hall', { room: 0 }), '0');
+
+check('a false is a value too', resolveFallback('room|default:Hall', { room: false }), 'false');
+
+check('or: reads another variable', resolveFallback('room|or:other', { other: 'Hall' }), 'Hall');
+
+check(
+  'or: pointing at nothing leaves it for the next stand-in',
+  resolveFallback('room|or:other|default:Last resort', {}),
+  'Last resort',
+);
+
+check('a mapping cannot stand in as text', [resolveFallback('room|or:other', { other: { a: 1 } })], [null]);
+
+check('an escaped placeholder is never filled in', [resolveFallback('!room|default:Hall', {})], [null]);
+
+check(
+  'a stand-in still counts the variable as used, and or: counts its target too',
+  usedVariables({ card: { a: '[[room|or:other|default:x]]' } }).sort(),
+  ['other', 'room'],
 );
 
 report();

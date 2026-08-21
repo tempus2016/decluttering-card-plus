@@ -2,6 +2,11 @@ import { VariablesConfig, TemplateConfig } from './types';
 import {
   applyTransform,
   ESCAPE,
+  JSON_STEP,
+  isFallback,
+  resolveFallback,
+  variableValues,
+  withoutOptional,
   isOptional,
   OPTIONAL_SUFFIX,
   hasEscape,
@@ -78,7 +83,10 @@ function substitutePass(
     // A transform shapes text, so it only applies to a scalar: slugging or uppercasing a
     // mapping's JSON garbles its keys, so the placeholder is left visible instead - the
     // same treatment an unrecognised transform gets.
-    const transformable = value === null || typeof value !== 'object';
+    // Every transform but one shapes text and refuses anything else. `json` is the one
+    // that wants the mapping itself, so a chain starting with it is allowed through.
+    const isScalar = value === null || typeof value !== 'object';
+    const transformable = (transform?: string): boolean => isScalar || (transform ?? '').split('|')[0] === JSON_STEP;
     // A placeholder left visible is the deliberate signal that something is wrong, but on
     // its own it does not say what - so each refusal is noted, to be reported once at the
     // end rather than on every pass over the same text.
@@ -109,7 +117,7 @@ function substitutePass(
     json = json.replace(wholeValue, (match: string, transform?: string, optional?: string) => {
       if (emptyOptional(optional)) return match;
       return transform
-        ? transformable
+        ? transformable(transform)
           ? shaped(match, transform, (text) => JSON.stringify(text))
           : refuse(match, transform)
         : asWholeValue(value, match);
@@ -117,7 +125,7 @@ function substitutePass(
     json = json.replace(withinString, (match: string, transform?: string, optional?: string) => {
       if (emptyOptional(optional)) return match;
       return transform
-        ? transformable
+        ? transformable(transform)
           ? shaped(match, transform, escapeForJsonString)
           : refuse(match, transform)
         : asPartOfString(value);
@@ -184,6 +192,37 @@ function pruneEmptyOptions(value: any): any {
   return value;
 }
 
+/*
+ * Placeholders that say what to do when nothing sets them. Ordinary substitution only ever
+ * looks at variables that exist, so `[[room|default:Somewhere]]` with no `room` anywhere is
+ * never even reached by it - this pass is what gives those their turn, once everything that
+ * could be substituted has been.
+ */
+function fallbackPass(jsonConfig: string, values: Record<string, any>, hass?: any): string {
+  let json = jsonConfig;
+  // The whole value first, so a stand-in replaces the quotes around it too rather than
+  // landing inside them twice.
+  json = json.replace(/"\[\[([^[\]]+)\]\]"/g, (match: string, inside: string) => {
+    const text = resolveFallback(inside, values, hass);
+    return text === undefined ? match : JSON.stringify(text);
+  });
+  return json.replace(/\[\[([^[\]]+)\]\]/g, (match: string, inside: string) => {
+    const text = resolveFallback(inside, values, hass);
+    return text === undefined ? match : escapeForJsonString(text);
+  });
+}
+
+/** Whether anything here says what to do when nothing sets it. */
+function hasFallback(jsonConfig: string): boolean {
+  const pattern = /\[\[([^[\]]+)\]\]/g;
+  let match = pattern.exec(jsonConfig);
+  while (match !== null) {
+    if (withoutOptional(match[1]).split('|').slice(1).some(isFallback)) return true;
+    match = pattern.exec(jsonConfig);
+  }
+  return false;
+}
+
 export default (
   variables: VariablesConfig[] | undefined,
   templateConfig: TemplateConfig,
@@ -240,6 +279,11 @@ export default (
     }
   }
 
+  // Anything still saying `default:` or `or:` gets its turn now, whether or not there were
+  // any variables to substitute in the first place.
+  const fallbacks = hasFallback(jsonConfig);
+  if (fallbacks) jsonConfig = fallbackPass(jsonConfig, variableValues(variableArray), hass);
+
   /*
    * A variable nobody set renders as the literal `[[name]]` on the card. The editors
    * already say so while you are editing, but a dashboard that was saved with one missing
@@ -266,7 +310,7 @@ export default (
    * value once it has been unwrapped. Doing it in this order, the escaped one is still
    * wearing its bang and is left alone.
    */
-  const nothingToDo = !variableArray.length && !hasOptional && !hasEscape(jsonConfig);
+  const nothingToDo = !variableArray.length && !hasOptional && !fallbacks && !hasEscape(jsonConfig);
   if (nothingToDo) return content;
 
   const pruned = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig)) : JSON.parse(jsonConfig);
