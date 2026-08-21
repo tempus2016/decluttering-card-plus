@@ -369,3 +369,66 @@ export function didYouMean(wanted: string, available: string[]): string {
   const closest = closestTemplate(wanted, available);
   return closest ? ` Did you mean "${closest}"?` : '';
 }
+
+/** Every card on the dashboard still using the original card's type names. */
+export function countLegacyTypes(ll: any): number {
+  let found = 0;
+  const walk = (node: any): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    if (node.type === LEGACY_TEMPLATE_TYPE || node.type === 'custom:decluttering-card') found += 1;
+    Object.values(node).forEach(walk);
+  };
+  walk(ll);
+  return found;
+}
+
+/**
+ * The dashboard with every original decluttering-card type moved to this card's own.
+ *
+ * Installing this card over the original needs no changes at all - it answers to both sets
+ * of names. But a dashboard that says `custom:decluttering-card` everywhere is a dashboard
+ * that still breaks if the original is ever installed alongside, because Home Assistant
+ * loads resources in the order they were added and the original would win.
+ *
+ * Nothing is mutated; the caller gets a new configuration to save.
+ */
+export function moderniseTypes(ll: any): any {
+  const moved: Record<string, string> = {
+    'custom:decluttering-card': 'custom:decluttering-card-plus',
+    [LEGACY_TEMPLATE_TYPE]: TEMPLATE_TYPE,
+  };
+  const rewrite = (node: any): any => {
+    if (Array.isArray(node)) return node.map(rewrite);
+    if (!node || typeof node !== 'object') return node;
+    const out: any = {};
+    for (const [key, value] of Object.entries(node)) out[key] = rewrite(value);
+    if (typeof node.type === 'string' && moved[node.type]) out.type = moved[node.type];
+    return out;
+  };
+  return rewrite(ll);
+}
+
+/**
+ * The dashboard with one more card in a view. Used for dropping a template in - a copy of
+ * one that is there, or one out of the library - which has to go somewhere, and the view
+ * being looked at is the least surprising somewhere.
+ *
+ * Nothing is mutated; the caller gets a new configuration to save.
+ */
+export function addCardToView(ll: any, viewIndex: number, card: any): any {
+  const views = Array.isArray(ll?.views) ? ll.views : [];
+  // No view to put it in - a dashboard with none, or an index from a stale lookup - and
+  // the safest thing is to change nothing at all rather than invent a view.
+  if (!views[viewIndex]) return ll;
+
+  return {
+    ...ll,
+    views: views.map((view: any, index: number) =>
+      index === viewIndex ? { ...view, cards: [...(view.cards ?? []), card] } : view,
+    ),
+  };
+}
