@@ -138,6 +138,20 @@ depends on the order the resources were added rather than on anything you can se
 New configuration should use `custom:decluttering-card-plus` and
 `custom:decluttering-template-plus`, which are always available.
 
+## When something is wrong
+
+The card tries to say what, rather than leaving you to work it out:
+
+- **A template that uses itself** — directly, or through another template that uses it back
+  — is refused, naming the whole loop. Without that the tab simply stops responding, since
+  every level builds the next one before any of them reach the page.
+- **A template name that doesn't exist** offers the closest one that does, which is usually
+  the typo or the rename you are looking for.
+- **A template defining two things** says which two. It can only define one of `card:`,
+  `badge:`, `row:` or `element:`.
+- **A repeat producing more than 50 copies** is mentioned in the browser console. It is not
+  an error — it may be exactly what you asked for — but it is worth a look.
+
 ## Troubleshooting
 
 Common problems and their fixes are in the wiki: [Troubleshooting][wiki-troubleshooting].

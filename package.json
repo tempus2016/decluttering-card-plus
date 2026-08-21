@@ -8,7 +8,7 @@
     "lint": "eslint .",
     "rollup": "rollup -c",
     "start": "rollup -c --watch",
-    "test": "tsc src/deep-replace.ts src/templates.ts src/share.ts src/variables.ts src/suggest.ts src/layout.ts src/registry.ts --outDir .test-build --module commonjs --target es2017 --skipLibCheck && node test/deep-replace.test.js && node test/templates.test.js && node test/share.test.js && node test/variables.test.js && node test/suggest.test.js && node test/layout.test.js && node test/registry.test.js && node test/styles-order.test.js"
+    "test": "tsc src/deep-replace.ts src/templates.ts src/share.ts src/variables.ts src/suggest.ts src/layout.ts src/registry.ts src/cycles.ts --outDir .test-build --module commonjs --target es2017 --skipLibCheck && node test/deep-replace.test.js && node test/templates.test.js && node test/share.test.js && node test/variables.test.js && node test/suggest.test.js && node test/layout.test.js && node test/registry.test.js && node test/cycles.test.js && node test/styles-order.test.js"
   },
   "overrides": {
     "braces": "^3.0.3",
