@@ -8,7 +8,8 @@
     "lint": "eslint .",
     "rollup": "rollup -c",
     "start": "rollup -c --watch",
-    "test": "tsc src/deep-replace.ts src/templates.ts src/share.ts src/variables.ts src/suggest.ts src/layout.ts src/registry.ts src/cycles.ts src/library.ts --outDir .test-build --module commonjs --target es2017 --skipLibCheck && node test/deep-replace.test.js && node test/templates.test.js && node test/share.test.js && node test/variables.test.js && node test/suggest.test.js && node test/layout.test.js && node test/registry.test.js && node test/cycles.test.js && node test/library.test.js && node test/styles-order.test.js"
+    "test": "tsc src/deep-replace.ts src/templates.ts src/share.ts src/variables.ts src/suggest.ts src/layout.ts src/registry.ts src/cycles.ts src/library.ts --outDir .test-build --module commonjs --target es2017 --skipLibCheck && node test/deep-replace.test.js && node test/templates.test.js && node test/share.test.js && node test/variables.test.js && node test/suggest.test.js && node test/layout.test.js && node test/registry.test.js && node test/cycles.test.js && node test/library.test.js && node test/styles-order.test.js",
+    "coverage": "tsc src/deep-replace.ts src/templates.ts src/share.ts src/variables.ts src/suggest.ts src/layout.ts src/registry.ts src/cycles.ts src/library.ts --outDir .test-build --module commonjs --target es2017 --skipLibCheck && c8 node test/run-all.js"
   },
   "overrides": {
     "braces": "^3.0.3",
@@ -39,6 +40,7 @@
     "@semantic-release/git": "^11.0.1",
     "@semantic-release/npm": "^13.1.5",
     "@semantic-release/release-notes-generator": "^14.1.1",
+    "c8": "^12.0.0",
     "conventional-changelog-conventionalcommits": "^8.0.0",
     "eslint": "^10.8.1",
     "eslint-config-prettier": "^10.1.8",
@@ -61,5 +63,20 @@
     "j9brown",
     "simbaja",
     "tempus2016"
-  ]
+  ],
+  "c8": {
+    "reporter": [
+      "text-summary",
+      "lcov"
+    ],
+    "include": [
+      ".test-build/**/*.js"
+    ],
+    "all": false,
+    "check-coverage": true,
+    "statements": 95,
+    "branches": 80,
+    "functions": 90,
+    "lines": 95
+  }
 }
