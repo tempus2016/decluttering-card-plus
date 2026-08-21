@@ -129,9 +129,10 @@
   "share.import_defines_both": "Ce modèle définit à la fois \"{first}\" et \"{second}\" : il ne peut en définir qu'un seul.",
   "share.library_header": "Partez de l'un de ceux-ci",
   "share.library_hint": "Des exemples travaillés des formes les plus construites. En installer un l'ajoute à cette vue comme carte de modèle à part, sans toucher à celui que vous modifiez.",
+  "share.library_pick": "Exemple",
   "share.library_needs": "Installe aussi {names}, qu'il utilise.",
   "share.install": "Installer",
-  "share.install_anyway": "Installer quand même",
+  "share.install_anyway": "Appuyez à nouveau pour installer",
   "share.already_here": "Déjà là",
 
   "tools.rename_header": "Renommer",

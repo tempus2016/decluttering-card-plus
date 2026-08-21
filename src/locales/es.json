@@ -129,9 +129,10 @@
   "share.import_defines_both": "Esta plantilla define \"{first}\" y \"{second}\" a la vez: solo puede definir uno de ellos.",
   "share.library_header": "Empieza desde uno de estos",
   "share.library_hint": "Ejemplos resueltos de las formas que más se construyen. Instalar uno lo añade a esta vista como su propia tarjeta de plantilla, sin tocar la que estás editando.",
+  "share.library_pick": "Ejemplo",
   "share.library_needs": "Instala también {names}, que este usa.",
   "share.install": "Instalar",
-  "share.install_anyway": "Instalar de todas formas",
+  "share.install_anyway": "Pulsa otra vez para instalar",
   "share.already_here": "Ya está aquí",
 
   "tools.rename_header": "Renombrar",

@@ -129,9 +129,10 @@
   "share.import_defines_both": "This template defines both \"{first}\" and \"{second}\": it can only define one of them.",
   "share.library_header": "Start from one of these",
   "share.library_hint": "Worked examples of the shapes people build most. Installing one adds it to this view as its own template card, leaving the one you are editing alone.",
+  "share.library_pick": "Example",
   "share.library_needs": "Also installs {names}, which it uses.",
   "share.install": "Install",
-  "share.install_anyway": "Install anyway",
+  "share.install_anyway": "Press again to install",
   "share.already_here": "Already here",
 
   "tools.rename_header": "Rename",
