@@ -83,6 +83,10 @@ const VARIABLE_FIELD_PREFIX = 'variable:';
 // worth of lights, so an ordinary dashboard never sees it.
 const MANY_COPIES = 50;
 
+// How many matches the editor lists before it stops. Enough to see the filter is right,
+// few enough that a sweep of the whole house does not fill the dialog.
+const MATCHES_SHOWN = 12;
+
 // One shared instance: the editor re-renders on every state change Home Assistant sends,
 // and a fresh schema object each time would mark every field dirty for no reason.
 const REPEAT_SCHEMA = [
@@ -1016,7 +1020,13 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
               mode: 'dropdown',
               sort: true,
               custom_value: true,
-              options: Object.keys(this._templates),
+              // A name on its own says nothing about what a template is for, and a
+              // dashboard with twenty of them becomes a memory test. The description the
+              // template already carries is put beside it.
+              options: Object.entries(this._templates).map(([name, template]) => ({
+                value: name,
+                label: template?.description ? `${name} — ${template.description}` : name,
+              })),
             },
           },
         },
@@ -1056,7 +1066,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
     return html`
       ${template?.description ? html`<p class="description">${template.description}</p>` : html``}
-      ${this._renderSource(template)} ${this._renderDiagnostics(template, readable)}
+      ${this._renderSource(template)} ${this._renderDiagnostics(template, readable)} ${this._renderMatches()}
       <ha-form
         .hass=${this.hass}
         .data=${this._formData(declarations)}
@@ -1139,6 +1149,60 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         >${view.title || view.path || 'an untitled view'}</a
       >.
     </p>`;
+  }
+
+  /*
+   * What a registry repeat matches, as it is being written. The filters are powerful and
+   * completely invisible until the card is saved and looked at, so a typo in a domain or an
+   * area name reads as "this card is broken" rather than "nothing matched that". Counting
+   * here turns writing them into something you can see working.
+   */
+  private _renderMatches(): TemplateResult {
+    const source = this._config?.for_each_from;
+    if (!this.hass || !isRegistrySource(source)) return html``;
+
+    let matched: Record<string, unknown>[] = [];
+    try {
+      matched = resolveRegistryItems(this.hass, source);
+    } catch {
+      return html``;
+    }
+
+    if (!matched.length) {
+      return html`<ha-alert alert-type="warning">
+        Nothing matches this right now, so the card renders
+        nothing${this._config?.empty ? ' but what you set below' : ''}. Check the domain, area or label against what
+        Home Assistant actually has.
+      </ha-alert>`;
+    }
+
+    // The names, not the whole mappings: it is a sanity check on the filters, not a data
+    // dump, and a sweep of the house should not fill the dialog.
+    const shown = matched.slice(0, MATCHES_SHOWN);
+    const label = (item: Record<string, unknown>): string =>
+      String(item.entity ?? item.area_id ?? `${(item.total as number) ?? ''}`);
+
+    return html`
+      <ha-expansion-panel outlined>
+        <span slot="header">
+          Matches ${matched.length === 1 ? 'one thing' : `${matched.length} things`} right now
+        </span>
+        <div class="matches">
+          <ul>
+            ${shown.map((item) => html`<li>${label(item)}</li>`)}
+          </ul>
+          ${
+            matched.length > shown.length
+              ? html`<p class="hint">and ${matched.length - shown.length} more.</p>`
+              : html``
+          }
+          <p class="hint">
+            What it matches is worked out again whenever Home Assistant's registry changes, so this list is what the
+            card would build now.
+          </p>
+        </div>
+      </ha-expansion-panel>
+    `;
   }
 
   /*
