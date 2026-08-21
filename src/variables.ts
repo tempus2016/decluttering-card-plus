@@ -301,11 +301,35 @@ const firstKey = variableName;
  * key after the first without saying anything. Flattening here fixes that everywhere at
  * once, since resolution, substitution and the warnings all read the result.
  */
+// How far into a nested value the dotted names go. Three is past anything a card writes by
+// hand, and stops a big mapping turning into a hundred names to substitute.
+const MAX_FLATTEN_DEPTH = 3;
+
+/*
+ * A variable whose value is a mapping can be reached a piece at a time as well as whole:
+ * `[[room]]` is the mapping, `[[room.light]]` is what is in it. That is what lets one
+ * `for_each` item carry a room's light, its sensor and its icon together rather than
+ * flattening all three into prefixed names by hand.
+ */
+function addDotted(name: string, value: unknown, entries: VariablesConfig[], depth: number): void {
+  if (depth >= MAX_FLATTEN_DEPTH) return;
+  // A list is reached whole or not at all: its entries have no names to speak of.
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return;
+  for (const [key, inner] of Object.entries(value)) {
+    const dotted = `${name}.${key}`;
+    entries.push({ [dotted]: inner });
+    addDotted(dotted, inner, entries, depth + 1);
+  }
+}
+
 export function normaliseVariables(variables: unknown): VariablesConfig[] {
   const entries: VariablesConfig[] = [];
   const add = (entry: unknown): void => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
-    for (const [name, value] of Object.entries(entry)) entries.push({ [name]: value });
+    for (const [name, value] of Object.entries(entry)) {
+      entries.push({ [name]: value });
+      addDotted(name, value, entries, 0);
+    }
   };
 
   if (Array.isArray(variables)) variables.forEach(add);

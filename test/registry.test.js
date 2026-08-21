@@ -295,4 +295,70 @@ check('a range supplies only the total', registryNames({ range: 3 }), ['total'])
 
 check('an entity source now supplies the total too', registryNames({ domain: 'light' }).includes('total'), true);
 
+/* ------------------------------------------------- a copy per area, knowing what is in it */
+
+check(
+  'each area is given the entities inside it',
+  resolveRegistryItems(hass, { areas: true, with: { domain: 'light' } }).map((a) => [a.area_id, a.entities]),
+  [
+    ['bedroom', ['light.bedside']],
+    ['kitchen', ['light.kitchen_ceiling']],
+  ],
+);
+
+check(
+  'the count comes with them',
+  resolveRegistryItems(hass, { areas: true, with: { domain: 'light' } }).map((a) => a.entity_count),
+  [1, 1],
+);
+
+check(
+  'items carries the whole mapping, ready for a nested repeat',
+  resolveRegistryItems(hass, { areas: 'kitchen', with: { domain: 'light' } })[0].items,
+  [{ entity: 'light.kitchen_ceiling', name: 'Ceiling', domain: 'light', area: 'Kitchen', area_id: 'kitchen' }],
+);
+
+check(
+  'an area with nothing in it is left out',
+  resolveRegistryItems(hass, { areas: true, with: { domain: 'vacuum' } }),
+  [],
+);
+
+check(
+  'unless the card asks to keep it, so it can say there is nothing here',
+  resolveRegistryItems(hass, { areas: true, with: { domain: 'vacuum', keep_empty: true } }).map((a) => [
+    a.area_id,
+    a.entity_count,
+  ]),
+  [
+    ['bedroom', 0],
+    ['kitchen', 0],
+  ],
+);
+
+check(
+  'the area being grouped wins over any area the gathering names',
+  resolveRegistryItems(hass, { areas: 'kitchen', with: { domain: 'light', area: 'bedroom' } })[0].entities,
+  ['light.kitchen_ceiling'],
+);
+
+check('a grouped source supplies the gathered names too', registryNames({ areas: true, with: { domain: 'light' } }), [
+  'area_id',
+  'area',
+  'area_icon',
+  'floor',
+  'total',
+  'items',
+  'entities',
+  'entity_count',
+]);
+
+check('an area source without gathering supplies only its own', registryNames({ areas: true }), [
+  'area_id',
+  'area',
+  'area_icon',
+  'floor',
+  'total',
+]);
+
 report();

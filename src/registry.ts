@@ -35,6 +35,8 @@ export interface RegistrySource {
   limit?: number;
   /** Repeat a fixed number of times, with nothing but the position to go on. */
   range?: number;
+  /** For an area source: the entities to gather for each area. */
+  with?: RegistrySource & { keep_empty?: boolean };
 }
 
 // `sort`, `reverse` and `limit` are deliberately not here: on their own they say nothing
@@ -171,6 +173,7 @@ function areaItems(hass: any, source: RegistrySource): Record<string, any>[] {
   const drop = excluded(source.exclude);
   // An area is left out by name or id, so patterns mean areas here rather than entities.
   const dropAreas = drop?.entities !== undefined ? { areas: drop.entities, ...drop } : drop;
+  const gather = source.with;
   const items: Record<string, any>[] = [];
 
   for (const area of Object.values(hass?.areas ?? {}) as any[]) {
@@ -178,12 +181,31 @@ function areaItems(hass: any, source: RegistrySource): Record<string, any>[] {
     if (dropAreas && areaMatches(hass, area, dropAreas)) continue;
 
     const floor = area.floor_id ? hass?.floors?.[area.floor_id] : undefined;
-    items.push({
+    const item: Record<string, any> = {
       area_id: area.area_id,
       area: area.name ?? area.area_id,
       area_icon: area.icon ?? '',
       floor: floor?.name ?? '',
-    });
+    };
+
+    /*
+     * A copy per area that knows what is in it. The area is fixed to this one, whatever
+     * `with` said about areas, because that is the whole point of grouping - and `items`
+     * is handed straight to a nested repeat, which is how one card becomes a tile per room
+     * each listing that room's lights.
+     */
+    if (gather) {
+      const inside = entityItems(hass, { ...gather, area: area.area_id });
+      const ordered = [...inside].sort(byName);
+      // A room with no lights in it is usually noise rather than news, so it goes - unless
+      // the card says otherwise, which is how "no lights in here" gets to be shown.
+      if (!ordered.length && !gather.keep_empty) continue;
+      item.items = ordered;
+      item.entities = ordered.map((entity) => entity.entity);
+      item.entity_count = ordered.length;
+    }
+
+    items.push(item);
   }
   return items;
 }
@@ -255,13 +277,15 @@ function entityItems(hass: any, source: RegistrySource): Record<string, any>[] {
 // variable the card has forgotten to set.
 const ENTITY_NAMES = ['entity', 'name', 'domain', 'area', 'area_id', 'total'];
 const AREA_NAMES = ['area_id', 'area', 'area_icon', 'floor', 'total'];
+const GATHERED_NAMES = ['items', 'entities', 'entity_count'];
 const RANGE_NAMES = ['total'];
 
 /** The variable names a source supplies to every copy, whatever the registry holds. */
 export function registryNames(source: any): string[] {
   if (!isRegistrySource(source)) return [];
   if (source.range !== undefined) return [...RANGE_NAMES];
-  return source.areas !== undefined ? [...AREA_NAMES] : [...ENTITY_NAMES];
+  if (source.areas === undefined) return [...ENTITY_NAMES];
+  return source.with ? [...AREA_NAMES, ...GATHERED_NAMES] : [...AREA_NAMES];
 }
 
 /**
