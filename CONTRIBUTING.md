@@ -55,8 +55,11 @@ was actually wrong rather than the thing that looked wrong.
 The easiest contribution there is: copy `src/locales/en.json` to `src/locales/<code>.json`,
 translate the values, and register the file in `src/localize.ts` (one import, one entry in
 `LANGUAGES`). Keep every `{placeholder}` and `[[name]]` as written — the card fills those
-in — and leave out any key you are not sure of; it falls back to English. `npm test`
-verifies the placeholders survived.
+in. `npm test` lists any keys you have missed and verifies the placeholders survived; at
+runtime a missing key falls back to English, so don't agonise over the hard ones — flag
+them in the PR and they can be worked out there. No git? Open an issue with the language
+and your translated file pasted in, and it will be wired in for you. Fixes to an existing
+translation are just as welcome, file or issue alike.
 
 New user-facing text in the card goes through `localize()` with a key in `en.json` rather
 than as a string literal, or it can never be translated.
