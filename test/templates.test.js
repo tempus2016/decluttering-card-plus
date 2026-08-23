@@ -18,6 +18,7 @@ const {
   countLegacyTypes,
   addCardToView,
   moderniseTypes,
+  addTemplateToRoot,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -197,6 +198,18 @@ check(
   'a view with no cards at all is not an error',
   Object.keys(collectTemplates({ views: [{ title: 'Empty' }, { cards: null }] })),
   [],
+);
+
+check(
+  'a template lands in decluttering_templates without touching anything else',
+  addTemplateToRoot({ views: [{ title: 'Home' }] }, 'room_tile', { card: { type: 'tile' } }),
+  { views: [{ title: 'Home' }], decluttering_templates: { room_tile: { card: { type: 'tile' } } } },
+);
+
+check(
+  'installing at the root keeps the templates already there',
+  addTemplateToRoot({ decluttering_templates: { kept: { card: {} } } }, 'added', { card: {} }).decluttering_templates,
+  { kept: { card: {} }, added: { card: {} } },
 );
 
 /* --- collectUsages --- */
