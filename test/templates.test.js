@@ -20,6 +20,7 @@ const {
   moderniseTypes,
   viewIndexFromPath,
   expandSources,
+  templatePickerLabel,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -314,6 +315,20 @@ check(
     }),
   ).length,
   2,
+);
+
+/* ---------------------------------------------------------------- picker labels */
+
+check(
+  'a categorised template sorts and reads under its category',
+  templatePickerLabel('room_tile', { category: 'Rooms', description: 'One room', card: {} }),
+  'Rooms · room_tile — One room',
+);
+
+check(
+  'no category reads as before',
+  [templatePickerLabel('plain', { card: {} }), templatePickerLabel('desc', { description: 'Words', card: {} })],
+  ['plain', 'desc — Words'],
 );
 
 /* --- collectUsages --- */

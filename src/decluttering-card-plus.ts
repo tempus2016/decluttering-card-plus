@@ -37,6 +37,7 @@ import {
   renameTemplate,
   TemplateUsages,
   viewIndexFromPath,
+  templatePickerLabel,
 } from './templates';
 
 /*
@@ -1081,7 +1082,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
               // template already carries is put beside it.
               options: Object.entries(this._templates).map(([name, template]) => ({
                 value: name,
-                label: template?.description ? `${name} — ${template.description}` : name,
+                label: templatePickerLabel(name, template),
               })),
             },
           },

@@ -46,6 +46,16 @@ function collectFromNode(node: any, templates: Record<string, TemplateConfig>): 
   for (const value of Object.values(node)) collectFromNode(value, templates);
 }
 
+/**
+ * What the template picker shows for one template. A `category:` groups a big collection:
+ * it leads the label, so alphabetical sorting brings a category's templates together.
+ */
+export function templatePickerLabel(name: string, template: TemplateConfig | undefined): string {
+  const category = (template as any)?.category;
+  const described = template?.description ? `${name} — ${template.description}` : name;
+  return typeof category === 'string' && category ? `${category} · ${described}` : described;
+}
+
 /* ------------------------------------------------------------------ extends */
 
 const TEMPLATE_CONTENT_KEYS = ['card', 'badge', 'row', 'element'] as const;
