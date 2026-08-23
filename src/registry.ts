@@ -374,7 +374,21 @@ function labelItems(hass: any, source: RegistrySource): Record<string, any>[] {
   const gather = source.with;
   const items: Record<string, any>[] = [];
 
-  for (const label of Object.values(hass?.labels ?? {}) as any[]) {
+  /*
+   * The label registry arrived on `hass` later than labels themselves did, so the set is
+   * drawn from both: the registry where there is one, and otherwise the labels that
+   * entities and devices actually carry - named by their id, which is at least visible.
+   */
+  const known = new Map<string, any>();
+  for (const label of Object.values(hass?.labels ?? {}) as any[]) known.set(label.label_id, label);
+  for (const entity of Object.values(hass?.entities ?? {}) as any[]) {
+    for (const id of entity?.labels ?? []) if (!known.has(id)) known.set(id, { label_id: id });
+  }
+  for (const device of Object.values(hass?.devices ?? {}) as any[]) {
+    for (const id of device?.labels ?? []) if (!known.has(id)) known.set(id, { label_id: id });
+  }
+
+  for (const label of known.values() as Iterable<any>) {
     const name = label.name ?? label.label_id;
     if (!matchesAny([label.label_id, name], asList(source.labels))) continue;
     if (drop && matchesAny([label.label_id, name], drop)) continue;

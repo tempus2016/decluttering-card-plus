@@ -329,6 +329,22 @@ check(
 );
 
 check(
+  'labels still repeat when hass has no label registry, named by their id',
+  resolveRegistryItems(
+    {
+      entities: {
+        'light.a': { entity_id: 'light.a', labels: ['night'] },
+        'light.b': { entity_id: 'light.b', labels: [] },
+      },
+      areas: {},
+      states: {},
+    },
+    { labels: true, with: {} },
+  ).map((l) => [l.label, l.entity_count]),
+  [['night', 1]],
+);
+
+check(
   'a label nothing of the asked-for kind carries goes',
   resolveRegistryItems(hass, { labels: true, with: { domain: 'light' } }).map((l) => l.label_id),
   ['night'],
