@@ -239,6 +239,57 @@ check(
   'light',
 );
 
+/* --------------------------------------------------------------- device sources */
+
+// Two devices: a named plug in the kitchen, and a renamed motion sensor with a label.
+const deviceHass = {
+  devices: {
+    d1: { id: 'd1', name: 'Zigbee Plug', area_id: 'kitchen', labels: [], manufacturer: 'Tuya', model: 'TS011F' },
+    d2: { id: 'd2', name: 'Motion Sensor', name_by_user: 'Hall Motion', labels: ['night'] },
+  },
+  areas: { kitchen: { area_id: 'kitchen', name: 'Kitchen', labels: [] } },
+  labels: { night: { label_id: 'night', name: 'Night light' } },
+  floors: {},
+  entities: {
+    'switch.plug': { entity_id: 'switch.plug', device_id: 'd1' },
+    'binary_sensor.hall': { entity_id: 'binary_sensor.hall', device_id: 'd2' },
+  },
+  states: {},
+};
+
+check(
+  'a copy per device, named as the user did, sorted by that name',
+  resolveRegistryItems(deviceHass, { devices: true }).map((d) => [d.device_id, d.device, d.area]),
+  [
+    ['d2', 'Hall Motion', ''],
+    ['d1', 'Zigbee Plug', 'Kitchen'],
+  ],
+);
+
+check(
+  'devices narrow by name pattern',
+  resolveRegistryItems(deviceHass, { devices: 'Zigbee*' }).map((d) => d.device_id),
+  ['d1'],
+);
+
+check(
+  'devices narrow by label like everything else',
+  resolveRegistryItems(deviceHass, { devices: '*', label: 'night' }).map((d) => d.device_id),
+  ['d2'],
+);
+
+check(
+  'a device gathers its own entities, and one with none of the asked-for kind goes',
+  resolveRegistryItems(deviceHass, { devices: '*', with: { domain: 'switch' } }).map((d) => [d.device_id, d.entities]),
+  [['d1', ['switch.plug']]],
+);
+
+check(
+  'a device copy carries manufacturer and model for the hardware-minded',
+  resolveRegistryItems(deviceHass, { devices: 'Zigbee*' })[0].manufacturer,
+  'Tuya',
+);
+
 /* ----------------------------------------------------------------- area sources */
 
 check('every area, sorted by name', ids(resolveRegistryItems(hass, { areas: true })), ['bedroom', 'kitchen']);
