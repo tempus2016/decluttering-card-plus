@@ -104,6 +104,8 @@
   "template_editor.usages_none": "Noch nichts auf diesem Dashboard verwendet \"{name}\". Karten auf anderen Dashboards werden hier nicht mitgezählt, auch nicht solche, die sich die Vorlagen dieses Dashboards leihen.",
   "template_editor.usages_one": "Eine Karte auf diesem Dashboard verwendet \"{name}\". Karten auf anderen Dashboards werden nicht mitgezählt.",
   "template_editor.usages_many": "{total} Karten auf diesem Dashboard verwenden \"{name}\". Karten auf anderen Dashboards werden nicht mitgezählt.",
+  "template_editor.impact_header": "Was aus einer Karte wird",
+  "template_editor.impact_hint": "Die erste Karte, die diese Vorlage verwendet, gebaut mit den Änderungen oben – bevor irgendetwas gespeichert ist.",
   "template_editor.used_once": "einmal",
   "template_editor.used_times": "{count}-mal",
   "template_editor.untitled_view": "Unbenannte Ansicht",

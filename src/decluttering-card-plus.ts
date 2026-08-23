@@ -37,6 +37,7 @@ import {
   renameTemplate,
   TemplateUsages,
   addTemplateToRoot,
+  firstUsage,
 } from './templates';
 import {
   diagnoseInstance,
@@ -2064,9 +2065,35 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        ${this._renderRename(name, total)} ${this._renderDuplicate(name)} ${this._renderModernise()}
+        ${this._renderImpact(ll, name)} ${this._renderRename(name, total)} ${this._renderDuplicate(name)}
+        ${this._renderModernise()}
         ${this._toolError ? html`<ha-alert alert-type="error">${this._toolError}</ha-alert>` : html``}
       </div>
+    `;
+  }
+
+  /*
+   * One real card, built against the template as it stands in this editor - unsaved edits
+   * and all - so "this changes 12 cards" comes with a look at what one of them becomes
+   * before anything is saved.
+   */
+  private _renderImpact(ll: LovelaceConfig | null | undefined, name: string): TemplateResult {
+    const usage = firstUsage(ll, name);
+    if (!usage || !this._config) return html``;
+    let built: unknown;
+    try {
+      const template = { ...this._config } as TemplateConfig;
+      const content = template.card ?? template.badge ?? template.row ?? template.element;
+      built = deepReplace(usage.variables, template, content, name, this.hass, true);
+    } catch {
+      return html``;
+    }
+    return html`
+      <ha-expansion-panel outlined>
+        <span slot="header">${localize('template_editor.impact_header', undefined, this.hass)}</span>
+        <p class="hint">${localize('template_editor.impact_hint', undefined, this.hass)}</p>
+        <ha-yaml-editor .hass=${this.hass} .defaultValue=${built} read-only></ha-yaml-editor>
+      </ha-expansion-panel>
     `;
   }
 

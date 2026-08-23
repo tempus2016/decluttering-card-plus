@@ -46,6 +46,30 @@ function collectFromNode(node: any, templates: Record<string, TemplateConfig>): 
   for (const value of Object.values(node)) collectFromNode(value, templates);
 }
 
+/**
+ * The first card on the dashboard that uses a template, config and all. One real usage,
+ * with its real variables, is what makes an impact preview honest: it shows what an edit
+ * does to a card somebody actually has.
+ */
+export function firstUsage(ll: LovelaceConfig | null | undefined, template: string): any | null {
+  let found: any = null;
+  const walk = (node: any): void => {
+    if (found || !node) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    if (CONSUMER_TYPES.includes(node.type) && node.template === template) {
+      found = node;
+      return;
+    }
+    for (const value of Object.values(node)) walk(value);
+  };
+  walk((ll as any)?.views);
+  return found;
+}
+
 /** The dashboard with one more template under `decluttering_templates`, nothing else touched. */
 export function addTemplateToRoot(ll: any, name: string, template: TemplateConfig): any {
   return { ...ll, decluttering_templates: { ...(ll?.decluttering_templates ?? {}), [name]: template } };

@@ -104,6 +104,8 @@
   "template_editor.usages_none": "Rien sur ce tableau de bord n'utilise \"{name}\" pour l'instant. Les cartes d'autres tableaux de bord ne sont pas comptées ici, même celles qui empruntent les modèles de celui-ci.",
   "template_editor.usages_one": "Une carte utilise \"{name}\" sur ce tableau de bord. Les cartes d'autres tableaux de bord ne sont pas comptées.",
   "template_editor.usages_many": "{total} cartes utilisent \"{name}\" sur ce tableau de bord. Les cartes d'autres tableaux de bord ne sont pas comptées.",
+  "template_editor.impact_header": "Ce que devient une carte",
+  "template_editor.impact_hint": "La première carte utilisant ce modèle, construite avec les modifications ci-dessus - avant tout enregistrement.",
   "template_editor.used_once": "une fois",
   "template_editor.used_times": "{count} fois",
   "template_editor.untitled_view": "Vue sans titre",

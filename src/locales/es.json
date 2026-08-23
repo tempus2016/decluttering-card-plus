@@ -104,6 +104,8 @@
   "template_editor.usages_none": "Nada en este panel usa \"{name}\" todavía. Las tarjetas de otros paneles no se cuentan aquí, ni siquiera las que toman prestadas las plantillas de este.",
   "template_editor.usages_one": "Una tarjeta usa \"{name}\" en este panel. Las tarjetas de otros paneles no se cuentan.",
   "template_editor.usages_many": "{total} tarjetas usan \"{name}\" en este panel. Las tarjetas de otros paneles no se cuentan.",
+  "template_editor.impact_header": "En qué se convierte una tarjeta",
+  "template_editor.impact_hint": "La primera tarjeta que usa esta plantilla, construida con los cambios de arriba, antes de guardar nada.",
   "template_editor.used_once": "una vez",
   "template_editor.used_times": "{count} veces",
   "template_editor.untitled_view": "Vista sin título",
