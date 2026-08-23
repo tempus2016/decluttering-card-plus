@@ -223,6 +223,13 @@ export const PARAM_TRANSFORMS: Record<string, (value: string, arg: string) => st
   // its key and `default:` still sees nothing to stand in for.
   prefix: (value, arg) => (value === '' ? value : arg + value),
   suffix: (value, arg) => (value === '' ? value : value + arg),
+  // `max:12` keeps a long name from wrapping a tile. The ellipsis takes the last kept
+  // character's place, so the value never comes out longer than asked for.
+  max: (value, arg) => {
+    const length = Number(arg);
+    if (!Number.isFinite(length) || length <= 0 || value.length <= length) return value;
+    return `${value.slice(0, length - 1)}…`;
+  },
 };
 
 const PARAM_PREFIXES = Object.keys(PARAM_TRANSFORMS);
