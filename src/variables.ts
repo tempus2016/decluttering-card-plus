@@ -17,6 +17,30 @@ export interface VariableDeclaration {
   pattern?: string;
   /** The values this variable can take. Warns; it never blocks a save. */
   allowed?: unknown[];
+  /** Declarations sharing a group fold into one collapsible section of the editor. */
+  group?: string;
+}
+
+/**
+ * Declarations gathered by their `group:`, in order of first appearance, the ungrouped
+ * ones first - they are the essentials, and the groups are the detail behind them.
+ */
+export function groupDeclarations(
+  declarations: VariableDeclaration[],
+): { group: string | undefined; declarations: VariableDeclaration[] }[] {
+  const buckets: { group: string | undefined; declarations: VariableDeclaration[] }[] = [
+    { group: undefined, declarations: [] },
+  ];
+  for (const declaration of declarations) {
+    const group = typeof declaration.group === 'string' && declaration.group ? declaration.group : undefined;
+    let bucket = buckets.find((each) => each.group === group);
+    if (!bucket) {
+      bucket = { group, declarations: [] };
+      buckets.push(bucket);
+    }
+    bucket.declarations.push(declaration);
+  }
+  return buckets.filter((each) => each.declarations.length > 0);
 }
 
 const PLACEHOLDER_SOURCE = '\\[\\[([^[\\]]+)\\]\\]';

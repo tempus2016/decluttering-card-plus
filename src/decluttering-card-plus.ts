@@ -55,6 +55,7 @@ function currentViewIndex(ll: Parameters<typeof viewIndexFromPath>[0]): number |
 import {
   diagnoseInstance,
   validateDeclared,
+  groupDeclarations,
   diagnoseTemplate,
   forEachItems,
   forEachNames,
@@ -1280,15 +1281,26 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
     if (!declarations.length) return [...this._schema, ...repeat, ...fitSchema()];
 
+    const field = (declaration: VariableDeclaration): Record<string, unknown> => ({
+      name: VARIABLE_FIELD_PREFIX + declaration.name,
+      label: declaration.label ?? declaration.name,
+      helper: declaration.description,
+      selector: declaration.selector ?? { text: {} },
+      required: declaration.required === true,
+    });
+
+    // Declarations sharing a `group:` fold into a collapsible section, so a template with
+    // fifteen variables leads with its essentials. `name: ''` keeps the data flat - the
+    // section is presentation, not a level in the config.
+    const grouped: unknown[] = [];
+    for (const bucket of groupDeclarations(declarations)) {
+      if (bucket.group === undefined) grouped.push(...bucket.declarations.map(field));
+      else grouped.push({ name: '', type: 'expandable', title: bucket.group, schema: bucket.declarations.map(field) });
+    }
+
     return [
       this._schema[0],
-      ...declarations.map((declaration) => ({
-        name: VARIABLE_FIELD_PREFIX + declaration.name,
-        label: declaration.label ?? declaration.name,
-        helper: declaration.description,
-        selector: declaration.selector ?? { text: {} },
-        required: declaration.required === true,
-      })),
+      ...grouped,
       {
         name: 'extras',
         label: localize('editor.extras_label', undefined, this.hass),

@@ -26,6 +26,7 @@ const {
   forEachItems,
   normaliseVariables,
   validateDeclared,
+  groupDeclarations,
 } = require('../.test-build/variables.js');
 
 const { check, report } = require('./harness');
@@ -502,6 +503,34 @@ check(
   }).missing,
   ['room'],
 );
+
+/* --------------------------------------------------------------------- groups */
+
+check(
+  'declarations gather under their group in order of first appearance, ungrouped first',
+  groupDeclarations([
+    { name: 'entity' },
+    { name: 'accent', group: 'Style' },
+    { name: 'name' },
+    { name: 'level', group: 'Behaviour' },
+    { name: 'radius', group: 'Style' },
+  ]),
+  [
+    { group: undefined, declarations: [{ name: 'entity' }, { name: 'name' }] },
+    {
+      group: 'Style',
+      declarations: [
+        { name: 'accent', group: 'Style' },
+        { name: 'radius', group: 'Style' },
+      ],
+    },
+    { group: 'Behaviour', declarations: [{ name: 'level', group: 'Behaviour' }] },
+  ],
+);
+
+check('no groups at all is one plain bucket', groupDeclarations([{ name: 'a' }]), [
+  { group: undefined, declarations: [{ name: 'a' }] },
+]);
 
 /* ------------------------------------------------------------------ validation */
 
