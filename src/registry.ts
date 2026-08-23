@@ -27,8 +27,8 @@ export interface RegistrySource {
   integration?: string | string[];
   /** What to leave out. Patterns for entity ids, or a mapping of the same filters. */
   exclude?: string | string[] | RegistrySource;
-  /** What to order the copies by. Defaults to the name shown. */
-  sort?: string;
+  /** What to order the copies by, `-key` for descending, a list for tiebreaks. */
+  sort?: string | string[];
   /** Reverses whatever order was chosen. */
   reverse?: boolean;
   /** At most this many copies, after everything else has been applied. */
@@ -172,25 +172,49 @@ function ordered(items: Record<string, any>[], source: RegistrySource): Record<s
   const wanted = asList(source.require) ?? [];
   if (wanted.length) items = items.filter((item) => wanted.every((key) => String(item[key] ?? '') !== ''));
 
-  const name = typeof source.sort === 'string' && source.sort ? source.sort : undefined;
-  const known = name ? SORTS[name] : undefined;
-  // `sort: none` keeps the registry's own order, which is the only way to ask for
-  // "however Home Assistant listed them". Any other name outside SORTS is read as a key
-  // on each item - `sort: area_id`, or `sort: entity_count` on a grouped repeat - and
-  // compared numerically as well as alphabetically, since what items carry is as often a
-  // count as a word. An item without the key sorts as empty, ahead of everything.
-  const carried =
-    name && name !== 'none' && !known ? (item: Record<string, any>): string => String(item[name] ?? '') : undefined;
-  const sorted =
+  /*
+   * `sort: none` keeps the registry's own order, which is the only way to ask for
+   * "however Home Assistant listed them". Any other name outside SORTS is read as a key
+   * on each item - `sort: area_id`, or `sort: entity_count` on a grouped repeat - and
+   * compared numerically as well as alphabetically, since what items carry is as often a
+   * count as a word. An item without the key sorts as empty, ahead of everything.
+   *
+   * A leading minus turns one key around, and a list of keys sorts by the first and
+   * breaks ties with the next - `sort: [floor, -entity_count]`. `reverse:` still flips
+   * the whole order at the end, tiebreaks and all.
+   */
+  const asked =
     source.sort === undefined
+      ? undefined
+      : (Array.isArray(source.sort) ? source.sort : [source.sort]).filter(
+          (each): each is string => typeof each === 'string' && !!each,
+        );
+  const comparators = (asked ?? [])
+    .filter((each) => each !== 'none')
+    .map((raw) => {
+      const descending = raw.startsWith('-');
+      const key = descending ? raw.slice(1) : raw;
+      const known = SORTS[key];
+      const read = known ?? ((item: Record<string, any>): string => String(item[key] ?? ''));
+      return (a: Record<string, any>, b: Record<string, any>): number => {
+        const compared = known
+          ? read(a).localeCompare(read(b))
+          : read(a).localeCompare(read(b), undefined, { numeric: true });
+        return descending ? -compared : compared;
+      };
+    });
+  const sorted =
+    asked === undefined
       ? [...items].sort(byName)
-      : known
-        ? [...items].sort((a, b) => known(a).localeCompare(known(b)) || byName(a, b))
-        : carried
-          ? [...items].sort(
-              (a, b) => carried(a).localeCompare(carried(b), undefined, { numeric: true }) || byName(a, b),
-            )
-          : [...items];
+      : comparators.length
+        ? [...items].sort((a, b) => {
+            for (const compare of comparators) {
+              const result = compare(a, b);
+              if (result) return result;
+            }
+            return byName(a, b);
+          })
+        : [...items];
   if (source.reverse) sorted.reverse();
 
   const total = sorted.length;

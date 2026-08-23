@@ -355,6 +355,26 @@ check(
   ['attic', 'garage', 'cellar'],
 );
 
+check(
+  'a leading minus turns one key around, busiest first',
+  resolveRegistryItems(countedHass, { areas: true, with: { domain: 'sensor' }, sort: '-entity_count' }).map(
+    (a) => a.area_id,
+  ),
+  ['cellar', 'garage', 'attic'],
+);
+
+check(
+  'minus works on a listed sort too',
+  resolveRegistryItems(hass, { domain: 'light', sort: '-name' }).map((i) => i.name),
+  ['Ceiling', 'Bedside'],
+);
+
+check(
+  'a list of keys sorts by the first and breaks ties with the next',
+  ids(resolveRegistryItems(countedHass, { domain: 'sensor', sort: ['area_id', '-entity'], limit: 2 })),
+  ['sensor.attic_1', 'sensor.attic_0'],
+);
+
 check('a limit takes the first few', ids(resolveRegistryItems(hass, { entities: '*', limit: 2 })).length, 2);
 
 check(
