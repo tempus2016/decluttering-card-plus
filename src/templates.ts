@@ -117,6 +117,36 @@ export function collectTemplates(ll: LovelaceConfig | null | undefined, view?: n
   return out;
 }
 
+/**
+ * `'*'` in the sources list stands for every dashboard there is. Named sources keep
+ * their place ahead of it - their templates win name clashes by being merged last - and
+ * nothing is fetched twice.
+ */
+export function expandSources(sources: string[], available: string[]): string[] {
+  if (!sources.includes('*')) return sources;
+  const named = sources.filter((source) => source !== '*');
+  const out = [...named];
+  for (const path of available) if (!out.includes(path)) out.push(path);
+  return out;
+}
+
+let dashboardListCache: Promise<string[]> | null = null;
+
+/** Every dashboard's url path, for expanding `'*'`. The default dashboard is 'lovelace'. */
+function fetchDashboardPaths(hass: HomeAssistant): Promise<string[]> {
+  dashboardListCache ??= (hass as any)
+    .callWS({ type: 'lovelace/dashboards/list' })
+    .then((list: any[]) =>
+      (list ?? [])
+        .map((dashboard) => dashboard?.url_path)
+        .filter((path): path is string => typeof path === 'string' && !!path)
+        .sort()
+        .concat('lovelace'),
+    )
+    .catch(() => []) as Promise<string[]>;
+  return dashboardListCache;
+}
+
 /** The dashboards this one borrows templates from, in the order they were listed. */
 export function getTemplateSources(ll: LovelaceConfig | null | undefined): string[] {
   const sources = (ll as any)?.[SOURCES_KEY];
@@ -182,8 +212,9 @@ export async function collectAllTemplates(
   view?: number,
 ): Promise<Record<string, TemplateConfig>> {
   const local = collectTemplates(ll, view);
-  const sources = getTemplateSources(ll);
+  let sources = getTemplateSources(ll);
   if (!hass || !sources.length) return local;
+  if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
 
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
   const here = [...collectViewDefaults(ll, view), ...collectDefaults(ll)];

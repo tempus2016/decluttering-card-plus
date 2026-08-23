@@ -19,6 +19,7 @@ const {
   addCardToView,
   moderniseTypes,
   viewIndexFromPath,
+  expandSources,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -114,6 +115,21 @@ check(
 );
 
 check('sources as a list', getTemplateSources({ decluttering_templates_from: ['a', 'b'] }), ['a', 'b']);
+
+check('a star borrows from every dashboard there is', expandSources(['*'], ['guests', 'holiday']), [
+  'guests',
+  'holiday',
+]);
+
+check(
+  'named sources keep their place ahead of the star, and are not fetched twice',
+  expandSources(['holiday', '*'], ['guests', 'holiday']),
+  ['holiday', 'guests'],
+);
+
+check('no star changes nothing', expandSources(['a', 'b'], ['guests']), ['a', 'b']);
+
+check('a star with nothing known is just the named ones', expandSources(['a', '*'], []), ['a']);
 check('sources as a single string', getTemplateSources({ decluttering_templates_from: 'a' }), ['a']);
 check('no sources', getTemplateSources({}), []);
 check('non-string sources are dropped', getTemplateSources({ decluttering_templates_from: ['a', 3, null] }), ['a']);
