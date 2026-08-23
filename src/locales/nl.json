@@ -67,6 +67,18 @@
   "editor.eject": "Deze kaart vervangen door wat ze bouwt",
   "editor.eject_confirm": "Druk nogmaals om te vervangen - het sjabloon geldt dan niet meer",
 
+  "template_editor.declutter_header": "Een bestaande kaart opruimen",
+
+  "template_editor.declutter_hint": "Kies een kaart die al op dit dashboard staat en ze wordt de kaart van dit sjabloon - laat daarna \"Variabelen voorstellen\" vinden wat verschilt. Zodra het sjabloon is opgeslagen, kan het origineel worden vervangen door een kaart die het gebruikt.",
+
+  "template_editor.declutter_pick": "Kaart",
+
+  "template_editor.declutter_replace": "Het origineel vervangen door een kaart met dit sjabloon",
+
+  "template_editor.declutter_replace_confirm": "Druk nogmaals om het origineel te vervangen - het dashboard wordt direct opgeslagen",
+
+  "template_editor.declutter_save_first": "Sla dit sjabloon eerst op, zodat de vervanging ergens naar kan wijzen.",
+
   "template_editor.tab_settings": "Instellingen",
   "template_editor.tab_card": "Kaart",
   "template_editor.tab_change_card": "Kaarttype wijzigen",

@@ -67,6 +67,18 @@
   "editor.eject": "Substituir este cartão pelo que ele constrói",
   "editor.eject_confirm": "Prima novamente para substituir - o modelo deixa de se aplicar",
 
+  "template_editor.declutter_header": "Arrumar um cartão existente",
+
+  "template_editor.declutter_hint": "Escolha um cartão que já esteja neste painel e ele torna-se o cartão deste modelo - depois deixe o \"Sugerir variáveis\" encontrar o que varia. Com o modelo gravado, o original pode ser trocado por um cartão que o use.",
+
+  "template_editor.declutter_pick": "Cartão",
+
+  "template_editor.declutter_replace": "Substituir o original por um cartão que use este modelo",
+
+  "template_editor.declutter_replace_confirm": "Prima novamente para substituir o original - o painel é gravado de imediato",
+
+  "template_editor.declutter_save_first": "Grave primeiro este modelo, para que a substituição tenha para onde apontar.",
+
   "template_editor.tab_settings": "Definições",
   "template_editor.tab_card": "Cartão",
   "template_editor.tab_change_card": "Mudar tipo de cartão",

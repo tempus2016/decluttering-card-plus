@@ -40,6 +40,8 @@ import {
   firstUsage,
   usagesOnOtherDashboards,
   checkDashboard,
+  listPlainCards,
+  replaceCard,
 } from './templates';
 import {
   diagnoseInstance,
@@ -1585,6 +1587,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _librarySelected?: string;
   @state() private _libraryDestination: 'view' | 'root' = 'view';
   @state() private _remoteUsages?: { name: string; list: { urlPath: string; total: number }[] };
+  @state() private _declutterOriginal?: Record<string, unknown>;
+  @state() private _declutterPending = false;
 
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
@@ -1808,6 +1812,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 .computeHelper=${(s): string => s.helper ?? ''}
                 @value-changed=${this._valueChanged}
               ></ha-form>
+              ${this._renderDeclutter()}
             `
           : this._selectedTab === 'card'
             ? html`
@@ -2143,6 +2148,88 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         }
       </ha-expansion-panel>
     `;
+  }
+
+  /*
+   * The on-ramp: a dashboard full of copy-pasted cards becomes a template by picking one
+   * of them. The picked card becomes this template's card, ready for "Suggest variables";
+   * once the template is saved, the original can be swapped for a card that uses it.
+   */
+  private _renderDeclutter(): TemplateResult {
+    const ll = getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig();
+    const cards = listPlainCards(ll);
+    if (!cards.length || !this._config) return html``;
+    const name = this._config.template;
+    const saved = !!name && name in collectTemplates(ll);
+    return html`
+      <ha-expansion-panel outlined>
+        <span slot="header">${localize('template_editor.declutter_header', undefined, this.hass)}</span>
+        <p class="hint">${localize('template_editor.declutter_hint', undefined, this.hass)}</p>
+        <ha-form
+          .hass=${this.hass}
+          .data=${{}}
+          .schema=${[
+            {
+              name: 'pick',
+              selector: {
+                select: {
+                  mode: 'dropdown',
+                  options: cards.map((card, index) => ({ value: String(index), label: card.label })),
+                },
+              },
+            },
+          ]}
+          .computeLabel=${(): string => localize('template_editor.declutter_pick', undefined, this.hass)}
+          @value-changed=${(ev: CustomEvent): void => this._declutterPicked(ev, cards)}
+        ></ha-form>
+        ${
+          this._declutterOriginal
+            ? html`
+                <mwc-button .disabled=${this._busy || !saved} @click=${this._declutterReplace}>
+                  ${localize(
+                    this._declutterPending
+                      ? 'template_editor.declutter_replace_confirm'
+                      : 'template_editor.declutter_replace',
+                    undefined,
+                    this.hass,
+                  )}
+                </mwc-button>
+                ${!saved ? html`<p class="hint">${localize('template_editor.declutter_save_first', undefined, this.hass)}</p>` : html``}
+              `
+            : html``
+        }
+      </ha-expansion-panel>
+    `;
+  }
+
+  private _declutterPicked(ev: CustomEvent, cards: { label: string; config: Record<string, unknown> }[]): void {
+    ev.stopPropagation();
+    const index = Number((ev.detail.value as { pick?: string }).pick);
+    const picked = cards[index];
+    if (!picked || !this._config) return;
+    this._declutterOriginal = picked.config;
+    this._declutterPending = false;
+    this._suggestion = undefined;
+    this._suggestedNothing = false;
+    // A copy, so editing the template never reaches back into the original card.
+    this._fireConfigChanged({ ...this._config, card: JSON.parse(JSON.stringify(picked.config)) });
+  }
+
+  private async _declutterReplace(): Promise<void> {
+    const name = this._config?.template;
+    const original = this._declutterOriginal;
+    if (!name || !original) return;
+    if (!this._declutterPending) {
+      this._declutterPending = true;
+      return;
+    }
+    const saved = await this._saveDashboard((config) =>
+      replaceCard(config, original, { type: 'custom:decluttering-card-plus', template: name }),
+    );
+    if (saved) {
+      this._declutterPending = false;
+      this._declutterOriginal = undefined;
+    }
   }
 
   /*
