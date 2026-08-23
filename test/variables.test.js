@@ -399,6 +399,17 @@ check(
 
 check('max cuts a long value and shows that it did', applyTransform('max:10', 'Kitchen temperature'), 'Kitchen t…');
 check('what max keeps is never longer than asked', applyTransform('max:10', 'Kitchen temperature').length, 10);
+
+check('map looks the value up in its pairs', applyTransform('map:low=green,high=red', 'low'), 'green');
+check('a mapped value can hold spaces', applyTransform('map:on=Turned on,off=Turned off', 'off'), 'Turned off');
+check(
+  'a value map does not name leaves the placeholder, not a guess',
+  applyTransform('map:low=green,high=red', 'medium'),
+  undefined,
+);
+check('a star pair catches whatever nothing else did', applyTransform('map:low=green,*=grey', 'medium'), 'grey');
+check('a named pair beats the star wherever it is written', applyTransform('map:*=grey,low=green', 'low'), 'green'),
+check('what map gives chains onward', applyTransform('map:low=green|upper', 'low'), 'GREEN');
 check('max leaves a short value alone', applyTransform('max:10', 'Kitchen'), 'Kitchen');
 check('max of exactly the length changes nothing', applyTransform('max:7', 'Kitchen'), 'Kitchen');
 check('max with a length that is not a number changes nothing', applyTransform('max:lots', 'Kitchen'), 'Kitchen');
