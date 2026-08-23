@@ -41,6 +41,7 @@ import {
   addTemplateToRoot,
   firstUsage,
   usagesOnOtherDashboards,
+  checkDashboard,
 } from './templates';
 
 /*
@@ -2149,10 +2150,56 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        ${this._renderElsewhere(name)} ${this._renderImpact(ll, name)} ${this._renderRename(name, total)}
-        ${this._renderDuplicate(name)} ${this._renderModernise()}
+        ${this._renderElsewhere(name)} ${this._renderImpact(ll, name)} ${this._renderHealth(ll)}
+        ${this._renderRename(name, total)} ${this._renderDuplicate(name)} ${this._renderModernise()}
         ${this._toolError ? html`<ha-alert alert-type="error">${this._toolError}</ha-alert>` : html``}
       </div>
+    `;
+  }
+
+  /*
+   * Everything the console would have muttered about this dashboard, in one place: cards
+   * pointing at templates that are not there, cards leaving variables unset, templates
+   * nothing uses. The sweep is cheap and honest, so it simply runs.
+   */
+  private _renderHealth(ll: LovelaceConfig | null | undefined): TemplateResult {
+    const report = checkDashboard(ll);
+    const healthy = !report.missingTemplates.length && !report.unsetVariables.length && !report.unusedTemplates.length;
+    return html`
+      <ha-expansion-panel outlined>
+        <span slot="header">${localize('tools.health_header', undefined, this.hass)}</span>
+        ${
+          healthy
+            ? html`<p class="hint">${localize('tools.health_ok', undefined, this.hass)}</p>`
+            : html`
+                ${report.missingTemplates.map(
+                  (each) =>
+                    html`<ha-alert alert-type="error">
+                      ${localize('tools.health_missing', { template: each.template, count: each.count }, this.hass)}${
+                        each.closest ? localize('error.did_you_mean', { closest: each.closest }, this.hass) : ''
+                      }
+                    </ha-alert>`,
+                )}
+                ${report.unsetVariables.map(
+                  (each) =>
+                    html`<ha-alert alert-type="warning">
+                      ${localize(
+                        'tools.health_unset',
+                        { template: each.template, names: each.names.join(', '), count: each.count },
+                        this.hass,
+                      )}
+                    </ha-alert>`,
+                )}
+                ${
+                  report.unusedTemplates.length
+                    ? html`<ha-alert alert-type="info">
+                        ${localize('tools.health_unused', { names: report.unusedTemplates.join(', ') }, this.hass)}
+                      </ha-alert>`
+                    : html``
+                }
+              `
+        }
+      </ha-expansion-panel>
     `;
   }
 

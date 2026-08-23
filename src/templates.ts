@@ -1,6 +1,7 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
-import { normaliseVariables } from './variables';
+import { diagnoseInstance, forEachNames, normaliseVariables } from './variables';
+import { isRegistrySource, registryNames } from './registry';
 import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -44,6 +45,64 @@ function collectFromNode(node: any, templates: Record<string, TemplateConfig>): 
     return;
   }
   for (const value of Object.values(node)) collectFromNode(value, templates);
+}
+
+/*
+ * Everything the console would have muttered about this dashboard, gathered in one look:
+ * cards pointing at templates that are not there (with the near miss named), cards
+ * leaving variables unset, and templates nothing uses. Same counting cards, one report.
+ */
+export function checkDashboard(ll: LovelaceConfig | null | undefined): {
+  missingTemplates: { template: string; count: number; closest?: string }[];
+  unsetVariables: { template: string; names: string[]; count: number }[];
+  unusedTemplates: string[];
+} {
+  const templates = collectTemplates(ll);
+  const available = Object.keys(templates);
+  const missing = new Map<string, number>();
+  const unset = new Map<string, { names: Set<string>; count: number }>();
+
+  const walk = (node: any): void => {
+    if (!node) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    if (CONSUMER_TYPES.includes(node.type) && typeof node.template === 'string') {
+      const template = templates[node.template];
+      if (!template) {
+        missing.set(node.template, (missing.get(node.template) ?? 0) + 1);
+      } else {
+        const supplements = [
+          ...forEachNames(node.for_each),
+          ...registryNames(node.for_each_from),
+          ...(isRegistrySource(node.for_each_from) ? ['index', 'index0', 'count', 'first', 'last', 'total'] : []),
+        ].map((name) => ({ [name]: null }));
+        const problems = diagnoseInstance(node.variables, template, supplements);
+        if (problems.missing.length) {
+          const entry = unset.get(node.template) ?? { names: new Set<string>(), count: 0 };
+          for (const name of problems.missing) entry.names.add(name);
+          entry.count += 1;
+          unset.set(node.template, entry);
+        }
+      }
+      return;
+    }
+    for (const value of Object.values(node)) walk(value);
+  };
+  walk((ll as any)?.views);
+
+  return {
+    missingTemplates: [...missing.entries()].sort().map(([template, count]) => {
+      const closest = closestTemplate(template, available);
+      return closest ? { template, count, closest } : { template, count };
+    }),
+    unsetVariables: [...unset.entries()]
+      .sort()
+      .map(([template, entry]) => ({ template, names: [...entry.names].sort(), count: entry.count })),
+    unusedTemplates: available.filter((name) => totalUsages(ll, name) === 0).sort(),
+  };
 }
 
 /** How many things on one dashboard use a template: cards on views, and other templates. */
