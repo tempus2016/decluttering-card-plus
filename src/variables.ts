@@ -475,6 +475,10 @@ export function resolveVariables(
   template: TemplateConfig | undefined,
 ): VariablesConfig[] {
   const combined: VariablesConfig[] = [];
+  // `let:` values are the template's own internals, so they come first and win even over
+  // what an instance passes - a card overriding a derived value would break the template
+  // from the outside, invisibly.
+  combined.push(...normaliseVariables(template?.let));
   combined.push(...normaliseVariables(variables));
   for (const declaration of getDeclarations(template)) {
     // A declaration that only names a variable says nothing about its value, and must not

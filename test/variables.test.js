@@ -490,6 +490,26 @@ check(
 
 check('an empty list supplies nothing at all', forEachNames(undefined), []);
 
+/* --------------------------------------------------- template-local variables */
+
+check(
+  'a let variable counts as supplied, so nothing reports it missing',
+  diagnoseInstance([{ room: 'Hall' }], {
+    let: { room_slug: '[[room|slug]]' },
+    card: { entity: 'light.[[room_slug]]' },
+  }),
+  { missing: [], unused: [], required: [] },
+);
+
+check(
+  'what a let value refers to is a real use, so the card must still supply it',
+  diagnoseInstance(undefined, {
+    let: { room_slug: '[[room|slug]]' },
+    card: { entity: 'light.[[room_slug]]' },
+  }).missing,
+  ['room'],
+);
+
 /* ------------------------------------------------------------ required variables */
 
 check(
