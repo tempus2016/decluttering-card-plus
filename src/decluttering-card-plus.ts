@@ -18,7 +18,7 @@ import {
   LovelaceThingType,
 } from './types';
 import deepReplace from './deep-replace';
-import { buildExport, validateImport } from './share';
+import { buildExport, validateImport, freeName } from './share';
 import { suggestVariables } from './suggest';
 import { LIBRARY, libraryEntry, libraryNeeds } from './library';
 import {
@@ -2077,7 +2077,10 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
    * box, because whoever receives it cannot tell from the YAML alone.
    */
   private _renderShare(): TemplateResult {
-    const { payload, notes } = buildExport(this._config);
+    const { payload, notes } = buildExport(
+      this._config,
+      collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()),
+    );
 
     return html`
       <div class="share">
@@ -2109,6 +2112,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         <mwc-button @click=${this._import}>
           ${localize(this._importClash ? 'share.import_anyway' : 'share.import', undefined, this.hass)}
         </mwc-button>
+        ${
+          this._importClash
+            ? html`<mwc-button @click=${this._importAsCopy}>
+                ${localize('share.import_copy', undefined, this.hass)}
+              </mwc-button>`
+            : html``
+        }
 
         <h3>${localize('share.library_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.library_hint', undefined, this.hass)}</p>
@@ -2518,9 +2528,46 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       return;
     }
 
+    this._applyImport(this._importValue.template);
+  }
+
+  /*
+   * The other way out of a name clash: keep both, under the first free spelling of the
+   * name. What arrives is the same template - only its name changes.
+   */
+  private _importAsCopy(): void {
+    if (!this._config || !this._importParses) return;
+    const existing = Object.keys(collectTemplates(this.lovelace ?? getLovelaceConfig()));
+    this._applyImport(freeName(this._importValue.template, existing));
+  }
+
+  private _applyImport(name: string): void {
+    /*
+     * A bundle carries the templates this one uses under `includes:`. The ones this
+     * dashboard does not have yet land in decluttering_templates, so the imported
+     * template works on arrival; the ones it already has are left exactly as they are.
+     */
+    const includes = this._importValue.includes;
+    if (includes && typeof includes === 'object' && !Array.isArray(includes)) {
+      const existing = Object.keys(
+        collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()),
+      );
+      const wanted = Object.entries(includes).filter(([each]) => !existing.includes(each));
+      if (wanted.length) {
+        void this._saveDashboard((config) =>
+          wanted.reduce(
+            (built, [each, template]) => addTemplateToRoot(built, each, template as TemplateConfig),
+            config,
+          ),
+        );
+      }
+    }
+
     // Keep the card's own type: the export may have come from the legacy tag, and which
     // tag this card uses is a property of where it lives, not of what was shared.
-    this._fireConfigChanged({ ...this._importValue, type: this._config.type });
+    const applied = { ...this._importValue, template: name, type: this._config?.type };
+    delete applied.includes;
+    this._fireConfigChanged(applied);
     this._importClash = undefined;
     this._selectedTab = 'settings';
   }

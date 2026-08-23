@@ -3,7 +3,7 @@
  * with it, and what an imported one has to look like before it is accepted.
  * Run with `npm test`.
  */
-const { scanDependencies, buildExport, validateImport } = require('../.test-build/share.js');
+const { scanDependencies, buildExport, validateImport, freeName } = require('../.test-build/share.js');
 
 const { check, report } = require('./harness');
 
@@ -198,5 +198,59 @@ check(
 );
 
 check('every problem is reported at once, not one at a time', validateImport({}).errors.length, 2);
+
+/* --- bundles --- */
+
+const KNOWN = {
+  inner_tile: { card: { type: 'tile' } },
+  wrapper: { card: { type: 'custom:decluttering-card-plus', template: 'inner_tile' } },
+};
+
+check(
+  'an export bundles the templates it uses, transitively',
+  buildExport(
+    {
+      type: 'custom:decluttering-template-plus',
+      template: 'outer',
+      card: { type: 'custom:decluttering-card-plus', template: 'wrapper' },
+    },
+    KNOWN,
+  ).payload.includes,
+  {
+    wrapper: { card: { type: 'custom:decluttering-card-plus', template: 'inner_tile' } },
+    inner_tile: { card: { type: 'tile' } },
+  },
+);
+
+check(
+  'a dependency nobody can find is still only a note',
+  buildExport(
+    {
+      type: 'custom:decluttering-template-plus',
+      template: 'outer',
+      card: { type: 'custom:decluttering-card-plus', template: 'ghost' },
+    },
+    KNOWN,
+  ).payload.includes,
+  undefined,
+);
+
+check(
+  'without the map the export reads as before',
+  buildExport({ type: 'custom:decluttering-template-plus', template: 'outer', card: {} }).payload.includes,
+  undefined,
+);
+
+check(
+  'a bundled import is still a valid template',
+  validateImport({ template: 'outer', card: {}, includes: { inner: { card: {} } } }).ok,
+  true,
+);
+
+/* --- freeName --- */
+
+check('a free name is its own copy name', freeName('tile', ['other']), 'tile');
+check('a taken name counts up from two', freeName('tile', ['tile']), 'tile_2');
+check('and keeps counting past taken copies', freeName('tile', ['tile', 'tile_2']), 'tile_3');
 
 report();

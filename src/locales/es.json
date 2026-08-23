@@ -119,6 +119,7 @@
   "share.import_hint": "Pega una plantilla que alguien compartió contigo. Sustituirá a la que estás editando.",
   "share.import": "Importar",
   "share.import_anyway": "Importar de todas formas",
+  "share.import_copy": "Importar como copia",
   "share.import_clash": "Este panel ya tiene una plantilla llamada \"{name}\". Importar te dejará dos plantillas con el mismo nombre, y solo se usará una. Pulsa Importar otra vez para seguir.",
   "share.import_not_yaml": "Esto no es YAML válido, así que no se puede leer.",
   "share.requires_custom_cards": "Requiere estas tarjetas personalizadas: {types}",

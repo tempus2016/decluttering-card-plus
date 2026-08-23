@@ -119,6 +119,7 @@
   "share.import_hint": "Plak een sjabloon dat iemand met je heeft gedeeld. Het vervangt het sjabloon dat je aan het bewerken bent.",
   "share.import": "Importeren",
   "share.import_anyway": "Toch importeren",
+  "share.import_copy": "Als kopie importeren",
   "share.import_clash": "Dit dashboard heeft al een sjabloon met de naam \"{name}\". Na het importeren heb je twee sjablonen met dezelfde naam, en maar één ervan wordt gebruikt. Druk nogmaals op Importeren om door te gaan.",
   "share.import_not_yaml": "Dit is geen geldige YAML en kan dus niet worden gelezen.",
   "share.requires_custom_cards": "Vereist deze custom cards: {types}",

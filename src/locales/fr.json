@@ -119,6 +119,7 @@
   "share.import_hint": "Collez un modèle que quelqu'un a partagé avec vous. Il remplacera celui que vous modifiez.",
   "share.import": "Importer",
   "share.import_anyway": "Importer quand même",
+  "share.import_copy": "Importer comme copie",
   "share.import_clash": "Ce tableau de bord a déjà un modèle nommé \"{name}\". Importer vous laissera deux modèles du même nom, et un seul sera utilisé. Appuyez encore sur Importer pour continuer.",
   "share.import_not_yaml": "Ceci n'est pas du YAML valide, il ne peut donc pas être lu.",
   "share.requires_custom_cards": "Nécessite ces cartes personnalisées : {types}",

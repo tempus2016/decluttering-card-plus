@@ -119,6 +119,7 @@
   "share.import_hint": "Paste a template someone shared with you. It will replace the one you are editing.",
   "share.import": "Import",
   "share.import_anyway": "Import anyway",
+  "share.import_copy": "Import as a copy",
   "share.import_clash": "This dashboard already has a template called \"{name}\". Importing will give you two templates with the same name, and only one of them will be used. Press Import again to go ahead.",
   "share.import_not_yaml": "This is not valid YAML, so it cannot be read.",
   "share.requires_custom_cards": "Requires these custom cards: {types}",
