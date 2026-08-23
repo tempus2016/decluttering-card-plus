@@ -41,6 +41,8 @@ export interface RegistrySource {
   require?: string | string[];
   /** Extra or different variables for particular copies, keyed by entity or area pattern. */
   overrides?: Record<string, Record<string, any>>;
+  /** Fold entity copies into one per `domain`, `floor`, `label` or `area`. */
+  group_by?: string;
   /** For an area source: the entities to gather for each area. */
   with?: RegistrySource & { keep_empty?: boolean };
 }
@@ -354,13 +356,16 @@ function entityItems(hass: any, source: RegistrySource): Record<string, any>[] {
 const ENTITY_NAMES = ['entity', 'name', 'domain', 'area', 'area_id', 'total'];
 const AREA_NAMES = ['area_id', 'area', 'area_icon', 'floor', 'total'];
 const GATHERED_NAMES = ['items', 'entities', 'entity_count'];
+const GROUPED_NAMES = ['group', 'name', 'items', 'entities', 'entity_count', 'total'];
 const RANGE_NAMES = ['total'];
 
 /** The variable names a source supplies to every copy, whatever the registry holds. */
 export function registryNames(source: any): string[] {
   if (!isRegistrySource(source)) return [];
   if (source.range !== undefined) return [...RANGE_NAMES];
-  if (source.areas === undefined) return [...ENTITY_NAMES];
+  if (source.areas === undefined) {
+    return typeof source.group_by === 'string' ? [...GROUPED_NAMES] : [...ENTITY_NAMES];
+  }
   return source.with ? [...AREA_NAMES, ...GATHERED_NAMES] : [...AREA_NAMES];
 }
 
@@ -383,7 +388,46 @@ export function resolveRegistryItems(hass: any, source: any): Record<string, any
   }
 
   const items = source.areas !== undefined ? areaItems(hass, source) : entityItems(hass, source);
+  if (source.areas === undefined && typeof source.group_by === 'string') {
+    return ordered(groupedItems(hass, items, source.group_by), source, hass);
+  }
   return ordered(items, source, hass);
+}
+
+/*
+ * `group_by:` folds entity copies into one copy per distinct value - a copy per domain,
+ * per floor, per label, or per area - each knowing what fell into it, the same shape
+ * `with:` gives an area. An entity with nothing to group on (no floor, no label) is
+ * left out: a group of the unplaceable is noise, and `areas: true` with `keep_empty`
+ * already covers "show the empty ones" for the area case.
+ */
+function groupedItems(hass: any, items: Record<string, any>[], by: string): Record<string, any>[] {
+  const groups = new Map<string, Record<string, any>>();
+  const add = (id: string | undefined, name: string | undefined, item: Record<string, any>): void => {
+    if (!id) return;
+    const group = groups.get(id) ?? { group: id, name: name || id, items: [], entities: [], entity_count: 0 };
+    group.items.push(item);
+    group.entities.push(item.entity);
+    group.entity_count = group.items.length;
+    groups.set(id, group);
+  };
+
+  for (const item of items) {
+    const entity = hass?.entities?.[item.entity];
+    if (by === 'domain') add(item.domain, item.domain, item);
+    else if (by === 'area') add(item.area_id, item.area, item);
+    else if (by === 'floor') {
+      const floorId = areaOf(hass, entity)?.floor_id;
+      add(floorId, floorId ? hass?.floors?.[floorId]?.name : undefined, item);
+    } else if (by === 'label') {
+      for (const labelId of labelsOf(hass, entity)) add(labelId, hass?.labels?.[labelId]?.name, item);
+    }
+  }
+
+  return [...groups.values()].map((group) => {
+    const inside = [...group.items].sort(byName);
+    return { ...group, items: inside, entities: inside.map((item) => item.entity) };
+  });
 }
 
 /**

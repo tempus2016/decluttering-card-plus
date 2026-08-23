@@ -200,6 +200,45 @@ check(
   ['mdi:sleep', undefined],
 );
 
+/* ------------------------------------------------------------------- group_by */
+
+check(
+  'group_by domain gives one copy per domain, counting what is in it',
+  resolveRegistryItems(hass, { entities: '*', group_by: 'domain' }).map((g) => [g.group, g.entity_count]),
+  [
+    ['binary_sensor', 1],
+    ['light', 2],
+    ['sensor', 1],
+  ],
+);
+
+check(
+  'a group carries its members, ids and items both',
+  resolveRegistryItems(hass, { entities: '*', group_by: 'domain' })[1].entities,
+  ['light.bedside', 'light.kitchen_ceiling'],
+);
+
+check(
+  'group_by floor reaches the floor through each entity area',
+  resolveRegistryItems(hass, { entities: '*', group_by: 'floor' }).map((g) => [g.name, g.entity_count]),
+  [
+    ['Ground floor', 3],
+    ['Upstairs', 1],
+  ],
+);
+
+check(
+  'group_by label reads labels off the entity and its device, named from the registry',
+  resolveRegistryItems(hass, { entities: '*', group_by: 'label' }).map((g) => [g.group, g.name, g.entity_count]),
+  [['night', 'Night light', 1]],
+);
+
+check(
+  'groups order by a carried key like any other copies, busiest first',
+  resolveRegistryItems(hass, { entities: '*', group_by: 'domain', sort: '-entity_count' })[0].group,
+  'light',
+);
+
 /* ----------------------------------------------------------------- area sources */
 
 check('every area, sorted by name', ids(resolveRegistryItems(hass, { areas: true })), ['bedroom', 'kitchen']);
