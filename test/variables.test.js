@@ -602,6 +602,36 @@ check(
   undefined,
 );
 
+// Labels live on the entity as ids; the labels registry holds their names.
+const labelledHass = {
+  ...houseHass,
+  entities: {
+    ...houseHass.entities,
+    'light.hall': { ...houseHass.entities['light.hall'], labels: ['night', 'quiet'] },
+  },
+  labels: { night: { label_id: 'night', name: 'Night light' }, quiet: { label_id: 'quiet', name: 'Quiet' } },
+};
+
+check(
+  'labels reads the names of the labels the entity carries',
+  applyTransform('labels', 'light.hall', labelledHass),
+  'Night light, Quiet',
+);
+check(
+  'a label with no registry entry keeps its id rather than vanishing',
+  applyTransform('labels', 'light.hall', {
+    ...labelledHass,
+    labels: { night: { label_id: 'night', name: 'Night light' } },
+  }),
+  'Night light, quiet',
+);
+check(
+  'an entity with no labels resolves to nothing',
+  applyTransform('labels', 'light.bare', labelledHass),
+  undefined,
+);
+check('labels of an entity that does not exist resolves to nothing', applyTransform('labels', 'light.nope', labelledHass), undefined);
+
 check('a resolver is recognised as one', [isResolver('friendly_name'), isResolver('attr:x')], [true, true]);
 check('a transform is not', [isResolver('slug'), isResolver('bogus')], [false, false]);
 

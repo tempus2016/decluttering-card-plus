@@ -143,6 +143,13 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
   // an entity id has no halves to give, so the placeholder stays visible.
   domain: (entityId) => ENTITY_ID_SHAPE.exec(entityId)?.[1],
   object_id: (entityId) => ENTITY_ID_SHAPE.exec(entityId)?.[2],
+  // The names of the labels the entity carries, joined for showing. A label the registry
+  // does not name keeps its id - a visible stand-in beats a silent hole in the list.
+  labels: (entityId, hass) => {
+    const ids: string[] = hass?.entities?.[entityId]?.labels ?? [];
+    if (!ids.length) return undefined;
+    return ids.map((id) => hass?.labels?.[id]?.name ?? id).join(', ');
+  },
 };
 
 const ENTITY_ID_SHAPE = /^([a-z0-9_]+)\.([a-z0-9_]+)$/i;
