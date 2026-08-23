@@ -106,6 +106,7 @@
   "template_editor.usages_many": "{total} cartes utilisent \"{name}\" sur ce tableau de bord. Les cartes d'autres tableaux de bord ne sont pas comptées.",
   "template_editor.impact_header": "Ce que devient une carte",
   "template_editor.impact_hint": "La première carte utilisant ce modèle, construite avec les modifications ci-dessus - avant tout enregistrement.",
+  "template_editor.usages_elsewhere": "D'autres tableaux de bord utilisent aussi ce nom : {list}. Le renommer ou le modifier ici ne les touche pas.",
   "template_editor.used_once": "une fois",
   "template_editor.used_times": "{count} fois",
   "template_editor.untitled_view": "Vue sans titre",

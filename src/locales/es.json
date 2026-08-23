@@ -106,6 +106,7 @@
   "template_editor.usages_many": "{total} tarjetas usan \"{name}\" en este panel. Las tarjetas de otros paneles no se cuentan.",
   "template_editor.impact_header": "En qué se convierte una tarjeta",
   "template_editor.impact_hint": "La primera tarjeta que usa esta plantilla, construida con los cambios de arriba, antes de guardar nada.",
+  "template_editor.usages_elsewhere": "Otros paneles también usan este nombre: {list}. Renombrarlo o cambiarlo aquí no los toca.",
   "template_editor.used_once": "una vez",
   "template_editor.used_times": "{count} veces",
   "template_editor.untitled_view": "Vista sin título",

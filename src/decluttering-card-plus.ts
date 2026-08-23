@@ -38,6 +38,7 @@ import {
   TemplateUsages,
   addTemplateToRoot,
   firstUsage,
+  usagesOnOtherDashboards,
 } from './templates';
 import {
   diagnoseInstance,
@@ -1558,6 +1559,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _installPending?: string;
   @state() private _librarySelected?: string;
   @state() private _libraryDestination: 'view' | 'root' = 'view';
+  @state() private _remoteUsages?: { name: string; list: { urlPath: string; total: number }[] };
 
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
@@ -2065,11 +2067,32 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        ${this._renderImpact(ll, name)} ${this._renderRename(name, total)} ${this._renderDuplicate(name)}
-        ${this._renderModernise()}
+        ${this._renderElsewhere(name)} ${this._renderImpact(ll, name)} ${this._renderRename(name, total)}
+        ${this._renderDuplicate(name)} ${this._renderModernise()}
         ${this._toolError ? html`<ha-alert alert-type="error">${this._toolError}</ha-alert>` : html``}
       </div>
     `;
+  }
+
+  /*
+   * The same name counted on every other dashboard - looked at, never written. Renaming
+   * and deleting here still touch only this dashboard, and this is what says whether
+   * that matters today.
+   */
+  private _renderElsewhere(name: string): TemplateResult {
+    if (this._remoteUsages?.name !== name) {
+      this._remoteUsages = { name, list: [] };
+      const ownPath = document.location.pathname.split('/').filter(Boolean)[0];
+      void usagesOnOtherDashboards(this.hass, name, ownPath).then((list) => {
+        if (this._remoteUsages?.name === name) this._remoteUsages = { name, list };
+      });
+    }
+    const list = this._remoteUsages.list;
+    if (!list.length) return html``;
+    const summary = list.map((each) => `${each.urlPath} (${each.total})`).join(', ');
+    return html`<ha-alert alert-type="info">
+      ${localize('template_editor.usages_elsewhere', { list: summary }, this.hass)}
+    </ha-alert>`;
   }
 
   /*

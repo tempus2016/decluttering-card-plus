@@ -20,6 +20,7 @@ const {
   moderniseTypes,
   addTemplateToRoot,
   firstUsage,
+  totalUsages,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -240,6 +241,10 @@ const USED_IN = {
 };
 
 check('a template used nowhere has no usages', collectUsages(USED_IN, 'missing'), { views: [], templates: [] });
+
+check('totalUsages counts cards and consuming templates together', totalUsages(USED_IN, 'tile'), 5);
+
+check('totalUsages of nothing is zero', totalUsages(USED_IN, 'missing'), 0);
 
 check('the first card using a template is found, wherever it is nested', firstUsage(USED_IN, 'tile'), {
   type: 'custom:decluttering-card-plus',

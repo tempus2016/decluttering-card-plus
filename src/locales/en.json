@@ -106,6 +106,7 @@
   "template_editor.usages_many": "{total} cards use \"{name}\" on this dashboard. Cards on other dashboards are not counted.",
   "template_editor.impact_header": "What one card becomes",
   "template_editor.impact_hint": "The first card using this template, built with the edits above - before anything is saved.",
+  "template_editor.usages_elsewhere": "Other dashboards use this name too: {list}. Renaming or changing it here does not touch them.",
   "template_editor.used_once": "once",
   "template_editor.used_times": "{count} times",
   "template_editor.untitled_view": "Untitled view",

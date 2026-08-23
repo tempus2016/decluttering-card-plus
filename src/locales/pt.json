@@ -106,6 +106,7 @@
   "template_editor.usages_many": "{total} cartões usam \"{name}\" neste painel. Cartões noutros painéis não são contados.",
   "template_editor.impact_header": "No que um cartão se torna",
   "template_editor.impact_hint": "O primeiro cartão que usa este modelo, construído com as alterações acima - antes de gravar o que quer que seja.",
+  "template_editor.usages_elsewhere": "Outros painéis também usam este nome: {list}. Renomeá-lo ou alterá-lo aqui não lhes toca.",
   "template_editor.used_once": "uma vez",
   "template_editor.used_times": "{count} vezes",
   "template_editor.untitled_view": "Vista sem título",
