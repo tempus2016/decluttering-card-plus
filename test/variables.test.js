@@ -379,6 +379,17 @@ check('kebab is the dashed spelling of slug', applyTransform('kebab', 'Living Ro
 
 check('a chain of one is still just that transform', applyTransform('title', 'living ROOM'), 'Living Room');
 
+check('trim takes the whitespace off the ends', applyTransform('trim', '  back door  '), 'back door');
+check('trim leaves the middle alone', applyTransform('trim', ' two  words '), 'two  words');
+check(
+  'capitalize raises the first letter only, where title raises every word',
+  applyTransform('capitalize', 'back door is open'),
+  'Back door is open',
+);
+check('capitalize leaves the rest of the casing as it was', applyTransform('capitalize', 'back DOOR'), 'Back DOOR');
+check('capitalize on nothing is still nothing', applyTransform('capitalize', ''), '');
+check('trim and capitalize chain left to right', applyTransform('trim|capitalize', '  back door  '), 'Back door');
+
 check('no transform leaves the value as its text', applyTransform(undefined, 42), '42');
 
 /* --------------------------------------------------------- escaped placeholders */
