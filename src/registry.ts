@@ -127,7 +127,7 @@ function byName(a: Record<string, any>, b: Record<string, any>): number {
   return shown(a).localeCompare(shown(b)) || id(a).localeCompare(id(b));
 }
 
-/** What each `sort:` orders by. Anything else is not an order, and is ignored. */
+/** What each `sort:` orders by. Any other name is read as a key on the items themselves. */
 const SORTS: Record<string, (item: Record<string, any>) => string> = {
   name: (item) => String(item.name ?? item.area ?? ''),
   entity: (item) => String(item.entity ?? item.area_id ?? ''),
@@ -143,15 +143,25 @@ const SORTS: Record<string, (item: Record<string, any>) => string> = {
  * rather than "8 of 8".
  */
 function ordered(items: Record<string, any>[], source: RegistrySource): Record<string, any>[] {
-  const key = typeof source.sort === 'string' ? SORTS[source.sort] : undefined;
-  // `sort: none` - or anything unrecognised - keeps the registry's own order, which is
-  // the only way to ask for "however Home Assistant listed them".
+  const name = typeof source.sort === 'string' && source.sort ? source.sort : undefined;
+  const known = name ? SORTS[name] : undefined;
+  // `sort: none` keeps the registry's own order, which is the only way to ask for
+  // "however Home Assistant listed them". Any other name outside SORTS is read as a key
+  // on each item - `sort: area_id`, or `sort: entity_count` on a grouped repeat - and
+  // compared numerically as well as alphabetically, since what items carry is as often a
+  // count as a word. An item without the key sorts as empty, ahead of everything.
+  const carried =
+    name && name !== 'none' && !known ? (item: Record<string, any>): string => String(item[name] ?? '') : undefined;
   const sorted =
     source.sort === undefined
       ? [...items].sort(byName)
-      : key
-        ? [...items].sort((a, b) => key(a).localeCompare(key(b)) || byName(a, b))
-        : [...items];
+      : known
+        ? [...items].sort((a, b) => known(a).localeCompare(known(b)) || byName(a, b))
+        : carried
+          ? [...items].sort(
+              (a, b) => carried(a).localeCompare(carried(b), undefined, { numeric: true }) || byName(a, b),
+            )
+          : [...items];
   if (source.reverse) sorted.reverse();
 
   const total = sorted.length;
