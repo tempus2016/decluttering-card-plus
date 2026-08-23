@@ -139,7 +139,13 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
     return entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
   },
   device_id: (entityId, hass) => hass?.entities?.[entityId]?.device_id,
+  // The two halves of the entity id itself, no registry needed. A value not shaped like
+  // an entity id has no halves to give, so the placeholder stays visible.
+  domain: (entityId) => ENTITY_ID_SHAPE.exec(entityId)?.[1],
+  object_id: (entityId) => ENTITY_ID_SHAPE.exec(entityId)?.[2],
 };
+
+const ENTITY_ID_SHAPE = /^([a-z0-9_]+)\.([a-z0-9_]+)$/i;
 
 /*
  * A value can stand in for another when there is nothing to show. `default:` supplies the
