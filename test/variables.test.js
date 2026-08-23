@@ -397,6 +397,13 @@ check(
   'room unnamed',
 );
 
+check('max cuts a long value and shows that it did', applyTransform('max:10', 'Kitchen temperature'), 'Kitchen t…');
+check('what max keeps is never longer than asked', applyTransform('max:10', 'Kitchen temperature').length, 10);
+check('max leaves a short value alone', applyTransform('max:10', 'Kitchen'), 'Kitchen');
+check('max of exactly the length changes nothing', applyTransform('max:7', 'Kitchen'), 'Kitchen');
+check('max with a length that is not a number changes nothing', applyTransform('max:lots', 'Kitchen'), 'Kitchen');
+check('max of nothing is still nothing', applyTransform('max:5', ''), '');
+
 check('trim takes the whitespace off the ends', applyTransform('trim', '  back door  '), 'back door');
 check('trim leaves the middle alone', applyTransform('trim', ' two  words '), 'two  words');
 check(
