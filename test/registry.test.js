@@ -166,6 +166,40 @@ check(
   1,
 );
 
+/* ----------------------------------------------------------------- overrides */
+
+check(
+  'an override gives one copy different variables without excluding it',
+  resolveRegistryItems(hass, {
+    domain: 'light',
+    overrides: { 'light.bedside': { icon: 'mdi:bed', name: 'Reading light' } },
+  }).map((i) => [i.entity, i.name, i.icon]),
+  [
+    ['light.kitchen_ceiling', 'Ceiling', undefined],
+    ['light.bedside', 'Reading light', 'mdi:bed'],
+  ],
+);
+
+check(
+  'an override key is a pattern, like everything else here',
+  resolveRegistryItems(hass, { domain: 'light', overrides: { 'light.*': { row: 'compact' } } }).map((i) => i.row),
+  ['compact', 'compact'],
+);
+
+check(
+  'an override that renames also re-sorts, since the shown order is by name',
+  resolveRegistryItems(hass, { domain: 'light', overrides: { 'light.kitchen_ceiling': { name: 'A ceiling' } } }).map(
+    (i) => i.entity,
+  ),
+  ['light.kitchen_ceiling', 'light.bedside'],
+);
+
+check(
+  'an area copy is overridden by its area id',
+  resolveRegistryItems(hass, { areas: true, overrides: { bedroom: { icon: 'mdi:sleep' } } }).map((i) => i.icon),
+  ['mdi:sleep', undefined],
+);
+
 /* ----------------------------------------------------------------- area sources */
 
 check('every area, sorted by name', ids(resolveRegistryItems(hass, { areas: true })), ['bedroom', 'kitchen']);
