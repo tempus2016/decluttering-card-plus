@@ -527,6 +527,37 @@ check(
   undefined,
 );
 
+check(
+  'domain is the first half of the entity id, no registry needed',
+  applyTransform('domain', 'light.hall', houseHass),
+  'light',
+);
+check(
+  'object_id is the second half of the entity id',
+  applyTransform('object_id', 'light.hall', houseHass),
+  'hall',
+);
+check(
+  'object_id chains into a transform',
+  applyTransform('object_id|upper', 'light.hall', houseHass),
+  'HALL',
+);
+check(
+  'domain works without hass, since it only splits the id',
+  applyTransform('domain', 'light.hall', undefined),
+  'light',
+);
+check(
+  'domain of something not shaped like an entity id resolves to nothing',
+  applyTransform('domain', 'Living Room', houseHass),
+  undefined,
+);
+check(
+  'object_id of a bare word resolves to nothing',
+  applyTransform('object_id', 'lights', houseHass),
+  undefined,
+);
+
 check('a resolver is recognised as one', [isResolver('friendly_name'), isResolver('attr:x')], [true, true]);
 check('a transform is not', [isResolver('slug'), isResolver('bogus')], [false, false]);
 
