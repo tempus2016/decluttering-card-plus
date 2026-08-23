@@ -66,6 +66,8 @@
   "editor.unused_many": "Estas variables están definidas aquí pero la plantilla nunca las usa: {names}.",
   "editor.invalid_value": "El valor de {name} no es uno que la plantilla acepte. Espera: {expected}.",
   "editor.card_variable_clear": "Elegir otra tarjeta",
+  "editor.eject": "Sustituir esta tarjeta por lo que construye",
+  "editor.eject_confirm": "Pulsa otra vez para sustituirla; la plantilla dejará de aplicarse",
 
   "template_editor.tab_settings": "Ajustes",
   "template_editor.tab_card": "Tarjeta",

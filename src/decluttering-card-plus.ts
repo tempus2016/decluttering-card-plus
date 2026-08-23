@@ -1043,6 +1043,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
   private _templates?: Record<string, TemplateConfig>;
   @state() private _loadingTemplates = false;
+  @state() private _ejectPending = false;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private _schema: any;
 
@@ -1243,9 +1244,32 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         <div class="result">
           <p class="hint">${hintBefore}<code>[[name]]</code>${hintAfter}</p>
           <ha-yaml-editor .hass=${this.hass} .defaultValue=${resolved} read-only></ha-yaml-editor>
+          ${
+            /*
+             * Leaving should be as clean as arriving: the card becomes exactly what it
+             * builds, and the template is out of its life. Only for a single copy - a
+             * repeat ejecting to a pile of cards is the template earning its keep.
+             */
+            !items?.length && !isRegistrySource(this._config.for_each_from) && resolved && typeof resolved === 'object'
+              ? html`
+                  <mwc-button @click=${(): void => this._eject(resolved)}>
+                    ${localize(this._ejectPending ? 'editor.eject_confirm' : 'editor.eject', undefined, this.hass)}
+                  </mwc-button>
+                `
+              : html``
+          }
         </div>
       </ha-expansion-panel>
     `;
+  }
+
+  private _eject(resolved: unknown): void {
+    if (!this._ejectPending) {
+      this._ejectPending = true;
+      return;
+    }
+    this._ejectPending = false;
+    fireEvent(this, 'config-changed', { config: resolved as Record<string, unknown> });
   }
 
   /*

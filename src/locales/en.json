@@ -66,6 +66,8 @@
   "editor.unused_many": "These variables are set here but never used by the template: {names}.",
   "editor.invalid_value": "The value of {name} is not one the template accepts. It expects: {expected}.",
   "editor.card_variable_clear": "Choose a different card",
+  "editor.eject": "Replace this card with what it builds",
+  "editor.eject_confirm": "Press again to replace it - the template will no longer apply",
 
   "template_editor.tab_settings": "Settings",
   "template_editor.tab_card": "Card",

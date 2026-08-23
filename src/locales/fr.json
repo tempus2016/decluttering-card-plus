@@ -66,6 +66,8 @@
   "editor.unused_many": "Ces variables sont définies ici mais le modèle ne les utilise jamais : {names}.",
   "editor.invalid_value": "La valeur de {name} n'est pas une valeur que le modèle accepte. Il attend : {expected}.",
   "editor.card_variable_clear": "Choisir une autre carte",
+  "editor.eject": "Remplacer cette carte par ce qu’elle construit",
+  "editor.eject_confirm": "Appuyez à nouveau pour la remplacer - le modèle ne s’appliquera plus",
 
   "template_editor.tab_settings": "Réglages",
   "template_editor.tab_card": "Carte",
