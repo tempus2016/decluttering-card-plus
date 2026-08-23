@@ -833,6 +833,18 @@ collectAllTemplates(hass, borrower).then((all) => {
   check('a template nothing uses is found', HEALTH.unusedTemplates, ['never_used']);
 
   check(
+    'a template another one extends is not unused',
+    checkDashboard({
+      decluttering_templates: {
+        base: { card: { type: 'tile' } },
+        child: { extends: 'base', card: { name: 'x' } },
+      },
+      views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'child' }] }],
+    }).unusedTemplates,
+    [],
+  );
+
+  check(
     'a healthy dashboard reports nothing at all',
     checkDashboard({
       decluttering_templates: { tile: { card: { entity: '[[entity]]' } } },

@@ -101,8 +101,18 @@ export function checkDashboard(ll: LovelaceConfig | null | undefined): {
     unsetVariables: [...unset.entries()]
       .sort()
       .map(([template, entry]) => ({ template, names: [...entry.names].sort(), count: entry.count })),
-    unusedTemplates: available.filter((name) => totalUsages(ll, name) === 0).sort(),
+    unusedTemplates: available.filter((name) => totalUsages(ll, name) === 0 && !extendedNames(ll).has(name)).sort(),
   };
+}
+
+/** The templates other templates build on. Being somebody's parent is a use. */
+function extendedNames(ll: LovelaceConfig | null | undefined): Set<string> {
+  const parents = new Set<string>();
+  for (const template of Object.values(collectRawTemplates(ll))) {
+    const parent = (template as any)?.extends;
+    if (typeof parent === 'string') parents.add(parent);
+  }
+  return parents;
 }
 
 /*
