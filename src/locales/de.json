@@ -64,6 +64,7 @@
   "editor.optional_many": "Diese Vorlage verwendet Variablen ohne Wert und ohne Standard: {names}.",
   "editor.unused_one": "Diese Variable ist hier gesetzt, wird von der Vorlage aber nie verwendet: {names}.",
   "editor.unused_many": "Diese Variablen sind hier gesetzt, werden von der Vorlage aber nie verwendet: {names}.",
+  "editor.invalid_value": "Der Wert von {name} ist keiner, den die Vorlage akzeptiert. Sie erwartet: {expected}.",
 
   "template_editor.tab_settings": "Einstellungen",
   "template_editor.tab_card": "Karte",

@@ -13,6 +13,10 @@ export interface VariableDeclaration {
   default?: any;
   /** Whether the template is unusable without it. Warns; it never blocks a save. */
   required?: boolean;
+  /** A regular expression the value must match. Warns; it never blocks a save. */
+  pattern?: string;
+  /** The values this variable can take. Warns; it never blocks a save. */
+  allowed?: unknown[];
 }
 
 const PLACEHOLDER_SOURCE = '\\[\\[([^[\\]]+)\\]\\]';
@@ -573,6 +577,40 @@ export function hasRequiredVariables(
 }
 
 /** Every variable the template itself uses, before any instance passes anything in. */
+/**
+ * The values that break their own declaration: a `pattern:` they do not match, or an
+ * `allowed:` list they are not in. Unset is not invalid - that is what `missing` is for -
+ * and a pattern that is not a regular expression validates nothing rather than breaking
+ * the card. Warnings only, like everything else here: nothing blocks a save.
+ */
+export function validateDeclared(
+  variables: VariablesConfig[] | VariablesConfig | undefined,
+  template: TemplateConfig | undefined,
+): { name: string; expected: string }[] {
+  const values = variableValues(resolveVariables(variables, template));
+  const bad: { name: string; expected: string }[] = [];
+  for (const declaration of getDeclarations(template)) {
+    const value = values[declaration.name];
+    if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(declaration.allowed)) {
+      if (!declaration.allowed.some((each) => each === value)) {
+        bad.push({ name: declaration.name, expected: declaration.allowed.map((each) => String(each)).join(', ') });
+      }
+      continue;
+    }
+    if (typeof declaration.pattern === 'string' && declaration.pattern) {
+      let expression: RegExp;
+      try {
+        expression = new RegExp(declaration.pattern);
+      } catch {
+        continue;
+      }
+      if (!expression.test(String(value))) bad.push({ name: declaration.name, expected: declaration.pattern });
+    }
+  }
+  return bad;
+}
+
 export function usedVariables(template: TemplateConfig | undefined): string[] {
   return reachable(template, variableValues(resolveVariables(undefined, template)));
 }

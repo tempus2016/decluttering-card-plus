@@ -64,6 +64,7 @@
   "editor.optional_many": "Esta plantilla usa variables sin valor y sin valor por defecto: {names}.",
   "editor.unused_one": "Esta variable está definida aquí pero la plantilla nunca la usa: {names}.",
   "editor.unused_many": "Estas variables están definidas aquí pero la plantilla nunca las usa: {names}.",
+  "editor.invalid_value": "El valor de {name} no es uno que la plantilla acepte. Espera: {expected}.",
 
   "template_editor.tab_settings": "Ajustes",
   "template_editor.tab_card": "Tarjeta",

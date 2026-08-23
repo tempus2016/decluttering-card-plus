@@ -53,6 +53,7 @@ function currentViewIndex(ll: Parameters<typeof viewIndexFromPath>[0]): number |
 
 import {
   diagnoseInstance,
+  validateDeclared,
   diagnoseTemplate,
   forEachItems,
   forEachNames,
@@ -1342,6 +1343,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     ];
     const repeated = supplied.map((name) => ({ [name]: null }));
     const { missing, unused, required } = diagnoseInstance(this._config?.variables, template, repeated);
+    const invalid = validateDeclared(this._config?.variables, template);
     // A template can say which of its variables it cannot do without. Those are still not
     // errors that block a save - the template may be edited next - but they are the ones
     // worth reading first, so they are separated out and coloured accordingly.
@@ -1381,6 +1383,12 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
             </ha-alert>`
           : html``
       }
+      ${invalid.map(
+        (each) =>
+          html`<ha-alert alert-type="warning">
+            ${localize('editor.invalid_value', { name: each.name, expected: each.expected }, this.hass)}
+          </ha-alert>`,
+      )}
       ${
         unused.length
           ? html`<ha-alert alert-type="info">
