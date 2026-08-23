@@ -253,6 +253,69 @@ check(
   [],
 );
 
+/* ---------------------------------------------------------------- extends */
+
+const FAMILY = {
+  decluttering_templates: {
+    base_tile: {
+      variables: [{ name: 'entity', selector: { entity: {} } }, { name: 'icon' }],
+      default: [{ colour: 'blue' }],
+      card: { type: 'tile', entity: '[[entity]]', features: [{ type: 'toggle' }] },
+    },
+    dim_tile: {
+      extends: 'base_tile',
+      variables: [{ name: 'entity', default: 'light.dim' }, { name: 'level' }],
+      default: [{ colour: 'grey' }],
+      card: { color: 'grey' },
+    },
+    dimmer_tile: { extends: 'dim_tile', card: { name: 'Dimmer' } },
+    orphan: { extends: 'nowhere', card: { type: 'button' } },
+  },
+};
+
+check('a child template deep-merges its content over its parent', collectTemplates(FAMILY).dim_tile.card, {
+  type: 'tile',
+  entity: '[[entity]]',
+  features: [{ type: 'toggle' }],
+  color: 'grey',
+});
+
+check(
+  'declarations merge by name, the child having the last word in place',
+  collectTemplates(FAMILY).dim_tile.variables,
+  [{ name: 'entity', default: 'light.dim' }, { name: 'icon' }, { name: 'level' }],
+);
+
+check('a child default beats the parent default of the same name', collectTemplates(FAMILY).dim_tile.default, [
+  { colour: 'grey' },
+  { colour: 'blue' },
+]);
+
+check('extends chains, grandchild through child to parent', collectTemplates(FAMILY).dimmer_tile.card, {
+  type: 'tile',
+  entity: '[[entity]]',
+  features: [{ type: 'toggle' }],
+  color: 'grey',
+  name: 'Dimmer',
+});
+
+check('the extends key is gone once it has been honoured', 'extends' in collectTemplates(FAMILY).dim_tile, false);
+
+check('a parent nobody defines leaves the child as written, extends still on it', collectTemplates(FAMILY).orphan, {
+  extends: 'nowhere',
+  card: { type: 'button' },
+});
+
+check(
+  'two templates extending each other do not hang',
+  Object.keys(
+    collectTemplates({
+      decluttering_templates: { a: { extends: 'b', card: { x: 1 } }, b: { extends: 'a', card: { y: 2 } } },
+    }),
+  ).length,
+  2,
+);
+
 /* --- collectUsages --- */
 
 const USED_IN = {

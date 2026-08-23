@@ -46,6 +46,74 @@ function collectFromNode(node: any, templates: Record<string, TemplateConfig>): 
   for (const value of Object.values(node)) collectFromNode(value, templates);
 }
 
+/* ------------------------------------------------------------------ extends */
+
+const TEMPLATE_CONTENT_KEYS = ['card', 'badge', 'row', 'element'] as const;
+
+/** Child over parent: mappings merge key by key, lists and scalars are the child's. */
+function deepMergeConfig(parent: any, child: any): any {
+  if (parent === undefined) return child;
+  if (child === undefined) return parent;
+  const mergeable = (value: any): boolean => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!mergeable(parent) || !mergeable(child)) return child;
+  const out: any = { ...parent };
+  for (const [key, value] of Object.entries(child)) out[key] = deepMergeConfig(parent[key], value);
+  return out;
+}
+
+/** Parent order kept, a child declaration of the same name replacing in place, new ones after. */
+function mergeDeclarations(parent: any, child: any): any[] {
+  const parentList: any[] = Array.isArray(parent) ? parent : [];
+  const childList: any[] = Array.isArray(child) ? child : [];
+  const byName = new Map(childList.filter((entry) => entry?.name).map((entry) => [entry.name, entry]));
+  const merged = parentList.map((entry) => (entry?.name && byName.has(entry.name) ? byName.get(entry.name) : entry));
+  const parentNames = new Set(parentList.map((entry) => entry?.name));
+  return [...merged, ...childList.filter((entry) => !parentNames.has(entry?.name))];
+}
+
+function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): TemplateConfig {
+  const merged: any = { ...parent, ...child };
+  for (const key of TEMPLATE_CONTENT_KEYS) {
+    const combined = deepMergeConfig((parent as any)[key], (child as any)[key]);
+    if (combined !== undefined) merged[key] = combined;
+  }
+  const variables = mergeDeclarations((parent as any).variables, (child as any).variables);
+  if (variables.length) merged.variables = variables;
+  // The child comes first in both lists, which is what makes its values win downstream.
+  const defaults = [...normaliseVariables(child.default), ...normaliseVariables(parent.default)];
+  if (defaults.length) merged.default = defaults;
+  const lets = [...normaliseVariables(child.let), ...normaliseVariables(parent.let)];
+  if (lets.length) merged.let = lets;
+  return merged as TemplateConfig;
+}
+
+/*
+ * `extends:` folds a parent template underneath a child, so a family of templates can
+ * differ by one line. A parent nobody defines leaves the child as written, extends key
+ * and all, so a later pass over more dashboards can still honour it - and a pair that
+ * extend each other terminates by merging whichever the walk reached first as it stood.
+ */
+function resolveExtends(templates: Record<string, TemplateConfig>): Record<string, TemplateConfig> {
+  const out = { ...templates };
+  const walking = new Set<string>();
+  const resolve = (name: string): TemplateConfig => {
+    const template = out[name];
+    const parentName = (template as any)?.extends;
+    if (typeof parentName !== 'string' || walking.has(name)) return template;
+    walking.add(name);
+    const parent = out[parentName] !== undefined ? resolve(parentName) : undefined;
+    walking.delete(name);
+    if (parent === undefined) return template;
+    const child: any = { ...(template as any) };
+    delete child.extends;
+    const merged = mergeTemplates(parent, child);
+    out[name] = merged;
+    return merged;
+  };
+  for (const name of Object.keys(out)) resolve(name);
+  return out;
+}
+
 /** The values this dashboard offers every template, as a flat list of one name each. */
 export function collectDefaults(ll: LovelaceConfig | null | undefined): VariablesConfig[] {
   return normaliseVariables((ll as any)?.[DEFAULTS_KEY]);
@@ -108,7 +176,7 @@ function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<stri
  * what a card on this dashboard is rendered from.
  */
 export function collectTemplates(ll: LovelaceConfig | null | undefined, view?: number): Record<string, TemplateConfig> {
-  const templates = collectRawTemplates(ll);
+  const templates = resolveExtends(collectRawTemplates(ll));
   const shared = [...collectViewDefaults(ll, view), ...collectDefaults(ll)];
   if (!shared.length) return templates;
 
@@ -232,7 +300,7 @@ export async function collectAllTemplates(
       borrowed[name] = withDefaults(template, shared);
     }
   }
-  return { ...borrowed, ...local };
+  return resolveExtends({ ...borrowed, ...local });
 }
 
 /** A single template from this dashboard, without going to the network. */
