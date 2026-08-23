@@ -21,6 +21,18 @@ check('default values', deepReplace(undefined, { default: [{ entity: 'sun.sun' }
   entity: 'sun.sun',
 });
 
+check(
+  'the optional marker after a transform argument is the marker, not part of the argument',
+  deepReplace([{ who: 'Smith' }], {}, { name: '[[who|prefix:Mr ?]]' }),
+  { name: 'Mr Smith' },
+);
+
+check(
+  'and unset it still drops the key, transforms and all',
+  deepReplace(undefined, {}, { name: '[[who|prefix:Mr ?]]' }),
+  {},
+);
+
 /* --------------------------------------------------- template-local variables */
 
 check(
