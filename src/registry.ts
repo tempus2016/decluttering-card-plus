@@ -39,6 +39,8 @@ export interface RegistrySource {
   range?: number;
   /** Skip a copy when any of these keys came out empty - entities in no area, say. */
   require?: string | string[];
+  /** Extra or different variables for particular copies, keyed by entity or area pattern. */
+  overrides?: Record<string, Record<string, any>>;
   /** For an area source: the entities to gather for each area. */
   with?: RegistrySource & { keep_empty?: boolean };
 }
@@ -167,6 +169,24 @@ const SORTS: Record<string, (item: Record<string, any>) => string> = {
  * rather than "8 of 8".
  */
 function ordered(items: Record<string, any>[], source: RegistrySource, hass?: any): Record<string, any>[] {
+  /*
+   * `overrides:` gives particular copies different variables - a special icon for one
+   * light - without the exclude-and-rewrite dance. Applied before anything else looks at
+   * the items, so a renamed copy sorts under its new name and `require:` sees the
+   * overridden values. Keys are patterns, and every matching one applies in turn.
+   */
+  const overrides = source.overrides && typeof source.overrides === 'object' ? source.overrides : undefined;
+  if (overrides) {
+    items = items.map((item) => {
+      let merged = item;
+      for (const [pattern, extra] of Object.entries(overrides)) {
+        if (!extra || typeof extra !== 'object' || Array.isArray(extra)) continue;
+        if (matches(item.entity ?? item.area_id, [pattern])) merged = { ...merged, ...extra };
+      }
+      return merged;
+    });
+  }
+
   // `require:` drops a copy whose key came out empty - an entity in no area, an area on
   // no floor - before anything is counted, so `total` says what is actually shown.
   const wanted = asList(source.require) ?? [];
