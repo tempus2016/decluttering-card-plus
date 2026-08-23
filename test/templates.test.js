@@ -21,6 +21,7 @@ const {
   viewIndexFromPath,
   expandSources,
   templatePickerLabel,
+  addTemplateToRoot,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -329,6 +330,18 @@ check(
   'no category reads as before',
   [templatePickerLabel('plain', { card: {} }), templatePickerLabel('desc', { description: 'Words', card: {} })],
   ['plain', 'desc — Words'],
+);
+
+check(
+  'a template lands in decluttering_templates without touching anything else',
+  addTemplateToRoot({ views: [{ title: 'Home' }] }, 'room_tile', { card: { type: 'tile' } }),
+  { views: [{ title: 'Home' }], decluttering_templates: { room_tile: { card: { type: 'tile' } } } },
+);
+
+check(
+  'installing at the root keeps the templates already there',
+  addTemplateToRoot({ decluttering_templates: { kept: { card: {} } } }, 'added', { card: {} }).decluttering_templates,
+  { kept: { card: {} }, added: { card: {} } },
 );
 
 /* --- collectUsages --- */

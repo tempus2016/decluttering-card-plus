@@ -38,6 +38,7 @@ import {
   TemplateUsages,
   viewIndexFromPath,
   templatePickerLabel,
+  addTemplateToRoot,
 } from './templates';
 
 /*
@@ -1637,6 +1638,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _modernisePending = false;
   @state() private _installPending?: string;
   @state() private _librarySelected?: string;
+  @state() private _libraryDestination: 'view' | 'root' = 'view';
 
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
@@ -2239,6 +2241,30 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                       </p>`
                     : html``
                 }
+                <ha-expansion-panel outlined>
+                  <span slot="header">${localize('share.library_preview', undefined, this.hass)}</span>
+                  <ha-yaml-editor .hass=${this.hass} .defaultValue=${entry.template} read-only></ha-yaml-editor>
+                </ha-expansion-panel>
+                <ha-form
+                  .hass=${this.hass}
+                  .data=${{ where: this._libraryDestination }}
+                  .schema=${[
+                    {
+                      name: 'where',
+                      selector: {
+                        select: {
+                          mode: 'dropdown',
+                          options: [
+                            { value: 'view', label: localize('share.library_where_view', undefined, this.hass) },
+                            { value: 'root', label: localize('share.library_where_root', undefined, this.hass) },
+                          ],
+                        },
+                      },
+                    },
+                  ]}
+                  .computeLabel=${(): string => localize('share.library_where', undefined, this.hass)}
+                  @value-changed=${this._libraryDestinationPicked}
+                ></ha-form>
                 <mwc-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
                   ${localize(
                     already ? 'share.already_here' : armed ? 'share.install_anyway' : 'share.install',
@@ -2251,6 +2277,12 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         }
       </div>
     `;
+  }
+
+  private _libraryDestinationPicked(ev: CustomEvent): void {
+    ev.stopPropagation();
+    const where = (ev.detail.value as { where?: string }).where;
+    this._libraryDestination = where === 'root' ? 'root' : 'view';
   }
 
   private _libraryPicked(ev: CustomEvent): void {
@@ -2281,7 +2313,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     const saved = await this._saveDashboard((config) =>
       wanted.reduce((built, each) => {
         const one = libraryEntry(each);
-        return one ? addCardToView(built, view, { type: TEMPLATE_TYPE, template: one.name, ...one.template }) : built;
+        if (!one) return built;
+        // Where it lands is the user's choice: a template card on this view, which is
+        // visible and editable in place, or the dashboard's decluttering_templates block,
+        // which keeps the view clean.
+        return this._libraryDestination === 'root'
+          ? addTemplateToRoot(built, one.name, one.template as TemplateConfig)
+          : addCardToView(built, view, { type: TEMPLATE_TYPE, template: one.name, ...one.template });
       }, config),
     );
     if (saved) this._installPending = undefined;

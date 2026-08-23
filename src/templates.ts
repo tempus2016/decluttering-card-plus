@@ -46,6 +46,11 @@ function collectFromNode(node: any, templates: Record<string, TemplateConfig>): 
   for (const value of Object.values(node)) collectFromNode(value, templates);
 }
 
+/** The dashboard with one more template under `decluttering_templates`, nothing else touched. */
+export function addTemplateToRoot(ll: any, name: string, template: TemplateConfig): any {
+  return { ...ll, decluttering_templates: { ...(ll?.decluttering_templates ?? {}), [name]: template } };
+}
+
 /**
  * What the template picker shows for one template. A `category:` groups a big collection:
  * it leads the label, so alphabetical sorting brings a category's templates together.
