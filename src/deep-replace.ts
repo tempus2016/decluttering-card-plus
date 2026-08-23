@@ -9,6 +9,7 @@ import {
   variableValues,
   withoutOptional,
   isOptional,
+  OPTIONAL,
   OPTIONAL_SUFFIX,
   hasEscape,
   PLACEHOLDER,
@@ -136,7 +137,17 @@ function substitutePass(
     const emptyOptional = (optional?: string): boolean =>
       !!optional && (value === undefined || value === null || value === '');
 
-    json = json.replace(wholeValue, (match: string, transform?: string, optional?: string) => {
+    /*
+     * A transform argument runs to the closing brackets, so it swallows a trailing `?`
+     * that was meant as the optional marker - and the pruning pass reads that `?` as the
+     * marker regardless. One reading has to win, and it is the marker's: `?` against the
+     * brackets means optional, everywhere.
+     */
+    const marked = (transform?: string, optional?: string): [string | undefined, string | undefined] =>
+      !optional && transform?.endsWith(OPTIONAL) ? [transform.slice(0, -1), OPTIONAL] : [transform, optional];
+
+    json = json.replace(wholeValue, (match: string, rawTransform?: string, rawOptional?: string) => {
+      const [transform, optional] = marked(rawTransform, rawOptional);
       if (emptyOptional(optional)) return match;
       return transform
         ? transformable(transform)
@@ -144,7 +155,8 @@ function substitutePass(
           : refuse(match, transform)
         : asWholeValue(value, match);
     });
-    json = json.replace(withinString, (match: string, transform?: string, optional?: string) => {
+    json = json.replace(withinString, (match: string, rawTransform?: string, rawOptional?: string) => {
+      const [transform, optional] = marked(rawTransform, rawOptional);
       if (emptyOptional(optional)) return match;
       return transform
         ? transformable(transform)

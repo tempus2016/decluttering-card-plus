@@ -22,6 +22,18 @@ check('default values', deepReplace(undefined, { default: [{ entity: 'sun.sun' }
 });
 
 check(
+  'the optional marker after a transform argument is the marker, not part of the argument',
+  deepReplace([{ who: 'Smith' }], {}, { name: '[[who|prefix:Mr ?]]' }),
+  { name: 'Mr Smith' },
+);
+
+check(
+  'and unset it still drops the key, transforms and all',
+  deepReplace(undefined, {}, { name: '[[who|prefix:Mr ?]]' }),
+  {},
+);
+
+check(
   'passed value beats default',
   deepReplace([{ entity: 'person.john' }], { default: [{ entity: 'sun.sun' }] }, { entity: '[[entity]]' }),
   { entity: 'person.john' },
