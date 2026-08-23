@@ -207,7 +207,33 @@ function resolve(step: string, entityId: string, hass: any): string | undefined 
  * one word that is not a transform matches nothing, so the placeholder stays visible
  * rather than being half-applied.
  */
-const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES}|${OR_STEP}|${DEFAULT_STEP})`;
+/*
+ * Transforms that take an argument, written after a colon like `attr:` does. The argument
+ * runs to the end of the step, so it can hold spaces and colons of its own - `replace:_: `
+ * reads as "underscores to spaces" - but never a bar or a closing bracket.
+ */
+export const PARAM_TRANSFORMS: Record<string, (value: string, arg: string) => string | undefined> = {
+  replace: (value, arg) => {
+    const colon = arg.indexOf(':');
+    const from = colon === -1 ? arg : arg.slice(0, colon);
+    const to = colon === -1 ? '' : arg.slice(colon + 1);
+    return from ? value.split(from).join(to) : value;
+  },
+};
+
+const PARAM_PREFIXES = Object.keys(PARAM_TRANSFORMS);
+
+const PARAM_STEP = `(?:${PARAM_PREFIXES.join('|')}):[^|\\]]*`;
+
+/** The parameterised transform a step asks for, or undefined when it is not one. */
+function paramTransform(step: string): { fn: (value: string, arg: string) => string | undefined; arg: string } | undefined {
+  const colon = step.indexOf(':');
+  if (colon === -1) return undefined;
+  const fn = PARAM_TRANSFORMS[step.slice(0, colon)];
+  return fn ? { fn, arg: step.slice(colon + 1) } : undefined;
+}
+
+const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES}|${OR_STEP}|${DEFAULT_STEP}|${PARAM_STEP})`;
 
 const TRANSFORM_CHAIN = `${CHAIN_STEP}(?:\\|${CHAIN_STEP})*`;
 
@@ -265,6 +291,13 @@ export function applyTransform(
       // A resolver reads the value as an entity id, so it has to run before anything has
       // reshaped it - `[[entity|friendly_name|slug]]` resolves, then slugs.
       text = resolve(name, text, hass);
+      empty = text === undefined || text === '';
+      continue;
+    }
+
+    const parameterised = paramTransform(name);
+    if (parameterised) {
+      text = parameterised.fn(text, parameterised.arg);
       empty = text === undefined || text === '';
       continue;
     }
