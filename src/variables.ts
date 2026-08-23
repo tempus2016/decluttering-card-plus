@@ -230,6 +230,21 @@ export const PARAM_TRANSFORMS: Record<string, (value: string, arg: string) => st
     if (!Number.isFinite(length) || length <= 0 || value.length <= length) return value;
     return `${value.slice(0, length - 1)}…`;
   },
+  // `map:low=green,high=red` looks the value up. A value no pair names leaves the
+  // placeholder visible rather than passing through as something a colour option would
+  // choke on; `*=grey` is the way to say "and anything else".
+  map: (value, arg) => {
+    let fallback: string | undefined;
+    for (const pair of arg.split(',')) {
+      const equals = pair.indexOf('=');
+      if (equals === -1) continue;
+      const from = pair.slice(0, equals);
+      const to = pair.slice(equals + 1);
+      if (from === value) return to;
+      if (from === '*') fallback = to;
+    }
+    return fallback;
+  },
 };
 
 const PARAM_PREFIXES = Object.keys(PARAM_TRANSFORMS);
