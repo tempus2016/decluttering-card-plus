@@ -205,7 +205,7 @@ function ordered(items: Record<string, any>[], source: RegistrySource, hass?: an
     .map((raw) => {
       const descending = raw.startsWith('-');
       const key = descending ? raw.slice(1) : raw;
-      const known = SORTS[key];
+      const known = key in SORTS ? SORTS[key] : undefined;
       // `attr:temperature` reads the state's attribute as it is right now. A build-time
       // snapshot on purpose: the order will not follow the value, and the docs say so.
       const read =
@@ -512,7 +512,10 @@ export function resolveRegistryItems(hass: any, source: any): Record<string, any
 /** Whether the copies are entities, rather than areas, devices, floors or labels. */
 function isEntitySource(source: RegistrySource): boolean {
   return (
-    source.areas === undefined && source.devices === undefined && source.floors === undefined && source.labels === undefined
+    source.areas === undefined &&
+    source.devices === undefined &&
+    source.floors === undefined &&
+    source.labels === undefined
   );
 }
 

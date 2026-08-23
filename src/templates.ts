@@ -51,6 +51,28 @@ export function collectDefaults(ll: LovelaceConfig | null | undefined): Variable
   return normaliseVariables((ll as any)?.[DEFAULTS_KEY]);
 }
 
+/** The values one view offers the cards rendered in it, ahead of the dashboard-wide ones. */
+function collectViewDefaults(ll: LovelaceConfig | null | undefined, view: number | undefined): VariablesConfig[] {
+  if (view === undefined) return [];
+  return normaliseVariables(((ll as any)?.views?.[view] as any)?.[DEFAULTS_KEY]);
+}
+
+/**
+ * Which view a path segment names: its `path` first, its position as a number second, and
+ * the first view when the segment names nothing - which is also the view Home Assistant
+ * itself shows for a URL that stops at the dashboard.
+ */
+export function viewIndexFromPath(ll: LovelaceConfig | null | undefined, segment: string | undefined): number {
+  const views: any[] = (ll as any)?.views ?? [];
+  if (segment) {
+    const byPath = views.findIndex((view) => view?.path === segment);
+    if (byPath !== -1) return byPath;
+    const numeric = Number(segment);
+    if (Number.isInteger(numeric) && numeric >= 0 && numeric < views.length) return numeric;
+  }
+  return 0;
+}
+
 /*
  * A template's own `default:` list with the dashboard's shared values added underneath it,
  * which is where they belong: resolution takes the first definition of a name it finds, so
@@ -85,9 +107,9 @@ function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<stri
  * The same, with the dashboard's own shared values put underneath each template - which is
  * what a card on this dashboard is rendered from.
  */
-export function collectTemplates(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
+export function collectTemplates(ll: LovelaceConfig | null | undefined, view?: number): Record<string, TemplateConfig> {
   const templates = collectRawTemplates(ll);
-  const shared = collectDefaults(ll);
+  const shared = [...collectViewDefaults(ll, view), ...collectDefaults(ll)];
   if (!shared.length) return templates;
 
   const out: Record<string, TemplateConfig> = {};
@@ -157,13 +179,14 @@ function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<Lov
 export async function collectAllTemplates(
   hass: HomeAssistant | undefined,
   ll: LovelaceConfig | null | undefined,
+  view?: number,
 ): Promise<Record<string, TemplateConfig>> {
-  const local = collectTemplates(ll);
+  const local = collectTemplates(ll, view);
   const sources = getTemplateSources(ll);
   if (!hass || !sources.length) return local;
 
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
-  const here = collectDefaults(ll);
+  const here = [...collectViewDefaults(ll, view), ...collectDefaults(ll)];
   const borrowed: Record<string, TemplateConfig> = {};
   for (const config of configs) {
     /*
@@ -182,8 +205,12 @@ export async function collectAllTemplates(
 }
 
 /** A single template from this dashboard, without going to the network. */
-export function findTemplate(ll: LovelaceConfig | null | undefined, template: string): TemplateConfig | null {
-  return collectTemplates(ll)[template] ?? null;
+export function findTemplate(
+  ll: LovelaceConfig | null | undefined,
+  template: string,
+  view?: number,
+): TemplateConfig | null {
+  return collectTemplates(ll, view)[template] ?? null;
 }
 
 /** A single template from this dashboard or one it borrows from. */
@@ -191,8 +218,9 @@ export async function findTemplateAnywhere(
   hass: HomeAssistant | undefined,
   ll: LovelaceConfig | null | undefined,
   template: string,
+  view?: number,
 ): Promise<TemplateConfig | null> {
-  return (await collectAllTemplates(hass, ll))[template] ?? null;
+  return (await collectAllTemplates(hass, ll, view))[template] ?? null;
 }
 
 // The cards that consume a template, as opposed to the ones that define it.

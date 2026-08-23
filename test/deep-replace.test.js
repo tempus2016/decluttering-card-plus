@@ -35,7 +35,11 @@ check(
 
 check(
   'a let variable is the template internals, so a card cannot override it',
-  deepReplace([{ room_slug: 'hacked' }, { room: 'Hall' }], { let: { room_slug: '[[room|slug]]' } }, { id: '[[room_slug]]' }),
+  deepReplace(
+    [{ room_slug: 'hacked' }, { room: 'Hall' }],
+    { let: { room_slug: '[[room|slug]]' } },
+    { id: '[[room_slug]]' },
+  ),
   { id: 'hall' },
 );
 

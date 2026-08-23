@@ -36,7 +36,21 @@ import {
   getTemplateSources,
   renameTemplate,
   TemplateUsages,
+  viewIndexFromPath,
 } from './templates';
+
+/*
+ * Which view this card is being rendered in, read off the URL: the card only renders
+ * while its view is showing. Outside a dashboard URL - an editor preview, say - there is
+ * no view to speak of, and view-level defaults simply do not apply.
+ */
+function currentViewIndex(ll: Parameters<typeof viewIndexFromPath>[0]): number | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const segments = window.location.pathname.split('/').filter(Boolean);
+  if (segments.length < 1) return undefined;
+  return viewIndexFromPath(ll, segments[1]);
+}
+
 import {
   diagnoseInstance,
   diagnoseTemplate,
@@ -844,7 +858,7 @@ class DeclutteringCard extends DeclutteringElement {
      * rather than to a layout they did not ask for.
      */
     this._fitContents = config.fit === 'contents';
-    const templateConfig = findTemplate(ll, config.template);
+    const templateConfig = findTemplate(ll, config.template, currentViewIndex(ll));
     if (templateConfig) {
       this._pendingConfig = undefined;
       this._applyTemplate(templateConfig, config);
@@ -964,7 +978,7 @@ class DeclutteringCard extends DeclutteringElement {
     this._pendingConfig = undefined;
 
     const ll = getLovelaceConfig();
-    findTemplateAnywhere(hass, ll, config.template)
+    findTemplateAnywhere(hass, ll, config.template, currentViewIndex(ll))
       .then((templateConfig) => {
         if (templateConfig) {
           this._applyTemplate(templateConfig, config);

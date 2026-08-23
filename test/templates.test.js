@@ -18,6 +18,7 @@ const {
   countLegacyTypes,
   addCardToView,
   moderniseTypes,
+  viewIndexFromPath,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -26,6 +27,43 @@ check(
   'root decluttering_templates key',
   Object.keys(collectTemplates({ decluttering_templates: { a: { card: {} } } })),
   ['a'],
+);
+
+/* --------------------------------------------------------- view-level defaults */
+
+const viewDefaultsDashboard = {
+  decluttering_templates: { tile: { card: {}, default: [{ own: 'mine' }] } },
+  decluttering_defaults: { colour: 'amber', size: 'small' },
+  views: [{ title: 'Plain' }, { title: 'Dark', decluttering_defaults: { colour: 'black' } }],
+};
+
+check(
+  'a view can set defaults of its own, which beat the dashboard-wide ones',
+  collectTemplates(viewDefaultsDashboard, 1).tile.default,
+  [{ own: 'mine' }, { colour: 'black' }, { colour: 'amber' }, { size: 'small' }],
+);
+
+check(
+  'a view with no defaults of its own falls straight through to the dashboard',
+  collectTemplates(viewDefaultsDashboard, 0).tile.default,
+  [{ own: 'mine' }, { colour: 'amber' }, { size: 'small' }],
+);
+
+check('no view given reads as before', collectTemplates(viewDefaultsDashboard).tile.default, [
+  { own: 'mine' },
+  { colour: 'amber' },
+  { size: 'small' },
+]);
+
+check(
+  'viewIndexFromPath matches a view by its path, then by its number, then settles on the first',
+  [
+    viewIndexFromPath({ views: [{ path: 'home' }, { path: 'garden' }] }, 'garden'),
+    viewIndexFromPath({ views: [{}, {}] }, '1'),
+    viewIndexFromPath({ views: [{ path: 'home' }] }, 'nothing-known'),
+    viewIndexFromPath({ views: [{ path: 'home' }] }, undefined),
+  ],
+  [1, 1, 0, 0],
 );
 
 check(
