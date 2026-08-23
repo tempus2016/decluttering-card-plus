@@ -166,7 +166,7 @@ const SORTS: Record<string, (item: Record<string, any>) => string> = {
  * `total` goes on every copy before the limit is applied, so a template can say "8 of 23"
  * rather than "8 of 8".
  */
-function ordered(items: Record<string, any>[], source: RegistrySource): Record<string, any>[] {
+function ordered(items: Record<string, any>[], source: RegistrySource, hass?: any): Record<string, any>[] {
   // `require:` drops a copy whose key came out empty - an entity in no area, an area on
   // no floor - before anything is counted, so `total` says what is actually shown.
   const wanted = asList(source.require) ?? [];
@@ -195,7 +195,16 @@ function ordered(items: Record<string, any>[], source: RegistrySource): Record<s
       const descending = raw.startsWith('-');
       const key = descending ? raw.slice(1) : raw;
       const known = SORTS[key];
-      const read = known ?? ((item: Record<string, any>): string => String(item[key] ?? ''));
+      // `attr:temperature` reads the state's attribute as it is right now. A build-time
+      // snapshot on purpose: the order will not follow the value, and the docs say so.
+      const read =
+        known ??
+        (key.startsWith('attr:')
+          ? (item: Record<string, any>): string => {
+              const value = hass?.states?.[item.entity]?.attributes?.[key.slice(5)];
+              return value === undefined || value === null ? '' : String(value);
+            }
+          : (item: Record<string, any>): string => String(item[key] ?? ''));
       return (a: Record<string, any>, b: Record<string, any>): number => {
         const compared = known
           ? read(a).localeCompare(read(b))
@@ -377,7 +386,7 @@ export function resolveRegistryItems(hass: any, source: any): Record<string, any
   }
 
   const items = source.areas !== undefined ? areaItems(hass, source) : entityItems(hass, source);
-  return ordered(items, source);
+  return ordered(items, source, hass);
 }
 
 /**

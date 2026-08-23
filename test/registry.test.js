@@ -375,6 +375,44 @@ check(
   ['sensor.attic_1', 'sensor.attic_0'],
 );
 
+// Three temperatures whose numeric order (3 < 19 < 21.5) disagrees with their names.
+const temperaturesHass = {
+  entities: {
+    'sensor.hall': { entity_id: 'sensor.hall' },
+    'sensor.attic': { entity_id: 'sensor.attic' },
+    'sensor.porch': { entity_id: 'sensor.porch' },
+  },
+  areas: {},
+  states: {
+    'sensor.hall': { attributes: { temperature: 21.5 } },
+    'sensor.attic': { attributes: { temperature: 19 } },
+    'sensor.porch': { attributes: { temperature: 3 } },
+  },
+};
+
+check(
+  'sort attr reads an attribute at build time, coldest first',
+  ids(resolveRegistryItems(temperaturesHass, { domain: 'sensor', sort: 'attr:temperature' })),
+  ['sensor.porch', 'sensor.attic', 'sensor.hall'],
+);
+
+check(
+  'and minus attr is warmest first',
+  ids(resolveRegistryItems(temperaturesHass, { domain: 'sensor', sort: '-attr:temperature' })),
+  ['sensor.hall', 'sensor.attic', 'sensor.porch'],
+);
+
+check(
+  'an entity without the attribute sorts ahead as empty, not on top as zero',
+  ids(
+    resolveRegistryItems(
+      { ...temperaturesHass, states: { ...temperaturesHass.states, 'sensor.hall': { attributes: {} } } },
+      { domain: 'sensor', sort: 'attr:temperature' },
+    ),
+  )[0],
+  'sensor.hall',
+);
+
 check('a limit takes the first few', ids(resolveRegistryItems(hass, { entities: '*', limit: 2 })).length, 2);
 
 check(
