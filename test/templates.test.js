@@ -22,6 +22,7 @@ const {
   expandSources,
   templatePickerLabel,
   addTemplateToRoot,
+  firstUsage,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -371,6 +372,22 @@ const USED_IN = {
 };
 
 check('a template used nowhere has no usages', collectUsages(USED_IN, 'missing'), { views: [], templates: [] });
+
+check('the first card using a template is found, wherever it is nested', firstUsage(USED_IN, 'tile'), {
+  type: 'custom:decluttering-card-plus',
+  template: 'tile',
+});
+
+check('a template nothing uses has no first usage', firstUsage(USED_IN, 'missing'), null);
+
+check(
+  'a usage keeps its variables, which is what makes the preview real',
+  firstUsage(
+    { views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'x', variables: [{ room: 'Hall' }] }] }] },
+    'x',
+  ).variables,
+  [{ room: 'Hall' }],
+);
 
 check('usages are counted per view, wherever they are nested', collectUsages(USED_IN, 'tile').views, [
   { title: 'First', path: 'one', index: 0, count: 3 },

@@ -106,6 +106,8 @@
   "template_editor.usages_none": "Nog niets op dit dashboard gebruikt \"{name}\". Kaarten op andere dashboards tellen hier niet mee, ook niet die de sjablonen van dit dashboard lenen.",
   "template_editor.usages_one": "Eén kaart op dit dashboard gebruikt \"{name}\". Kaarten op andere dashboards tellen niet mee.",
   "template_editor.usages_many": "{total} kaarten op dit dashboard gebruiken \"{name}\". Kaarten op andere dashboards tellen niet mee.",
+  "template_editor.impact_header": "Wat er van een kaart wordt",
+  "template_editor.impact_hint": "De eerste kaart die dit sjabloon gebruikt, gebouwd met de wijzigingen hierboven - voordat er iets is opgeslagen.",
   "template_editor.used_once": "eenmaal",
   "template_editor.used_times": "{count} keer",
   "template_editor.untitled_view": "Naamloze weergave",
