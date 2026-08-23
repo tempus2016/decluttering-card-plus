@@ -159,6 +159,16 @@
   "share.install_anyway": "Press again to install",
   "share.already_here": "Already here",
 
+  "tools.health_header": "Dashboard health",
+
+  "tools.health_ok": "Nothing to report: every card finds its template, every variable has a value, and every template is used.",
+
+  "tools.health_missing": "Cards pointing at \"{template}\", which does not exist: {count}.",
+
+  "tools.health_unset": "Cards using \"{template}\" with no value for {names}: {count}.",
+
+  "tools.health_unused": "Templates nothing on this dashboard uses: {names}.",
+
   "tools.rename_header": "Rename",
   "tools.rename_hint": "Changes the name here and in every card on this dashboard that uses it. Cards on other dashboards are not touched, even ones that borrow this dashboard's templates.",
   "tools.rename_confirm": "This renames \"{from}\" to \"{to}\"{rewrites}, and saves the dashboard straight away. Press again to go ahead.",

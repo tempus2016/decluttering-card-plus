@@ -159,6 +159,16 @@
   "share.install_anyway": "Prima novamente para instalar",
   "share.already_here": "Já está aqui",
 
+  "tools.health_header": "Saúde do painel",
+
+  "tools.health_ok": "Nada a assinalar: cada cartão encontra o seu modelo, cada variável tem um valor, e cada modelo é usado.",
+
+  "tools.health_missing": "Cartões a apontar para \"{template}\", que não existe: {count}.",
+
+  "tools.health_unset": "Cartões que usam \"{template}\" sem valor para {names}: {count}.",
+
+  "tools.health_unused": "Modelos que nada neste painel usa: {names}.",
+
   "tools.rename_header": "Mudar o nome",
   "tools.rename_hint": "Muda o nome aqui e em todos os cartões deste painel que o usam. Cartões noutros painéis não são tocados, mesmo os que pedem emprestados os modelos deste painel.",
   "tools.rename_confirm": "Isto muda o nome de \"{from}\" para \"{to}\"{rewrites}, e grava o painel de imediato. Carregue outra vez para avançar.",

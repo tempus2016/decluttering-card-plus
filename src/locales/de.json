@@ -159,6 +159,16 @@
   "share.install_anyway": "Zum Installieren erneut drücken",
   "share.already_here": "Schon vorhanden",
 
+  "tools.health_header": "Zustand des Dashboards",
+
+  "tools.health_ok": "Nichts zu melden: jede Karte findet ihre Vorlage, jede Variable hat einen Wert, und jede Vorlage wird verwendet.",
+
+  "tools.health_missing": "Karten, die auf \"{template}\" zeigen, das es nicht gibt: {count}.",
+
+  "tools.health_unset": "Karten, die \"{template}\" ohne Wert für {names} verwenden: {count}.",
+
+  "tools.health_unused": "Vorlagen, die nichts auf diesem Dashboard verwendet: {names}.",
+
   "tools.rename_header": "Umbenennen",
   "tools.rename_hint": "Ändert den Namen hier und in jeder Karte auf diesem Dashboard, die ihn verwendet. Karten auf anderen Dashboards bleiben unberührt, auch solche, die sich die Vorlagen dieses Dashboards leihen.",
   "tools.rename_confirm": "Das benennt \"{from}\" in \"{to}\" um{rewrites} und speichert das Dashboard sofort. Zum Fortfahren erneut drücken.",

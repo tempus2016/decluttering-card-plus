@@ -159,6 +159,16 @@
   "share.install_anyway": "Druk nogmaals om te installeren",
   "share.already_here": "Al aanwezig",
 
+  "tools.health_header": "Gezondheid van het dashboard",
+
+  "tools.health_ok": "Niets te melden: elke kaart vindt zijn sjabloon, elke variabele heeft een waarde, en elk sjabloon wordt gebruikt.",
+
+  "tools.health_missing": "Kaarten die wijzen naar \"{template}\", dat niet bestaat: {count}.",
+
+  "tools.health_unset": "Kaarten die \"{template}\" gebruiken zonder waarde voor {names}: {count}.",
+
+  "tools.health_unused": "Sjablonen die niets op dit dashboard gebruikt: {names}.",
+
   "tools.rename_header": "Hernoemen",
   "tools.rename_hint": "Wijzigt de naam hier en in elke kaart op dit dashboard die hem gebruikt. Kaarten op andere dashboards blijven onaangeraakt, ook die de sjablonen van dit dashboard lenen.",
   "tools.rename_confirm": "Dit hernoemt \"{from}\" naar \"{to}\"{rewrites}, en slaat het dashboard direct op. Druk nogmaals om door te gaan.",

@@ -159,6 +159,16 @@
   "share.install_anyway": "Pulsa otra vez para instalar",
   "share.already_here": "Ya está aquí",
 
+  "tools.health_header": "Salud del panel",
+
+  "tools.health_ok": "Nada que señalar: cada tarjeta encuentra su plantilla, cada variable tiene un valor y cada plantilla se usa.",
+
+  "tools.health_missing": "Tarjetas que apuntan a \"{template}\", que no existe: {count}.",
+
+  "tools.health_unset": "Tarjetas que usan \"{template}\" sin valor para {names}: {count}.",
+
+  "tools.health_unused": "Plantillas que nada en este panel usa: {names}.",
+
   "tools.rename_header": "Renombrar",
   "tools.rename_hint": "Cambia el nombre aquí y en cada tarjeta de este panel que lo usa. Las tarjetas de otros paneles no se tocan, ni siquiera las que toman prestadas las plantillas de este.",
   "tools.rename_confirm": "Esto renombra \"{from}\" a \"{to}\"{rewrites}, y guarda el panel de inmediato. Pulsa otra vez para seguir.",
