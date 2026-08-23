@@ -379,6 +379,14 @@ check('kebab is the dashed spelling of slug', applyTransform('kebab', 'Living Ro
 
 check('a chain of one is still just that transform', applyTransform('title', 'living ROOM'), 'Living Room');
 
+/* ---------------------------------------------------- parameterised transforms */
+
+check('replace swaps every occurrence', applyTransform('replace:_: ', 'living_room_lamp'), 'living room lamp');
+check('replace with nothing after deletes', applyTransform('replace:_', 'living_room'), 'livingroom');
+check('replace of something absent changes nothing', applyTransform('replace:x:y', 'living'), 'living');
+check('replace chains like any transform', applyTransform('replace:_:-|upper', 'living_room'), 'LIVING-ROOM');
+check('replace with no argument at all changes nothing', applyTransform('replace:', 'living_room'), 'living_room');
+
 check('trim takes the whitespace off the ends', applyTransform('trim', '  back door  '), 'back door');
 check('trim leaves the middle alone', applyTransform('trim', ' two  words '), 'two  words');
 check(
