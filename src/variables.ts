@@ -85,6 +85,9 @@ export const TRANSFORMS: Record<string, (value: string) => string> = {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, ''),
+  trim: (value) => value.trim(),
+  // First letter only - `title` capitalises every word, which is wrong for a sentence.
+  capitalize: (value) => (value ? value[0].toUpperCase() + value.slice(1) : value),
 };
 
 /*
