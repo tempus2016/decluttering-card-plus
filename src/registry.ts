@@ -33,6 +33,8 @@ export interface RegistrySource {
   reverse?: boolean;
   /** At most this many copies, after everything else has been applied. */
   limit?: number;
+  /** Skip this many copies first, so `offset` and `limit` cut one list into windows. */
+  offset?: number;
   /** Repeat a fixed number of times, with nothing but the position to go on. */
   range?: number;
   /** Skip a copy when any of these keys came out empty - entities in no area, say. */
@@ -193,8 +195,12 @@ function ordered(items: Record<string, any>[], source: RegistrySource): Record<s
 
   const total = sorted.length;
   const withTotal = sorted.map((item) => ({ ...item, total }));
+  // `total` ignores the window on purpose: every page of a split list says the same
+  // "of 23", which is the point of splitting it.
+  const offset = Number(source.offset);
+  const from = Number.isFinite(offset) && offset > 0 ? Math.floor(offset) : 0;
   const limit = Number(source.limit);
-  return Number.isFinite(limit) && limit >= 0 ? withTotal.slice(0, limit) : withTotal;
+  return Number.isFinite(limit) && limit >= 0 ? withTotal.slice(from, from + limit) : withTotal.slice(from);
 }
 
 /** Whether one area answers to a set of filters. */

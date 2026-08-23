@@ -358,6 +358,20 @@ check(
 check('a limit takes the first few', ids(resolveRegistryItems(hass, { entities: '*', limit: 2 })).length, 2);
 
 check(
+  'offset skips the first few, so two cards can split one list',
+  ids(resolveRegistryItems(hass, { entities: '*', offset: 1, limit: 2 })),
+  ids(resolveRegistryItems(hass, { entities: '*' })).slice(1, 3),
+);
+
+check('offset past the end keeps nothing', resolveRegistryItems(hass, { entities: '*', offset: 99 }), []);
+
+check(
+  'total ignores offset like it ignores limit, so every window says the same of-how-many',
+  resolveRegistryItems(hass, { entities: '*', offset: 1, limit: 1 })[0].total,
+  resolveRegistryItems(hass, { entities: '*' }).length,
+);
+
+check(
   'total counts what matched, not what was kept, so a card can say 2 of 4',
   resolveRegistryItems(hass, { entities: '*', limit: 2 }).map((i) => i.total),
   [4, 4],
