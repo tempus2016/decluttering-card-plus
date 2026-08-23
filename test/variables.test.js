@@ -387,6 +387,16 @@ check('replace of something absent changes nothing', applyTransform('replace:x:y
 check('replace chains like any transform', applyTransform('replace:_:-|upper', 'living_room'), 'LIVING-ROOM');
 check('replace with no argument at all changes nothing', applyTransform('replace:', 'living_room'), 'living_room');
 
+check('prefix puts its text in front', applyTransform('prefix:light.', 'hall'), 'light.hall');
+check('suffix puts its text after', applyTransform('suffix: sensors', 'Kitchen'), 'Kitchen sensors');
+check('prefix leaves a gap alone, so it pairs with the optional marker', applyTransform('prefix:light.', ''), '');
+check('suffix leaves a gap alone too', applyTransform('suffix:!', ''), '');
+check(
+  'a default fills the gap before a prefix decorates it',
+  applyTransform('default:unnamed|prefix:room ', ''),
+  'room unnamed',
+);
+
 check('trim takes the whitespace off the ends', applyTransform('trim', '  back door  '), 'back door');
 check('trim leaves the middle alone', applyTransform('trim', ' two  words '), 'two  words');
 check(
