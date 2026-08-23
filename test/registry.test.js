@@ -264,9 +264,59 @@ check(
 );
 
 check(
-  'an order nobody recognises keeps the registry order rather than guessing',
+  'sort none keeps the registry order rather than guessing',
   resolveRegistryItems(hass, { domain: 'light', sort: 'none' }).length,
   2,
+);
+
+/* ---------------------------------------------------- sort by a carried key */
+
+check(
+  'a sort not in the list is read as a key the items carry',
+  ids(resolveRegistryItems(hass, { domain: 'light', sort: 'area_id' })),
+  ['light.bedside', 'light.kitchen_ceiling'],
+);
+
+check(
+  'a key no item carries changes nothing, so sort total is harmless',
+  ids(resolveRegistryItems(hass, { domain: 'light', sort: 'total' })),
+  ids(resolveRegistryItems(hass, { domain: 'light' })),
+);
+
+// Three areas whose alphabetical order (Attic, Cellar, Garage) differs from their entity
+// counts (2, 10, 9), so a carried-key sort is distinguishable from the default - and 9
+// against 10 tells a numeric comparison from a lexicographic one, which would put "10"
+// first.
+const countedHass = {
+  floors: {},
+  areas: {
+    attic: { area_id: 'attic', name: 'Attic', labels: [] },
+    cellar: { area_id: 'cellar', name: 'Cellar', labels: [] },
+    garage: { area_id: 'garage', name: 'Garage', labels: [] },
+  },
+  devices: {},
+  labels: {},
+  entities: Object.fromEntries(
+    [
+      ['attic', 2],
+      ['cellar', 10],
+      ['garage', 9],
+    ].flatMap(([area, count]) =>
+      Array.from({ length: count }, (_, i) => [
+        `sensor.${area}_${i}`,
+        { entity_id: `sensor.${area}_${i}`, area_id: area, labels: [] },
+      ]),
+    ),
+  ),
+  states: {},
+};
+
+check(
+  'a grouped repeat can order by how much each area holds, numerically',
+  resolveRegistryItems(countedHass, { areas: true, with: { domain: 'sensor' }, sort: 'entity_count' }).map(
+    (a) => a.area_id,
+  ),
+  ['attic', 'garage', 'cellar'],
 );
 
 check('a limit takes the first few', ids(resolveRegistryItems(hass, { entities: '*', limit: 2 })).length, 2);
