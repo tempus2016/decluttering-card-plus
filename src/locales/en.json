@@ -69,6 +69,18 @@
   "editor.eject": "Replace this card with what it builds",
   "editor.eject_confirm": "Press again to replace it - the template will no longer apply",
 
+  "template_editor.declutter_header": "Declutter an existing card",
+
+  "template_editor.declutter_hint": "Pick a card already on this dashboard and it becomes this template’s card - then let \"Suggest variables\" find what varies. Once the template is saved, the original can be swapped for a card that uses it.",
+
+  "template_editor.declutter_pick": "Card",
+
+  "template_editor.declutter_replace": "Replace the original with a card using this template",
+
+  "template_editor.declutter_replace_confirm": "Press again to replace the original - the dashboard is saved straight away",
+
+  "template_editor.declutter_save_first": "Save this template first, so the replacement has something to point at.",
+
   "template_editor.tab_settings": "Settings",
   "template_editor.tab_card": "Card",
   "template_editor.tab_change_card": "Change card type",

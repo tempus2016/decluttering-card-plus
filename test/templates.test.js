@@ -25,6 +25,8 @@ const {
   firstUsage,
   totalUsages,
   checkDashboard,
+  listPlainCards,
+  replaceCard,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -837,6 +839,50 @@ collectAllTemplates(hass, borrower).then((all) => {
       views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'tile', variables: [{ entity: 'x' }] }] }],
     }),
     { missingTemplates: [], unsetVariables: [], unusedTemplates: [] },
+  );
+
+  /* ---------------------------------------------------------- declutter this card */
+
+  const PLAIN_DASH = {
+    views: [
+      {
+        title: 'Home',
+        cards: [
+          { type: 'tile', entity: 'light.a', name: 'Lamp' },
+          { type: 'custom:decluttering-card-plus', template: 'tile' },
+          { type: 'vertical-stack', cards: [{ type: 'markdown', content: 'hi' }] },
+          { type: 'custom:decluttering-template-plus', template: 'x', card: { type: 'button' } },
+        ],
+      },
+    ],
+  };
+
+  check(
+    'plain cards are listed with a place and a label, this card and its kin left out',
+    listPlainCards(PLAIN_DASH).map((c) => c.label),
+    ['Home · tile (Lamp)', 'Home · vertical-stack', 'Home · markdown'],
+  );
+
+  check('the listed config is the card as written', listPlainCards(PLAIN_DASH)[0].config, {
+    type: 'tile',
+    entity: 'light.a',
+    name: 'Lamp',
+  });
+
+  check(
+    'replaceCard swaps the first identical card and nothing else',
+    replaceCard(
+      PLAIN_DASH,
+      { type: 'tile', entity: 'light.a', name: 'Lamp' },
+      { type: 'custom:decluttering-card-plus', template: 'room' },
+    ).views[0].cards[0],
+    { type: 'custom:decluttering-card-plus', template: 'room' },
+  );
+
+  check(
+    'replaceCard leaves a dashboard without the card untouched',
+    replaceCard(PLAIN_DASH, { type: 'tile', entity: 'nope' }, { type: 'x' }),
+    PLAIN_DASH,
   );
 
   report();

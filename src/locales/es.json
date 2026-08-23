@@ -69,6 +69,18 @@
   "editor.eject": "Sustituir esta tarjeta por lo que construye",
   "editor.eject_confirm": "Pulsa otra vez para sustituirla; la plantilla dejará de aplicarse",
 
+  "template_editor.declutter_header": "Despejar una tarjeta existente",
+
+  "template_editor.declutter_hint": "Elige una tarjeta que ya esté en este panel y se convierte en la tarjeta de esta plantilla; luego deja que «Sugerir variables» encuentre lo que varía. Con la plantilla guardada, la original puede cambiarse por una tarjeta que la use.",
+
+  "template_editor.declutter_pick": "Tarjeta",
+
+  "template_editor.declutter_replace": "Sustituir la original por una tarjeta que use esta plantilla",
+
+  "template_editor.declutter_replace_confirm": "Pulsa otra vez para sustituir la original; el panel se guarda de inmediato",
+
+  "template_editor.declutter_save_first": "Guarda antes esta plantilla, para que la sustitución tenga a qué apuntar.",
+
   "template_editor.tab_settings": "Ajustes",
   "template_editor.tab_card": "Tarjeta",
   "template_editor.tab_change_card": "Cambiar tipo de tarjeta",
