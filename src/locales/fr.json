@@ -143,6 +143,16 @@
   "share.install_anyway": "Appuyez à nouveau pour installer",
   "share.already_here": "Déjà là",
 
+  "tools.health_header": "État du tableau de bord",
+
+  "tools.health_ok": "Rien à signaler : chaque carte trouve son modèle, chaque variable a une valeur, et chaque modèle est utilisé.",
+
+  "tools.health_missing": "Cartes pointant vers \"{template}\", qui n'existe pas : {count}.",
+
+  "tools.health_unset": "Cartes utilisant \"{template}\" sans valeur pour {names} : {count}.",
+
+  "tools.health_unused": "Modèles que rien sur ce tableau de bord n'utilise : {names}.",
+
   "tools.rename_header": "Renommer",
   "tools.rename_hint": "Change le nom ici et dans chaque carte de ce tableau de bord qui l'utilise. Les cartes d'autres tableaux de bord ne sont pas touchées, même celles qui empruntent les modèles de celui-ci.",
   "tools.rename_confirm": "Ceci renomme \"{from}\" en \"{to}\"{rewrites}, et enregistre le tableau de bord immédiatement. Appuyez encore pour continuer.",
