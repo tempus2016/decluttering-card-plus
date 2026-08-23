@@ -46,6 +46,34 @@ function collectFromNode(node: any, templates: Record<string, TemplateConfig>): 
   for (const value of Object.values(node)) collectFromNode(value, templates);
 }
 
+/** How many things on one dashboard use a template: cards on views, and other templates. */
+export function totalUsages(ll: LovelaceConfig | null | undefined, template: string): number {
+  const usages = collectUsages(ll, template);
+  return usages.views.reduce((sum, view) => sum + view.count, 0) + usages.templates.length;
+}
+
+/**
+ * What other dashboards make of a template: each one that uses the name, with its count.
+ * Read-only - it looks, it never writes - and a dashboard that cannot be read simply
+ * does not appear, the same silence fetchDashboardConfig already keeps.
+ */
+export async function usagesOnOtherDashboards(
+  hass: HomeAssistant | undefined,
+  template: string,
+  ownPath: string | undefined,
+): Promise<{ urlPath: string; total: number }[]> {
+  if (!hass) return [];
+  const paths = (await fetchDashboardPaths(hass)).filter((path) => path !== ownPath);
+  const found: { urlPath: string; total: number }[] = [];
+  for (const urlPath of paths) {
+    const config = await fetchDashboardConfig(hass, urlPath);
+    if (!config) continue;
+    const total = totalUsages(config, template);
+    if (total > 0) found.push({ urlPath, total });
+  }
+  return found;
+}
+
 /**
  * The first card on the dashboard that uses a template, config and all. One real usage,
  * with its real variables, is what makes an impact preview honest: it shows what an edit
