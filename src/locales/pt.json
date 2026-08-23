@@ -65,6 +65,7 @@
   "editor.unused_one": "Esta variável está definida aqui mas o modelo nunca a usa: {names}.",
   "editor.unused_many": "Estas variáveis estão definidas aqui mas o modelo nunca as usa: {names}.",
   "editor.invalid_value": "O valor de {name} não é um que o modelo aceite. Espera: {expected}.",
+  "editor.card_variable_clear": "Escolher outro cartão",
 
   "template_editor.tab_settings": "Definições",
   "template_editor.tab_card": "Cartão",

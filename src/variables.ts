@@ -22,6 +22,16 @@ export interface VariableDeclaration {
 }
 
 /**
+ * Whether a declaration takes a whole card as its value - `selector: {card: {}}` - which
+ * the editor answers with a real card picker rather than a box of YAML. Substitution has
+ * always injected a mapping whole; this is the editor catching up with it.
+ */
+export function isCardDeclaration(declaration: VariableDeclaration | undefined): boolean {
+  const selector = declaration?.selector;
+  return !!selector && typeof selector === 'object' && 'card' in selector;
+}
+
+/**
  * Declarations gathered by their `group:`, in order of first appearance, the ungrouped
  * ones first - they are the essentials, and the groups are the detail behind them.
  */

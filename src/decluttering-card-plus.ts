@@ -56,6 +56,7 @@ import {
   diagnoseInstance,
   validateDeclared,
   groupDeclarations,
+  isCardDeclaration,
   diagnoseTemplate,
   forEachItems,
   forEachNames,
@@ -1047,6 +1048,13 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     this._schema = undefined;
   }
 
+  async connectedCallback(): Promise<void> {
+    super.connectedCallback();
+    // A card-valued variable renders Home Assistant's own card editor and picker, which
+    // are lazy-loaded - free after the first editor anywhere has loaded them.
+    await loadCardEditorPicker();
+  }
+
   public setConfig(config: DeclutteringCardConfig): void {
     this._config = config;
   }
@@ -1134,8 +1142,61 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         .computeHelper=${(s): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
       ></ha-form>
-      ${this._renderResult(template)}
+      ${this._renderCardVariables(declarations)} ${this._renderResult(template)}
     `;
+  }
+
+  /*
+   * A variable declared `selector: {card: {}}` takes a whole card as its value, so its
+   * control is Home Assistant's own card editor rather than a box of YAML. Substitution
+   * has always injected a mapping whole; this is the editor catching up with it.
+   */
+  private _renderCardVariables(declarations: VariableDeclaration[]): TemplateResult {
+    const slots = declarations.filter((declaration) => isCardDeclaration(declaration));
+    if (!slots.length) return html``;
+    const values = variableValues(this._config?.variables);
+    return html`${slots.map((declaration) => {
+      const value = values[declaration.name];
+      const filled = !!value && typeof value === 'object';
+      return html`
+        <div class="card-variable">
+          <h3>${declaration.label ?? declaration.name}</h3>
+          ${declaration.description ? html`<p class="hint">${declaration.description}</p>` : html``}
+          ${
+            filled
+              ? html`
+                  <hui-card-element-editor
+                    .hass=${this.hass}
+                    .lovelace=${this._lovelace}
+                    .value=${value}
+                    @config-changed=${(ev: CustomEvent): void => this._cardVariableChanged(declaration.name, ev)}
+                  ></hui-card-element-editor>
+                  <mwc-button @click=${(): void => this._cardVariableChanged(declaration.name)}>
+                    ${localize('editor.card_variable_clear', undefined, this.hass)}
+                  </mwc-button>
+                `
+              : html`
+                  <hui-card-picker
+                    .hass=${this.hass}
+                    .lovelace=${this._lovelace}
+                    @config-changed=${(ev: CustomEvent): void => this._cardVariableChanged(declaration.name, ev)}
+                  ></hui-card-picker>
+                `
+          }
+        </div>
+      `;
+    })}`;
+  }
+
+  private _cardVariableChanged(name: string, ev?: CustomEvent): void {
+    ev?.stopPropagation();
+    const value = ev?.detail?.config;
+    const variables = normaliseVariables(this._config?.variables).filter((entry) => variableName(entry) !== name);
+    if (value && typeof value === 'object') variables.push({ [name]: value });
+    const config = { ...this._config } as DeclutteringCardConfig;
+    if (variables.length) config.variables = variables;
+    else delete config.variables;
+    fireEvent(this, 'config-changed', { config });
   }
 
   /*
@@ -1293,7 +1354,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     // fifteen variables leads with its essentials. `name: ''` keeps the data flat - the
     // section is presentation, not a level in the config.
     const grouped: unknown[] = [];
-    for (const bucket of groupDeclarations(declarations)) {
+    for (const bucket of groupDeclarations(declarations.filter((declaration) => !isCardDeclaration(declaration)))) {
       if (bucket.group === undefined) grouped.push(...bucket.declarations.map(field));
       else grouped.push({ name: '', type: 'expandable', title: bucket.group, schema: bucket.declarations.map(field) });
     }

@@ -27,6 +27,7 @@ const {
   normaliseVariables,
   validateDeclared,
   groupDeclarations,
+  isCardDeclaration,
 } = require('../.test-build/variables.js');
 
 const { check, report } = require('./harness');
@@ -531,6 +532,16 @@ check(
 check('no groups at all is one plain bucket', groupDeclarations([{ name: 'a' }]), [
   { group: undefined, declarations: [{ name: 'a' }] },
 ]);
+
+check(
+  'a card-valued declaration is recognised by its selector',
+  [
+    isCardDeclaration({ name: 'slot', selector: { card: {} } }),
+    isCardDeclaration({ name: 'entity', selector: { entity: {} } }),
+    isCardDeclaration({ name: 'free' }),
+  ],
+  [true, false, false],
+);
 
 /* ------------------------------------------------------------------ validation */
 

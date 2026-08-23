@@ -65,6 +65,7 @@
   "editor.unused_one": "This variable is set here but never used by the template: {names}.",
   "editor.unused_many": "These variables are set here but never used by the template: {names}.",
   "editor.invalid_value": "The value of {name} is not one the template accepts. It expects: {expected}.",
+  "editor.card_variable_clear": "Choose a different card",
 
   "template_editor.tab_settings": "Settings",
   "template_editor.tab_card": "Card",
