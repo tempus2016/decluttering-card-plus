@@ -130,6 +130,42 @@ check(
   [{ entity: 'light.loose', name: 'light.loose', domain: 'light', area: '', area_id: '', total: 1 }],
 );
 
+/* ------------------------------------------------------------------- require */
+
+// Two lights, one of them in no area, for skipping copies whose key is empty.
+const looseHass = {
+  entities: {
+    'light.placed': { entity_id: 'light.placed', area_id: 'kitchen' },
+    'light.loose': { entity_id: 'light.loose' },
+  },
+  areas: { kitchen: { area_id: 'kitchen', name: 'Kitchen', labels: [] } },
+  states: {},
+};
+
+check(
+  'require skips a copy whose key came out empty',
+  ids(resolveRegistryItems(looseHass, { domain: 'light', require: 'area' })),
+  ['light.placed'],
+);
+
+check(
+  'require can name more than one key',
+  ids(resolveRegistryItems(looseHass, { domain: 'light', require: ['area', 'name'] })),
+  ['light.placed'],
+);
+
+check(
+  'require of a key nothing carries keeps nothing',
+  resolveRegistryItems(looseHass, { domain: 'light', require: 'floor' }),
+  [],
+);
+
+check(
+  'total counts what require kept, not what matched',
+  resolveRegistryItems(looseHass, { domain: 'light', require: 'area' })[0].total,
+  1,
+);
+
 /* ----------------------------------------------------------------- area sources */
 
 check('every area, sorted by name', ids(resolveRegistryItems(hass, { areas: true })), ['bedroom', 'kitchen']);

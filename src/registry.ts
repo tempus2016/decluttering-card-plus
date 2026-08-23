@@ -35,6 +35,8 @@ export interface RegistrySource {
   limit?: number;
   /** Repeat a fixed number of times, with nothing but the position to go on. */
   range?: number;
+  /** Skip a copy when any of these keys came out empty - entities in no area, say. */
+  require?: string | string[];
   /** For an area source: the entities to gather for each area. */
   with?: RegistrySource & { keep_empty?: boolean };
 }
@@ -163,6 +165,11 @@ const SORTS: Record<string, (item: Record<string, any>) => string> = {
  * rather than "8 of 8".
  */
 function ordered(items: Record<string, any>[], source: RegistrySource): Record<string, any>[] {
+  // `require:` drops a copy whose key came out empty - an entity in no area, an area on
+  // no floor - before anything is counted, so `total` says what is actually shown.
+  const wanted = asList(source.require) ?? [];
+  if (wanted.length) items = items.filter((item) => wanted.every((key) => String(item[key] ?? '') !== ''));
+
   const name = typeof source.sort === 'string' && source.sort ? source.sort : undefined;
   const known = name ? SORTS[name] : undefined;
   // `sort: none` keeps the registry's own order, which is the only way to ask for
