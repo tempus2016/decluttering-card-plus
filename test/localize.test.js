@@ -103,4 +103,21 @@ check(
   'Importar',
 );
 
+/* --- every key the source asks for exists --- */
+
+{
+  const fs = require('fs');
+  const path = require('path');
+  const en = JSON.parse(fs.readFileSync(path.join(__dirname, '../src/locales/en.json'), 'utf8'));
+  const used = new Set();
+  for (const file of fs.readdirSync(path.join(__dirname, '../src'))) {
+    if (!file.endsWith('.ts')) continue;
+    const body = fs.readFileSync(path.join(__dirname, '../src', file), 'utf8');
+    for (const m of body.matchAll(/localize\(\s*'([^']+)'/g)) used.add(m[1]);
+  }
+  // Keys built at runtime - library.<name>.summary - are covered by the library test.
+  const missing = [...used].filter((key) => !key.includes('${') && !(key in en));
+  check('every key the source localizes exists in en.json', missing, []);
+}
+
 report();
