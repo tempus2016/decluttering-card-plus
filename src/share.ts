@@ -52,7 +52,10 @@ export function scanDependencies(config: any): Dependencies {
  * A template ready to be handed to someone else: the config as it will be written out,
  * and the things they need to know that the config cannot tell them.
  */
-export function buildExport(config: any): { payload: Record<string, any>; notes: string[] } {
+export function buildExport(
+  config: any,
+  templates?: Record<string, any>,
+): { payload: Record<string, any>; notes: string[] } {
   const payload: Record<string, any> = {};
   for (const key of EXPORT_KEY_ORDER) {
     if (config?.[key] !== undefined) payload[key] = config[key];
@@ -62,13 +65,47 @@ export function buildExport(config: any): { payload: Record<string, any>; notes:
   }
 
   const { customTypes, templateRefs } = scanDependencies(config);
+
+  /*
+   * With the dashboard's templates to hand, the ones this one uses ride along under
+   * `includes:`, transitively - a bundle that works on arrival instead of a note saying
+   * what else to go and find. The note stays for anything that could not be found.
+   */
+  const missing: string[] = [];
+  if (templates) {
+    const includes: Record<string, any> = {};
+    const queue = [...templateRefs];
+    while (queue.length) {
+      const name = queue.shift() as string;
+      if (name in includes) continue;
+      const found = templates[name];
+      if (!found) {
+        missing.push(name);
+        continue;
+      }
+      includes[name] = found;
+      queue.push(...scanDependencies(found).templateRefs);
+    }
+    if (Object.keys(includes).length) payload.includes = includes;
+  } else {
+    missing.push(...templateRefs);
+  }
+
   const notes: string[] = [];
   if (customTypes.length) notes.push(localize('share.requires_custom_cards', { types: customTypes.join(', ') }));
-  if (templateRefs.length) {
-    notes.push(localize('share.uses_other_templates', { names: templateRefs.join(', ') }));
+  if (missing.length) {
+    notes.push(localize('share.uses_other_templates', { names: missing.join(', ') }));
   }
 
   return { payload, notes };
+}
+
+/** The first spelling of `name` that nothing in `taken` already answers to. */
+export function freeName(name: string, taken: string[]): string {
+  if (!taken.includes(name)) return name;
+  let counter = 2;
+  while (taken.includes(`${name}_${counter}`)) counter += 1;
+  return `${name}_${counter}`;
 }
 
 /**

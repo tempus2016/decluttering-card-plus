@@ -121,6 +121,7 @@
   "share.import_hint": "Füge eine Vorlage ein, die jemand mit dir geteilt hat. Sie ersetzt die, die du gerade bearbeitest.",
   "share.import": "Importieren",
   "share.import_anyway": "Trotzdem importieren",
+  "share.import_copy": "Als Kopie importieren",
   "share.import_clash": "Dieses Dashboard hat bereits eine Vorlage namens \"{name}\". Nach dem Import gäbe es zwei Vorlagen mit demselben Namen, und nur eine davon würde verwendet. Drücke erneut auf Importieren, um fortzufahren.",
   "share.import_not_yaml": "Das ist kein gültiges YAML und kann daher nicht gelesen werden.",
   "share.requires_custom_cards": "Benötigt diese Custom Cards: {types}",

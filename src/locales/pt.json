@@ -121,6 +121,7 @@
   "share.import_hint": "Cole um modelo que alguém partilhou consigo. Vai substituir o que está a editar.",
   "share.import": "Importar",
   "share.import_anyway": "Importar mesmo assim",
+  "share.import_copy": "Importar como cópia",
   "share.import_clash": "Este painel já tem um modelo chamado \"{name}\". Importar vai deixá-lo com dois modelos com o mesmo nome, e só um deles será usado. Carregue Importar outra vez para avançar.",
   "share.import_not_yaml": "Isto não é YAML válido, por isso não pode ser lido.",
   "share.requires_custom_cards": "Requer estes cartões personalizados: {types}",
