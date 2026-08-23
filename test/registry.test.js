@@ -290,6 +290,50 @@ check(
   'Tuya',
 );
 
+/* -------------------------------------------------------- floor and label sources */
+
+check(
+  'a copy per floor, knowing its level, sorted by name',
+  resolveRegistryItems(hass, { floors: true }).map((f) => [f.floor_id, f.floor]),
+  [
+    ['ground', 'Ground floor'],
+    ['upstairs', 'Upstairs'],
+  ],
+);
+
+check(
+  'a floor gathers the entities on it, through their areas',
+  resolveRegistryItems(hass, { floors: 'Ground*', with: { domain: 'light' } })[0].entities,
+  ['light.kitchen_ceiling'],
+);
+
+check(
+  'a floor with none of the asked-for kind goes, like an empty area',
+  resolveRegistryItems(hass, { floors: true, with: { domain: 'sensor' } }).map((f) => f.floor_id),
+  ['ground'],
+);
+
+check(
+  'a copy per label, named from the registry',
+  resolveRegistryItems(hass, { labels: true }).map((l) => [l.label_id, l.label]),
+  [
+    ['night', 'Night light'],
+    ['quiet', 'Quiet'],
+  ],
+);
+
+check(
+  'a label gathers what carries it, device labels counting for their entities',
+  resolveRegistryItems(hass, { labels: 'night', with: {} })[0].entities,
+  ['light.bedside'],
+);
+
+check(
+  'a label nothing of the asked-for kind carries goes',
+  resolveRegistryItems(hass, { labels: true, with: { domain: 'light' } }).map((l) => l.label_id),
+  ['night'],
+);
+
 /* ----------------------------------------------------------------- area sources */
 
 check('every area, sorted by name', ids(resolveRegistryItems(hass, { areas: true })), ['bedroom', 'kitchen']);
