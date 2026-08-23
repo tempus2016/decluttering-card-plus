@@ -64,6 +64,8 @@
   "editor.optional_many": "Diese Vorlage verwendet Variablen ohne Wert und ohne Standard: {names}.",
   "editor.unused_one": "Diese Variable ist hier gesetzt, wird von der Vorlage aber nie verwendet: {names}.",
   "editor.unused_many": "Diese Variablen sind hier gesetzt, werden von der Vorlage aber nie verwendet: {names}.",
+  "editor.eject": "Diese Karte durch das ersetzen, was sie baut",
+  "editor.eject_confirm": "Zum Ersetzen erneut drücken - die Vorlage gilt dann nicht mehr",
 
   "template_editor.tab_settings": "Einstellungen",
   "template_editor.tab_card": "Karte",

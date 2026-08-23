@@ -64,6 +64,8 @@
   "editor.optional_many": "Este modelo usa variáveis sem valor e sem predefinição: {names}.",
   "editor.unused_one": "Esta variável está definida aqui mas o modelo nunca a usa: {names}.",
   "editor.unused_many": "Estas variáveis estão definidas aqui mas o modelo nunca as usa: {names}.",
+  "editor.eject": "Substituir este cartão pelo que ele constrói",
+  "editor.eject_confirm": "Prima novamente para substituir - o modelo deixa de se aplicar",
 
   "template_editor.tab_settings": "Definições",
   "template_editor.tab_card": "Cartão",

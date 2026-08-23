@@ -64,6 +64,8 @@
   "editor.optional_many": "This template uses variables with no value and no default: {names}.",
   "editor.unused_one": "This variable is set here but never used by the template: {names}.",
   "editor.unused_many": "These variables are set here but never used by the template: {names}.",
+  "editor.eject": "Replace this card with what it builds",
+  "editor.eject_confirm": "Press again to replace it - the template will no longer apply",
 
   "template_editor.tab_settings": "Settings",
   "template_editor.tab_card": "Card",

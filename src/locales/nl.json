@@ -64,6 +64,8 @@
   "editor.optional_many": "Dit sjabloon gebruikt variabelen zonder waarde en zonder standaard: {names}.",
   "editor.unused_one": "Deze variabele is hier ingesteld, maar wordt door het sjabloon nooit gebruikt: {names}.",
   "editor.unused_many": "Deze variabelen zijn hier ingesteld, maar worden door het sjabloon nooit gebruikt: {names}.",
+  "editor.eject": "Deze kaart vervangen door wat ze bouwt",
+  "editor.eject_confirm": "Druk nogmaals om te vervangen - het sjabloon geldt dan niet meer",
 
   "template_editor.tab_settings": "Instellingen",
   "template_editor.tab_card": "Kaart",
