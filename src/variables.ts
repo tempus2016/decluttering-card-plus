@@ -219,6 +219,10 @@ export const PARAM_TRANSFORMS: Record<string, (value: string, arg: string) => st
     const to = colon === -1 ? '' : arg.slice(colon + 1);
     return from ? value.split(from).join(to) : value;
   },
+  // Decoration, not content: a gap stays a gap, so `[[name?|suffix: room]]` still drops
+  // its key and `default:` still sees nothing to stand in for.
+  prefix: (value, arg) => (value === '' ? value : arg + value),
+  suffix: (value, arg) => (value === '' ? value : value + arg),
 };
 
 const PARAM_PREFIXES = Object.keys(PARAM_TRANSFORMS);
