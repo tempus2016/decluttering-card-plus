@@ -1466,13 +1466,27 @@ class DeclutteringTemplate extends DeclutteringElement {
 
   public setConfig(config: DeclutteringTemplateConfig): void {
     // A template card draws its own definition, so it is the outermost open template for
-    // whatever that definition contains.
+    // whatever that definition contains. When it is nested inside another template it also
+    // inherits the chain stamped above it, so the same self-reference check a consumer makes
+    // applies here - otherwise a template that reaches itself through a nested template card
+    // would build level after level without end.
     this._openTemplates = chainOf(config);
     this._templateName = config.template;
 
     if (!config.template) {
       throw new Error(localize('error.missing_template_property'));
     }
+
+    // Said rather than thrown, for the same reason as in DeclutteringCard: a throw in
+    // setConfig hides the reason the loop is fixable behind "Configuration error".
+    const cycle = findCycle(this._openTemplates, config.template);
+    const tooDeep = this._openTemplates.length >= MAX_NESTING;
+    if (cycle || tooDeep) {
+      this._error = cycle ? describeCycle(cycle) : describeTooDeep(this._openTemplates);
+      return;
+    }
+    this._error = undefined;
+
     this._template = config.template;
     // The config passed here IS the template, so its style is picked up as the
     // template's own - passing it again as the instance style would emit it twice.

@@ -32,6 +32,18 @@ interface Refusal {
 // which would otherwise never settle.
 const MAX_PASSES = 10;
 
+// A ceiling on the substituted text, so a chain of variables that each expand into two of
+// the next - `v0: "[[v1]][[v1]]"`, `v1: "[[v2]][[v2]]"`, ... - cannot double its way to a
+// gigabyte and take the browser tab with it. The whole expansion happens within a single
+// pass, so the guard is inside substitutePass rather than around it: once the text passes
+// the ceiling, the remaining variables are left unsubstituted and the placeholders that
+// stay are reported like any others. A megabyte, or fifty times the original config,
+// whichever is larger - far past anything a real template produces.
+const MAX_OUTPUT_LENGTH = 1_000_000;
+function outputLimit(originalLength: number): number {
+  return Math.max(MAX_OUTPUT_LENGTH, originalLength * 50);
+}
+
 // Substitution is string surgery on JSON text, so anything inserted into a JSON string
 // has to be escaped for one. Without this a value containing a newline, a double quote
 // or a backslash produces invalid JSON and the card dies with "Bad control character"
@@ -75,9 +87,14 @@ function substitutePass(
   variableArray: VariablesConfig[],
   refused: Map<string, Refusal>,
   hass?: any,
+  limit?: number,
 ): string {
   let json = jsonConfig;
-  variableArray.forEach((variable) => {
+  for (const variable of variableArray) {
+    // A single pass fully unrolls a self-doubling chain, so the size is checked before each
+    // variable is applied rather than only after the pass. The text can at most double per
+    // variable, so stopping here holds the result to about twice the ceiling.
+    if (limit !== undefined && json.length > limit) break;
     const key = escapeForRegExp(Object.keys(variable)[0]);
     const value = Object.values(variable)[0];
     const wholeValue = new RegExp(`"\\[\\[${key}${TRANSFORM_SUFFIX}${OPTIONAL_SUFFIX}\\]\\]"`, 'gm');
@@ -135,7 +152,7 @@ function substitutePass(
           : refuse(match, transform)
         : asPartOfString(value);
     });
-  });
+  }
   return json;
 }
 
@@ -181,7 +198,11 @@ function pruneEmptyOptions(value: any): any {
     return value.filter((item) => !isEmptyOption(item)).map((item) => pruneEmptyOptions(item));
   }
   if (value && typeof value === 'object') {
-    const out: Record<string, any> = {};
+    // Rebuilt without a prototype so that a config key of `__proto__` sets a plain own
+    // property here rather than reparenting the object it is copied into. The card is parsed
+    // straight back from this with JSON, which does not care whether the object has a
+    // prototype, so nothing downstream is affected.
+    const out: Record<string, any> = Object.create(null);
     for (const [key, entry] of Object.entries(value)) {
       if (isEmptyOption(entry)) continue;
       out[key] = pruneEmptyOptions(entry);
@@ -248,13 +269,20 @@ export default (
   const refused = new Map<string, Refusal>();
 
   if (variableArray.length) {
+    const limit = outputLimit(jsonConfig.length);
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
       const before = jsonConfig;
-      jsonConfig = substitutePass(jsonConfig, variableArray, refused, hass);
+      jsonConfig = substitutePass(jsonConfig, variableArray, refused, hass, limit);
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
+      // A chain that keeps growing has been stopped mid-expansion; carrying on would only
+      // grow it further, so give up here and let the placeholders left standing be reported.
+      if (jsonConfig.length > limit) {
+        if (!quiet) console.warn(localize('warn.gave_up', { passes }));
+        break;
+      }
     }
     if (!quiet && passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
       console.warn(localize('warn.gave_up', { passes: MAX_PASSES }));

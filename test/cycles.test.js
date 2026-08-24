@@ -155,4 +155,27 @@ check(
   [['outer'], ['outer']],
 );
 
+/* --------------------------------------------------- template cards carry the chain */
+
+// A template card nested in another template's content has to be handed the chain as well,
+// or it inherits an empty one and overwrites the chain stamped beneath it - the chain then
+// never grows and a template that reaches itself through a nested template card recurses
+// without end. Both spellings of the template card are stamped.
+check(
+  'a template card is handed the open chain like a consumer',
+  withChain({ type: 'custom:decluttering-template-plus', template: 'A2' }, ['A'])[CHAIN_KEY],
+  ['A'],
+);
+check(
+  'the legacy template card is handed the chain too',
+  withChain({ type: 'custom:decluttering-template', template: 'A2' }, ['A'])[CHAIN_KEY],
+  ['A'],
+);
+check(
+  'a template card nested in content is reached',
+  withChain({ type: 'vertical-stack', cards: [{ type: 'custom:decluttering-template-plus', template: 'X' }] }, ['top'])
+    .cards[0][CHAIN_KEY],
+  ['top'],
+);
+
 report();

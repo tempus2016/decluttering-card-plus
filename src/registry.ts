@@ -39,6 +39,10 @@ export interface RegistrySource {
   with?: RegistrySource & { keep_empty?: boolean };
 }
 
+// The most copies a `range:` will make. A row of slots is a handful; anything past this is
+// a mistake or a crafted config, and either way not worth allocating an array for.
+const MAX_RANGE = 1000;
+
 // `sort`, `reverse` and `limit` are deliberately not here: on their own they say nothing
 // about what to repeat over, so a mapping holding only those is not a source.
 const SOURCE_KEYS = [
@@ -69,18 +73,34 @@ function asList(value: boolean | string | string[] | undefined): string[] | unde
   return list.length ? list : undefined;
 }
 
+// Each pattern is compiled once and kept: the same handful of patterns is tested against
+// every entity in the registry, and rebuilding the regexp per entity was most of the work.
+const patternCache = new Map<string, RegExp>();
+
+/** The anchored, case-insensitive regexp one `*` pattern compiles to. */
+function patternRegExp(pattern: string): RegExp {
+  const cached = patternCache.get(pattern);
+  if (cached) return cached;
+  // Runs of `*` are collapsed to one. Left as written they compile to `.*.*.*`, which backs
+  // off exponentially against a subject that never matches - a pattern like `**********z`
+  // freezes the tab for the better part of a minute on a single entity id. `.*` repeated is
+  // no more expressive than a single `.*`, so nothing is lost by folding them together.
+  const source = pattern
+    .toLowerCase()
+    .replace(/\*+/g, '*')
+    .split('*')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('.*');
+  const compiled = new RegExp(`^${source}$`);
+  patternCache.set(pattern, compiled);
+  return compiled;
+}
+
 /** One pattern with `*` standing for anything, anchored, matched without regard to case. */
 function matches(value: string | undefined | null, patterns: string[]): boolean {
   if (value === undefined || value === null) return false;
   const text = String(value).toLowerCase();
-  return patterns.some((pattern) => {
-    const source = pattern
-      .toLowerCase()
-      .split('*')
-      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-      .join('.*');
-    return new RegExp(`^${source}$`).test(text);
-  });
+  return patterns.some((pattern) => patternRegExp(pattern).test(text));
 }
 
 /** Matches when any spelling of a thing matches any pattern. No patterns narrows nothing. */
@@ -312,7 +332,10 @@ export function resolveRegistryItems(hass: any, source: any): Record<string, any
    */
   if (source.range !== undefined) {
     const range = Number(source.range);
-    const count = Number.isFinite(range) && range > 0 ? Math.floor(range) : 0;
+    // Clamped: `range: 1000000000` would otherwise allocate a billion copies and hang the
+    // tab before a single one is drawn. Well past any real row of slots.
+    const asked = Number.isFinite(range) && range > 0 ? Math.floor(range) : 0;
+    const count = Math.min(asked, MAX_RANGE);
     return Array.from({ length: count }, () => ({ total: count }));
   }
 

@@ -411,4 +411,28 @@ check('an area source without gathering supplies only its own', registryNames({ 
   'total',
 ]);
 
+/* --------------------------------------------------- crafted patterns cannot hang */
+
+// Runs of `*` are folded to one, so a pattern like `**********z` no longer compiles to
+// `.*.*.*...` and backtracks for the better part of a minute against a subject that never
+// matches. It returns - empty - straight away. That this completes at all is the test.
+check(
+  'a pattern of many wildcards returns rather than hanging',
+  resolveRegistryItems(hass, { entities: '**********z' }),
+  [],
+);
+
+// Folding the wildcards must not change what a pattern matches: `light.****` still means
+// every light, the same as `light.*`.
+check(
+  'collapsed wildcards still match what they should',
+  resolveRegistryItems(hass, { entities: 'light.****' }).map((item) => item.entity),
+  ['light.bedside', 'light.kitchen_ceiling'],
+);
+
+// range is clamped, so `range: 1000000000` cannot allocate a billion copies and hang the
+// tab before one is drawn.
+check('a modest range is honoured as written', resolveRegistryItems(hass, { range: 5 }).length, 5);
+check('an enormous range is clamped', resolveRegistryItems(hass, { range: 1000000000 }).length, 1000);
+
 report();

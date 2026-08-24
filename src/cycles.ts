@@ -1,4 +1,4 @@
-import { CONSUMER_TYPES } from './templates';
+import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE } from './templates';
 import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -16,6 +16,16 @@ import { localize } from './localize';
 
 /** The key a card uses to tell the cards inside it which templates are already open. */
 export const CHAIN_KEY = 'decluttering_open_templates';
+
+/*
+ * The nodes the chain is stamped on: the cards that consume a template, and the template
+ * cards themselves. A template card has to be included, otherwise a template defined inside
+ * another template's content inherits an empty chain and overwrites the one stamped beneath
+ * it - the chain then oscillates between two names instead of growing, and neither the name
+ * check nor the depth cap ever trips, so a template that uses itself through a nested
+ * template card recurses without end.
+ */
+const STAMP_TYPES = [...CONSUMER_TYPES, TEMPLATE_TYPE, LEGACY_TEMPLATE_TYPE];
 
 /**
  * How deep templates may nest before it is treated as a runaway rather than a design.
@@ -64,7 +74,7 @@ export function describeTooDeep(chain: string[]): string {
 function holdsConsumer(node: any): boolean {
   if (Array.isArray(node)) return node.some(holdsConsumer);
   if (!node || typeof node !== 'object') return false;
-  if (typeof node.type === 'string' && CONSUMER_TYPES.includes(node.type)) return true;
+  if (typeof node.type === 'string' && STAMP_TYPES.includes(node.type)) return true;
   return Object.values(node).some(holdsConsumer);
 }
 
@@ -86,10 +96,11 @@ export function withChain<T>(config: T, chain: string[]): T {
       return;
     }
     if (!node || typeof node !== 'object') return;
-    if (typeof node.type === 'string' && CONSUMER_TYPES.includes(node.type)) {
+    if (typeof node.type === 'string' && STAMP_TYPES.includes(node.type)) {
       node[CHAIN_KEY] = chain;
       // Its own content is built from its template, not from here, so there is nothing
-      // below it for this pass to reach.
+      // below it for this pass to reach. A template card re-stamps its content with its own
+      // name added when it renders, which is what carries the chain on past it.
       return;
     }
     Object.values(node).forEach(walk);

@@ -662,4 +662,42 @@ check(
   { a: '[[tap|upper]]' },
 );
 
+/* --------------------------------------------------- secrets stay out of the config */
+
+// A camera's access_token grants an unauthenticated snapshot, so a template must not be able
+// to resolve it into a config it then puts in an outbound url. The placeholder is left as it
+// was written, exactly as an attribute the entity does not carry would be.
+const secretHass = {
+  states: { 'camera.front': { attributes: { access_token: 'sk-secret-123', brightness: 5 } } },
+};
+check(
+  'a camera access_token cannot be pulled into a config',
+  deepReplace([{ cam: 'camera.front' }], {}, { url: '[[cam|attr:access_token]]' }, undefined, secretHass),
+  { url: '[[cam|attr:access_token]]' },
+);
+check(
+  'entity_picture, which carries the same token, is blocked too',
+  deepReplace([{ cam: 'camera.front' }], {}, { url: '[[cam|attr:entity_picture]]' }, undefined, secretHass),
+  { url: '[[cam|attr:entity_picture]]' },
+);
+check(
+  'an ordinary attribute still resolves',
+  deepReplace([{ cam: 'camera.front' }], {}, { b: '[[cam|attr:brightness]]' }, undefined, secretHass),
+  { b: '5' },
+);
+
+/* --------------------------------------------------- a variable bomb is stopped */
+
+// A chain where each variable expands into two of the next doubles the text on every step,
+// reaching a gigabyte within a single pass. The size ceiling stops it partway rather than
+// letting it run the tab out of memory, so the result stays small and the call returns.
+const bomb = [];
+for (let i = 0; i < 25; i += 1) bomb.push({ [`v${i}`]: `[[v${i + 1}]][[v${i + 1}]]` });
+bomb.push({ v25: 'X' });
+check(
+  'an exponential variable chain is stopped rather than expanded',
+  JSON.stringify(deepReplace(bomb, {}, { content: '[[v0]]' })).length < 3_000_000,
+  true,
+);
+
 report();

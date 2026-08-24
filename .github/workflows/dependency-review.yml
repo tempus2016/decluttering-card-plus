@@ -32,4 +32,8 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
+          # The card ships as one MIT-licensed bundle, so a strong-copyleft dependency pulled
+          # into it cannot be distributed under those terms. None is in the tree today; this
+          # keeps it that way. Listed by SPDX id.
+          deny-licenses: AGPL-3.0, GPL-2.0, GPL-3.0
           comment-summary-in-pr: on-failure

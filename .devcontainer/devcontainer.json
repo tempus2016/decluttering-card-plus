@@ -8,11 +8,15 @@
     "5000:5000",
     "9123:8123"
   ],
-  "postCreateCommand": "npm install",
-  "runArgs": [
-    "-v",
-    "${env:HOME}${env:USERPROFILE}/.ssh:/tmp/.ssh" // This is added so you can push from inside the container
-  ],
+  // --ignore-scripts: container creation runs the whole dependency tree, and a compromised
+  // package's install hook should not get to run automatically. ci over install so the
+  // lockfile is authoritative. The one package with an install script (fsevents) is
+  // darwin-only and not needed here.
+  "postCreateCommand": "npm ci --ignore-scripts",
+  // The host ~/.ssh directory is deliberately not mounted: bind-mounting private keys into a
+  // container that then installs npm packages is how a bad postinstall walks off with them.
+  // VS Code Dev Containers forwards the host ssh-agent into the container on its own, so
+  // `git push` still works as long as the key is added to the agent (ssh-add) on the host.
   "extensions": [
     "github.vscode-pull-request-github",
     "eamodio.gitlens",
