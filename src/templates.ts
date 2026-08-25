@@ -68,7 +68,9 @@ function withDefaults(template: TemplateConfig, shared: VariablesConfig[]): Temp
 
 /** Every template a single dashboard configuration defines, by name, as written. */
 function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
-  const templates: Record<string, TemplateConfig> = {};
+  // No prototype, so a template declared with the name `__proto__` becomes an own entry here
+  // rather than reparenting this map with whatever the dashboard put under that key.
+  const templates: Record<string, TemplateConfig> = Object.create(null);
   if (!ll) return templates;
 
   const declared = (ll as any).decluttering_templates;

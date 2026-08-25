@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The pages here are built from the wiki, which is edited outside this repo. This bounds
+     what a page can do if something unwanted ever lands in it: script runs only from this
+     origin, and images, fonts and stylesheets load only from here - so an injected
+     <script>, an external tracker or a url() pointing off-site does nothing. Everything the
+     theme needs (docs.css, docs.js, the Plex fonts) is served from this origin. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'">
 <title>{% if page.title and page.title != site.title %}{{ page.title }} · {% endif %}{{ site.title }}</title>
 <meta name="description" content="{{ page.description | default: site.description }}">
 <link rel="canonical" href="{{ page.url | absolute_url }}">

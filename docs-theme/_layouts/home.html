@@ -22,9 +22,9 @@ layout: wiki
   <div class="thesis">
     <div class="thesis-code">{% include hero-template.html %}</div>
     <div class="thesis-arrow" aria-hidden="true">→</div>
-    <img src="{{ page.hero_image | relative_url }}" alt="{{ page.hero_image_alt }}">
+    <img src="{{ page.hero_image | relative_url }}" alt="{{ page.hero_image_alt | escape }}">
   </div>
-  {% if page.hero_caption %}<p class="thesis-cap">{{ page.hero_caption }}</p>{% endif %}
+  {% if page.hero_caption %}<p class="thesis-cap">{{ page.hero_caption | escape }}</p>{% endif %}
   {% endif %}
 </section>
 

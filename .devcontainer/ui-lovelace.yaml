@@ -1,7 +1,9 @@
 resources:
   - url: http://127.0.0.1:5000/decluttering-card-plus.js
     type: module
-  - url: https://cdn.jsdelivr.net/gh/thomasloven/lovelace-card-mod@master/card-mod.js
+  # Pinned to a release tag rather than @master: a moving ref runs whatever is on the branch
+  # at load time in the dev Home Assistant frontend.
+  - url: https://cdn.jsdelivr.net/gh/thomasloven/lovelace-card-mod@v4.2.1/card-mod.js
     type: module
 
 decluttering_templates:

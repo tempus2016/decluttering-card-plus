@@ -31,7 +31,11 @@ jobs:
           node-version: 22.x
           cache: npm
       - name: Install dependencies
-        run: npm ci
+        # --ignore-scripts: this job holds contents: write and hands GITHUB_TOKEN to the
+        # release step, so no dependency's install hook should get to run first. The only
+        # package in the tree with an install script is fsevents, which is darwin-only and
+        # not needed on this runner.
+        run: npm ci --ignore-scripts
       - name: Release
         run: npx semantic-release
         env:

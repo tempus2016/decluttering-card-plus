@@ -6,10 +6,18 @@ here exists because a wiki and a static site want the same content in different 
 none of it needs the wiki to change, so the wiki keeps working as a wiki.
 """
 
+import html
 import json
 import os
 import re
+import shutil
 import sys
+
+# What may be published. The wiki is a git repository anyone with wiki write access can push
+# to, and upload-pages-artifact serves the whole directory - so a `login.html` or an
+# `evil.js` pushed alongside the pages would go live next to them. Only the markdown this
+# script turns into pages, and the images those pages show, have any business being served.
+ALLOWED_DIRS = {'images'}
 
 # A wiki links to `[Variables](Variables)`, which works because GitHub's wiki serves
 # extensionless URLs. Jekyll produces Variables.html, so every one of those links would
@@ -37,11 +45,16 @@ def rewrite_links(text):
 
 def headline_html(tagline):
     """The tagline is "Write a card once, use it everywhere." - the last word is the part
-    a template stands in for, so it gets the placeholder treatment in the hero."""
+    a template stands in for, so it gets the placeholder treatment in the hero.
+
+    The result is emitted as raw HTML in the layout, so the only markup here is the span this
+    builds; the tagline's own text is HTML-escaped, so a tagline carrying `<` or `"` becomes
+    that text rather than markup that breaks out of the heading."""
     m = re.match(r"^(.*?)([\w'-]+)(\W*)$", tagline.strip())
     if not m:
-        return tagline
-    return '{}<span class="ph">{}</span>{}'.format(*m.groups())
+        return html.escape(tagline)
+    before, word, after = (html.escape(part) for part in m.groups())
+    return '{}<span class="ph">{}</span>{}'.format(before, word, after)
 
 
 def split_home(text):
@@ -75,7 +88,23 @@ def split_home(text):
     return hero, body.lstrip("\n")
 
 
+def drop_unpublishable(root):
+    """Remove anything in the wiki clone that is not a page or an image directory, so only
+    what this script publishes can be served. Runs before the theme is laid over the clone,
+    so it only ever sees wiki content, never the theme's own files."""
+    for name in sorted(os.listdir(root)):
+        path = os.path.join(root, name)
+        if os.path.isdir(path):
+            if name not in ALLOWED_DIRS:
+                shutil.rmtree(path)
+                print("dropped directory", name)
+        elif not name.endswith(".md"):
+            os.remove(path)
+            print("dropped file", name)
+
+
 def main(root):
+    drop_unpublishable(root)
     for name in sorted(os.listdir(root)):
         if not name.endswith(".md"):
             continue

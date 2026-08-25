@@ -169,6 +169,13 @@ const ATTRIBUTE_PREFIX = 'attr:';
 
 const ATTRIBUTE_STEP = `${ATTRIBUTE_PREFIX}[a-zA-Z0-9_]+`;
 
+// Attributes that are credentials rather than something to show. A camera's access_token
+// grants an unauthenticated snapshot through /api/camera_proxy, and entity_picture already
+// carries that token in its url - so a template pasted from elsewhere must never be able to
+// pull either into a config it then puts in an outbound url. Blocked here, at the one place
+// an attribute is read, rather than trusting every sink downstream not to leak it.
+const SENSITIVE_ATTRIBUTES = new Set(['access_token', 'entity_picture']);
+
 const RESOLVER_NAMES = `${Object.keys(RESOLVERS)
   .sort((a, b) => b.length - a.length)
   .join('|')}|${ATTRIBUTE_STEP}`;
@@ -185,7 +192,9 @@ export function isResolver(step: string): boolean {
  */
 function resolve(step: string, entityId: string, hass: any): string | undefined {
   if (step.startsWith(ATTRIBUTE_PREFIX)) {
-    const attribute = hass?.states?.[entityId]?.attributes?.[step.slice(ATTRIBUTE_PREFIX.length)];
+    const name = step.slice(ATTRIBUTE_PREFIX.length);
+    if (SENSITIVE_ATTRIBUTES.has(name)) return undefined;
+    const attribute = hass?.states?.[entityId]?.attributes?.[name];
     return attribute === undefined || attribute === null ? undefined : String(attribute);
   }
   const found = RESOLVERS[step]?.(entityId, hass);
@@ -399,7 +408,10 @@ export function resolveVariables(
 
 /** What each variable is set to, reading one name per entry as substitution does. */
 export function variableValues(variableArray: VariablesConfig[] | VariablesConfig | undefined): Record<string, any> {
-  const map: Record<string, any> = {};
+  // No prototype, so `key in map` answers about this dashboard's variables rather than about
+  // Object.prototype - a variable legitimately named `toString`, `constructor` or `valueOf`
+  // is kept like any other, and a `__proto__` key sets a plain entry instead of reparenting.
+  const map: Record<string, any> = Object.create(null);
   for (const entry of normaliseVariables(variableArray)) {
     const key = firstKey(entry);
     if (key !== undefined && !(key in map)) map[key] = entry[key];

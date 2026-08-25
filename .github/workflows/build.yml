@@ -30,7 +30,7 @@ jobs:
           node-version: 22.x
           cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Lint the code
         run: npm run lint --if-present
       - name: Run the tests
@@ -58,7 +58,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Build the project
         run: npm run build --if-present
 
@@ -96,7 +96,7 @@ jobs:
           node-version: 22.x
           cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       # Three things stand between a pull request and generated notes. semantic-release
       # takes the branch name from env-ci, not from git, and on a pull_request event that

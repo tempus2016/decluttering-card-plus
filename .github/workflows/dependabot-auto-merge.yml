@@ -1,7 +1,10 @@
 name: Dependabot auto-merge
 
 # Patch and minor bumps of development dependencies are chores. CI still has to pass -
-# this only removes the click, not the gate.
+# this only removes the click, not the gate. For the gate to be real, `main` must have a
+# branch protection rule requiring the "Lint and test", "Build" and "Release notes" checks:
+# without required checks, `gh pr merge --auto` merges the moment the PR opens, before CI
+# has run. See SECURITY.md.
 on: pull_request_target
 
 permissions:
@@ -10,17 +13,25 @@ permissions:
 
 jobs:
   merge:
-    if: github.actor == 'dependabot[bot]'
+    # Both checked: `github.actor` is who triggered the run, `pull_request.user.login` is who
+    # opened the PR - requiring both closes the gap where a re-triggered event carries a
+    # different actor than the author.
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - id: meta
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2.5.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Let it merge itself once the checks are green
-        # A major bump is left alone: those are the ones that need a person to look.
-        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        # Only patch and minor bumps of development dependencies merge unattended. A runtime
+        # dependency ends up in the bundle every install loads, and a major bump can change
+        # behaviour - both want a person to look, whatever the version step.
+        if: >-
+          steps.meta.outputs.dependency-type == 'direct:development' &&
+          (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+           steps.meta.outputs.update-type == 'version-update:semver-minor')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
