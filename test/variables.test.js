@@ -408,7 +408,7 @@ check(
   undefined,
 );
 check('a star pair catches whatever nothing else did', applyTransform('map:low=green,*=grey', 'medium'), 'grey');
-check('a named pair beats the star wherever it is written', applyTransform('map:*=grey,low=green', 'low'), 'green'),
+check('a named pair beats the star wherever it is written', applyTransform('map:*=grey,low=green', 'low'), 'green');
 check('what map gives chains onward', applyTransform('map:low=green|upper', 'low'), 'GREEN');
 
 check(
