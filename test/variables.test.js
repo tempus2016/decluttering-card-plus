@@ -410,6 +410,14 @@ check(
 check('a star pair catches whatever nothing else did', applyTransform('map:low=green,*=grey', 'medium'), 'grey');
 check('a named pair beats the star wherever it is written', applyTransform('map:*=grey,low=green', 'low'), 'green'),
 check('what map gives chains onward', applyTransform('map:low=green|upper', 'low'), 'GREEN');
+
+check(
+  'a step named after an inherited property is not a transform',
+  applyTransform('toString:x', 'Kitchen'),
+  'Kitchen',
+);
+check('nor is valueOf', applyTransform('valueOf:x', 'Kitchen'), 'Kitchen');
+check('nor is constructor', applyTransform('constructor:x', 'Kitchen'), 'Kitchen');
 check('max leaves a short value alone', applyTransform('max:10', 'Kitchen'), 'Kitchen');
 check('max of exactly the length changes nothing', applyTransform('max:7', 'Kitchen'), 'Kitchen');
 check('max with a length that is not a number changes nothing', applyTransform('max:lots', 'Kitchen'), 'Kitchen');

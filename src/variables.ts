@@ -255,8 +255,13 @@ const PARAM_STEP = `(?:${PARAM_PREFIXES.join('|')}):[^|\\]]*`;
 function paramTransform(step: string): { fn: (value: string, arg: string) => string | undefined; arg: string } | undefined {
   const colon = step.indexOf(':');
   if (colon === -1) return undefined;
-  const fn = PARAM_TRANSFORMS[step.slice(0, colon)];
-  return fn ? { fn, arg: step.slice(colon + 1) } : undefined;
+  const name = step.slice(0, colon);
+  // Own properties only. The grammar already keeps the set closed, so nothing in a config
+  // reaches here with `toString` or `valueOf` - but this is exported, and an inherited name
+  // would answer the lookup with a function that is not a transform at all. Same reasoning
+  // as the null-prototype map in variableValues.
+  if (!Object.prototype.hasOwnProperty.call(PARAM_TRANSFORMS, name)) return undefined;
+  return { fn: PARAM_TRANSFORMS[name], arg: step.slice(colon + 1) };
 }
 
 const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES}|${OR_STEP}|${DEFAULT_STEP}|${PARAM_STEP})`;
