@@ -130,6 +130,76 @@ check(
   [{ entity: 'light.loose', name: 'light.loose', domain: 'light', area: '', area_id: '', total: 1 }],
 );
 
+/* ------------------------------------------------------------------- require */
+
+// Two lights, one of them in no area, for skipping copies whose key is empty.
+const looseHass = {
+  entities: {
+    'light.placed': { entity_id: 'light.placed', area_id: 'kitchen' },
+    'light.loose': { entity_id: 'light.loose' },
+  },
+  areas: { kitchen: { area_id: 'kitchen', name: 'Kitchen', labels: [] } },
+  states: {},
+};
+
+check(
+  'require skips a copy whose key came out empty',
+  ids(resolveRegistryItems(looseHass, { domain: 'light', require: 'area' })),
+  ['light.placed'],
+);
+
+check(
+  'require can name more than one key',
+  ids(resolveRegistryItems(looseHass, { domain: 'light', require: ['area', 'name'] })),
+  ['light.placed'],
+);
+
+check(
+  'require of a key nothing carries keeps nothing',
+  resolveRegistryItems(looseHass, { domain: 'light', require: 'floor' }),
+  [],
+);
+
+check(
+  'total counts what require kept, not what matched',
+  resolveRegistryItems(looseHass, { domain: 'light', require: 'area' })[0].total,
+  1,
+);
+
+/* ----------------------------------------------------------------- overrides */
+
+check(
+  'an override gives one copy different variables without excluding it',
+  resolveRegistryItems(hass, {
+    domain: 'light',
+    overrides: { 'light.bedside': { icon: 'mdi:bed', name: 'Reading light' } },
+  }).map((i) => [i.entity, i.name, i.icon]),
+  [
+    ['light.kitchen_ceiling', 'Ceiling', undefined],
+    ['light.bedside', 'Reading light', 'mdi:bed'],
+  ],
+);
+
+check(
+  'an override key is a pattern, like everything else here',
+  resolveRegistryItems(hass, { domain: 'light', overrides: { 'light.*': { row: 'compact' } } }).map((i) => i.row),
+  ['compact', 'compact'],
+);
+
+check(
+  'an override that renames also re-sorts, since the shown order is by name',
+  resolveRegistryItems(hass, { domain: 'light', overrides: { 'light.kitchen_ceiling': { name: 'A ceiling' } } }).map(
+    (i) => i.entity,
+  ),
+  ['light.kitchen_ceiling', 'light.bedside'],
+);
+
+check(
+  'an area copy is overridden by its area id',
+  resolveRegistryItems(hass, { areas: true, overrides: { bedroom: { icon: 'mdi:sleep' } } }).map((i) => i.icon),
+  ['mdi:sleep', undefined],
+);
+
 /* ----------------------------------------------------------------- area sources */
 
 check('every area, sorted by name', ids(resolveRegistryItems(hass, { areas: true })), ['bedroom', 'kitchen']);
@@ -283,6 +353,14 @@ check(
   ids(resolveRegistryItems(hass, { domain: 'light' })),
 );
 
+// `constructor` read straight off SORTS answers with Object, whose return value has no
+// localeCompare - the sort threw rather than falling through to a carried key.
+check(
+  'a sort named after an inherited property is a carried key, not a comparator',
+  ids(resolveRegistryItems(hass, { domain: 'light', sort: 'constructor' })),
+  ids(resolveRegistryItems(hass, { domain: 'light' })),
+);
+
 // Three areas whose alphabetical order (Attic, Cellar, Garage) differs from their entity
 // counts (2, 10, 9), so a carried-key sort is distinguishable from the default - and 9
 // against 10 tells a numeric comparison from a lexicographic one, which would put "10"
@@ -319,7 +397,79 @@ check(
   ['attic', 'garage', 'cellar'],
 );
 
+check(
+  'a leading minus turns one key around, busiest first',
+  resolveRegistryItems(countedHass, { areas: true, with: { domain: 'sensor' }, sort: '-entity_count' }).map(
+    (a) => a.area_id,
+  ),
+  ['cellar', 'garage', 'attic'],
+);
+
+check(
+  'minus works on a listed sort too',
+  resolveRegistryItems(hass, { domain: 'light', sort: '-name' }).map((i) => i.name),
+  ['Ceiling', 'Bedside'],
+);
+
+check(
+  'a list of keys sorts by the first and breaks ties with the next',
+  ids(resolveRegistryItems(countedHass, { domain: 'sensor', sort: ['area_id', '-entity'], limit: 2 })),
+  ['sensor.attic_1', 'sensor.attic_0'],
+);
+
+// Three temperatures whose numeric order (3 < 19 < 21.5) disagrees with their names.
+const temperaturesHass = {
+  entities: {
+    'sensor.hall': { entity_id: 'sensor.hall' },
+    'sensor.attic': { entity_id: 'sensor.attic' },
+    'sensor.porch': { entity_id: 'sensor.porch' },
+  },
+  areas: {},
+  states: {
+    'sensor.hall': { attributes: { temperature: 21.5 } },
+    'sensor.attic': { attributes: { temperature: 19 } },
+    'sensor.porch': { attributes: { temperature: 3 } },
+  },
+};
+
+check(
+  'sort attr reads an attribute at build time, coldest first',
+  ids(resolveRegistryItems(temperaturesHass, { domain: 'sensor', sort: 'attr:temperature' })),
+  ['sensor.porch', 'sensor.attic', 'sensor.hall'],
+);
+
+check(
+  'and minus attr is warmest first',
+  ids(resolveRegistryItems(temperaturesHass, { domain: 'sensor', sort: '-attr:temperature' })),
+  ['sensor.hall', 'sensor.attic', 'sensor.porch'],
+);
+
+check(
+  'an entity without the attribute sorts ahead as empty, not on top as zero',
+  ids(
+    resolveRegistryItems(
+      { ...temperaturesHass, states: { ...temperaturesHass.states, 'sensor.hall': { attributes: {} } } },
+      { domain: 'sensor', sort: 'attr:temperature' },
+    ),
+  )[0],
+  'sensor.hall',
+);
+
 check('a limit takes the first few', ids(resolveRegistryItems(hass, { entities: '*', limit: 2 })).length, 2);
+
+check(
+  'offset skips the first few, so two cards can split one list',
+  ids(resolveRegistryItems(hass, { entities: '*', offset: 1, limit: 2 })),
+  ids(resolveRegistryItems(hass, { entities: '*' })).slice(1, 3),
+);
+
+check('offset past the end keeps nothing', resolveRegistryItems(hass, { entities: '*', offset: 99 }), []);
+
+check(
+  'total ignores offset like it ignores limit, so every window says the same of-how-many',
+  resolveRegistryItems(hass, { entities: '*', offset: 1, limit: 1 })[0].total,
+  resolveRegistryItems(hass, { entities: '*' }).length,
+);
 
 check(
   'total counts what matched, not what was kept, so a card can say 2 of 4',
