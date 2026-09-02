@@ -214,7 +214,10 @@ function ordered(items: Record<string, any>[], source: RegistrySource, hass?: an
     .map((raw) => {
       const descending = raw.startsWith('-');
       const key = descending ? raw.slice(1) : raw;
-      const known = SORTS[key];
+      // Own properties only, or an inherited name like `toString` answers the lookup with a
+      // function that is not a comparator at all - same reasoning as the parameterised
+      // transform lookup in variables.ts.
+      const known = Object.prototype.hasOwnProperty.call(SORTS, key) ? SORTS[key] : undefined;
       // `attr:temperature` reads the state's attribute as it is right now. A build-time
       // snapshot on purpose: the order will not follow the value, and the docs say so.
       const read =

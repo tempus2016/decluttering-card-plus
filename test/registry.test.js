@@ -353,6 +353,14 @@ check(
   ids(resolveRegistryItems(hass, { domain: 'light' })),
 );
 
+// `constructor` read straight off SORTS answers with Object, whose return value has no
+// localeCompare - the sort threw rather than falling through to a carried key.
+check(
+  'a sort named after an inherited property is a carried key, not a comparator',
+  ids(resolveRegistryItems(hass, { domain: 'light', sort: 'constructor' })),
+  ids(resolveRegistryItems(hass, { domain: 'light' })),
+);
+
 // Three areas whose alphabetical order (Attic, Cellar, Garage) differs from their entity
 // counts (2, 10, 9), so a carried-key sort is distinguishable from the default - and 9
 // against 10 tells a numeric comparison from a lexicographic one, which would put "10"
