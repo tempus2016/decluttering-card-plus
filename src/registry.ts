@@ -27,14 +27,20 @@ export interface RegistrySource {
   integration?: string | string[];
   /** What to leave out. Patterns for entity ids, or a mapping of the same filters. */
   exclude?: string | string[] | RegistrySource;
-  /** What to order the copies by. Defaults to the name shown. */
-  sort?: string;
+  /** What to order the copies by, `-key` for descending, a list for tiebreaks. */
+  sort?: string | string[];
   /** Reverses whatever order was chosen. */
   reverse?: boolean;
   /** At most this many copies, after everything else has been applied. */
   limit?: number;
+  /** Skip this many copies first, so `offset` and `limit` cut one list into windows. */
+  offset?: number;
   /** Repeat a fixed number of times, with nothing but the position to go on. */
   range?: number;
+  /** Skip a copy when any of these keys came out empty - entities in no area, say. */
+  require?: string | string[];
+  /** Extra or different variables for particular copies, keyed by entity or area pattern. */
+  overrides?: Record<string, Record<string, any>>;
   /** For an area source: the entities to gather for each area. */
   with?: RegistrySource & { keep_empty?: boolean };
 }
@@ -162,32 +168,95 @@ const SORTS: Record<string, (item: Record<string, any>) => string> = {
  * `total` goes on every copy before the limit is applied, so a template can say "8 of 23"
  * rather than "8 of 8".
  */
-function ordered(items: Record<string, any>[], source: RegistrySource): Record<string, any>[] {
-  const name = typeof source.sort === 'string' && source.sort ? source.sort : undefined;
-  const known = name ? SORTS[name] : undefined;
-  // `sort: none` keeps the registry's own order, which is the only way to ask for
-  // "however Home Assistant listed them". Any other name outside SORTS is read as a key
-  // on each item - `sort: area_id`, or `sort: entity_count` on a grouped repeat - and
-  // compared numerically as well as alphabetically, since what items carry is as often a
-  // count as a word. An item without the key sorts as empty, ahead of everything.
-  const carried =
-    name && name !== 'none' && !known ? (item: Record<string, any>): string => String(item[name] ?? '') : undefined;
-  const sorted =
+function ordered(items: Record<string, any>[], source: RegistrySource, hass?: any): Record<string, any>[] {
+  /*
+   * `overrides:` gives particular copies different variables - a special icon for one
+   * light - without the exclude-and-rewrite dance. Applied before anything else looks at
+   * the items, so a renamed copy sorts under its new name and `require:` sees the
+   * overridden values. Keys are patterns, and every matching one applies in turn.
+   */
+  const overrides = source.overrides && typeof source.overrides === 'object' ? source.overrides : undefined;
+  if (overrides) {
+    items = items.map((item) => {
+      let merged = item;
+      for (const [pattern, extra] of Object.entries(overrides)) {
+        if (!extra || typeof extra !== 'object' || Array.isArray(extra)) continue;
+        if (matches(item.entity ?? item.area_id, [pattern])) merged = { ...merged, ...extra };
+      }
+      return merged;
+    });
+  }
+
+  // `require:` drops a copy whose key came out empty - an entity in no area, an area on
+  // no floor - before anything is counted, so `total` says what is actually shown.
+  const wanted = asList(source.require) ?? [];
+  if (wanted.length) items = items.filter((item) => wanted.every((key) => String(item[key] ?? '') !== ''));
+
+  /*
+   * `sort: none` keeps the registry's own order, which is the only way to ask for
+   * "however Home Assistant listed them". Any other name outside SORTS is read as a key
+   * on each item - `sort: area_id`, or `sort: entity_count` on a grouped repeat - and
+   * compared numerically as well as alphabetically, since what items carry is as often a
+   * count as a word. An item without the key sorts as empty, ahead of everything.
+   *
+   * A leading minus turns one key around, and a list of keys sorts by the first and
+   * breaks ties with the next - `sort: [floor, -entity_count]`. `reverse:` still flips
+   * the whole order at the end, tiebreaks and all.
+   */
+  const asked =
     source.sort === undefined
+      ? undefined
+      : (Array.isArray(source.sort) ? source.sort : [source.sort]).filter(
+          (each): each is string => typeof each === 'string' && !!each,
+        );
+  const comparators = (asked ?? [])
+    .filter((each) => each !== 'none')
+    .map((raw) => {
+      const descending = raw.startsWith('-');
+      const key = descending ? raw.slice(1) : raw;
+      // Own properties only, or an inherited name like `toString` answers the lookup with a
+      // function that is not a comparator at all - same reasoning as the parameterised
+      // transform lookup in variables.ts.
+      const known = Object.prototype.hasOwnProperty.call(SORTS, key) ? SORTS[key] : undefined;
+      // `attr:temperature` reads the state's attribute as it is right now. A build-time
+      // snapshot on purpose: the order will not follow the value, and the docs say so.
+      const read =
+        known ??
+        (key.startsWith('attr:')
+          ? (item: Record<string, any>): string => {
+              const value = hass?.states?.[item.entity]?.attributes?.[key.slice(5)];
+              return value === undefined || value === null ? '' : String(value);
+            }
+          : (item: Record<string, any>): string => String(item[key] ?? ''));
+      return (a: Record<string, any>, b: Record<string, any>): number => {
+        const compared = known
+          ? read(a).localeCompare(read(b))
+          : read(a).localeCompare(read(b), undefined, { numeric: true });
+        return descending ? -compared : compared;
+      };
+    });
+  const sorted =
+    asked === undefined
       ? [...items].sort(byName)
-      : known
-        ? [...items].sort((a, b) => known(a).localeCompare(known(b)) || byName(a, b))
-        : carried
-          ? [...items].sort(
-              (a, b) => carried(a).localeCompare(carried(b), undefined, { numeric: true }) || byName(a, b),
-            )
-          : [...items];
+      : comparators.length
+        ? [...items].sort((a, b) => {
+            for (const compare of comparators) {
+              const result = compare(a, b);
+              if (result) return result;
+            }
+            return byName(a, b);
+          })
+        : [...items];
   if (source.reverse) sorted.reverse();
 
   const total = sorted.length;
   const withTotal = sorted.map((item) => ({ ...item, total }));
+  // `total` ignores the window on purpose: every page of a split list says the same
+  // "of 23", which is the point of splitting it.
+  const offset = Number(source.offset);
+  const from = Number.isFinite(offset) && offset > 0 ? Math.floor(offset) : 0;
   const limit = Number(source.limit);
-  return Number.isFinite(limit) && limit >= 0 ? withTotal.slice(0, limit) : withTotal;
+  return Number.isFinite(limit) && limit >= 0 ? withTotal.slice(from, from + limit) : withTotal.slice(from);
 }
 
 /** Whether one area answers to a set of filters. */
@@ -340,7 +409,7 @@ export function resolveRegistryItems(hass: any, source: any): Record<string, any
   }
 
   const items = source.areas !== undefined ? areaItems(hass, source) : entityItems(hass, source);
-  return ordered(items, source);
+  return ordered(items, source, hass);
 }
 
 /**
