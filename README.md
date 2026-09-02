@@ -111,7 +111,9 @@ Templates][wiki-defining].
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
   or area Home Assistant knows about, narrowed by domain, area, floor, label, device class or
   integration, with anything you name excluded, sorted, limited, and a card of your own to
-  show when nothing matches.
+  show when nothing matches. The order can run backwards, break ties on a second key, or
+  follow a state attribute; `offset` splits one long list across two cards, `require` drops a
+  copy that came out empty, and `overrides` gives one copy its own variables.
 - **Grouping** — a copy per area that knows what is in it, so one card becomes a tile per
   room, each listing that room's lights.
 
