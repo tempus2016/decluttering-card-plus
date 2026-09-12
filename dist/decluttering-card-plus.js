@@ -225,7 +225,7 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
         display: block;
         margin-bottom: 8px;
       }
-      .share mwc-button {
+      .share ha-button {
         margin-top: 8px;
       }
       .suggest {
@@ -261,7 +261,7 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
         display: block;
         width: 100%;
       }
-      .rename mwc-button {
+      .rename ha-button {
         margin-top: 8px;
       }
       .order ul {
@@ -287,7 +287,7 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
         color: var(--secondary-text-color);
         font-size: 0.9em;
       }
-      .library mwc-button {
+      .library ha-button {
         margin-top: 8px;
       }
     `}async connectedCallback(){super.connectedCallback(),this._loadedElements||(await async function(){let e=customElements.get("hui-vertical-stack-card");e||((await ur).createCardElement({type:"vertical-stack",cards:[]}),await customElements.whenDefined("hui-vertical-stack-card"),e=customElements.get("hui-vertical-stack-card")),e&&(e=e.prototype.constructor),e&&e.getConfigElement&&await e.getConfigElement()}(),await async function(){let e=customElements.get("hui-entities-card");e||((await ur).createCardElement({type:"entities",entities:[]}),await customElements.whenDefined("hui-entities-card"),e=customElements.get("hui-entities-card")),e&&e.getConfigElement&&await e.getConfigElement()}(),this._loadedElements=!0)}render(){var e;if(!this.hass||!this._config)return M``;const t={};lr(this._config.default)||(t.default=be("error.variables_shape",void 0,this.hass)),void 0===this._config.variables||Array.isArray(this._config.variables)||(t.variables=be("template_editor.declarations_shape",void 0,this.hass));const a={template:this._config.template,thingType:null!==(e=hr(this._config))&&void 0!==e?e:"card",description:this._config.description,variables:this._config.variables,default:this._config.default};return M`
@@ -389,9 +389,9 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
         ${this._suggestion?M`<ha-alert alert-type="warning">
                 ${be(1===this._suggestion.variables.length?"template_editor.suggest_confirm_one":"template_editor.suggest_confirm_many",{names:this._suggestion.variables.map(e=>e.name).join(", ")},this.hass)}
               </ha-alert>`:M``}
-        <mwc-button @click=${this._suggest}>
+        <ha-button @click=${this._suggest}>
           ${be(this._suggestion?"template_editor.suggest_anyway":"template_editor.suggest_button",void 0,this.hass)}
-        </mwc-button>
+        </ha-button>
       </div>
     `:M``}_suggest(){var e;if(!(null===(e=this._config)||void 0===e?void 0:e.card))return;if(this._suggestion){const e=Object.assign(Object.assign({},this._config),{card:this._suggestion.card});return e.variables=[...it(this._config),...this._suggestion.variables],this._suggestion=void 0,void this._fireConfigChanged(e)}this._suggestedNothing=!1;const t=it(this._config).map(e=>e.name),a=function(e,t){const a=new Set(t),r=[],i=new Map,n=(e,t)=>{const n=`${e.base} ${t}`,o=i.get(n);if(o)return o;let s=1,l=e.base;for(;a.has(l);)s+=1,l=`${e.base}_${s}`;return a.add(l),i.set(n,l),r.push({name:l,label:Ta(e,s),selector:e.selector,default:t}),l},o=e=>{if(Array.isArray(e))return e.map(o);if(!e||"object"!=typeof e)return e;const t={};for(const[a,r]of Object.entries(e)){const e=Oa[a];e&&"string"==typeof r&&!ze.test(r)&&e.matches(r)?t[a]=`[[${n(e,r)}]]`:t[a]=o(r)}return t};return{card:o(e),variables:r}}(this._config.card,t);a.variables.length?this._suggestion=a:this._suggestedNothing=!0}_renderUsages(){var e,t,a;const r=null===(e=this._config)||void 0===e?void 0:e.template;if(!r)return M``;const i=null!==(t=this.lovelace)&&void 0!==t?t:Fa();if(!i)return M`<div class="usages">
         <ha-alert alert-type="warning">${be("template_editor.usages_unreadable",void 0,this.hass)}</ha-alert>
@@ -451,9 +451,9 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
         <p class="hint">${be("share.export_hint",void 0,this.hass)}</p>
         ${i.map(e=>M`<ha-alert alert-type="info">${e}</ha-alert>`)}
         <ha-yaml-editor id="export" .hass=${this.hass} .defaultValue=${r} read-only></ha-yaml-editor>
-        <mwc-button @click=${this._copyExport}>
+        <ha-button @click=${this._copyExport}>
           ${"done"===this._copyState?be("share.copied",void 0,this.hass):"failed"===this._copyState?be("share.copy_failed",void 0,this.hass):be("share.copy",void 0,this.hass)}
-        </mwc-button>
+        </ha-button>
 
         <h3>${be("share.import_header",void 0,this.hass)}</h3>
         <p class="hint">${be("share.import_hint",void 0,this.hass)}</p>
@@ -462,12 +462,12 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
         ${this._importClash?M`<ha-alert alert-type="warning">
                 ${be("share.import_clash",{name:this._importClash},this.hass)}
               </ha-alert>`:M``}
-        <mwc-button @click=${this._import}>
+        <ha-button @click=${this._import}>
           ${be(this._importClash?"share.import_anyway":"share.import",void 0,this.hass)}
-        </mwc-button>
-        ${this._importClash?M`<mwc-button @click=${this._importAsCopy}>
+        </ha-button>
+        ${this._importClash?M`<ha-button @click=${this._importAsCopy}>
                 ${be("share.import_copy",void 0,this.hass)}
-              </mwc-button>`:M``}
+              </ha-button>`:M``}
 
         <h3>${be("share.library_header",void 0,this.hass)}</h3>
         <p class="hint">${be("share.library_hint",void 0,this.hass)}</p>
@@ -498,9 +498,9 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
                   .computeLabel=${()=>be("share.library_where",void 0,this.hass)}
                   @value-changed=${this._libraryDestinationPicked}
                 ></ha-form>
-                <mwc-button .disabled=${this._busy||o} @click=${()=>{this._install(n.name)}}>
+                <ha-button .disabled=${this._busy||o} @click=${()=>{this._install(n.name)}}>
                   ${be(o?"share.already_here":s?"share.install_anyway":"share.install",void 0,this.hass)}
-                </mwc-button>
+                </ha-button>
               `:M``}
       </div>
     `}_libraryDestinationPicked(e){e.stopPropagation();const t=e.detail.value.where;this._libraryDestination="root"===t?"root":"view"}_libraryPicked(e){e.stopPropagation(),this._librarySelected=e.detail.value.entry||void 0,this._installPending=void 0}async _install(e){var t,a,r,i,n,o,s;const l=Na(e);if(!l)return;if(this._installPending!==e)return void(this._installPending=e);const d=Ga(),u=Object.keys(sa(null!==(a=null!==(t=null==d?void 0:d.config)&&void 0!==t?t:this.lovelace)&&void 0!==a?a:Fa())),c=[...Va(l,u),l.name].filter(e=>!u.includes(e)),h=ba(null!==(r=null==d?void 0:d.config)&&void 0!==r?r:this.lovelace,null!==(n=null===(i=this._config)||void 0===i?void 0:i.template)&&void 0!==n?n:""),m=null!==(s=null===(o=null==h?void 0:h.view)||void 0===o?void 0:o.index)&&void 0!==s?s:0;await this._saveDashboard(e=>c.reduce((e,t)=>{const a=Na(t);return a?"root"===this._libraryDestination?ra(e,a.name,a.template):$a(e,m,Object.assign({type:Yt,template:a.name},a.template)):e},e))&&(this._installPending=void 0)}_renderRename(e,t){const a=this._renameTo.trim(),r=!!a&&this._renamePending===a,i=t?1===t?be("tools.rewrites_one",void 0,this.hass):be("tools.rewrites_many",{count:t},this.hass):"";return M`
@@ -517,9 +517,9 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
           .disabled=${this._renaming}
           @input=${this._renameChanged}
         ></ha-textfield>
-        <mwc-button .disabled=${this._renaming||!a||a===e} @click=${this._rename}>
+        <ha-button .disabled=${this._renaming||!a||a===e} @click=${this._rename}>
           ${r?be("tools.rename_anyway",void 0,this.hass):1===t?be("tools.rename_update_one",void 0,this.hass):t?be("tools.rename_update_many",{count:t},this.hass):be("tools.rename",void 0,this.hass)}
-        </mwc-button>
+        </ha-button>
       </div>
     `}async _saveDashboard(e){var t;const a=Ga();if(!a)return this._toolError=be("tools.cannot_save_here",void 0,this.hass),!1;this._busy=!0,this._toolError=void 0;try{return await a.saveConfig(e(a.config)),!0}catch(r){return this._toolError=be("tools.save_failed",{message:null!==(t=null==r?void 0:r.message)&&void 0!==t?t:r},this.hass),!1}finally{this._busy=!1}}_renderModernise(){var e,t,a;const r=null!==(a=null!==(t=null===(e=Ga())||void 0===e?void 0:e.config)&&void 0!==t?t:this.lovelace)&&void 0!==a?a:Fa(),i=r?function(e){let t=0;const a=e=>{Array.isArray(e)?e.forEach(a):e&&"object"==typeof e&&(e.type!==Zt&&"custom:decluttering-card"!==e.type||(t+=1),Object.values(e).forEach(a))};return a(e),t}(r):0;return i?M`
       <div class="rename">
@@ -530,9 +530,9 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
         ${this._modernisePending?M`<ha-alert alert-type="warning">
                 ${be(1===i?"tools.modernise_confirm_one":"tools.modernise_confirm_many",{count:i},this.hass)}
               </ha-alert>`:M``}
-        <mwc-button .disabled=${this._busy} @click=${this._modernise}>
+        <ha-button .disabled=${this._busy} @click=${this._modernise}>
           ${be(this._modernisePending?"tools.modernise_anyway":1===i?"tools.modernise_one":"tools.modernise_many",void 0,this.hass)}
-        </mwc-button>
+        </ha-button>
       </div>
     `:M``}async _modernise(){if(!this._modernisePending)return void(this._modernisePending=!0);await this._saveDashboard(e=>function(e){const t={"custom:decluttering-card":"custom:decluttering-card-plus",[Zt]:Yt},a=e=>{if(Array.isArray(e))return e.map(a);if(!e||"object"!=typeof e)return e;const r={};for(const[t,i]of Object.entries(e))r[t]=a(i);return"string"==typeof e.type&&t[e.type]&&(r.type=t[e.type]),r};return a(e)}(e))&&(this._modernisePending=!1)}_renameChanged(e){var t;this._renameTo=null!==(t=e.target.value)&&void 0!==t?t:"",this._renameError=void 0,this._renamePending=void 0}async _rename(){var e,t;const a=null===(e=this._config)||void 0===e?void 0:e.template,r=this._renameTo.trim();if(!a||!r||r===a)return;const i=Ga();if(i)if(void 0===sa(i.config)[r])if(this._renamePending===r){this._renaming=!0,this._renameError=void 0;try{await i.saveConfig(function(e,t,a){const r=e=>{if(Array.isArray(e))return e.map(r);if(!e||"object"!=typeof e)return e;const i={};for(const[t,a]of Object.entries(e))i[t]=r(a);return(Xt(e.type)||_a.includes(e.type))&&e.template===t&&(i.template=a),i},i=r(e),n=null==i?void 0:i.decluttering_templates;if(n&&"object"==typeof n&&t in n){const e={};for(const[r,i]of Object.entries(n))e[r===t?a:r]=i;i.decluttering_templates=e}return i}(i.config,a,r)),this._fireConfigChanged(Object.assign(Object.assign({},this._config),{template:r})),this._renameTo="",this._renamePending=void 0}catch(n){this._renameError=be("tools.save_failed",{message:null!==(t=null==n?void 0:n.message)&&void 0!==t?t:n},this.hass)}finally{this._renaming=!1}}else this._renamePending=r;else this._renameError=be("tools.name_taken",{name:r},this.hass);else this._renameError=be("tools.cannot_rename_here",void 0,this.hass)}_renderDuplicate(e){const t=this._duplicateTo.trim(),a=!!t&&this._duplicatePending===t;return M`
       <div class="rename">
@@ -547,8 +547,8 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
           .disabled=${this._busy}
           @input=${this._duplicateChanged}
         ></ha-textfield>
-        <mwc-button .disabled=${this._busy||!t||t===e} @click=${this._duplicate}>
+        <ha-button .disabled=${this._busy||!t||t===e} @click=${this._duplicate}>
           ${be(a?"tools.duplicate_anyway":"tools.duplicate",void 0,this.hass)}
-        </mwc-button>
+        </ha-button>
       </div>
     `}_duplicateChanged(e){var t;this._duplicateTo=null!==(t=e.target.value)&&void 0!==t?t:"",this._toolError=void 0,this._duplicatePending=void 0}async _duplicate(){var e,t;const a=null===(e=this._config)||void 0===e?void 0:e.template,r=this._duplicateTo.trim();if(!a||!r||r===a)return;const i=Ga();if(i&&void 0!==sa(i.config)[r])return void(this._toolError=be("tools.name_taken",{name:r},this.hass));if(this._duplicatePending!==r)return void(this._duplicatePending=r);const n=Object.assign(Object.assign({},this._config),{template:r}),o=ba(null!==(t=null==i?void 0:i.config)&&void 0!==t?t:this.lovelace,a),s=await this._saveDashboard(e=>{var t,a;return $a(e,null!==(a=null===(t=null==o?void 0:o.view)||void 0===t?void 0:t.index)&&void 0!==a?a:0,n)});s&&(this._duplicateTo="",this._duplicatePending=void 0)}async _copyExport(){const e=this.renderRoot.querySelector("#export"),t=null==e?void 0:e.yaml;if(!t)return;const{notes:a}=za(this._config),r=[...a.map(e=>`# ${e}`),t].join("\n");this._copyState=await async function(e){var t;if(null===(t=navigator.clipboard)||void 0===t?void 0:t.writeText)try{return await navigator.clipboard.writeText(e),!0}catch(i){}const a=document.createElement("textarea");a.value=e,a.setAttribute("readonly",""),a.style.cssText="position:fixed;top:-1000px;opacity:0;",document.body.appendChild(a),a.select();let r=!1;try{r=document.execCommand("copy")}catch(n){r=!1}return a.remove(),r}(r)?"done":"failed",setTimeout(()=>this._copyState="",3e3)}_importChanged(e){e.stopPropagation(),this._importValue=e.detail.value,this._importParses=!1!==e.detail.isValid,this._importErrors=[],this._importClash=void 0}_import(){var e;if(!this._config)return;if(!this._importParses)return void(this._importErrors=[be("share.import_not_yaml",void 0,this.hass)]);const t=function(e){if(!e||"object"!=typeof e||Array.isArray(e))return{ok:!1,errors:[be("share.import_not_a_template")]};const t=[];"string"==typeof e.template&&e.template.trim()||t.push(be("share.import_no_name"));const a=Ea.filter(t=>void 0!==e[t]);return 0===a.length?t.push(be("share.import_defines_nothing")):a.length>1&&t.push(be("share.import_defines_both",{first:a[0],second:a[1]})),{ok:0===t.length,errors:t}}(this._importValue);if(!t.ok)return this._importErrors=t.errors,void(this._importClash=void 0);this._importErrors=[];const a=this._importValue.template,r=sa(null!==(e=this.lovelace)&&void 0!==e?e:Fa());this._importClash||a===this._config.template||!(a in r)?this._applyImport(this._importValue.template):this._importClash=a}_importAsCopy(){var e;if(!this._config||!this._importParses)return;const t=Object.keys(sa(null!==(e=this.lovelace)&&void 0!==e?e:Fa()));this._applyImport(function(e,t){if(!t.includes(e))return e;let a=2;for(;t.includes(`${e}_${a}`);)a+=1;return`${e}_${a}`}(this._importValue.template,t))}_applyImport(e){var t,a,r,i;const n=this._importValue.includes;if(n&&"object"==typeof n&&!Array.isArray(n)){const e=Object.keys(sa(null!==(r=null!==(a=null===(t=Ga())||void 0===t?void 0:t.config)&&void 0!==a?a:this.lovelace)&&void 0!==r?r:Fa())),i=Object.entries(n).filter(([t])=>!e.includes(t));i.length&&this._saveDashboard(e=>i.reduce((e,[t,a])=>ra(e,t,a),e))}const o=Object.assign(Object.assign({},this._importValue),{template:e,type:null===(i=this._config)||void 0===i?void 0:i.type});delete o.includes,this._fireConfigChanged(o),this._importClash=void 0,this._selectedTab="settings"}_activateTab(e){const t=e.composedPath().find(e=>"ha-tab-group-tab"===e.localName),a=null==t?void 0:t.getAttribute("panel");a&&(this._selectedTab=a)}_valueChanged(e){if(!this._config)return;const t=e.detail.value,a=Object.assign(Object.assign({},this._config),{template:t.template,default:t.default});dr(a,"description",t.description),dr(a,"variables",t.variables);for(const[r,i]of Object.entries(tr))vr.stubMember(t.thingType===r,a,r,i);this._fireConfigChanged(a)}_cardChanged(e){if(e.stopPropagation(),!this._config)return;this._suggestion=void 0,this._suggestedNothing=!1;const t=Object.assign(Object.assign({},this._config),{card:e.detail.config});this._fireConfigChanged(t)}_cardPicked(e){this._selectedTab="card",this._cardChanged(e)}_rowChanged(e){if(e.stopPropagation(),!this._config)return;const t=Object.assign(Object.assign({},this._config),{row:e.detail.config});this._fireConfigChanged(t)}_fireConfigChanged(e){this._suggestion=void 0,this._suggestedNothing=!1,_e(this,"config-changed",{config:e})}static stubMember(e,t,a,r){e?a in t||(t[a]=r):delete t[a]}}function fr(e,t){return customElements.get(e)?(console.warn(be("warn.tag_taken",{tag:e})),!1):(customElements.define(e,t),!0)}e([he()],vr.prototype,"_config",void 0),e([he()],vr.prototype,"_selectedTab",void 0),e([he()],vr.prototype,"_importErrors",void 0),e([he()],vr.prototype,"_importClash",void 0),e([he()],vr.prototype,"_copyState",void 0),e([he()],vr.prototype,"_suggestion",void 0),e([he()],vr.prototype,"_suggestedNothing",void 0),e([he()],vr.prototype,"_renameTo",void 0),e([he()],vr.prototype,"_renameError",void 0),e([he()],vr.prototype,"_renaming",void 0),e([he()],vr.prototype,"_renamePending",void 0),e([he()],vr.prototype,"_duplicateTo",void 0),e([he()],vr.prototype,"_duplicatePending",void 0),e([he()],vr.prototype,"_toolError",void 0),e([he()],vr.prototype,"_busy",void 0),e([he()],vr.prototype,"_modernisePending",void 0),e([he()],vr.prototype,"_installPending",void 0),e([he()],vr.prototype,"_librarySelected",void 0),e([he()],vr.prototype,"_libraryDestination",void 0),e([he()],vr.prototype,"_remoteUsages",void 0),e([ce()],vr.prototype,"lovelace",void 0),e([ce()],vr.prototype,"hass",void 0);const br=window.customCards=window.customCards||[],yr=window.customBadges=window.customBadges||[],wr="https://github.com/tempus2016/decluttering-card-plus";fr(Za,_r),fr(Qa,vr),fr(Ja,pr)&&(br.push({type:Ja,documentationURL:wr,name:"Decluttering Card Plus",preview:!1,description:be("picker.card_description")}),yr.push({type:Ja,documentationURL:wr,name:"Decluttering Card Plus",preview:!1,description:be("picker.badge_description")})),fr(Ya,gr)&&br.push({type:Ya,documentationURL:wr,name:"Decluttering Template Plus",preview:!1,description:be("picker.template_description")});fr(Xa,class extends pr{static getStubConfig(){return Object.assign(Object.assign({},pr.getStubConfig()),{type:`custom:${Xa}`})}})&&br.push({type:Xa,documentationURL:wr,name:"Decluttering Card (compatibility)",preview:!1,description:be("picker.legacy_card_description")}),fr(er,class extends gr{static getStubConfig(){return Object.assign(Object.assign({},gr.getStubConfig()),{type:`custom:${er}`})}})&&br.push({type:er,documentationURL:wr,name:"Decluttering Template (compatibility)",preview:!1,description:be("picker.legacy_template_description")});
