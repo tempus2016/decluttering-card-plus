@@ -213,6 +213,23 @@ export function collectTemplates(ll: LovelaceConfig | null | undefined): Record<
   return out;
 }
 
+let dashboardListCache: Promise<string[]> | null = null;
+
+/** Every dashboard's url path. The default dashboard answers to 'lovelace'. */
+function fetchDashboardPaths(hass: HomeAssistant): Promise<string[]> {
+  dashboardListCache ??= (hass as any)
+    .callWS({ type: 'lovelace/dashboards/list' })
+    .then((list: any[]) =>
+      (list ?? [])
+        .map((dashboard) => dashboard?.url_path)
+        .filter((path): path is string => typeof path === 'string' && !!path)
+        .sort()
+        .concat('lovelace'),
+    )
+    .catch(() => []) as Promise<string[]>;
+  return dashboardListCache;
+}
+
 /** The dashboards this one borrows templates from, in the order they were listed. */
 export function getTemplateSources(ll: LovelaceConfig | null | undefined): string[] {
   const sources = (ll as any)?.[SOURCES_KEY];
