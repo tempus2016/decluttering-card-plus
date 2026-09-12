@@ -1645,7 +1645,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         display: block;
         margin-bottom: 8px;
       }
-      .share mwc-button {
+      .share ha-button {
         margin-top: 8px;
       }
       .suggest {
@@ -1681,7 +1681,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         display: block;
         width: 100%;
       }
-      .rename mwc-button {
+      .rename ha-button {
         margin-top: 8px;
       }
       .order ul {
@@ -1707,7 +1707,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         color: var(--secondary-text-color);
         font-size: 0.9em;
       }
-      .library mwc-button {
+      .library ha-button {
         margin-top: 8px;
       }
     `;
@@ -1963,13 +1963,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        <mwc-button @click=${this._suggest}>
+        <ha-button @click=${this._suggest}>
           ${localize(
             this._suggestion ? 'template_editor.suggest_anyway' : 'template_editor.suggest_button',
             undefined,
             this.hass,
           )}
-        </mwc-button>
+        </ha-button>
       </div>
     `;
   }
@@ -2185,7 +2185,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         <p class="hint">${localize('share.export_hint', undefined, this.hass)}</p>
         ${notes.map((note) => html`<ha-alert alert-type="info">${note}</ha-alert>`)}
         <ha-yaml-editor id="export" .hass=${this.hass} .defaultValue=${payload} read-only></ha-yaml-editor>
-        <mwc-button @click=${this._copyExport}>
+        <ha-button @click=${this._copyExport}>
           ${
             this._copyState === 'done'
               ? localize('share.copied', undefined, this.hass)
@@ -2193,7 +2193,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 ? localize('share.copy_failed', undefined, this.hass)
                 : localize('share.copy', undefined, this.hass)
           }
-        </mwc-button>
+        </ha-button>
 
         <h3>${localize('share.import_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.import_hint', undefined, this.hass)}</p>
@@ -2206,14 +2206,14 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        <mwc-button @click=${this._import}>
+        <ha-button @click=${this._import}>
           ${localize(this._importClash ? 'share.import_anyway' : 'share.import', undefined, this.hass)}
-        </mwc-button>
+        </ha-button>
         ${
           this._importClash
-            ? html`<mwc-button @click=${this._importAsCopy}>
+            ? html`<ha-button @click=${this._importAsCopy}>
                 ${localize('share.import_copy', undefined, this.hass)}
-              </mwc-button>`
+              </ha-button>`
             : html``
         }
 
@@ -2290,13 +2290,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                   .computeLabel=${(): string => localize('share.library_where', undefined, this.hass)}
                   @value-changed=${this._libraryDestinationPicked}
                 ></ha-form>
-                <mwc-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
+                <ha-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
                   ${localize(
                     already ? 'share.already_here' : armed ? 'share.install_anyway' : 'share.install',
                     undefined,
                     this.hass,
                   )}
-                </mwc-button>
+                </ha-button>
               `
             : html``
         }
@@ -2381,7 +2381,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           .disabled=${this._renaming}
           @input=${this._renameChanged}
         ></ha-textfield>
-        <mwc-button .disabled=${this._renaming || !to || to === name} @click=${this._rename}>
+        <ha-button .disabled=${this._renaming || !to || to === name} @click=${this._rename}>
           ${
             armed
               ? localize('tools.rename_anyway', undefined, this.hass)
@@ -2391,7 +2391,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                   ? localize('tools.rename_update_many', { count: total }, this.hass)
                   : localize('tools.rename', undefined, this.hass)
           }
-        </mwc-button>
+        </ha-button>
       </div>
     `;
   }
@@ -2448,7 +2448,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        <mwc-button .disabled=${this._busy} @click=${this._modernise}>
+        <ha-button .disabled=${this._busy} @click=${this._modernise}>
           ${localize(
             this._modernisePending
               ? 'tools.modernise_anyway'
@@ -2458,7 +2458,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
             undefined,
             this.hass,
           )}
-        </mwc-button>
+        </ha-button>
       </div>
     `;
   }
@@ -2541,9 +2541,9 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           .disabled=${this._busy}
           @input=${this._duplicateChanged}
         ></ha-textfield>
-        <mwc-button .disabled=${this._busy || !to || to === name} @click=${this._duplicate}>
+        <ha-button .disabled=${this._busy || !to || to === name} @click=${this._duplicate}>
           ${localize(armed ? 'tools.duplicate_anyway' : 'tools.duplicate', undefined, this.hass)}
-        </mwc-button>
+        </ha-button>
       </div>
     `;
   }
