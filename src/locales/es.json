@@ -104,6 +104,9 @@
   "template_editor.usages_none": "Nada en este panel usa \"{name}\" todavía. Las tarjetas de otros paneles no se cuentan aquí, ni siquiera las que toman prestadas las plantillas de este.",
   "template_editor.usages_one": "Una tarjeta usa \"{name}\" en este panel. Las tarjetas de otros paneles no se cuentan.",
   "template_editor.usages_many": "{total} tarjetas usan \"{name}\" en este panel. Las tarjetas de otros paneles no se cuentan.",
+  "template_editor.impact_header": "En qué se convierte una tarjeta",
+  "template_editor.impact_hint": "La primera tarjeta que usa esta plantilla, construida con los cambios de arriba, antes de guardar nada.",
+  "template_editor.usages_elsewhere": "Otros paneles también usan este nombre: {list}. Renombrarlo o cambiarlo aquí no los toca.",
   "template_editor.used_once": "una vez",
   "template_editor.used_times": "{count} veces",
   "template_editor.untitled_view": "Vista sin título",
@@ -119,6 +122,7 @@
   "share.import_hint": "Pega una plantilla que alguien compartió contigo. Sustituirá a la que estás editando.",
   "share.import": "Importar",
   "share.import_anyway": "Importar de todas formas",
+  "share.import_copy": "Importar como copia",
   "share.import_clash": "Este panel ya tiene una plantilla llamada \"{name}\". Importar te dejará dos plantillas con el mismo nombre, y solo se usará una. Pulsa Importar otra vez para seguir.",
   "share.import_not_yaml": "Esto no es YAML válido, así que no se puede leer.",
   "share.requires_custom_cards": "Requiere estas tarjetas personalizadas: {types}",
@@ -131,9 +135,23 @@
   "share.library_hint": "Ejemplos resueltos de las formas que más se construyen. Instalar uno lo añade a esta vista como su propia tarjeta de plantilla, sin tocar la que estás editando.",
   "share.library_pick": "Ejemplo",
   "share.library_needs": "Instala también {names}, que este usa.",
+  "share.library_preview": "Lo que define",
+  "share.library_where": "Instalar en",
+  "share.library_where_view": "Esta vista, como tarjeta de plantilla",
+  "share.library_where_root": "Los decluttering_templates del panel",
   "share.install": "Instalar",
   "share.install_anyway": "Pulsa otra vez para instalar",
   "share.already_here": "Ya está aquí",
+
+  "tools.health_header": "Salud del panel",
+
+  "tools.health_ok": "Nada que señalar: cada tarjeta encuentra su plantilla, cada variable tiene un valor y cada plantilla se usa.",
+
+  "tools.health_missing": "Tarjetas que apuntan a \"{template}\", que no existe: {count}.",
+
+  "tools.health_unset": "Tarjetas que usan \"{template}\" sin valor para {names}: {count}.",
+
+  "tools.health_unused": "Plantillas que nada en este panel usa: {names}.",
 
   "tools.rename_header": "Renombrar",
   "tools.rename_hint": "Cambia el nombre aquí y en cada tarjeta de este panel que lo usa. Las tarjetas de otros paneles no se tocan, ni siquiera las que toman prestadas las plantillas de este.",

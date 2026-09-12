@@ -104,6 +104,9 @@
   "template_editor.usages_none": "Nada neste painel usa \"{name}\" ainda. Cartões noutros painéis não são contados aqui, mesmo os que pedem emprestados os modelos deste painel.",
   "template_editor.usages_one": "Um cartão usa \"{name}\" neste painel. Cartões noutros painéis não são contados.",
   "template_editor.usages_many": "{total} cartões usam \"{name}\" neste painel. Cartões noutros painéis não são contados.",
+  "template_editor.impact_header": "No que um cartão se torna",
+  "template_editor.impact_hint": "O primeiro cartão que usa este modelo, construído com as alterações acima - antes de gravar o que quer que seja.",
+  "template_editor.usages_elsewhere": "Outros painéis também usam este nome: {list}. Renomeá-lo ou alterá-lo aqui não lhes toca.",
   "template_editor.used_once": "uma vez",
   "template_editor.used_times": "{count} vezes",
   "template_editor.untitled_view": "Vista sem título",
@@ -119,6 +122,7 @@
   "share.import_hint": "Cole um modelo que alguém partilhou consigo. Vai substituir o que está a editar.",
   "share.import": "Importar",
   "share.import_anyway": "Importar mesmo assim",
+  "share.import_copy": "Importar como cópia",
   "share.import_clash": "Este painel já tem um modelo chamado \"{name}\". Importar vai deixá-lo com dois modelos com o mesmo nome, e só um deles será usado. Carregue Importar outra vez para avançar.",
   "share.import_not_yaml": "Isto não é YAML válido, por isso não pode ser lido.",
   "share.requires_custom_cards": "Requer estes cartões personalizados: {types}",
@@ -131,9 +135,23 @@
   "share.library_hint": "Exemplos práticos das formas que mais se constroem. Instalar um adiciona-o a esta vista como cartão de modelo próprio, deixando em paz o que está a editar.",
   "share.library_pick": "Exemplo",
   "share.library_needs": "Instala também {names}, que este usa.",
+  "share.library_preview": "O que define",
+  "share.library_where": "Instalar em",
+  "share.library_where_view": "Esta vista, como cartão de modelo",
+  "share.library_where_root": "Os decluttering_templates do painel",
   "share.install": "Instalar",
   "share.install_anyway": "Prima novamente para instalar",
   "share.already_here": "Já está aqui",
+
+  "tools.health_header": "Saúde do painel",
+
+  "tools.health_ok": "Nada a assinalar: cada cartão encontra o seu modelo, cada variável tem um valor, e cada modelo é usado.",
+
+  "tools.health_missing": "Cartões a apontar para \"{template}\", que não existe: {count}.",
+
+  "tools.health_unset": "Cartões que usam \"{template}\" sem valor para {names}: {count}.",
+
+  "tools.health_unused": "Modelos que nada neste painel usa: {names}.",
 
   "tools.rename_header": "Mudar o nome",
   "tools.rename_hint": "Muda o nome aqui e em todos os cartões deste painel que o usam. Cartões noutros painéis não são tocados, mesmo os que pedem emprestados os modelos deste painel.",
