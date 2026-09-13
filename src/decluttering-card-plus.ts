@@ -18,7 +18,7 @@ import {
   LovelaceThingType,
 } from './types';
 import deepReplace from './deep-replace';
-import { buildExport, validateImport } from './share';
+import { buildExport, validateImport, freeName } from './share';
 import { suggestVariables } from './suggest';
 import { LIBRARY, libraryEntry, libraryNeeds } from './library';
 import {
@@ -36,6 +36,10 @@ import {
   getTemplateSources,
   renameTemplate,
   TemplateUsages,
+  addTemplateToRoot,
+  firstUsage,
+  usagesOnOtherDashboards,
+  checkDashboard,
 } from './templates';
 import {
   diagnoseInstance,
@@ -1555,6 +1559,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _modernisePending = false;
   @state() private _installPending?: string;
   @state() private _librarySelected?: string;
+  @state() private _libraryDestination: 'view' | 'root' = 'view';
+  @state() private _remoteUsages?: { name: string; list: { urlPath: string; total: number }[] };
 
   @property() public lovelace?: LovelaceConfig;
   @property() public hass?: HomeAssistant;
@@ -1639,7 +1645,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         display: block;
         margin-bottom: 8px;
       }
-      .share mwc-button {
+      .share ha-button {
         margin-top: 8px;
       }
       .suggest {
@@ -1675,7 +1681,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         display: block;
         width: 100%;
       }
-      .rename mwc-button {
+      .rename ha-button {
         margin-top: 8px;
       }
       .order ul {
@@ -1701,7 +1707,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         color: var(--secondary-text-color);
         font-size: 0.9em;
       }
-      .library mwc-button {
+      .library ha-button {
         margin-top: 8px;
       }
     `;
@@ -1957,13 +1963,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        <mwc-button @click=${this._suggest}>
+        <ha-button @click=${this._suggest}>
           ${localize(
             this._suggestion ? 'template_editor.suggest_anyway' : 'template_editor.suggest_button',
             undefined,
             this.hass,
           )}
-        </mwc-button>
+        </ha-button>
       </div>
     `;
   }
@@ -2062,9 +2068,102 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
+        ${this._renderElsewhere(name)} ${this._renderImpact(ll, name)} ${this._renderHealth(ll)}
         ${this._renderRename(name, total)} ${this._renderDuplicate(name)} ${this._renderModernise()}
         ${this._toolError ? html`<ha-alert alert-type="error">${this._toolError}</ha-alert>` : html``}
       </div>
+    `;
+  }
+
+  /*
+   * Everything the console would have muttered about this dashboard, in one place: cards
+   * pointing at templates that are not there, cards leaving variables unset, templates
+   * nothing uses. The sweep is cheap and honest, so it simply runs.
+   */
+  private _renderHealth(ll: LovelaceConfig | null | undefined): TemplateResult {
+    const report = checkDashboard(ll);
+    const healthy = !report.missingTemplates.length && !report.unsetVariables.length && !report.unusedTemplates.length;
+    return html`
+      <ha-expansion-panel outlined>
+        <span slot="header">${localize('tools.health_header', undefined, this.hass)}</span>
+        ${
+          healthy
+            ? html`<p class="hint">${localize('tools.health_ok', undefined, this.hass)}</p>`
+            : html`
+                ${report.missingTemplates.map(
+                  (each) =>
+                    html`<ha-alert alert-type="error">
+                      ${localize('tools.health_missing', { template: each.template, count: each.count }, this.hass)}${
+                        each.closest ? localize('error.did_you_mean', { closest: each.closest }, this.hass) : ''
+                      }
+                    </ha-alert>`,
+                )}
+                ${report.unsetVariables.map(
+                  (each) =>
+                    html`<ha-alert alert-type="warning">
+                      ${localize(
+                        'tools.health_unset',
+                        { template: each.template, names: each.names.join(', '), count: each.count },
+                        this.hass,
+                      )}
+                    </ha-alert>`,
+                )}
+                ${
+                  report.unusedTemplates.length
+                    ? html`<ha-alert alert-type="info">
+                        ${localize('tools.health_unused', { names: report.unusedTemplates.join(', ') }, this.hass)}
+                      </ha-alert>`
+                    : html``
+                }
+              `
+        }
+      </ha-expansion-panel>
+    `;
+  }
+
+  /*
+   * The same name counted on every other dashboard - looked at, never written. Renaming
+   * and deleting here still touch only this dashboard, and this is what says whether
+   * that matters today.
+   */
+  private _renderElsewhere(name: string): TemplateResult {
+    if (this._remoteUsages?.name !== name) {
+      this._remoteUsages = { name, list: [] };
+      const ownPath = document.location.pathname.split('/').filter(Boolean)[0];
+      void usagesOnOtherDashboards(this.hass, name, ownPath).then((list) => {
+        if (this._remoteUsages?.name === name) this._remoteUsages = { name, list };
+      });
+    }
+    const list = this._remoteUsages.list;
+    if (!list.length) return html``;
+    const summary = list.map((each) => `${each.urlPath} (${each.total})`).join(', ');
+    return html`<ha-alert alert-type="info">
+      ${localize('template_editor.usages_elsewhere', { list: summary }, this.hass)}
+    </ha-alert>`;
+  }
+
+  /*
+   * One real card, built against the template as it stands in this editor - unsaved edits
+   * and all - so "this changes 12 cards" comes with a look at what one of them becomes
+   * before anything is saved.
+   */
+  private _renderImpact(ll: LovelaceConfig | null | undefined, name: string): TemplateResult {
+    const usage = firstUsage(ll, name);
+    if (!usage || !this._config) return html``;
+    let built: unknown;
+    try {
+      const template = { ...this._config } as TemplateConfig;
+      const content = template.card ?? template.badge ?? template.row ?? template.element;
+      built = deepReplace(usage.variables, template, content, name, this.hass, true);
+    } catch {
+      return html``;
+    }
+    return html`
+      <ha-expansion-panel outlined>
+        <span slot="header">${localize('template_editor.impact_header', undefined, this.hass)}</span>
+        <p class="hint">${localize('template_editor.impact_hint', undefined, this.hass)}</p>
+        <ha-yaml-editor .hass=${this.hass} .defaultValue=${built} read-only></ha-yaml-editor>
+      </ha-expansion-panel>
     `;
   }
 
@@ -2075,7 +2174,10 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
    * box, because whoever receives it cannot tell from the YAML alone.
    */
   private _renderShare(): TemplateResult {
-    const { payload, notes } = buildExport(this._config);
+    const { payload, notes } = buildExport(
+      this._config,
+      collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()),
+    );
 
     return html`
       <div class="share">
@@ -2083,7 +2185,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         <p class="hint">${localize('share.export_hint', undefined, this.hass)}</p>
         ${notes.map((note) => html`<ha-alert alert-type="info">${note}</ha-alert>`)}
         <ha-yaml-editor id="export" .hass=${this.hass} .defaultValue=${payload} read-only></ha-yaml-editor>
-        <mwc-button @click=${this._copyExport}>
+        <ha-button @click=${this._copyExport}>
           ${
             this._copyState === 'done'
               ? localize('share.copied', undefined, this.hass)
@@ -2091,7 +2193,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 ? localize('share.copy_failed', undefined, this.hass)
                 : localize('share.copy', undefined, this.hass)
           }
-        </mwc-button>
+        </ha-button>
 
         <h3>${localize('share.import_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.import_hint', undefined, this.hass)}</p>
@@ -2104,9 +2206,16 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        <mwc-button @click=${this._import}>
+        <ha-button @click=${this._import}>
           ${localize(this._importClash ? 'share.import_anyway' : 'share.import', undefined, this.hass)}
-        </mwc-button>
+        </ha-button>
+        ${
+          this._importClash
+            ? html`<ha-button @click=${this._importAsCopy}>
+                ${localize('share.import_copy', undefined, this.hass)}
+              </ha-button>`
+            : html``
+        }
 
         <h3>${localize('share.library_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.library_hint', undefined, this.hass)}</p>
@@ -2157,18 +2266,48 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                       </p>`
                     : html``
                 }
-                <mwc-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
+                <ha-expansion-panel outlined>
+                  <span slot="header">${localize('share.library_preview', undefined, this.hass)}</span>
+                  <ha-yaml-editor .hass=${this.hass} .defaultValue=${entry.template} read-only></ha-yaml-editor>
+                </ha-expansion-panel>
+                <ha-form
+                  .hass=${this.hass}
+                  .data=${{ where: this._libraryDestination }}
+                  .schema=${[
+                    {
+                      name: 'where',
+                      selector: {
+                        select: {
+                          mode: 'dropdown',
+                          options: [
+                            { value: 'view', label: localize('share.library_where_view', undefined, this.hass) },
+                            { value: 'root', label: localize('share.library_where_root', undefined, this.hass) },
+                          ],
+                        },
+                      },
+                    },
+                  ]}
+                  .computeLabel=${(): string => localize('share.library_where', undefined, this.hass)}
+                  @value-changed=${this._libraryDestinationPicked}
+                ></ha-form>
+                <ha-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
                   ${localize(
                     already ? 'share.already_here' : armed ? 'share.install_anyway' : 'share.install',
                     undefined,
                     this.hass,
                   )}
-                </mwc-button>
+                </ha-button>
               `
             : html``
         }
       </div>
     `;
+  }
+
+  private _libraryDestinationPicked(ev: CustomEvent): void {
+    ev.stopPropagation();
+    const where = (ev.detail.value as { where?: string }).where;
+    this._libraryDestination = where === 'root' ? 'root' : 'view';
   }
 
   private _libraryPicked(ev: CustomEvent): void {
@@ -2199,7 +2338,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     const saved = await this._saveDashboard((config) =>
       wanted.reduce((built, each) => {
         const one = libraryEntry(each);
-        return one ? addCardToView(built, view, { type: TEMPLATE_TYPE, template: one.name, ...one.template }) : built;
+        if (!one) return built;
+        // Where it lands is the user's choice: a template card on this view, which is
+        // visible and editable in place, or the dashboard's decluttering_templates block,
+        // which keeps the view clean.
+        return this._libraryDestination === 'root'
+          ? addTemplateToRoot(built, one.name, one.template as TemplateConfig)
+          : addCardToView(built, view, { type: TEMPLATE_TYPE, template: one.name, ...one.template });
       }, config),
     );
     if (saved) this._installPending = undefined;
@@ -2236,7 +2381,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           .disabled=${this._renaming}
           @input=${this._renameChanged}
         ></ha-textfield>
-        <mwc-button .disabled=${this._renaming || !to || to === name} @click=${this._rename}>
+        <ha-button .disabled=${this._renaming || !to || to === name} @click=${this._rename}>
           ${
             armed
               ? localize('tools.rename_anyway', undefined, this.hass)
@@ -2246,7 +2391,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                   ? localize('tools.rename_update_many', { count: total }, this.hass)
                   : localize('tools.rename', undefined, this.hass)
           }
-        </mwc-button>
+        </ha-button>
       </div>
     `;
   }
@@ -2303,7 +2448,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-alert>`
             : html``
         }
-        <mwc-button .disabled=${this._busy} @click=${this._modernise}>
+        <ha-button .disabled=${this._busy} @click=${this._modernise}>
           ${localize(
             this._modernisePending
               ? 'tools.modernise_anyway'
@@ -2313,7 +2458,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
             undefined,
             this.hass,
           )}
-        </mwc-button>
+        </ha-button>
       </div>
     `;
   }
@@ -2396,9 +2541,9 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           .disabled=${this._busy}
           @input=${this._duplicateChanged}
         ></ha-textfield>
-        <mwc-button .disabled=${this._busy || !to || to === name} @click=${this._duplicate}>
+        <ha-button .disabled=${this._busy || !to || to === name} @click=${this._duplicate}>
           ${localize(armed ? 'tools.duplicate_anyway' : 'tools.duplicate', undefined, this.hass)}
-        </mwc-button>
+        </ha-button>
       </div>
     `;
   }
@@ -2480,9 +2625,46 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       return;
     }
 
+    this._applyImport(this._importValue.template);
+  }
+
+  /*
+   * The other way out of a name clash: keep both, under the first free spelling of the
+   * name. What arrives is the same template - only its name changes.
+   */
+  private _importAsCopy(): void {
+    if (!this._config || !this._importParses) return;
+    const existing = Object.keys(collectTemplates(this.lovelace ?? getLovelaceConfig()));
+    this._applyImport(freeName(this._importValue.template, existing));
+  }
+
+  private _applyImport(name: string): void {
+    /*
+     * A bundle carries the templates this one uses under `includes:`. The ones this
+     * dashboard does not have yet land in decluttering_templates, so the imported
+     * template works on arrival; the ones it already has are left exactly as they are.
+     */
+    const includes = this._importValue.includes;
+    if (includes && typeof includes === 'object' && !Array.isArray(includes)) {
+      const existing = Object.keys(
+        collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()),
+      );
+      const wanted = Object.entries(includes).filter(([each]) => !existing.includes(each));
+      if (wanted.length) {
+        void this._saveDashboard((config) =>
+          wanted.reduce(
+            (built, [each, template]) => addTemplateToRoot(built, each, template as TemplateConfig),
+            config,
+          ),
+        );
+      }
+    }
+
     // Keep the card's own type: the export may have come from the legacy tag, and which
     // tag this card uses is a property of where it lives, not of what was shared.
-    this._fireConfigChanged({ ...this._importValue, type: this._config.type });
+    const applied = { ...this._importValue, template: name, type: this._config?.type };
+    delete applied.includes;
+    this._fireConfigChanged(applied);
     this._importClash = undefined;
     this._selectedTab = 'settings';
   }

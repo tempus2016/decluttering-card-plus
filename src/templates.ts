@@ -1,6 +1,7 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
-import { normaliseVariables } from './variables';
+import { diagnoseInstance, forEachNames, normaliseVariables } from './variables';
+import { isRegistrySource, registryNames } from './registry';
 import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -44,6 +45,121 @@ function collectFromNode(node: any, templates: Record<string, TemplateConfig>): 
     return;
   }
   for (const value of Object.values(node)) collectFromNode(value, templates);
+}
+
+/*
+ * Everything the console would have muttered about this dashboard, gathered in one look:
+ * cards pointing at templates that are not there (with the near miss named), cards
+ * leaving variables unset, and templates nothing uses. Same counting cards, one report.
+ */
+export function checkDashboard(ll: LovelaceConfig | null | undefined): {
+  missingTemplates: { template: string; count: number; closest?: string }[];
+  unsetVariables: { template: string; names: string[]; count: number }[];
+  unusedTemplates: string[];
+} {
+  const templates = collectTemplates(ll);
+  const available = Object.keys(templates);
+  const missing = new Map<string, number>();
+  const unset = new Map<string, { names: Set<string>; count: number }>();
+
+  const walk = (node: any): void => {
+    if (!node) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    if (CONSUMER_TYPES.includes(node.type) && typeof node.template === 'string') {
+      const template = templates[node.template];
+      if (!template) {
+        missing.set(node.template, (missing.get(node.template) ?? 0) + 1);
+      } else {
+        const supplements = [
+          ...forEachNames(node.for_each),
+          ...registryNames(node.for_each_from),
+          ...(isRegistrySource(node.for_each_from) ? ['index', 'index0', 'count', 'first', 'last', 'total'] : []),
+        ].map((name) => ({ [name]: null }));
+        const problems = diagnoseInstance(node.variables, template, supplements);
+        if (problems.missing.length) {
+          const entry = unset.get(node.template) ?? { names: new Set<string>(), count: 0 };
+          for (const name of problems.missing) entry.names.add(name);
+          entry.count += 1;
+          unset.set(node.template, entry);
+        }
+      }
+      return;
+    }
+    for (const value of Object.values(node)) walk(value);
+  };
+  walk((ll as any)?.views);
+
+  return {
+    missingTemplates: [...missing.entries()].sort().map(([template, count]) => {
+      const closest = closestTemplate(template, available);
+      return closest ? { template, count, closest } : { template, count };
+    }),
+    unsetVariables: [...unset.entries()]
+      .sort()
+      .map(([template, entry]) => ({ template, names: [...entry.names].sort(), count: entry.count })),
+    unusedTemplates: available.filter((name) => totalUsages(ll, name) === 0).sort(),
+  };
+}
+
+/** How many things on one dashboard use a template: cards on views, and other templates. */
+export function totalUsages(ll: LovelaceConfig | null | undefined, template: string): number {
+  const usages = collectUsages(ll, template);
+  return usages.views.reduce((sum, view) => sum + view.count, 0) + usages.templates.length;
+}
+
+/**
+ * What other dashboards make of a template: each one that uses the name, with its count.
+ * Read-only - it looks, it never writes - and a dashboard that cannot be read simply
+ * does not appear, the same silence fetchDashboardConfig already keeps.
+ */
+export async function usagesOnOtherDashboards(
+  hass: HomeAssistant | undefined,
+  template: string,
+  ownPath: string | undefined,
+): Promise<{ urlPath: string; total: number }[]> {
+  if (!hass) return [];
+  const paths = (await fetchDashboardPaths(hass)).filter((path) => path !== ownPath);
+  const found: { urlPath: string; total: number }[] = [];
+  for (const urlPath of paths) {
+    const config = await fetchDashboardConfig(hass, urlPath);
+    if (!config) continue;
+    const total = totalUsages(config, template);
+    if (total > 0) found.push({ urlPath, total });
+  }
+  return found;
+}
+
+/**
+ * The first card on the dashboard that uses a template, config and all. One real usage,
+ * with its real variables, is what makes an impact preview honest: it shows what an edit
+ * does to a card somebody actually has.
+ */
+export function firstUsage(ll: LovelaceConfig | null | undefined, template: string): any | null {
+  let found: any = null;
+  const walk = (node: any): void => {
+    if (found || !node) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    if (CONSUMER_TYPES.includes(node.type) && node.template === template) {
+      found = node;
+      return;
+    }
+    for (const value of Object.values(node)) walk(value);
+  };
+  walk((ll as any)?.views);
+  return found;
+}
+
+/** The dashboard with one more template under `decluttering_templates`, nothing else touched. */
+export function addTemplateToRoot(ll: any, name: string, template: TemplateConfig): any {
+  return { ...ll, decluttering_templates: { ...(ll?.decluttering_templates ?? {}), [name]: template } };
 }
 
 /** The values this dashboard offers every template, as a flat list of one name each. */
@@ -95,6 +211,23 @@ export function collectTemplates(ll: LovelaceConfig | null | undefined): Record<
   const out: Record<string, TemplateConfig> = {};
   for (const [name, template] of Object.entries(templates)) out[name] = withDefaults(template, shared);
   return out;
+}
+
+let dashboardListCache: Promise<string[]> | null = null;
+
+/** Every dashboard's url path. The default dashboard answers to 'lovelace'. */
+function fetchDashboardPaths(hass: HomeAssistant): Promise<string[]> {
+  dashboardListCache ??= (hass as any)
+    .callWS({ type: 'lovelace/dashboards/list' })
+    .then((list: any[]) =>
+      (list ?? [])
+        .map((dashboard) => dashboard?.url_path)
+        .filter((path): path is string => typeof path === 'string' && !!path)
+        .sort()
+        .concat('lovelace'),
+    )
+    .catch(() => []) as Promise<string[]>;
+  return dashboardListCache;
 }
 
 /** The dashboards this one borrows templates from, in the order they were listed. */

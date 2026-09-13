@@ -104,6 +104,9 @@
   "template_editor.usages_none": "Nog niets op dit dashboard gebruikt \"{name}\". Kaarten op andere dashboards tellen hier niet mee, ook niet die de sjablonen van dit dashboard lenen.",
   "template_editor.usages_one": "Eén kaart op dit dashboard gebruikt \"{name}\". Kaarten op andere dashboards tellen niet mee.",
   "template_editor.usages_many": "{total} kaarten op dit dashboard gebruiken \"{name}\". Kaarten op andere dashboards tellen niet mee.",
+  "template_editor.impact_header": "Wat er van een kaart wordt",
+  "template_editor.impact_hint": "De eerste kaart die dit sjabloon gebruikt, gebouwd met de wijzigingen hierboven - voordat er iets is opgeslagen.",
+  "template_editor.usages_elsewhere": "Ook andere dashboards gebruiken deze naam: {list}. Hem hier hernoemen of wijzigen raakt ze niet aan.",
   "template_editor.used_once": "eenmaal",
   "template_editor.used_times": "{count} keer",
   "template_editor.untitled_view": "Naamloze weergave",
@@ -119,6 +122,7 @@
   "share.import_hint": "Plak een sjabloon dat iemand met je heeft gedeeld. Het vervangt het sjabloon dat je aan het bewerken bent.",
   "share.import": "Importeren",
   "share.import_anyway": "Toch importeren",
+  "share.import_copy": "Als kopie importeren",
   "share.import_clash": "Dit dashboard heeft al een sjabloon met de naam \"{name}\". Na het importeren heb je twee sjablonen met dezelfde naam, en maar één ervan wordt gebruikt. Druk nogmaals op Importeren om door te gaan.",
   "share.import_not_yaml": "Dit is geen geldige YAML en kan dus niet worden gelezen.",
   "share.requires_custom_cards": "Vereist deze custom cards: {types}",
@@ -131,9 +135,23 @@
   "share.library_hint": "Uitgewerkte voorbeelden van de vormen die het meest gebouwd worden. Installeren voegt het als eigen sjabloonkaart aan deze weergave toe, en laat degene die je bewerkt met rust.",
   "share.library_pick": "Voorbeeld",
   "share.library_needs": "Installeert ook {names}, dat het gebruikt.",
+  "share.library_preview": "Wat het definieert",
+  "share.library_where": "Installeren in",
+  "share.library_where_view": "Deze weergave, als sjabloonkaart",
+  "share.library_where_root": "De decluttering_templates van het dashboard",
   "share.install": "Installeren",
   "share.install_anyway": "Druk nogmaals om te installeren",
   "share.already_here": "Al aanwezig",
+
+  "tools.health_header": "Gezondheid van het dashboard",
+
+  "tools.health_ok": "Niets te melden: elke kaart vindt zijn sjabloon, elke variabele heeft een waarde, en elk sjabloon wordt gebruikt.",
+
+  "tools.health_missing": "Kaarten die wijzen naar \"{template}\", dat niet bestaat: {count}.",
+
+  "tools.health_unset": "Kaarten die \"{template}\" gebruiken zonder waarde voor {names}: {count}.",
+
+  "tools.health_unused": "Sjablonen die niets op dit dashboard gebruikt: {names}.",
 
   "tools.rename_header": "Hernoemen",
   "tools.rename_hint": "Wijzigt de naam hier en in elke kaart op dit dashboard die hem gebruikt. Kaarten op andere dashboards blijven onaangeraakt, ook die de sjablonen van dit dashboard lenen.",

@@ -104,6 +104,9 @@
   "template_editor.usages_none": "Rien sur ce tableau de bord n'utilise \"{name}\" pour l'instant. Les cartes d'autres tableaux de bord ne sont pas comptées ici, même celles qui empruntent les modèles de celui-ci.",
   "template_editor.usages_one": "Une carte utilise \"{name}\" sur ce tableau de bord. Les cartes d'autres tableaux de bord ne sont pas comptées.",
   "template_editor.usages_many": "{total} cartes utilisent \"{name}\" sur ce tableau de bord. Les cartes d'autres tableaux de bord ne sont pas comptées.",
+  "template_editor.impact_header": "Ce que devient une carte",
+  "template_editor.impact_hint": "La première carte utilisant ce modèle, construite avec les modifications ci-dessus - avant tout enregistrement.",
+  "template_editor.usages_elsewhere": "D'autres tableaux de bord utilisent aussi ce nom : {list}. Le renommer ou le modifier ici ne les touche pas.",
   "template_editor.used_once": "une fois",
   "template_editor.used_times": "{count} fois",
   "template_editor.untitled_view": "Vue sans titre",
@@ -119,6 +122,7 @@
   "share.import_hint": "Collez un modèle que quelqu'un a partagé avec vous. Il remplacera celui que vous modifiez.",
   "share.import": "Importer",
   "share.import_anyway": "Importer quand même",
+  "share.import_copy": "Importer comme copie",
   "share.import_clash": "Ce tableau de bord a déjà un modèle nommé \"{name}\". Importer vous laissera deux modèles du même nom, et un seul sera utilisé. Appuyez encore sur Importer pour continuer.",
   "share.import_not_yaml": "Ceci n'est pas du YAML valide, il ne peut donc pas être lu.",
   "share.requires_custom_cards": "Nécessite ces cartes personnalisées : {types}",
@@ -131,9 +135,23 @@
   "share.library_hint": "Des exemples travaillés des formes les plus construites. En installer un l'ajoute à cette vue comme carte de modèle à part, sans toucher à celui que vous modifiez.",
   "share.library_pick": "Exemple",
   "share.library_needs": "Installe aussi {names}, qu'il utilise.",
+  "share.library_preview": "Ce que cela définit",
+  "share.library_where": "Installer dans",
+  "share.library_where_view": "Cette vue, comme carte de modèle",
+  "share.library_where_root": "Les decluttering_templates du tableau de bord",
   "share.install": "Installer",
   "share.install_anyway": "Appuyez à nouveau pour installer",
   "share.already_here": "Déjà là",
+
+  "tools.health_header": "État du tableau de bord",
+
+  "tools.health_ok": "Rien à signaler : chaque carte trouve son modèle, chaque variable a une valeur, et chaque modèle est utilisé.",
+
+  "tools.health_missing": "Cartes pointant vers \"{template}\", qui n'existe pas : {count}.",
+
+  "tools.health_unset": "Cartes utilisant \"{template}\" sans valeur pour {names} : {count}.",
+
+  "tools.health_unused": "Modèles que rien sur ce tableau de bord n'utilise : {names}.",
 
   "tools.rename_header": "Renommer",
   "tools.rename_hint": "Change le nom ici et dans chaque carte de ce tableau de bord qui l'utilise. Les cartes d'autres tableaux de bord ne sont pas touchées, même celles qui empruntent les modèles de celui-ci.",

@@ -18,6 +18,10 @@ const {
   countLegacyTypes,
   addCardToView,
   moderniseTypes,
+  addTemplateToRoot,
+  firstUsage,
+  totalUsages,
+  checkDashboard,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -199,6 +203,18 @@ check(
   [],
 );
 
+check(
+  'a template lands in decluttering_templates without touching anything else',
+  addTemplateToRoot({ views: [{ title: 'Home' }] }, 'room_tile', { card: { type: 'tile' } }),
+  { views: [{ title: 'Home' }], decluttering_templates: { room_tile: { card: { type: 'tile' } } } },
+);
+
+check(
+  'installing at the root keeps the templates already there',
+  addTemplateToRoot({ decluttering_templates: { kept: { card: {} } } }, 'added', { card: {} }).decluttering_templates,
+  { kept: { card: {} }, added: { card: {} } },
+);
+
 /* --- collectUsages --- */
 
 const USED_IN = {
@@ -226,6 +242,26 @@ const USED_IN = {
 };
 
 check('a template used nowhere has no usages', collectUsages(USED_IN, 'missing'), { views: [], templates: [] });
+
+check('totalUsages counts cards and consuming templates together', totalUsages(USED_IN, 'tile'), 5);
+
+check('totalUsages of nothing is zero', totalUsages(USED_IN, 'missing'), 0);
+
+check('the first card using a template is found, wherever it is nested', firstUsage(USED_IN, 'tile'), {
+  type: 'custom:decluttering-card-plus',
+  template: 'tile',
+});
+
+check('a template nothing uses has no first usage', firstUsage(USED_IN, 'missing'), null);
+
+check(
+  'a usage keeps its variables, which is what makes the preview real',
+  firstUsage(
+    { views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'x', variables: [{ room: 'Hall' }] }] }] },
+    'x',
+  ).variables,
+  [{ room: 'Hall' }],
+);
 
 check('usages are counted per view, wherever they are nested', collectUsages(USED_IN, 'tile').views, [
   { title: 'First', path: 'one', index: 0, count: 3 },
@@ -631,5 +667,45 @@ collectAllTemplates(hass, borrower).then((all) => {
     { colour: 'green' },
     { shape: 'lender-shape' },
   ]);
+
+  /* ---------------------------------------------------------------- health */
+
+  const UNHEALTHY = {
+    decluttering_templates: {
+      room_tile: { card: { type: 'tile', entity: '[[entity]]' } },
+      never_used: { card: { type: 'tile' } },
+    },
+    views: [
+      {
+        cards: [
+          { type: 'custom:decluttering-card-plus', template: 'room_tile', variables: [{ entity: 'light.a' }] },
+          { type: 'custom:decluttering-card-plus', template: 'room_tile' },
+          { type: 'custom:decluttering-card-plus', template: 'room_tlie' },
+        ],
+      },
+    ],
+  };
+
+  const HEALTH = checkDashboard(UNHEALTHY);
+
+  check('a card naming a template that does not exist is found, with the near miss', HEALTH.missingTemplates, [
+    { template: 'room_tlie', count: 1, closest: 'room_tile' },
+  ]);
+
+  check('a card leaving a variable unset is found', HEALTH.unsetVariables, [
+    { template: 'room_tile', names: ['entity'], count: 1 },
+  ]);
+
+  check('a template nothing uses is found', HEALTH.unusedTemplates, ['never_used']);
+
+  check(
+    'a healthy dashboard reports nothing at all',
+    checkDashboard({
+      decluttering_templates: { tile: { card: { entity: '[[entity]]' } } },
+      views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'tile', variables: [{ entity: 'x' }] }] }],
+    }),
+    { missingTemplates: [], unsetVariables: [], unusedTemplates: [] },
+  );
+
   report();
 });

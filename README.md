@@ -132,8 +132,12 @@ Templates][wiki-defining].
   dropdown in the editor and installed into the view you are working on. Carried in the
   card, so a dashboard never reaches the internet to show one.
 - **[Visual editors][wiki-editors]** for both the template and the instance — see what a card
-  actually builds, see what uses a template before you change it, rename a template and have
-  its uses follow, and [export a template][wiki-sharing] to give to someone else.
+  actually builds, see what uses a template before you change it (on this dashboard and on
+  every other one), see what one real card becomes under the edit in hand, rename a template
+  and have its uses follow, and [export a template][wiki-sharing] to give to someone else,
+  with the templates it calls bundled in.
+- **A health panel** — cards pointing at a template that is not there, cards leaving a
+  variable unset, templates nothing uses: the console warnings gathered into one place.
 
 ## Is this the right card?
 
