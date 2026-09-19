@@ -64,6 +64,20 @@
   "editor.optional_many": "Diese Vorlage verwendet Variablen ohne Wert und ohne Standard: {names}.",
   "editor.unused_one": "Diese Variable ist hier gesetzt, wird von der Vorlage aber nie verwendet: {names}.",
   "editor.unused_many": "Diese Variablen sind hier gesetzt, werden von der Vorlage aber nie verwendet: {names}.",
+  "editor.eject": "Diese Karte durch das ersetzen, was sie baut",
+  "editor.eject_confirm": "Zum Ersetzen erneut drücken - die Vorlage gilt dann nicht mehr",
+
+  "template_editor.declutter_header": "Eine bestehende Karte entrümpeln",
+
+  "template_editor.declutter_hint": "Wähle eine Karte, die schon auf diesem Dashboard liegt, und sie wird die Karte dieser Vorlage - dann findet „Variablen vorschlagen\", was sich unterscheidet. Ist die Vorlage gespeichert, lässt sich das Original gegen eine Karte tauschen, die sie verwendet.",
+
+  "template_editor.declutter_pick": "Karte",
+
+  "template_editor.declutter_replace": "Das Original durch eine Karte mit dieser Vorlage ersetzen",
+
+  "template_editor.declutter_replace_confirm": "Zum Ersetzen erneut drücken - das Dashboard wird sofort gespeichert",
+
+  "template_editor.declutter_save_first": "Speichere zuerst diese Vorlage, damit der Ersatz etwas hat, worauf er zeigt.",
 
   "template_editor.tab_settings": "Einstellungen",
   "template_editor.tab_card": "Karte",

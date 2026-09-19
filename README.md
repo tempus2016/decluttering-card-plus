@@ -105,9 +105,10 @@ Templates][wiki-defining].
   [Picture elements][wiki-elements]** — a template can hold any of the four, and goes wherever
   that kind of content goes.
 - **[Variables][wiki-variables]** with defaults, nesting, transforms (`[[room|slug]]`), values
-  read from Home Assistant (`[[entity|friendly_name]]`, its area, floor or device), stand-ins
-  for what nothing sets (`[[name|default:Unnamed]]`), optional placeholders, and
-  dashboard-wide fallbacks.
+  read from Home Assistant (`[[entity|friendly_name]]`, its domain, object id, labels, area,
+  floor or device), values a template works out for itself with `let:`, stand-ins for what
+  nothing sets (`[[name|default:Unnamed]]`), optional placeholders, and dashboard-wide
+  fallbacks.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
   or area Home Assistant knows about, narrowed by domain, area, floor, label, device class or
   integration, with anything you name excluded, sorted, limited, and a card of your own to
@@ -138,6 +139,9 @@ Templates][wiki-defining].
   with the templates it calls bundled in.
 - **A health panel** — cards pointing at a template that is not there, cards leaving a
   variable unset, templates nothing uses: the console warnings gathered into one place.
+- **Turning cards into templates and back** — declutter a card already on the dashboard into
+  a template and swap the original for it, or eject a card so it becomes exactly what the
+  template built and stops depending on it.
 
 ## Is this the right card?
 

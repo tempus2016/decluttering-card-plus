@@ -44,6 +44,12 @@ export interface TemplateConfig {
   /** The variables the template takes, described so its editor can offer real controls. */
   variables?: VariableDeclaration[];
   default?: VariablesConfig[];
+  /**
+   * Values the template computes for itself from the others - `room_slug: '[[room|slug]]'`
+   * written once instead of the chain repeated everywhere. Template internals: an instance
+   * cannot override one.
+   */
+  let?: Record<string, unknown> | VariablesConfig[];
   card?: any;
   row?: any;
   element?: any;
