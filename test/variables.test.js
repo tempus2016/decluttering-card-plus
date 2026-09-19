@@ -490,6 +490,26 @@ check(
 
 check('an empty list supplies nothing at all', forEachNames(undefined), []);
 
+/* --------------------------------------------------- template-local variables */
+
+check(
+  'a let variable counts as supplied, so nothing reports it missing',
+  diagnoseInstance([{ room: 'Hall' }], {
+    let: { room_slug: '[[room|slug]]' },
+    card: { entity: 'light.[[room_slug]]' },
+  }),
+  { missing: [], unused: [], required: [] },
+);
+
+check(
+  'what a let value refers to is a real use, so the card must still supply it',
+  diagnoseInstance(undefined, {
+    let: { room_slug: '[[room|slug]]' },
+    card: { entity: 'light.[[room_slug]]' },
+  }).missing,
+  ['room'],
+);
+
 /* ------------------------------------------------------------ required variables */
 
 check(
@@ -568,6 +588,55 @@ check('no hass at all resolves to nothing', applyTransform('friendly_name', 'lig
 check(
   'a transform after a resolver that found nothing gives nothing',
   applyTransform('friendly_name|slug', 'light.nope', houseHass),
+  undefined,
+);
+
+check(
+  'domain is the first half of the entity id, no registry needed',
+  applyTransform('domain', 'light.hall', houseHass),
+  'light',
+);
+check('object_id is the second half of the entity id', applyTransform('object_id', 'light.hall', houseHass), 'hall');
+check('object_id chains into a transform', applyTransform('object_id|upper', 'light.hall', houseHass), 'HALL');
+check(
+  'domain works without hass, since it only splits the id',
+  applyTransform('domain', 'light.hall', undefined),
+  'light',
+);
+check(
+  'domain of something not shaped like an entity id resolves to nothing',
+  applyTransform('domain', 'Living Room', houseHass),
+  undefined,
+);
+check('object_id of a bare word resolves to nothing', applyTransform('object_id', 'lights', houseHass), undefined);
+
+// Labels live on the entity as ids; the labels registry holds their names.
+const labelledHass = {
+  ...houseHass,
+  entities: {
+    ...houseHass.entities,
+    'light.hall': { ...houseHass.entities['light.hall'], labels: ['night', 'quiet'] },
+  },
+  labels: { night: { label_id: 'night', name: 'Night light' }, quiet: { label_id: 'quiet', name: 'Quiet' } },
+};
+
+check(
+  'labels reads the names of the labels the entity carries',
+  applyTransform('labels', 'light.hall', labelledHass),
+  'Night light, Quiet',
+);
+check(
+  'a label with no registry entry keeps its id rather than vanishing',
+  applyTransform('labels', 'light.hall', {
+    ...labelledHass,
+    labels: { night: { label_id: 'night', name: 'Night light' } },
+  }),
+  'Night light, quiet',
+);
+check('an entity with no labels resolves to nothing', applyTransform('labels', 'light.bare', labelledHass), undefined);
+check(
+  'labels of an entity that does not exist resolves to nothing',
+  applyTransform('labels', 'light.nope', labelledHass),
   undefined,
 );
 

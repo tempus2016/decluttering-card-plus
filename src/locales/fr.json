@@ -64,6 +64,20 @@
   "editor.optional_many": "Ce modèle utilise des variables sans valeur et sans défaut : {names}.",
   "editor.unused_one": "Cette variable est définie ici mais le modèle ne l'utilise jamais : {names}.",
   "editor.unused_many": "Ces variables sont définies ici mais le modèle ne les utilise jamais : {names}.",
+  "editor.eject": "Remplacer cette carte par ce qu’elle construit",
+  "editor.eject_confirm": "Appuyez à nouveau pour la remplacer - le modèle ne s’appliquera plus",
+
+  "template_editor.declutter_header": "Désencombrer une carte existante",
+
+  "template_editor.declutter_hint": "Choisissez une carte déjà sur ce tableau de bord et elle devient la carte de ce modèle - puis laissez « Suggérer des variables » trouver ce qui varie. Une fois le modèle enregistré, l’originale peut être remplacée par une carte qui l’utilise.",
+
+  "template_editor.declutter_pick": "Carte",
+
+  "template_editor.declutter_replace": "Remplacer l’originale par une carte utilisant ce modèle",
+
+  "template_editor.declutter_replace_confirm": "Appuyez à nouveau pour remplacer l’originale - le tableau de bord est enregistré aussitôt",
+
+  "template_editor.declutter_save_first": "Enregistrez d’abord ce modèle, pour que le remplacement ait quelque chose à viser.",
 
   "template_editor.tab_settings": "Réglages",
   "template_editor.tab_card": "Carte",

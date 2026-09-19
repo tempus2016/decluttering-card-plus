@@ -139,7 +139,20 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
     return entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
   },
   device_id: (entityId, hass) => hass?.entities?.[entityId]?.device_id,
+  // The two halves of the entity id itself, no registry needed. A value not shaped like
+  // an entity id has no halves to give, so the placeholder stays visible.
+  domain: (entityId) => ENTITY_ID_SHAPE.exec(entityId)?.[1],
+  object_id: (entityId) => ENTITY_ID_SHAPE.exec(entityId)?.[2],
+  // The names of the labels the entity carries, joined for showing. A label the registry
+  // does not name keeps its id - a visible stand-in beats a silent hole in the list.
+  labels: (entityId, hass) => {
+    const ids: string[] = hass?.entities?.[entityId]?.labels ?? [];
+    if (!ids.length) return undefined;
+    return ids.map((id) => hass?.labels?.[id]?.name ?? id).join(', ');
+  },
 };
+
+const ENTITY_ID_SHAPE = /^([a-z0-9_]+)\.([a-z0-9_]+)$/i;
 
 /*
  * A value can stand in for another when there is nothing to show. `default:` supplies the
@@ -462,6 +475,10 @@ export function resolveVariables(
   template: TemplateConfig | undefined,
 ): VariablesConfig[] {
   const combined: VariablesConfig[] = [];
+  // `let:` values are the template's own internals, so they come first and win even over
+  // what an instance passes - a card overriding a derived value would break the template
+  // from the outside, invisibly.
+  combined.push(...normaliseVariables(template?.let));
   combined.push(...normaliseVariables(variables));
   for (const declaration of getDeclarations(template)) {
     // A declaration that only names a variable says nothing about its value, and must not

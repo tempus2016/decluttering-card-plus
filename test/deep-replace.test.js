@@ -21,6 +21,38 @@ check('default values', deepReplace(undefined, { default: [{ entity: 'sun.sun' }
   entity: 'sun.sun',
 });
 
+/* --------------------------------------------------- template-local variables */
+
+check(
+  'a let variable is computed from the others and used like any other',
+  deepReplace(
+    [{ room: 'Living Room' }],
+    { let: { room_slug: '[[room|slug]]' } },
+    { entity: 'light.[[room_slug]]', name: '[[room]]' },
+  ),
+  { entity: 'light.living_room', name: 'Living Room' },
+);
+
+check(
+  'a let variable is the template internals, so a card cannot override it',
+  deepReplace(
+    [{ room_slug: 'hacked' }, { room: 'Hall' }],
+    { let: { room_slug: '[[room|slug]]' } },
+    { id: '[[room_slug]]' },
+  ),
+  { id: 'hall' },
+);
+
+check(
+  'one let variable can build on another',
+  deepReplace(
+    [{ room: 'Living Room' }],
+    { let: { room_slug: '[[room|slug]]', motion: 'binary_sensor.[[room_slug]]_motion' } },
+    { entity: '[[motion]]' },
+  ),
+  { entity: 'binary_sensor.living_room_motion' },
+);
+
 check(
   'the optional marker after a transform argument is the marker, not part of the argument',
   deepReplace([{ who: 'Smith' }], {}, { name: '[[who|prefix:Mr ?]]' }),
