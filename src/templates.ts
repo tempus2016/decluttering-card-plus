@@ -105,6 +105,60 @@ export function checkDashboard(ll: LovelaceConfig | null | undefined): {
   };
 }
 
+/*
+ * Every plain card on the dashboard - not this card's own types - with a label that says
+ * where it sits and what it shows. The list a "declutter this card" picker offers: the
+ * hundred copy-pasted tiles are exactly what is in here.
+ */
+export function listPlainCards(
+  ll: LovelaceConfig | null | undefined,
+): { label: string; config: Record<string, any> }[] {
+  const found: { label: string; config: Record<string, any> }[] = [];
+  const OWN = [...CONSUMER_TYPES, TEMPLATE_TYPE, LEGACY_TEMPLATE_TYPE];
+  const walk = (node: any, viewTitle: string): void => {
+    if (!node) return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, viewTitle);
+      return;
+    }
+    if (typeof node !== 'object') return;
+    if (typeof node.type === 'string' && OWN.includes(node.type)) return;
+    if (typeof node.type === 'string') {
+      const shown = node.name ?? node.title ?? node.entity;
+      found.push({
+        label: shown ? `${viewTitle} · ${node.type} (${shown})` : `${viewTitle} · ${node.type}`,
+        config: node,
+      });
+    }
+    // A container card's children are candidates of their own.
+    for (const value of Object.values(node)) walk(value, viewTitle);
+  };
+  for (const view of ((ll as any)?.views ?? []) as any[]) {
+    walk(view?.cards, view?.title ?? view?.path ?? '');
+    walk(view?.sections, view?.title ?? view?.path ?? '');
+  }
+  return found;
+}
+
+/** The dashboard with the first card written exactly like `original` swapped for `replacement`. */
+export function replaceCard(ll: any, original: Record<string, any>, replacement: Record<string, any>): any {
+  const wanted = JSON.stringify(original);
+  let done = false;
+  const walk = (node: any): any => {
+    if (done || !node || typeof node !== 'object') return node;
+    if (Array.isArray(node)) return node.map(walk);
+    if (!done && JSON.stringify(node) === wanted) {
+      done = true;
+      return replacement;
+    }
+    const out: any = {};
+    for (const [key, value] of Object.entries(node)) out[key] = walk(value);
+    return out;
+  };
+  const swapped = { ...ll, views: walk((ll as any)?.views) };
+  return done ? swapped : ll;
+}
+
 /** How many things on one dashboard use a template: cards on views, and other templates. */
 export function totalUsages(ll: LovelaceConfig | null | undefined, template: string): number {
   const usages = collectUsages(ll, template);
