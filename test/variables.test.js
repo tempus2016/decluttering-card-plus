@@ -596,16 +596,8 @@ check(
   applyTransform('domain', 'light.hall', houseHass),
   'light',
 );
-check(
-  'object_id is the second half of the entity id',
-  applyTransform('object_id', 'light.hall', houseHass),
-  'hall',
-);
-check(
-  'object_id chains into a transform',
-  applyTransform('object_id|upper', 'light.hall', houseHass),
-  'HALL',
-);
+check('object_id is the second half of the entity id', applyTransform('object_id', 'light.hall', houseHass), 'hall');
+check('object_id chains into a transform', applyTransform('object_id|upper', 'light.hall', houseHass), 'HALL');
 check(
   'domain works without hass, since it only splits the id',
   applyTransform('domain', 'light.hall', undefined),
@@ -616,11 +608,7 @@ check(
   applyTransform('domain', 'Living Room', houseHass),
   undefined,
 );
-check(
-  'object_id of a bare word resolves to nothing',
-  applyTransform('object_id', 'lights', houseHass),
-  undefined,
-);
+check('object_id of a bare word resolves to nothing', applyTransform('object_id', 'lights', houseHass), undefined);
 
 // Labels live on the entity as ids; the labels registry holds their names.
 const labelledHass = {
@@ -645,12 +633,12 @@ check(
   }),
   'Night light, quiet',
 );
+check('an entity with no labels resolves to nothing', applyTransform('labels', 'light.bare', labelledHass), undefined);
 check(
-  'an entity with no labels resolves to nothing',
-  applyTransform('labels', 'light.bare', labelledHass),
+  'labels of an entity that does not exist resolves to nothing',
+  applyTransform('labels', 'light.nope', labelledHass),
   undefined,
 );
-check('labels of an entity that does not exist resolves to nothing', applyTransform('labels', 'light.nope', labelledHass), undefined);
 
 check('a resolver is recognised as one', [isResolver('friendly_name'), isResolver('attr:x')], [true, true]);
 check('a transform is not', [isResolver('slug'), isResolver('bogus')], [false, false]);
