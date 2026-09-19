@@ -1176,9 +1176,9 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
              */
             !items?.length && !isRegistrySource(this._config.for_each_from) && resolved && typeof resolved === 'object'
               ? html`
-                  <mwc-button @click=${(): void => this._eject(resolved)}>
+                  <ha-button @click=${(): void => this._eject(resolved)}>
                     ${localize(this._ejectPending ? 'editor.eject_confirm' : 'editor.eject', undefined, this.hass)}
-                  </mwc-button>
+                  </ha-button>
                 `
               : html``
           }
@@ -2185,7 +2185,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         ${
           this._declutterOriginal
             ? html`
-                <mwc-button .disabled=${this._busy || !saved} @click=${this._declutterReplace}>
+                <ha-button .disabled=${this._busy || !saved} @click=${this._declutterReplace}>
                   ${localize(
                     this._declutterPending
                       ? 'template_editor.declutter_replace_confirm'
@@ -2193,7 +2193,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                     undefined,
                     this.hass,
                   )}
-                </mwc-button>
+                </ha-button>
                 ${!saved ? html`<p class="hint">${localize('template_editor.declutter_save_first', undefined, this.hass)}</p>` : html``}
               `
             : html``

@@ -158,9 +158,9 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
           <p class="hint">${u}<code>[[name]]</code>${c}</p>
           <ha-yaml-editor .hass=${this.hass} .defaultValue=${l} read-only></ha-yaml-editor>
           ${(null==n?void 0:n.length)||At(this._config.for_each_from)||!l||"object"!=typeof l?K``:K`
-                  <mwc-button @click=${()=>this._eject(l)}>
+                  <ha-button @click=${()=>this._eject(l)}>
                     ${be(this._ejectPending?"editor.eject_confirm":"editor.eject",void 0,this.hass)}
-                  </mwc-button>
+                  </ha-button>
                 `}
         </div>
       </ha-expansion-panel>
@@ -455,9 +455,9 @@ const de={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ue=(e=de
           @value-changed=${e=>this._declutterPicked(e,i)}
         ></ha-form>
         ${this._declutterOriginal?K`
-                <mwc-button .disabled=${this._busy||!n} @click=${this._declutterReplace}>
+                <ha-button .disabled=${this._busy||!n} @click=${this._declutterReplace}>
                   ${be(this._declutterPending?"template_editor.declutter_replace_confirm":"template_editor.declutter_replace",void 0,this.hass)}
-                </mwc-button>
+                </ha-button>
                 ${n?K``:K`<p class="hint">${be("template_editor.declutter_save_first",void 0,this.hass)}</p>`}
               `:K``}
       </ha-expansion-panel>
