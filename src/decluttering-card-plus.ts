@@ -249,6 +249,17 @@ abstract class DeclutteringElement extends LitElement {
   // the layout tells the card whether it is in a section or a panel.
   @property({ type: Boolean }) public preview = false;
   @property({ attribute: false }) public layout?: string;
+  /*
+   * Home Assistant hands `preview` to a card element, but not to a badge element:
+   * hui-badge reads its own `preview` to decide whether to ignore `visibility`, and
+   * never passes it on to the badge it built. So a badge made from a template was the
+   * one thing on a dashboard that stayed hidden while the dashboard was being edited,
+   * with no way to select it and no sign it was there at all - upstream issue #117.
+   *
+   * The wrapper does know, so it is read from there instead. Only the badge path needs
+   * this; a card already gets told.
+   */
+  @state() private _wrapperPreview = false;
 
   protected _thingConfig?: LovelaceThingConfig;
   private _thingType?: LovelaceThingType;
@@ -367,11 +378,45 @@ abstract class DeclutteringElement extends LitElement {
 
   protected updated(changedProperties: PropertyValues): void {
     super.updated(changedProperties);
+    // Cheap, and it catches a wrapper that was told about edit mode without the badge
+    // being moved - whichever way round a future Home Assistant does it.
+    this._syncWrapperPreview();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const thing = this._thing as any;
     if (!thing) return;
-    if ('preview' in thing) thing.preview = this.preview;
+    if ('preview' in thing) {
+      const previewing = this._previewing;
+      if (thing.preview !== previewing) {
+        thing.preview = previewing;
+        /*
+         * Whether the wrapped thing is hidden is otherwise noticed by watching it resize,
+         * and a thing that is being un-hidden inside a host that is still display: none
+         * never gets a size to report. Without this the host would stay hidden and the
+         * badge it now holds would never be seen.
+         */
+        Promise.resolve(thing.updateComplete).then(() => this._displayHidden());
+      }
+    }
     if ('layout' in thing) thing.layout = this.layout;
+  }
+
+  /** True while the dashboard is being edited, however this element was told about it. */
+  private get _previewing(): boolean {
+    return this.preview || this._wrapperPreview;
+  }
+
+  /*
+   * Reads edit mode off the hui-badge this element sits in. Nothing tells the element
+   * when that changes, so it is read again every time Home Assistant moves the badge -
+   * which is exactly what entering and leaving edit mode does, as the badge is put
+   * inside a hui-badge-edit-mode wrapper and taken back out again. The frame after is
+   * read too, because the move and the flag are not set in a guaranteed order.
+   */
+  private _syncWrapperPreview(): void {
+    const wrapper = this.parentElement;
+    if (!wrapper || wrapper.localName !== 'hui-badge') return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    this._wrapperPreview = (wrapper as any).preview === true;
   }
 
   // A wrapped card can hide itself with an inline style, a stylesheet rule or the hidden
@@ -631,6 +676,10 @@ abstract class DeclutteringElement extends LitElement {
     // put back on the page has to start watching again.
     if (this._thing) this._watchForHiding(this._thing);
     if (this._forEach?.minWidth) this._watchWidth();
+    this._syncWrapperPreview();
+    requestAnimationFrame(() => {
+      if (this.isConnected) this._syncWrapperPreview();
+    });
   }
 
   public disconnectedCallback(): void {
