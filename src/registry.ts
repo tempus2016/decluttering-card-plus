@@ -11,6 +11,12 @@
 export interface RegistrySource {
   /** Repeat over areas. `true` or `'*'` for all of them, or patterns to pick some. */
   areas?: boolean | string | string[];
+  /** Repeat over devices, by id or name pattern. */
+  devices?: boolean | string | string[];
+  /** Repeat over floors, by id or name pattern. */
+  floors?: boolean | string | string[];
+  /** Repeat over labels, by id or name pattern. */
+  labels?: boolean | string | string[];
   /** Repeat over entities, matching these entity id patterns. Defaults to all of them. */
   entities?: boolean | string | string[];
   /** Narrows to entities of these domains. */
@@ -41,6 +47,8 @@ export interface RegistrySource {
   require?: string | string[];
   /** Extra or different variables for particular copies, keyed by entity or area pattern. */
   overrides?: Record<string, Record<string, any>>;
+  /** Fold entity copies into one per `domain`, `floor`, `label` or `area`. */
+  group_by?: string;
   /** For an area source: the entities to gather for each area. */
   with?: RegistrySource & { keep_empty?: boolean };
 }
@@ -53,6 +61,9 @@ const MAX_RANGE = 1000;
 // about what to repeat over, so a mapping holding only those is not a source.
 const SOURCE_KEYS = [
   'areas',
+  'devices',
+  'floors',
+  'labels',
   'entities',
   'domain',
   'area',
@@ -309,6 +320,112 @@ function areaItems(hass: any, source: RegistrySource): Record<string, any>[] {
   return items;
 }
 
+/*
+ * A copy per device, floor or label, the same shape a copy per area takes: what the thing
+ * is, and - with `with:` - what of the registry falls inside it. An empty one goes unless
+ * `keep_empty` says otherwise, exactly as an empty area does.
+ */
+function gatherInto(
+  item: Record<string, any>,
+  inside: Record<string, any>[],
+  gather: (RegistrySource & { keep_empty?: boolean }) | undefined,
+): Record<string, any> | undefined {
+  if (!gather) return item;
+  const ordered = [...inside].sort(byName);
+  if (!ordered.length && !gather.keep_empty) return undefined;
+  item.items = ordered;
+  item.entities = ordered.map((entity) => entity.entity);
+  item.entity_count = ordered.length;
+  return item;
+}
+
+function deviceItems(hass: any, source: RegistrySource): Record<string, any>[] {
+  const drop = asList(excluded(source.exclude)?.entities);
+  const gather = source.with;
+  const items: Record<string, any>[] = [];
+  const gathered = gather ? entityItems(hass, gather) : [];
+
+  for (const device of Object.values(hass?.devices ?? {}) as any[]) {
+    const name = device.name_by_user ?? device.name ?? device.id;
+    if (!matchesAny([device.id, name], asList(source.devices))) continue;
+    if (drop && matchesAny([device.id, name], drop)) continue;
+    const area = device.area_id ? hass?.areas?.[device.area_id] : undefined;
+    if (!matchesAny([device.area_id, area?.name], asList(source.area))) continue;
+    if (!floorMatches(hass, area, asList(source.floor))) continue;
+    if (!labelMatches(hass, device.labels ?? [], asList(source.label))) continue;
+
+    const item = gatherInto(
+      {
+        device_id: device.id,
+        device: name,
+        name,
+        area: area?.name ?? '',
+        area_id: device.area_id ?? '',
+        manufacturer: device.manufacturer ?? '',
+        model: device.model ?? '',
+      },
+      gathered.filter((inside) => hass?.entities?.[inside.entity]?.device_id === device.id),
+      gather,
+    );
+    if (item) items.push(item);
+  }
+  return items;
+}
+
+function floorItems(hass: any, source: RegistrySource): Record<string, any>[] {
+  const drop = asList(excluded(source.exclude)?.entities);
+  const gather = source.with;
+  const items: Record<string, any>[] = [];
+
+  for (const floor of Object.values(hass?.floors ?? {}) as any[]) {
+    const name = floor.name ?? floor.floor_id;
+    if (!matchesAny([floor.floor_id, name], asList(source.floors))) continue;
+    if (drop && matchesAny([floor.floor_id, name], drop)) continue;
+
+    const item = gatherInto(
+      { floor_id: floor.floor_id, floor: name, name, level: floor.level ?? '' },
+      gather ? entityItems(hass, { ...gather, floor: floor.floor_id }) : [],
+      gather,
+    );
+    if (item) items.push(item);
+  }
+  return items;
+}
+
+function labelItems(hass: any, source: RegistrySource): Record<string, any>[] {
+  const drop = asList(excluded(source.exclude)?.entities);
+  const gather = source.with;
+  const items: Record<string, any>[] = [];
+
+  /*
+   * The label registry arrived on `hass` later than labels themselves did, so the set is
+   * drawn from both: the registry where there is one, and otherwise the labels that
+   * entities and devices actually carry - named by their id, which is at least visible.
+   */
+  const known = new Map<string, any>();
+  for (const label of Object.values(hass?.labels ?? {}) as any[]) known.set(label.label_id, label);
+  for (const entity of Object.values(hass?.entities ?? {}) as any[]) {
+    for (const id of entity?.labels ?? []) if (!known.has(id)) known.set(id, { label_id: id });
+  }
+  for (const device of Object.values(hass?.devices ?? {}) as any[]) {
+    for (const id of device?.labels ?? []) if (!known.has(id)) known.set(id, { label_id: id });
+  }
+
+  for (const label of known.values() as Iterable<any>) {
+    const name = label.name ?? label.label_id;
+    if (!matchesAny([label.label_id, name], asList(source.labels))) continue;
+    if (drop && matchesAny([label.label_id, name], drop)) continue;
+
+    const item = gatherInto(
+      { label_id: label.label_id, label: name, name },
+      gather ? entityItems(hass, { ...gather, label: label.label_id }) : [],
+      gather,
+    );
+    if (item) items.push(item);
+  }
+  return items;
+}
+
 /** The device class an entity reports, which is on its state rather than its registry entry. */
 function deviceClassOf(hass: any, entityId: string, entity: any): string | undefined {
   return hass?.states?.[entityId]?.attributes?.device_class ?? entity?.device_class;
@@ -376,15 +493,23 @@ function entityItems(hass: any, source: RegistrySource): Record<string, any>[] {
 // variable the card has forgotten to set.
 const ENTITY_NAMES = ['entity', 'name', 'domain', 'area', 'area_id', 'total'];
 const AREA_NAMES = ['area_id', 'area', 'area_icon', 'floor', 'total'];
+const DEVICE_NAMES = ['device_id', 'device', 'name', 'area', 'area_id', 'manufacturer', 'model', 'total'];
+const FLOOR_NAMES = ['floor_id', 'floor', 'name', 'level', 'total'];
+const LABEL_NAMES = ['label_id', 'label', 'name', 'total'];
 const GATHERED_NAMES = ['items', 'entities', 'entity_count'];
+const GROUPED_NAMES = ['group', 'name', 'items', 'entities', 'entity_count', 'total'];
 const RANGE_NAMES = ['total'];
 
 /** The variable names a source supplies to every copy, whatever the registry holds. */
 export function registryNames(source: any): string[] {
   if (!isRegistrySource(source)) return [];
   if (source.range !== undefined) return [...RANGE_NAMES];
-  if (source.areas === undefined) return [...ENTITY_NAMES];
-  return source.with ? [...AREA_NAMES, ...GATHERED_NAMES] : [...AREA_NAMES];
+  const gathered = source.with ? GATHERED_NAMES : [];
+  if (source.areas !== undefined) return [...AREA_NAMES, ...gathered];
+  if (source.devices !== undefined) return [...DEVICE_NAMES, ...gathered];
+  if (source.floors !== undefined) return [...FLOOR_NAMES, ...gathered];
+  if (source.labels !== undefined) return [...LABEL_NAMES, ...gathered];
+  return typeof source.group_by === 'string' ? [...GROUPED_NAMES] : [...ENTITY_NAMES];
 }
 
 /**
@@ -408,8 +533,66 @@ export function resolveRegistryItems(hass: any, source: any): Record<string, any
     return Array.from({ length: count }, () => ({ total: count }));
   }
 
-  const items = source.areas !== undefined ? areaItems(hass, source) : entityItems(hass, source);
+  const items =
+    source.areas !== undefined
+      ? areaItems(hass, source)
+      : source.devices !== undefined
+        ? deviceItems(hass, source)
+        : source.floors !== undefined
+          ? floorItems(hass, source)
+          : source.labels !== undefined
+            ? labelItems(hass, source)
+            : entityItems(hass, source);
+  if (isEntitySource(source) && typeof source.group_by === 'string') {
+    return ordered(groupedItems(hass, items, source.group_by), source, hass);
+  }
   return ordered(items, source, hass);
+}
+
+/** Whether the copies are entities, rather than areas, devices, floors or labels. */
+function isEntitySource(source: RegistrySource): boolean {
+  return (
+    source.areas === undefined &&
+    source.devices === undefined &&
+    source.floors === undefined &&
+    source.labels === undefined
+  );
+}
+
+/*
+ * `group_by:` folds entity copies into one copy per distinct value - a copy per domain,
+ * per floor, per label, or per area - each knowing what fell into it, the same shape
+ * `with:` gives an area. An entity with nothing to group on (no floor, no label) is
+ * left out: a group of the unplaceable is noise, and `areas: true` with `keep_empty`
+ * already covers "show the empty ones" for the area case.
+ */
+function groupedItems(hass: any, items: Record<string, any>[], by: string): Record<string, any>[] {
+  const groups = new Map<string, Record<string, any>>();
+  const add = (id: string | undefined, name: string | undefined, item: Record<string, any>): void => {
+    if (!id) return;
+    const group = groups.get(id) ?? { group: id, name: name || id, items: [], entities: [], entity_count: 0 };
+    group.items.push(item);
+    group.entities.push(item.entity);
+    group.entity_count = group.items.length;
+    groups.set(id, group);
+  };
+
+  for (const item of items) {
+    const entity = hass?.entities?.[item.entity];
+    if (by === 'domain') add(item.domain, item.domain, item);
+    else if (by === 'area') add(item.area_id, item.area, item);
+    else if (by === 'floor') {
+      const floorId = areaOf(hass, entity)?.floor_id;
+      add(floorId, floorId ? hass?.floors?.[floorId]?.name : undefined, item);
+    } else if (by === 'label') {
+      for (const labelId of labelsOf(hass, entity)) add(labelId, hass?.labels?.[labelId]?.name, item);
+    }
+  }
+
+  return [...groups.values()].map((group) => {
+    const inside = [...group.items].sort(byName);
+    return { ...group, items: inside, entities: inside.map((item) => item.entity) };
+  });
 }
 
 /**

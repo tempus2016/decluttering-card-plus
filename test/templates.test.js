@@ -18,6 +18,9 @@ const {
   countLegacyTypes,
   addCardToView,
   moderniseTypes,
+  viewIndexFromPath,
+  expandSources,
+  templatePickerLabel,
   addTemplateToRoot,
   firstUsage,
   totalUsages,
@@ -32,6 +35,43 @@ check(
   'root decluttering_templates key',
   Object.keys(collectTemplates({ decluttering_templates: { a: { card: {} } } })),
   ['a'],
+);
+
+/* --------------------------------------------------------- view-level defaults */
+
+const viewDefaultsDashboard = {
+  decluttering_templates: { tile: { card: {}, default: [{ own: 'mine' }] } },
+  decluttering_defaults: { colour: 'amber', size: 'small' },
+  views: [{ title: 'Plain' }, { title: 'Dark', decluttering_defaults: { colour: 'black' } }],
+};
+
+check(
+  'a view can set defaults of its own, which beat the dashboard-wide ones',
+  collectTemplates(viewDefaultsDashboard, 1).tile.default,
+  [{ own: 'mine' }, { colour: 'black' }, { colour: 'amber' }, { size: 'small' }],
+);
+
+check(
+  'a view with no defaults of its own falls straight through to the dashboard',
+  collectTemplates(viewDefaultsDashboard, 0).tile.default,
+  [{ own: 'mine' }, { colour: 'amber' }, { size: 'small' }],
+);
+
+check('no view given reads as before', collectTemplates(viewDefaultsDashboard).tile.default, [
+  { own: 'mine' },
+  { colour: 'amber' },
+  { size: 'small' },
+]);
+
+check(
+  'viewIndexFromPath matches a view by its path, then by its number, then settles on the first',
+  [
+    viewIndexFromPath({ views: [{ path: 'home' }, { path: 'garden' }] }, 'garden'),
+    viewIndexFromPath({ views: [{}, {}] }, '1'),
+    viewIndexFromPath({ views: [{ path: 'home' }] }, 'nothing-known'),
+    viewIndexFromPath({ views: [{ path: 'home' }] }, undefined),
+  ],
+  [1, 1, 0, 0],
 );
 
 check(
@@ -82,6 +122,21 @@ check(
 );
 
 check('sources as a list', getTemplateSources({ decluttering_templates_from: ['a', 'b'] }), ['a', 'b']);
+
+check('a star borrows from every dashboard there is', expandSources(['*'], ['guests', 'holiday']), [
+  'guests',
+  'holiday',
+]);
+
+check(
+  'named sources keep their place ahead of the star, and are not fetched twice',
+  expandSources(['holiday', '*'], ['guests', 'holiday']),
+  ['holiday', 'guests'],
+);
+
+check('no star changes nothing', expandSources(['a', 'b'], ['guests']), ['a', 'b']);
+
+check('a star with nothing known is just the named ones', expandSources(['a', '*'], []), ['a']);
 check('sources as a single string', getTemplateSources({ decluttering_templates_from: 'a' }), ['a']);
 check('no sources', getTemplateSources({}), []);
 check('non-string sources are dropped', getTemplateSources({ decluttering_templates_from: ['a', 3, null] }), ['a']);
@@ -203,6 +258,83 @@ check(
   'a view with no cards at all is not an error',
   Object.keys(collectTemplates({ views: [{ title: 'Empty' }, { cards: null }] })),
   [],
+);
+
+/* ---------------------------------------------------------------- extends */
+
+const FAMILY = {
+  decluttering_templates: {
+    base_tile: {
+      variables: [{ name: 'entity', selector: { entity: {} } }, { name: 'icon' }],
+      default: [{ colour: 'blue' }],
+      card: { type: 'tile', entity: '[[entity]]', features: [{ type: 'toggle' }] },
+    },
+    dim_tile: {
+      extends: 'base_tile',
+      variables: [{ name: 'entity', default: 'light.dim' }, { name: 'level' }],
+      default: [{ colour: 'grey' }],
+      card: { color: 'grey' },
+    },
+    dimmer_tile: { extends: 'dim_tile', card: { name: 'Dimmer' } },
+    orphan: { extends: 'nowhere', card: { type: 'button' } },
+  },
+};
+
+check('a child template deep-merges its content over its parent', collectTemplates(FAMILY).dim_tile.card, {
+  type: 'tile',
+  entity: '[[entity]]',
+  features: [{ type: 'toggle' }],
+  color: 'grey',
+});
+
+check(
+  'declarations merge by name, the child having the last word in place',
+  collectTemplates(FAMILY).dim_tile.variables,
+  [{ name: 'entity', default: 'light.dim' }, { name: 'icon' }, { name: 'level' }],
+);
+
+check('a child default beats the parent default of the same name', collectTemplates(FAMILY).dim_tile.default, [
+  { colour: 'grey' },
+  { colour: 'blue' },
+]);
+
+check('extends chains, grandchild through child to parent', collectTemplates(FAMILY).dimmer_tile.card, {
+  type: 'tile',
+  entity: '[[entity]]',
+  features: [{ type: 'toggle' }],
+  color: 'grey',
+  name: 'Dimmer',
+});
+
+check('the extends key is gone once it has been honoured', 'extends' in collectTemplates(FAMILY).dim_tile, false);
+
+check('a parent nobody defines leaves the child as written, extends still on it', collectTemplates(FAMILY).orphan, {
+  extends: 'nowhere',
+  card: { type: 'button' },
+});
+
+check(
+  'two templates extending each other do not hang',
+  Object.keys(
+    collectTemplates({
+      decluttering_templates: { a: { extends: 'b', card: { x: 1 } }, b: { extends: 'a', card: { y: 2 } } },
+    }),
+  ).length,
+  2,
+);
+
+/* ---------------------------------------------------------------- picker labels */
+
+check(
+  'a categorised template sorts and reads under its category',
+  templatePickerLabel('room_tile', { category: 'Rooms', description: 'One room', card: {} }),
+  'Rooms · room_tile — One room',
+);
+
+check(
+  'no category reads as before',
+  [templatePickerLabel('plain', { card: {} }), templatePickerLabel('desc', { description: 'Words', card: {} })],
+  ['plain', 'desc — Words'],
 );
 
 check(
@@ -699,6 +831,18 @@ collectAllTemplates(hass, borrower).then((all) => {
   ]);
 
   check('a template nothing uses is found', HEALTH.unusedTemplates, ['never_used']);
+
+  check(
+    'a template another one extends is not unused',
+    checkDashboard({
+      decluttering_templates: {
+        base: { card: { type: 'tile' } },
+        child: { extends: 'base', card: { name: 'x' } },
+      },
+      views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'child' }] }],
+    }).unusedTemplates,
+    [],
+  );
 
   check(
     'a healthy dashboard reports nothing at all',

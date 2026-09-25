@@ -101,8 +101,18 @@ export function checkDashboard(ll: LovelaceConfig | null | undefined): {
     unsetVariables: [...unset.entries()]
       .sort()
       .map(([template, entry]) => ({ template, names: [...entry.names].sort(), count: entry.count })),
-    unusedTemplates: available.filter((name) => totalUsages(ll, name) === 0).sort(),
+    unusedTemplates: available.filter((name) => totalUsages(ll, name) === 0 && !extendedNames(ll).has(name)).sort(),
   };
+}
+
+/** The templates other templates build on. Being somebody's parent is a use. */
+function extendedNames(ll: LovelaceConfig | null | undefined): Set<string> {
+  const parents = new Set<string>();
+  for (const template of Object.values(collectRawTemplates(ll))) {
+    const parent = (template as any)?.extends;
+    if (typeof parent === 'string') parents.add(parent);
+  }
+  return parents;
 }
 
 /*
@@ -216,9 +226,109 @@ export function addTemplateToRoot(ll: any, name: string, template: TemplateConfi
   return { ...ll, decluttering_templates: { ...(ll?.decluttering_templates ?? {}), [name]: template } };
 }
 
+/**
+ * What the template picker shows for one template. A `category:` groups a big collection:
+ * it leads the label, so alphabetical sorting brings a category's templates together.
+ */
+export function templatePickerLabel(name: string, template: TemplateConfig | undefined): string {
+  const category = (template as any)?.category;
+  const described = template?.description ? `${name} — ${template.description}` : name;
+  return typeof category === 'string' && category ? `${category} · ${described}` : described;
+}
+
+/* ------------------------------------------------------------------ extends */
+
+const TEMPLATE_CONTENT_KEYS = ['card', 'badge', 'row', 'element'] as const;
+
+/** Child over parent: mappings merge key by key, lists and scalars are the child's. */
+function deepMergeConfig(parent: any, child: any): any {
+  if (parent === undefined) return child;
+  if (child === undefined) return parent;
+  const mergeable = (value: any): boolean => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!mergeable(parent) || !mergeable(child)) return child;
+  const out: any = { ...parent };
+  for (const [key, value] of Object.entries(child)) out[key] = deepMergeConfig(parent[key], value);
+  return out;
+}
+
+/** Parent order kept, a child declaration of the same name replacing in place, new ones after. */
+function mergeDeclarations(parent: any, child: any): any[] {
+  const parentList: any[] = Array.isArray(parent) ? parent : [];
+  const childList: any[] = Array.isArray(child) ? child : [];
+  const byName = new Map(childList.filter((entry) => entry?.name).map((entry) => [entry.name, entry]));
+  const merged = parentList.map((entry) => (entry?.name && byName.has(entry.name) ? byName.get(entry.name) : entry));
+  const parentNames = new Set(parentList.map((entry) => entry?.name));
+  return [...merged, ...childList.filter((entry) => !parentNames.has(entry?.name))];
+}
+
+function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): TemplateConfig {
+  const merged: any = { ...parent, ...child };
+  for (const key of TEMPLATE_CONTENT_KEYS) {
+    const combined = deepMergeConfig((parent as any)[key], (child as any)[key]);
+    if (combined !== undefined) merged[key] = combined;
+  }
+  const variables = mergeDeclarations((parent as any).variables, (child as any).variables);
+  if (variables.length) merged.variables = variables;
+  // The child comes first in both lists, which is what makes its values win downstream.
+  const defaults = [...normaliseVariables(child.default), ...normaliseVariables(parent.default)];
+  if (defaults.length) merged.default = defaults;
+  const lets = [...normaliseVariables(child.let), ...normaliseVariables(parent.let)];
+  if (lets.length) merged.let = lets;
+  return merged as TemplateConfig;
+}
+
+/*
+ * `extends:` folds a parent template underneath a child, so a family of templates can
+ * differ by one line. A parent nobody defines leaves the child as written, extends key
+ * and all, so a later pass over more dashboards can still honour it - and a pair that
+ * extend each other terminates by merging whichever the walk reached first as it stood.
+ */
+function resolveExtends(templates: Record<string, TemplateConfig>): Record<string, TemplateConfig> {
+  const out = { ...templates };
+  const walking = new Set<string>();
+  const resolve = (name: string): TemplateConfig => {
+    const template = out[name];
+    const parentName = (template as any)?.extends;
+    if (typeof parentName !== 'string' || walking.has(name)) return template;
+    walking.add(name);
+    const parent = out[parentName] !== undefined ? resolve(parentName) : undefined;
+    walking.delete(name);
+    if (parent === undefined) return template;
+    const child: any = { ...(template as any) };
+    delete child.extends;
+    const merged = mergeTemplates(parent, child);
+    out[name] = merged;
+    return merged;
+  };
+  for (const name of Object.keys(out)) resolve(name);
+  return out;
+}
+
 /** The values this dashboard offers every template, as a flat list of one name each. */
 export function collectDefaults(ll: LovelaceConfig | null | undefined): VariablesConfig[] {
   return normaliseVariables((ll as any)?.[DEFAULTS_KEY]);
+}
+
+/** The values one view offers the cards rendered in it, ahead of the dashboard-wide ones. */
+function collectViewDefaults(ll: LovelaceConfig | null | undefined, view: number | undefined): VariablesConfig[] {
+  if (view === undefined) return [];
+  return normaliseVariables(((ll as any)?.views?.[view] as any)?.[DEFAULTS_KEY]);
+}
+
+/**
+ * Which view a path segment names: its `path` first, its position as a number second, and
+ * the first view when the segment names nothing - which is also the view Home Assistant
+ * itself shows for a URL that stops at the dashboard.
+ */
+export function viewIndexFromPath(ll: LovelaceConfig | null | undefined, segment: string | undefined): number {
+  const views: any[] = (ll as any)?.views ?? [];
+  if (segment) {
+    const byPath = views.findIndex((view) => view?.path === segment);
+    if (byPath !== -1) return byPath;
+    const numeric = Number(segment);
+    if (Number.isInteger(numeric) && numeric >= 0 && numeric < views.length) return numeric;
+  }
+  return 0;
 }
 
 /*
@@ -257,9 +367,9 @@ function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<stri
  * The same, with the dashboard's own shared values put underneath each template - which is
  * what a card on this dashboard is rendered from.
  */
-export function collectTemplates(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
-  const templates = collectRawTemplates(ll);
-  const shared = collectDefaults(ll);
+export function collectTemplates(ll: LovelaceConfig | null | undefined, view?: number): Record<string, TemplateConfig> {
+  const templates = resolveExtends(collectRawTemplates(ll));
+  const shared = [...collectViewDefaults(ll, view), ...collectDefaults(ll)];
   if (!shared.length) return templates;
 
   const out: Record<string, TemplateConfig> = {};
@@ -267,9 +377,22 @@ export function collectTemplates(ll: LovelaceConfig | null | undefined): Record<
   return out;
 }
 
+/**
+ * `'*'` in the sources list stands for every dashboard there is. Named sources keep
+ * their place ahead of it - their templates win name clashes by being merged last - and
+ * nothing is fetched twice.
+ */
+export function expandSources(sources: string[], available: string[]): string[] {
+  if (!sources.includes('*')) return sources;
+  const named = sources.filter((source) => source !== '*');
+  const out = [...named];
+  for (const path of available) if (!out.includes(path)) out.push(path);
+  return out;
+}
+
 let dashboardListCache: Promise<string[]> | null = null;
 
-/** Every dashboard's url path. The default dashboard answers to 'lovelace'. */
+/** Every dashboard's url path, for expanding `'*'`. The default dashboard is 'lovelace'. */
 function fetchDashboardPaths(hass: HomeAssistant): Promise<string[]> {
   dashboardListCache ??= (hass as any)
     .callWS({ type: 'lovelace/dashboards/list' })
@@ -346,13 +469,15 @@ function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<Lov
 export async function collectAllTemplates(
   hass: HomeAssistant | undefined,
   ll: LovelaceConfig | null | undefined,
+  view?: number,
 ): Promise<Record<string, TemplateConfig>> {
-  const local = collectTemplates(ll);
-  const sources = getTemplateSources(ll);
+  const local = collectTemplates(ll, view);
+  let sources = getTemplateSources(ll);
   if (!hass || !sources.length) return local;
+  if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
 
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
-  const here = collectDefaults(ll);
+  const here = [...collectViewDefaults(ll, view), ...collectDefaults(ll)];
   const borrowed: Record<string, TemplateConfig> = {};
   for (const config of configs) {
     /*
@@ -367,12 +492,16 @@ export async function collectAllTemplates(
       borrowed[name] = withDefaults(template, shared);
     }
   }
-  return { ...borrowed, ...local };
+  return resolveExtends({ ...borrowed, ...local });
 }
 
 /** A single template from this dashboard, without going to the network. */
-export function findTemplate(ll: LovelaceConfig | null | undefined, template: string): TemplateConfig | null {
-  return collectTemplates(ll)[template] ?? null;
+export function findTemplate(
+  ll: LovelaceConfig | null | undefined,
+  template: string,
+  view?: number,
+): TemplateConfig | null {
+  return collectTemplates(ll, view)[template] ?? null;
 }
 
 /** A single template from this dashboard or one it borrows from. */
@@ -380,8 +509,9 @@ export async function findTemplateAnywhere(
   hass: HomeAssistant | undefined,
   ll: LovelaceConfig | null | undefined,
   template: string,
+  view?: number,
 ): Promise<TemplateConfig | null> {
-  return (await collectAllTemplates(hass, ll))[template] ?? null;
+  return (await collectAllTemplates(hass, ll, view))[template] ?? null;
 }
 
 // The cards that consume a template, as opposed to the ones that define it.

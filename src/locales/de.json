@@ -64,6 +64,8 @@
   "editor.optional_many": "Diese Vorlage verwendet Variablen ohne Wert und ohne Standard: {names}.",
   "editor.unused_one": "Diese Variable ist hier gesetzt, wird von der Vorlage aber nie verwendet: {names}.",
   "editor.unused_many": "Diese Variablen sind hier gesetzt, werden von der Vorlage aber nie verwendet: {names}.",
+  "editor.invalid_value": "Der Wert von {name} ist keiner, den die Vorlage akzeptiert. Sie erwartet: {expected}.",
+  "editor.card_variable_clear": "Eine andere Karte wählen",
   "editor.eject": "Diese Karte durch das ersetzen, was sie baut",
   "editor.eject_confirm": "Zum Ersetzen erneut drücken - die Vorlage gilt dann nicht mehr",
 
