@@ -52,12 +52,19 @@ function collectFromNode(node: any, templates: Record<string, TemplateConfig>): 
  * cards pointing at templates that are not there (with the near miss named), cards
  * leaving variables unset, and templates nothing uses. Same counting cards, one report.
  */
-export function checkDashboard(ll: LovelaceConfig | null | undefined): {
+export function checkDashboard(
+  ll: LovelaceConfig | null | undefined,
+  borrowed: Iterable<string> = [],
+): {
   missingTemplates: { template: string; count: number; closest?: string }[];
   unsetVariables: { template: string; names: string[]; count: number }[];
   unusedTemplates: string[];
 } {
   const templates = collectTemplates(ll);
+  // A template borrowed from another dashboard is not missing, however local this sweep
+  // is - the card using it renders. Borrowed names are never "unused" here either: they
+  // are somebody else's templates, and the only ones this dashboard answers for are its own.
+  const elsewhere = new Set(borrowed);
   const available = Object.keys(templates);
   const missing = new Map<string, number>();
   const unset = new Map<string, { names: Set<string>; count: number }>();
@@ -72,7 +79,7 @@ export function checkDashboard(ll: LovelaceConfig | null | undefined): {
     if (CONSUMER_TYPES.includes(node.type) && typeof node.template === 'string') {
       const template = templates[node.template];
       if (!template) {
-        missing.set(node.template, (missing.get(node.template) ?? 0) + 1);
+        if (!elsewhere.has(node.template)) missing.set(node.template, (missing.get(node.template) ?? 0) + 1);
       } else {
         const supplements = [
           ...forEachNames(node.for_each),
