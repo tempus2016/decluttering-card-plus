@@ -107,23 +107,26 @@ Templates][wiki-defining].
 - **[Variables][wiki-variables]** with defaults, nesting, transforms (`[[room|slug]]`), values
   read from Home Assistant (`[[entity|friendly_name]]`, its domain, object id, labels, area,
   floor or device), values a template works out for itself with `let:`, stand-ins for what
-  nothing sets (`[[name|default:Unnamed]]`), optional placeholders, and dashboard-wide
-  fallbacks.
+  nothing sets (`[[name|default:Unnamed]]`), optional placeholders, and dashboard-wide or
+  per-view fallbacks. A declaration can say what a good value looks like (`pattern:`,
+  `allowed:`), fold into a section of the editor (`group:`), or take a whole card.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
-  or area Home Assistant knows about, narrowed by domain, area, floor, label, device class or
-  integration, with anything you name excluded, sorted, limited, and a card of your own to
+  area, device, floor or label Home Assistant knows about, narrowed by domain, area, floor,
+  label, device class or integration, with anything you name excluded, sorted, limited, and a card of your own to
   show when nothing matches. The order can run backwards, break ties on a second key, or
   follow a state attribute; `offset` splits one long list across two cards, `require` drops a
   copy that came out empty, and `overrides` gives one copy its own variables.
 - **Grouping** — a copy per area that knows what is in it, so one card becomes a tile per
-  room, each listing that room's lights.
+  room, each listing that room's lights — or `group_by:` a domain, floor or label.
 
   ![Four room tiles in two columns, all from one card](images/repeat.png)
 
   *One `for_each` card, four copies of the same template.*
 
 - **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
-  every other dashboard.
+  every other dashboard, or from all of them at once with `'*'`.
+- **Templates built on templates** — `extends:` lets a family of templates differ by a line,
+  and `category:` groups a big collection in the picker.
 - **[Visibility][wiki-visibility]** conditions inside a template, including leaving out a copy
   that has nothing to show.
 - **[Styling][wiki-styling]** with a `style` option and CSS custom properties, a `gap`
