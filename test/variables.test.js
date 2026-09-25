@@ -25,6 +25,9 @@ const {
   forEachNames,
   forEachItems,
   normaliseVariables,
+  validateDeclared,
+  groupDeclarations,
+  isCardDeclaration,
 } = require('../.test-build/variables.js');
 
 const { check, report } = require('./harness');
@@ -508,6 +511,79 @@ check(
     card: { entity: 'light.[[room_slug]]' },
   }).missing,
   ['room'],
+);
+
+/* --------------------------------------------------------------------- groups */
+
+check(
+  'declarations gather under their group in order of first appearance, ungrouped first',
+  groupDeclarations([
+    { name: 'entity' },
+    { name: 'accent', group: 'Style' },
+    { name: 'name' },
+    { name: 'level', group: 'Behaviour' },
+    { name: 'radius', group: 'Style' },
+  ]),
+  [
+    { group: undefined, declarations: [{ name: 'entity' }, { name: 'name' }] },
+    {
+      group: 'Style',
+      declarations: [
+        { name: 'accent', group: 'Style' },
+        { name: 'radius', group: 'Style' },
+      ],
+    },
+    { group: 'Behaviour', declarations: [{ name: 'level', group: 'Behaviour' }] },
+  ],
+);
+
+check('no groups at all is one plain bucket', groupDeclarations([{ name: 'a' }]), [
+  { group: undefined, declarations: [{ name: 'a' }] },
+]);
+
+check(
+  'a card-valued declaration is recognised by its selector',
+  [
+    isCardDeclaration({ name: 'slot', selector: { card: {} } }),
+    isCardDeclaration({ name: 'entity', selector: { entity: {} } }),
+    isCardDeclaration({ name: 'free' }),
+  ],
+  [true, false, false],
+);
+
+/* ------------------------------------------------------------------ validation */
+
+const VALIDATED = {
+  variables: [
+    { name: 'entity', pattern: '^light\\.' },
+    { name: 'size', allowed: ['small', 'large', 0, false] },
+    { name: 'free' },
+  ],
+  card: { entity: '[[entity]]', size: '[[size]]', free: '[[free]]' },
+};
+
+check('a value that fails its declared pattern is reported', validateDeclared([{ entity: 'switch.fan' }], VALIDATED), [
+  { name: 'entity', expected: '^light\\.' },
+]);
+
+check('a value that matches its pattern is fine', validateDeclared([{ entity: 'light.hall' }], VALIDATED), []);
+
+check('a value outside the allowed list is reported with the list', validateDeclared([{ size: 'medium' }], VALIDATED), [
+  { name: 'size', expected: 'small, large, 0, false' },
+]);
+
+check(
+  'a zero or a false in the allowed list is honoured as itself',
+  [validateDeclared([{ size: 0 }], VALIDATED), validateDeclared([{ size: false }], VALIDATED)],
+  [[], []],
+);
+
+check('an unset variable is missing, not invalid', validateDeclared([], VALIDATED), []);
+
+check(
+  'a pattern that is not a regex validates nothing rather than breaking the card',
+  validateDeclared([{ entity: 'anything' }], { variables: [{ name: 'entity', pattern: '(' }], card: {} }),
+  [],
 );
 
 /* ------------------------------------------------------------ required variables */

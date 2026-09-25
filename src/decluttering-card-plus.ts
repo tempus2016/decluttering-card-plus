@@ -36,6 +36,8 @@ import {
   getTemplateSources,
   renameTemplate,
   TemplateUsages,
+  viewIndexFromPath,
+  templatePickerLabel,
   addTemplateToRoot,
   firstUsage,
   usagesOnOtherDashboards,
@@ -43,8 +45,24 @@ import {
   listPlainCards,
   replaceCard,
 } from './templates';
+
+/*
+ * Which view this card is being rendered in, read off the URL: the card only renders
+ * while its view is showing. Outside a dashboard URL - an editor preview, say - there is
+ * no view to speak of, and view-level defaults simply do not apply.
+ */
+function currentViewIndex(ll: Parameters<typeof viewIndexFromPath>[0]): number | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const segments = window.location.pathname.split('/').filter(Boolean);
+  if (segments.length < 1) return undefined;
+  return viewIndexFromPath(ll, segments[1]);
+}
+
 import {
   diagnoseInstance,
+  validateDeclared,
+  groupDeclarations,
+  isCardDeclaration,
   diagnoseTemplate,
   forEachItems,
   forEachNames,
@@ -899,7 +917,7 @@ class DeclutteringCard extends DeclutteringElement {
      * rather than to a layout they did not ask for.
      */
     this._fitContents = config.fit === 'contents';
-    const templateConfig = findTemplate(ll, config.template);
+    const templateConfig = findTemplate(ll, config.template, currentViewIndex(ll));
     if (templateConfig) {
       this._pendingConfig = undefined;
       this._applyTemplate(templateConfig, config);
@@ -1019,7 +1037,7 @@ class DeclutteringCard extends DeclutteringElement {
     this._pendingConfig = undefined;
 
     const ll = getLovelaceConfig();
-    findTemplateAnywhere(hass, ll, config.template)
+    findTemplateAnywhere(hass, ll, config.template, currentViewIndex(ll))
       .then((templateConfig) => {
         if (templateConfig) {
           this._applyTemplate(templateConfig, config);
@@ -1086,6 +1104,13 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     this._schema = undefined;
   }
 
+  async connectedCallback(): Promise<void> {
+    super.connectedCallback();
+    // A card-valued variable renders Home Assistant's own card editor and picker, which
+    // are lazy-loaded - free after the first editor anywhere has loaded them.
+    await loadCardEditorPicker();
+  }
+
   public setConfig(config: DeclutteringCardConfig): void {
     this._config = config;
   }
@@ -1122,7 +1147,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
               // template already carries is put beside it.
               options: Object.entries(this._templates).map(([name, template]) => ({
                 value: name,
-                label: template?.description ? `${name} — ${template.description}` : name,
+                label: templatePickerLabel(name, template),
               })),
             },
           },
@@ -1173,8 +1198,61 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         .computeHelper=${(s): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
       ></ha-form>
-      ${this._renderResult(template)}
+      ${this._renderCardVariables(declarations)} ${this._renderResult(template)}
     `;
+  }
+
+  /*
+   * A variable declared `selector: {card: {}}` takes a whole card as its value, so its
+   * control is Home Assistant's own card editor rather than a box of YAML. Substitution
+   * has always injected a mapping whole; this is the editor catching up with it.
+   */
+  private _renderCardVariables(declarations: VariableDeclaration[]): TemplateResult {
+    const slots = declarations.filter((declaration) => isCardDeclaration(declaration));
+    if (!slots.length) return html``;
+    const values = variableValues(this._config?.variables);
+    return html`${slots.map((declaration) => {
+      const value = values[declaration.name];
+      const filled = !!value && typeof value === 'object';
+      return html`
+        <div class="card-variable">
+          <h3>${declaration.label ?? declaration.name}</h3>
+          ${declaration.description ? html`<p class="hint">${declaration.description}</p>` : html``}
+          ${
+            filled
+              ? html`
+                  <hui-card-element-editor
+                    .hass=${this.hass}
+                    .lovelace=${this._lovelace}
+                    .value=${value}
+                    @config-changed=${(ev: CustomEvent): void => this._cardVariableChanged(declaration.name, ev)}
+                  ></hui-card-element-editor>
+                  <ha-button @click=${(): void => this._cardVariableChanged(declaration.name)}>
+                    ${localize('editor.card_variable_clear', undefined, this.hass)}
+                  </ha-button>
+                `
+              : html`
+                  <hui-card-picker
+                    .hass=${this.hass}
+                    .lovelace=${this._lovelace}
+                    @config-changed=${(ev: CustomEvent): void => this._cardVariableChanged(declaration.name, ev)}
+                  ></hui-card-picker>
+                `
+          }
+        </div>
+      `;
+    })}`;
+  }
+
+  private _cardVariableChanged(name: string, ev?: CustomEvent): void {
+    ev?.stopPropagation();
+    const value = ev?.detail?.config;
+    const variables = normaliseVariables(this._config?.variables).filter((entry) => variableName(entry) !== name);
+    if (value && typeof value === 'object') variables.push({ [name]: value });
+    const config = { ...this._config } as DeclutteringCardConfig;
+    if (variables.length) config.variables = variables;
+    else delete config.variables;
+    fireEvent(this, 'config-changed', { config });
   }
 
   /*
@@ -1343,15 +1421,26 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
     if (!declarations.length) return [...this._schema, ...repeat, ...fitSchema()];
 
+    const field = (declaration: VariableDeclaration): Record<string, unknown> => ({
+      name: VARIABLE_FIELD_PREFIX + declaration.name,
+      label: declaration.label ?? declaration.name,
+      helper: declaration.description,
+      selector: declaration.selector ?? { text: {} },
+      required: declaration.required === true,
+    });
+
+    // Declarations sharing a `group:` fold into a collapsible section, so a template with
+    // fifteen variables leads with its essentials. `name: ''` keeps the data flat - the
+    // section is presentation, not a level in the config.
+    const grouped: unknown[] = [];
+    for (const bucket of groupDeclarations(declarations.filter((declaration) => !isCardDeclaration(declaration)))) {
+      if (bucket.group === undefined) grouped.push(...bucket.declarations.map(field));
+      else grouped.push({ name: '', type: 'expandable', title: bucket.group, schema: bucket.declarations.map(field) });
+    }
+
     return [
       this._schema[0],
-      ...declarations.map((declaration) => ({
-        name: VARIABLE_FIELD_PREFIX + declaration.name,
-        label: declaration.label ?? declaration.name,
-        helper: declaration.description,
-        selector: declaration.selector ?? { text: {} },
-        required: declaration.required === true,
-      })),
+      ...grouped,
       {
         name: 'extras',
         label: localize('editor.extras_label', undefined, this.hass),
@@ -1407,6 +1496,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     ];
     const repeated = supplied.map((name) => ({ [name]: null }));
     const { missing, unused, required } = diagnoseInstance(this._config?.variables, template, repeated);
+    const invalid = validateDeclared(this._config?.variables, template);
     // A template can say which of its variables it cannot do without. Those are still not
     // errors that block a save - the template may be edited next - but they are the ones
     // worth reading first, so they are separated out and coloured accordingly.
@@ -1446,6 +1536,12 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
             </ha-alert>`
           : html``
       }
+      ${invalid.map(
+        (each) =>
+          html`<ha-alert alert-type="warning">
+            ${localize('editor.invalid_value', { name: each.name, expected: each.expected }, this.hass)}
+          </ha-alert>`,
+      )}
       ${
         unused.length
           ? html`<ha-alert alert-type="info">
