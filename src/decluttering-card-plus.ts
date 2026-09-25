@@ -80,6 +80,7 @@ import {
 import { chainOf, chainWith, describeCycle, describeTooDeep, findCycle, MAX_NESTING, withChain } from './cycles';
 import { columnsFor } from './layout';
 import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
+import { loadLabels } from './labels';
 import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize } from './localize';
 import { VERSION } from './version';
@@ -1027,11 +1028,30 @@ class DeclutteringCard extends DeclutteringElement {
     }
   }
 
+  /*
+   * Home Assistant does not carry the label registry on hass, so a card that shows labels
+   * fetches it (once per page, in labels.ts) and rebuilds when it lands - the registry key
+   * includes it, so the ids on screen turn into names without waiting for a state change.
+   * Only cards that mention labels at all ask, so nobody else pays for the call.
+   */
+  private _loadLabelsIfWanted(hass: HomeAssistant): void {
+    const using = [this._fromRegistry, this._fromResolvers].filter(Boolean);
+    if (!using.some((source) => /label/i.test(JSON.stringify(source)))) return;
+    void loadLabels(hass).then(() => {
+      // `hass` is a setter here with no getter, so the latest one is `_hass` - reading
+      // `this.hass` gives undefined and the rebuild never happens.
+      const latest = this._hass ?? hass;
+      this._resolveFromRegistry(latest);
+      this._rebuildForResolvers(latest);
+    });
+  }
+
   protected hassAvailable(hass: HomeAssistant): void {
     const config = this._pendingConfig;
     if (!config) {
       this._resolveFromRegistry(hass);
       this._rebuildForResolvers(hass);
+      this._loadLabelsIfWanted(hass);
       return;
     }
     this._pendingConfig = undefined;
@@ -1041,6 +1061,7 @@ class DeclutteringCard extends DeclutteringElement {
       .then((templateConfig) => {
         if (templateConfig) {
           this._applyTemplate(templateConfig, config);
+          this._loadLabelsIfWanted(hass);
         } else {
           this._error = localize('error.template_missing_anywhere', { template: config.template }, hass);
           // Every name there is, borrowed ones included, is known by the time this runs.
@@ -1732,6 +1753,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _librarySelected?: string;
   @state() private _libraryDestination: 'view' | 'root' = 'view';
   @state() private _remoteUsages?: { name: string; list: { urlPath: string; total: number }[] };
+  @state() private _borrowed?: { ll: unknown; names?: string[] };
   @state() private _declutterOriginal?: Record<string, unknown>;
   @state() private _declutterPending = false;
 
@@ -2255,7 +2277,22 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
    * nothing uses. The sweep is cheap and honest, so it simply runs.
    */
   private _renderHealth(ll: LovelaceConfig | null | undefined): TemplateResult {
-    const report = checkDashboard(ll);
+    // A dashboard that borrows templates has names defined elsewhere, and the sweep must
+    // know them or every card using one is reported as pointing at nothing. Fetched once
+    // per dashboard config; until it lands, "does not exist" is held back rather than said.
+    const borrowing = getTemplateSources(ll).length > 0;
+    if (borrowing && this._borrowed?.ll !== ll) {
+      this._borrowed = { ll };
+      const local = new Set(Object.keys(collectTemplates(ll)));
+      void collectAllTemplates(this.hass, ll).then((all) => {
+        if (this._borrowed?.ll === ll) {
+          this._borrowed = { ll, names: Object.keys(all).filter((name) => !local.has(name)) };
+        }
+      });
+    }
+    const pending = borrowing && !this._borrowed?.names;
+    const full = checkDashboard(ll, borrowing ? (this._borrowed?.names ?? []) : []);
+    const report = pending ? { ...full, missingTemplates: [] } : full;
     const healthy = !report.missingTemplates.length && !report.unsetVariables.length && !report.unusedTemplates.length;
     return html`
       <ha-expansion-panel outlined>

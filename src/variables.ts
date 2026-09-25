@@ -1,4 +1,5 @@
 import { TemplateConfig, VariablesConfig } from './types';
+import { labelName } from './labels';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -186,7 +187,7 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
   labels: (entityId, hass) => {
     const ids: string[] = hass?.entities?.[entityId]?.labels ?? [];
     if (!ids.length) return undefined;
-    return ids.map((id) => hass?.labels?.[id]?.name ?? id).join(', ');
+    return ids.map((id) => labelName(hass, id)).join(', ');
   },
 };
 

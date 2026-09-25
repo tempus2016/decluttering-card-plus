@@ -833,6 +833,30 @@ collectAllTemplates(hass, borrower).then((all) => {
   check('a template nothing uses is found', HEALTH.unusedTemplates, ['never_used']);
 
   check(
+    'a card using a template borrowed from another dashboard is not missing',
+    checkDashboard(
+      {
+        decluttering_templates_from: 'elsewhere',
+        views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'from_elsewhere' }] }],
+      },
+      ['from_elsewhere'],
+    ).missingTemplates,
+    [],
+  );
+
+  check(
+    'but a name nobody defines still is, borrowing or not',
+    checkDashboard(
+      {
+        decluttering_templates_from: 'elsewhere',
+        views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'typo_tile' }] }],
+      },
+      ['from_elsewhere'],
+    ).missingTemplates.map((m) => m.template),
+    ['typo_tile'],
+  );
+
+  check(
     'a template another one extends is not unused',
     checkDashboard({
       decluttering_templates: {

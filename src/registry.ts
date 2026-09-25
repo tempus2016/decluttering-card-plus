@@ -7,6 +7,8 @@
  * kitchen" and grow by itself.
  */
 
+import { labelRegistry } from './labels';
+
 /** What to repeat over. `areas` and `entities` choose the kind of copy; the rest narrow. */
 export interface RegistrySource {
   /** Repeat over areas. `true` or `'*'` for all of them, or patterns to pick some. */
@@ -141,7 +143,7 @@ function labelsOf(hass: any, entity: any): string[] {
 /** A label matches by its id or by the name shown in the interface. */
 function labelMatches(hass: any, labels: string[], patterns: string[] | undefined): boolean {
   if (!patterns) return true;
-  return labels.some((id) => matchesAny([id, hass?.labels?.[id]?.name], patterns));
+  return labels.some((id) => matchesAny([id, labelRegistry(hass)?.[id]?.name], patterns));
 }
 
 function floorMatches(hass: any, area: any, patterns: string[] | undefined): boolean {
@@ -403,7 +405,7 @@ function labelItems(hass: any, source: RegistrySource): Record<string, any>[] {
    * entities and devices actually carry - named by their id, which is at least visible.
    */
   const known = new Map<string, any>();
-  for (const label of Object.values(hass?.labels ?? {}) as any[]) known.set(label.label_id, label);
+  for (const label of Object.values(labelRegistry(hass) ?? {}) as any[]) known.set(label.label_id, label);
   for (const entity of Object.values(hass?.entities ?? {}) as any[]) {
     for (const id of entity?.labels ?? []) if (!known.has(id)) known.set(id, { label_id: id });
   }
@@ -585,7 +587,7 @@ function groupedItems(hass: any, items: Record<string, any>[], by: string): Reco
       const floorId = areaOf(hass, entity)?.floor_id;
       add(floorId, floorId ? hass?.floors?.[floorId]?.name : undefined, item);
     } else if (by === 'label') {
-      for (const labelId of labelsOf(hass, entity)) add(labelId, hass?.labels?.[labelId]?.name, item);
+      for (const labelId of labelsOf(hass, entity)) add(labelId, labelRegistry(hass)?.[labelId]?.name, item);
     }
   }
 
@@ -602,7 +604,9 @@ function groupedItems(hass: any, items: Record<string, any>[], by: string): Reco
  * rebuilding a card when a lamp is added and rebuilding it when a lamp is switched on.
  */
 export function registryKey(hass: any): unknown[] {
-  return [hass?.entities, hass?.devices, hass?.areas, hass?.floors, hass?.labels];
+  // The label registry is fetched rather than carried on hass - see labels.ts - so it is part
+  // of the key: the fetch landing is what turns label ids into names on screen.
+  return [hass?.entities, hass?.devices, hass?.areas, hass?.floors, labelRegistry(hass)];
 }
 
 /** Whether two registry keys describe the same registry, compared entry by entry. */
