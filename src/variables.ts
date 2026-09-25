@@ -452,6 +452,36 @@ function addDotted(name: string, value: unknown, entries: VariablesConfig[], dep
   }
 }
 
+/**
+ * The variables a card actually wrote. normaliseVariables adds a dotted name for every key
+ * inside a mapping, so `[[room.light]]` can reach into `room` - right for substitution,
+ * wrong for an editor, which then listed `room.light` beside `room`, warned it was never
+ * used, and wrote it back into the config as if the card had set it. A card variable holds
+ * a whole card, so it hit this every time.
+ *
+ * Dotted copies of a mapping set alongside them are left out too: earlier versions of the
+ * editor saved exactly those, and they are derived, not the card's own.
+ */
+export function ownVariables(variables: unknown): VariablesConfig[] {
+  const entries: VariablesConfig[] = [];
+  const add = (entry: unknown): void => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+    for (const [name, value] of Object.entries(entry)) entries.push({ [name]: value });
+  };
+  if (Array.isArray(variables)) variables.forEach(add);
+  else add(variables);
+
+  const isMapping = (value: unknown): boolean => !!value && typeof value === 'object' && !Array.isArray(value);
+  const mappings = new Set(
+    entries.filter((entry) => isMapping(Object.values(entry)[0])).map((entry) => Object.keys(entry)[0]),
+  );
+  return entries.filter((entry) => {
+    const name = Object.keys(entry)[0];
+    const dot = name.indexOf('.');
+    return dot < 0 || !mappings.has(name.slice(0, dot));
+  });
+}
+
 export function normaliseVariables(variables: unknown): VariablesConfig[] {
   const entries: VariablesConfig[] = [];
   const add = (entry: unknown): void => {
@@ -681,11 +711,14 @@ export function diagnoseInstance(
   const used = reachable(template, values);
   const isUsed = new Set(used);
 
-  const passed = normaliseVariables(variables);
+  // What the card wrote, not the dotted names derived from its mappings - and a mapping
+  // reached only through one of its keys (`[[room.light]]`) is still used.
+  const passed = ownVariables(variables);
+  const reached = (name: string): boolean => isUsed.has(name) || used.some((each) => each.startsWith(name + '.'));
   const unused: string[] = [];
   for (const entry of passed) {
     const name = firstKey(entry);
-    if (name !== undefined && !isUsed.has(name) && !unused.includes(name)) unused.push(name);
+    if (name !== undefined && !reached(name) && !unused.includes(name)) unused.push(name);
   }
 
   const missing = used.filter((name) => !(name in values));

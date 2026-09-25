@@ -17,6 +17,7 @@ const {
   usedVariables,
   resolveVariables,
   diagnoseInstance,
+  ownVariables,
   diagnoseTemplate,
   mergeVariables,
   variableName,
@@ -834,6 +835,64 @@ check(
   'a for_each item can carry a room together',
   forEachVariables({ room: { light: 'light.hall' } }, undefined).map((e) => Object.keys(e)[0]),
   ['room', 'room.light'],
+);
+
+/* --------------------------------------------------- what a card wrote itself */
+
+const framed = [{ title: 'Framed' }, { inner: { type: 'tile', entity: 'light.hall' } }];
+
+check(
+  'normaliseVariables reaches into a mapping, for substitution',
+  normaliseVariables(framed).map((e) => Object.keys(e)[0]),
+  ['title', 'inner', 'inner.type', 'inner.entity'],
+);
+
+check(
+  'ownVariables is what the card wrote - no dotted names from inside a mapping',
+  ownVariables(framed).map((e) => Object.keys(e)[0]),
+  ['title', 'inner'],
+);
+
+check(
+  'dotted copies an earlier editor saved beside their mapping are left out too',
+  ownVariables([...framed, { 'inner.type': 'tile' }, { 'inner.entity': 'light.hall' }]).map((e) => Object.keys(e)[0]),
+  ['title', 'inner'],
+);
+
+check(
+  "a dotted name with no mapping of that root is the card's own, and kept",
+  ownVariables([{ 'room.light': 'light.hall' }]).map((e) => Object.keys(e)[0]),
+  ['room.light'],
+);
+
+check(
+  'saving through ownVariables writes no dotted keys back',
+  mergeVariables(ownVariables(framed), ownVariables(framed)).map((e) => Object.keys(e)[0]),
+  ['title', 'inner'],
+);
+
+check(
+  'a card variable is not reported unused because of the keys inside it',
+  diagnoseInstance(framed, {
+    card: { type: 'vertical-stack', cards: ['[[inner]]', { type: 'markdown', content: '[[title]]' }] },
+  }).unused,
+  [],
+);
+
+check(
+  'a mapping reached only through one of its keys is still used',
+  diagnoseInstance([{ room: { light: 'light.hall', icon: 'mdi:lamp' } }], {
+    card: { type: 'tile', entity: '[[room.light]]' },
+  }).unused,
+  [],
+);
+
+check(
+  'but a variable nothing uses is still reported',
+  diagnoseInstance([{ room: { light: 'light.hall' } }, { spare: 'x' }], {
+    card: { type: 'tile', entity: '[[room.light]]' },
+  }).unused,
+  ['spare'],
 );
 
 report();

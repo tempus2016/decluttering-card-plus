@@ -69,7 +69,7 @@ import {
   forEachVariables,
   getDeclarations,
   mergeVariables,
-  normaliseVariables,
+  ownVariables,
   POSITION_NAMES,
   hasRequiredVariables,
   usesResolver,
@@ -1268,7 +1268,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   private _cardVariableChanged(name: string, ev?: CustomEvent): void {
     ev?.stopPropagation();
     const value = ev?.detail?.config;
-    const variables = normaliseVariables(this._config?.variables).filter((entry) => variableName(entry) !== name);
+    const variables = ownVariables(this._config?.variables).filter((entry) => variableName(entry) !== name);
     if (value && typeof value === 'object') variables.push({ [name]: value });
     const config = { ...this._config } as DeclutteringCardConfig;
     if (variables.length) config.variables = variables;
@@ -1483,7 +1483,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       if (declaration.name in values) data[VARIABLE_FIELD_PREFIX + declaration.name] = values[declaration.name];
     }
 
-    const extras = normaliseVariables(this._config?.variables).filter((entry) => {
+    const extras = ownVariables(this._config?.variables).filter((entry) => {
       const name = variableName(entry);
       return name !== undefined && !described.has(name);
     });
@@ -1596,7 +1596,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
 
     const config = { ...this._config, template: data.template } as DeclutteringCardConfig;
     // Whatever shape the config was written in, what is saved back is the list form.
-    const variables = mergeVariables(normaliseVariables(this._config?.variables), desired);
+    const variables = mergeVariables(ownVariables(this._config?.variables), desired);
     if (variables.length) config.variables = variables;
     else delete config.variables;
     setOrDelete(config, 'for_each', data.for_each);
