@@ -1,6 +1,6 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
-import { diagnoseInstance, forEachNames, normaliseVariables } from './variables';
+import { VIEW_VALUES, diagnoseInstance, forEachNames, normaliseVariables } from './variables';
 import { isRegistrySource, registryNames } from './registry';
 import { localize } from './localize';
 
@@ -316,7 +316,10 @@ export function collectDefaults(ll: LovelaceConfig | null | undefined): Variable
   return normaliseVariables((ll as any)?.[DEFAULTS_KEY]);
 }
 
-/** The values one view offers the cards rendered in it, ahead of the dashboard-wide ones. */
+/**
+ * The values one view sets for the cards rendered in it. They beat the template's own
+ * defaults - see VIEW_VALUES - where the dashboard-wide ones only fill what nothing sets.
+ */
 function collectViewDefaults(ll: LovelaceConfig | null | undefined, view: number | undefined): VariablesConfig[] {
   if (view === undefined) return [];
   return normaliseVariables(((ll as any)?.views?.[view] as any)?.[DEFAULTS_KEY]);
@@ -342,15 +345,19 @@ export function viewIndexFromPath(ll: LovelaceConfig | null | undefined, segment
  * A template's own `default:` list with the dashboard's shared values added underneath it,
  * which is where they belong: resolution takes the first definition of a name it finds, so
  * anything the template says for itself is reached first and a shared value is only ever
- * the fallback.
+ * the fallback. The view's values ride along beside the list rather than in it, because
+ * they go the other way and beat what the template says.
  *
  * The template is copied rather than added to. It is part of the dashboard's configuration,
  * which is handed out to whoever asks for it, and quietly growing a `default:` list on it
  * would be a change to the dashboard that nobody made.
  */
-function withDefaults(template: TemplateConfig, shared: VariablesConfig[]): TemplateConfig {
-  if (!shared.length) return template;
-  return { ...template, default: [...normaliseVariables(template.default), ...shared] };
+function withDefaults(template: TemplateConfig, view: VariablesConfig[], shared: VariablesConfig[]): TemplateConfig {
+  if (!view.length && !shared.length) return template;
+  const copy: any = { ...template };
+  if (shared.length) copy.default = [...normaliseVariables(template.default), ...shared];
+  if (view.length) copy[VIEW_VALUES] = view;
+  return copy;
 }
 
 /** Every template a single dashboard configuration defines, by name, as written. */
@@ -376,11 +383,12 @@ function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<stri
  */
 export function collectTemplates(ll: LovelaceConfig | null | undefined, view?: number): Record<string, TemplateConfig> {
   const templates = resolveExtends(collectRawTemplates(ll));
-  const shared = [...collectViewDefaults(ll, view), ...collectDefaults(ll)];
-  if (!shared.length) return templates;
+  const here = collectViewDefaults(ll, view);
+  const shared = collectDefaults(ll);
+  if (!here.length && !shared.length) return templates;
 
   const out: Record<string, TemplateConfig> = {};
-  for (const [name, template] of Object.entries(templates)) out[name] = withDefaults(template, shared);
+  for (const [name, template] of Object.entries(templates)) out[name] = withDefaults(template, here, shared);
   return out;
 }
 
@@ -484,7 +492,8 @@ export async function collectAllTemplates(
   if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
 
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
-  const here = [...collectViewDefaults(ll, view), ...collectDefaults(ll)];
+  const viewValues = collectViewDefaults(ll, view);
+  const here = collectDefaults(ll);
   const borrowed: Record<string, TemplateConfig> = {};
   for (const config of configs) {
     /*
@@ -496,7 +505,7 @@ export async function collectAllTemplates(
      */
     const shared = [...here, ...collectDefaults(config)];
     for (const [name, template] of Object.entries(collectRawTemplates(config))) {
-      borrowed[name] = withDefaults(template, shared);
+      borrowed[name] = withDefaults(template, viewValues, shared);
     }
   }
   return resolveExtends({ ...borrowed, ...local });

@@ -39,29 +39,81 @@ check(
 
 /* --------------------------------------------------------- view-level defaults */
 
+const { resolveVariables, variableValues } = require('../.test-build/variables.js');
+
 const viewDefaultsDashboard = {
-  decluttering_templates: { tile: { card: {}, default: [{ own: 'mine' }] } },
-  decluttering_defaults: { colour: 'amber', size: 'small' },
-  views: [{ title: 'Plain' }, { title: 'Dark', decluttering_defaults: { colour: 'black' } }],
+  decluttering_templates: {
+    tile: {
+      card: {},
+      variables: [{ name: 'room', default: 'lounge' }],
+      default: [{ own: 'mine' }, { colour: 'white' }],
+    },
+  },
+  decluttering_defaults: { colour: 'amber', size: 'small', room: 'hall' },
+  views: [{ title: 'Plain' }, { title: 'Kitchen', decluttering_defaults: { colour: 'black', room: 'kitchen' } }],
 };
 
+// Sorted by name, so the comparison is about the values and not the order they came in.
+const valuesOn = (view, cardVariables) => {
+  const values = variableValues(resolveVariables(cardVariables, collectTemplates(viewDefaultsDashboard, view).tile));
+  return Object.fromEntries(
+    Object.keys(values)
+      .sort()
+      .map((name) => [name, values[name]]),
+  );
+};
+
+check('a view sets values that beat the template, its declarations and the dashboard', valuesOn(1), {
+  colour: 'black',
+  own: 'mine',
+  room: 'kitchen',
+  size: 'small',
+});
+
+check('a value on the card still beats the view', valuesOn(1, [{ room: 'pantry' }]).room, 'pantry');
+
+check('a view with no values of its own leaves the template in charge', valuesOn(0), {
+  colour: 'white',
+  own: 'mine',
+  room: 'lounge',
+  size: 'small',
+});
+
 check(
-  'a view can set defaults of its own, which beat the dashboard-wide ones',
+  'the dashboard-wide values stay underneath the template',
   collectTemplates(viewDefaultsDashboard, 1).tile.default,
-  [{ own: 'mine' }, { colour: 'black' }, { colour: 'amber' }, { size: 'small' }],
+  [{ own: 'mine' }, { colour: 'white' }, { colour: 'amber' }, { size: 'small' }, { room: 'hall' }],
 );
 
 check(
-  'a view with no defaults of its own falls straight through to the dashboard',
-  collectTemplates(viewDefaultsDashboard, 0).tile.default,
-  [{ own: 'mine' }, { colour: 'amber' }, { size: 'small' }],
+  'the view values are not written into the template where an export would see them',
+  Object.keys(collectTemplates(viewDefaultsDashboard, 1).tile).sort(),
+  ['card', 'default', 'variables'],
 );
 
-check('no view given reads as before', collectTemplates(viewDefaultsDashboard).tile.default, [
-  { own: 'mine' },
-  { colour: 'amber' },
-  { size: 'small' },
-]);
+check('no view given reads as before', valuesOn(undefined), {
+  colour: 'white',
+  own: 'mine',
+  room: 'lounge',
+  size: 'small',
+});
+
+check(
+  'a template built on another keeps its view values',
+  variableValues(
+    resolveVariables(
+      [],
+      collectTemplates(
+        {
+          decluttering_templates: { base: { card: {}, default: [{ room: 'lounge' }] }, child: { extends: 'base' } },
+          views: [{ decluttering_defaults: { room: 'kitchen' } }],
+        },
+        0,
+      ).child,
+    ),
+  ).room,
+  'kitchen',
+);
 
 check(
   'viewIndexFromPath matches a view by its path, then by its number, then settles on the first',

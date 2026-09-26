@@ -107,9 +107,10 @@ Templates][wiki-defining].
 - **[Variables][wiki-variables]** with defaults, nesting, transforms (`[[room|slug]]`), values
   read from Home Assistant (`[[entity|friendly_name]]`, its domain, object id, labels, area,
   floor or device), values a template works out for itself with `let:`, stand-ins for what
-  nothing sets (`[[name|default:Unnamed]]`), optional placeholders, and dashboard-wide or
-  per-view fallbacks. A declaration can say what a good value looks like (`pattern:`,
-  `allowed:`), fold into a section of the editor (`group:`), or take a whole card.
+  nothing sets (`[[name|default:Unnamed]]`), optional placeholders, dashboard-wide
+  fallbacks, and values a whole view sets for every card on it. A declaration can say what
+  a good value looks like (`pattern:`, `allowed:`), fold into a section of the editor
+  (`group:`), or take a whole card.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
   area, device, floor or label Home Assistant knows about, narrowed by domain, area, floor,
   label, device class or integration, with anything you name excluded, sorted, limited, and a card of your own to

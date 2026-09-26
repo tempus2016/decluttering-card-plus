@@ -530,6 +530,13 @@ export function getDeclarations(template: TemplateConfig | undefined): VariableD
   return declarations;
 }
 
+/**
+ * Where a template copy carries the values its view sets, which sit above the template's
+ * own defaults. A symbol rather than a key, so nothing written in YAML can reach it and an
+ * exported template never carries it.
+ */
+export const VIEW_VALUES = Symbol('decluttering view values');
+
 /** The `default:` values, in whichever shape they were written. */
 function defaultList(template: TemplateConfig | undefined): VariablesConfig[] {
   return normaliseVariables(template?.default);
@@ -537,7 +544,8 @@ function defaultList(template: TemplateConfig | undefined): VariablesConfig[] {
 
 /**
  * Every value that will be substituted, in the order that decides which wins: what the
- * instance passes, then what a declaration defaults to, then the older `default:` list.
+ * instance passes, then what its view sets, then what a declaration defaults to, then the
+ * older `default:` list.
  */
 export function resolveVariables(
   variables: VariablesConfig[] | VariablesConfig | undefined,
@@ -549,6 +557,9 @@ export function resolveVariables(
   // from the outside, invisibly.
   combined.push(...normaliseVariables(template?.let));
   combined.push(...normaliseVariables(variables));
+  // The view is closer to the card than the template is: a room page that says
+  // `room: kitchen` means every card on it, whatever the template would have picked.
+  combined.push(...normaliseVariables((template as any)?.[VIEW_VALUES]));
   for (const declaration of getDeclarations(template)) {
     // A declaration that only names a variable says nothing about its value, and must not
     // shadow a `default:` entry with undefined.
