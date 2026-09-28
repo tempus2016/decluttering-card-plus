@@ -332,6 +332,8 @@ abstract class DeclutteringElement extends LitElement {
 
   // The section this element was last found in, once it has been on the page.
   protected _section?: SectionPlace;
+  // The wrapped card a sections view has been told the size of.
+  private _sizeAnnounced?: LovelaceThing;
 
   set hass(hass: HomeAssistant) {
     if (!hass) return;
@@ -714,6 +716,28 @@ abstract class DeclutteringElement extends LitElement {
     this._forwardGridApi(thing);
     if (this._hass) thing.hass = this._hass;
     this._watchForHiding(thing);
+    this._announceSize();
+  }
+
+  /*
+   * The wrapped card is created asynchronously, so a sections view may already have asked
+   * this card for its size and been given nothing - and it only asks again when told.
+   * Without this, a card that lost the race was laid out full width until the next edit.
+   * Told a frame later, and tried again on connect: said while the card is still detached,
+   * or before the section has finished setting up, nobody hears it.
+   *
+   * Once per wrapped card, and only inside a section. A masonry view answers the same event
+   * by rebuilding its columns, which reconnects every card in them - told on each connect,
+   * the cards and the view would go on prompting each other for ever.
+   */
+  private _announceSize(): void {
+    const thing = this._thing;
+    if (this._thingType !== 'card' || !thing || this._sizeAnnounced === thing) return;
+    requestAnimationFrame(() => {
+      if (!this.isConnected || this._thing !== thing || this._sizeAnnounced === thing || !sectionOf(this)) return;
+      this._sizeAnnounced = thing;
+      this.dispatchEvent(new Event('card-updated', { bubbles: true, composed: true }));
+    });
   }
 
   // The wrapped card is watched so that this wrapper can collapse when the card hides
@@ -735,6 +759,7 @@ abstract class DeclutteringElement extends LitElement {
     // put back on the page has to start watching again.
     if (this._thing) this._watchForHiding(this._thing);
     if (this._forEach?.minWidth) this._watchWidth();
+    this._announceSize();
     this._syncSection();
     this._syncWrapperPreview();
     requestAnimationFrame(() => {
