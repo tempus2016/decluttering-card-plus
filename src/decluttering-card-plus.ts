@@ -1630,6 +1630,9 @@ class DeclutteringTemplate extends DeclutteringElement {
   @property({ type: Boolean, reflect: true }) preview = false;
 
   @state() private _template?: string;
+  // The config the preview was last drawn from, and one still waiting on a borrowed parent.
+  private _previewConfig?: DeclutteringTemplateConfig;
+  private _pendingPreview?: DeclutteringTemplateConfig;
 
   static getConfigElement(): HTMLElement {
     return document.createElement(TEMPLATE_EDITOR_TAG);
@@ -1684,9 +1687,55 @@ class DeclutteringTemplate extends DeclutteringElement {
     this._error = undefined;
 
     this._template = config.template;
+    this._previewConfig = config;
+
+    /*
+     * The preview draws the template the way a card using it would get it: its parent
+     * folded in, and the dashboard's and the view's decluttering_defaults applied. Drawn
+     * from the raw config, a template that leaves a value to the dashboard previewed with
+     * the brackets still in it, and one built with `extends` showed only its own few lines
+     * (upstream issue #125). Outside a dashboard there is nothing to add, and it is drawn
+     * as written.
+     */
+    const ll = getLovelaceConfig();
+    const resolved = collectTemplates(ll, currentViewIndex(ll), config)[config.template] ?? config;
+
+    // An `extends` still standing means the parent is not on this dashboard. It may be on
+    // one this dashboard borrows from, which has to be fetched, so drawing waits for hass
+    // - drawn now, a child with no card of its own would fail before its parent arrived.
+    const unresolved = typeof (resolved as { extends?: unknown }).extends === 'string';
+    if (unresolved && getTemplateSources(ll).length) {
+      this._pendingPreview = config;
+      if (this._hass) this.hassAvailable(this._hass);
+      return;
+    }
+    this._pendingPreview = undefined;
     // The config passed here IS the template, so its style is picked up as the
     // template's own - passing it again as the instance style would emit it twice.
-    this._setTemplateConfig(config, undefined, undefined, config.template);
+    this._setTemplateConfig(resolved, undefined, undefined, config.template);
+  }
+
+  protected hassAvailable(hass: HomeAssistant): void {
+    const config = this._pendingPreview;
+    if (!config) return;
+    this._pendingPreview = undefined;
+
+    const ll = getLovelaceConfig();
+    collectAllTemplates(hass, ll, currentViewIndex(ll), config)
+      // Drawn as written when the fetch fails, which says what is missing the same way it
+      // always has.
+      .catch(() => ({}) as Record<string, TemplateConfig>)
+      .then((all) => {
+        // A newer config may have arrived while the other dashboards were being fetched.
+        if (this._previewConfig !== config) return;
+        try {
+          this._setTemplateConfig(all[config.template] ?? config, undefined, undefined, config.template);
+          this._error = undefined;
+        } catch (err) {
+          // Outside setConfig nobody catches a throw, so the card says it itself.
+          this._error = (err as Error)?.message ?? String(err);
+        }
+      });
   }
 
   protected render(): TemplateResult | void {
