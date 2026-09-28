@@ -34,6 +34,7 @@ import {
   findTemplateAnywhere,
   findTemplateLocation,
   getTemplateSources,
+  hasSectionDefaults,
   renameTemplate,
   TemplateUsages,
   viewIndexFromPath,
@@ -56,6 +57,28 @@ function currentViewIndex(ll: Parameters<typeof viewIndexFromPath>[0]): number |
   const segments = window.location.pathname.split('/').filter(Boolean);
   if (segments.length < 1) return undefined;
   return viewIndexFromPath(ll, segments[1]);
+}
+
+/** Where a card sits in a sections view: the view, and the section's place in it. */
+type SectionPlace = { view: number; section: number };
+
+/*
+ * Which section a card sits in, read off the hui-section it is rendered inside - through
+ * any stacks, grids and shadow roots in between. Nothing hands a card this, and it can
+ * only be read once the card is on the page. A card anywhere else - a masonry view, a
+ * badge, an editor preview - is in no section.
+ */
+function sectionOf(element: Element): SectionPlace | undefined {
+  let node: Node | null = element;
+  while (node) {
+    if ((node as Element).localName === 'hui-section') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { index, viewIndex } = node as any;
+      return Number.isInteger(index) && Number.isInteger(viewIndex) ? { view: viewIndex, section: index } : undefined;
+    }
+    node = node.parentNode instanceof ShadowRoot ? node.parentNode.host : node.parentNode;
+  }
+  return undefined;
 }
 
 import {
@@ -307,6 +330,9 @@ abstract class DeclutteringElement extends LitElement {
   /** Whether this card was asked to give up its box in the layout. */
   @state() protected _fitContents = false;
 
+  // The section this element was last found in, once it has been on the page.
+  protected _section?: SectionPlace;
+
   set hass(hass: HomeAssistant) {
     if (!hass) return;
     this._hass = hass;
@@ -318,6 +344,20 @@ abstract class DeclutteringElement extends LitElement {
   // on another dashboard. setConfig runs before hass is ever set, so the work waits here.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected hassAvailable(_hass: HomeAssistant): void {}
+
+  /*
+   * The view and section whose decluttering_defaults apply. The section, when known, also
+   * says which view - more surely than the URL does. Before the card is on the page there
+   * is only the URL.
+   */
+  protected _place(ll: Parameters<typeof viewIndexFromPath>[0]): { view?: number; section?: number } {
+    if (this._section) return { view: this._section.view, section: this._section.section };
+    return { view: currentViewIndex(ll) };
+  }
+
+  // Overridden to build again with the config last given. Only called when a section on
+  // one side of the move has values of its own, as otherwise nothing would change.
+  protected _rebuild(): void {}
 
   static get styles(): CSSResult {
     return css`
@@ -695,10 +735,32 @@ abstract class DeclutteringElement extends LitElement {
     // put back on the page has to start watching again.
     if (this._thing) this._watchForHiding(this._thing);
     if (this._forEach?.minWidth) this._watchWidth();
+    this._syncSection();
     this._syncWrapperPreview();
     requestAnimationFrame(() => {
       if (this.isConnected) this._syncWrapperPreview();
     });
+  }
+
+  /*
+   * setConfig runs before the card is on the page, so it builds without the section's
+   * values; a card that turns out to sit in a section with decluttering_defaults builds
+   * again here, which is before it is first painted. Read on every connect, as dragging a
+   * card to another section in edit mode moves it rather than rebuilding it.
+   */
+  private _syncSection(): void {
+    const found = sectionOf(this);
+    const before = this._section;
+    if (found?.view === before?.view && found?.section === before?.section) return;
+    this._section = found;
+    const ll = getLovelaceConfig();
+    if (!hasSectionDefaults(ll, before) && !hasSectionDefaults(ll, found)) return;
+    try {
+      this._rebuild();
+    } catch (err) {
+      // Outside setConfig nobody catches a throw, so the card says it itself.
+      this._error = (err as Error)?.message ?? String(err);
+    }
   }
 
   public disconnectedCallback(): void {
@@ -862,6 +924,7 @@ abstract class DeclutteringElement extends LitElement {
 
 class DeclutteringCard extends DeclutteringElement {
   private _pendingConfig?: DeclutteringCardConfig;
+  private _lastConfig?: DeclutteringCardConfig;
   // A card repeating over the registry, kept so it can be worked out again when what is
   // registered changes - a lamp added to the kitchen should appear without an edit.
   private _fromRegistry?: { templateConfig: TemplateConfig; config: DeclutteringCardConfig };
@@ -887,6 +950,7 @@ class DeclutteringCard extends DeclutteringElement {
     if (!config.template) {
       throw new Error(localize('error.missing_template'));
     }
+    this._lastConfig = config;
 
     /*
      * What is already being drawn above this card. A template that uses itself, directly
@@ -918,7 +982,8 @@ class DeclutteringCard extends DeclutteringElement {
      * rather than to a layout they did not ask for.
      */
     this._fitContents = config.fit === 'contents';
-    const templateConfig = findTemplate(ll, config.template, currentViewIndex(ll));
+    const place = this._place(ll);
+    const templateConfig = findTemplate(ll, config.template, place.view, place.section);
     if (templateConfig) {
       this._pendingConfig = undefined;
       this._applyTemplate(templateConfig, config);
@@ -934,6 +999,10 @@ class DeclutteringCard extends DeclutteringElement {
     // setConfig cannot wait, so it is picked up as soon as hass arrives.
     this._pendingConfig = config;
     if (this._hass) this.hassAvailable(this._hass);
+  }
+
+  protected _rebuild(): void {
+    if (this._lastConfig) this.setConfig(this._lastConfig);
   }
 
   // A card renders its template once, or once per item when it is given a list to repeat
@@ -1057,7 +1126,8 @@ class DeclutteringCard extends DeclutteringElement {
     this._pendingConfig = undefined;
 
     const ll = getLovelaceConfig();
-    findTemplateAnywhere(hass, ll, config.template, currentViewIndex(ll))
+    const place = this._place(ll);
+    findTemplateAnywhere(hass, ll, config.template, place.view, place.section)
       .then((templateConfig) => {
         if (templateConfig) {
           this._applyTemplate(templateConfig, config);
@@ -1698,7 +1768,8 @@ class DeclutteringTemplate extends DeclutteringElement {
      * as written.
      */
     const ll = getLovelaceConfig();
-    const resolved = collectTemplates(ll, currentViewIndex(ll), config)[config.template] ?? config;
+    const place = this._place(ll);
+    const resolved = collectTemplates(ll, place.view, config, place.section)[config.template] ?? config;
 
     // An `extends` still standing means the parent is not on this dashboard. It may be on
     // one this dashboard borrows from, which has to be fetched, so drawing waits for hass
@@ -1715,13 +1786,18 @@ class DeclutteringTemplate extends DeclutteringElement {
     this._setTemplateConfig(resolved, undefined, undefined, config.template);
   }
 
+  protected _rebuild(): void {
+    if (this._previewConfig) this.setConfig(this._previewConfig);
+  }
+
   protected hassAvailable(hass: HomeAssistant): void {
     const config = this._pendingPreview;
     if (!config) return;
     this._pendingPreview = undefined;
 
     const ll = getLovelaceConfig();
-    collectAllTemplates(hass, ll, currentViewIndex(ll), config)
+    const place = this._place(ll);
+    collectAllTemplates(hass, ll, place.view, config, place.section)
       // Drawn as written when the fetch fails, which says what is missing the same way it
       // always has.
       .catch(() => ({}) as Record<string, TemplateConfig>)
