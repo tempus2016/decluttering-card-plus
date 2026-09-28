@@ -317,12 +317,30 @@ export function collectDefaults(ll: LovelaceConfig | null | undefined): Variable
 }
 
 /**
- * The values one view sets for the cards rendered in it. They beat the template's own
- * defaults - see VIEW_VALUES - where the dashboard-wide ones only fill what nothing sets.
+ * The values one view sets for the cards rendered in it, with the ones set by the section
+ * a card sits in ahead of them - a section is closer to the card than its view is. They
+ * beat the template's own defaults - see VIEW_VALUES - where the dashboard-wide ones only
+ * fill what nothing sets.
  */
-function collectViewDefaults(ll: LovelaceConfig | null | undefined, view: number | undefined): VariablesConfig[] {
+function collectViewDefaults(
+  ll: LovelaceConfig | null | undefined,
+  view: number | undefined,
+  section?: number,
+): VariablesConfig[] {
   if (view === undefined) return [];
-  return normaliseVariables(((ll as any)?.views?.[view] as any)?.[DEFAULTS_KEY]);
+  const viewConfig = (ll as any)?.views?.[view];
+  const inSection = section === undefined ? [] : normaliseVariables(viewConfig?.sections?.[section]?.[DEFAULTS_KEY]);
+  return [...inSection, ...normaliseVariables(viewConfig?.[DEFAULTS_KEY])];
+}
+
+/** Whether a section sets any values of its own, which is when where a card sits matters. */
+export function hasSectionDefaults(
+  ll: LovelaceConfig | null | undefined,
+  place: { view: number; section: number } | undefined,
+): boolean {
+  if (!place) return false;
+  const section = (ll as any)?.views?.[place.view]?.sections?.[place.section];
+  return normaliseVariables(section?.[DEFAULTS_KEY]).length > 0;
 }
 
 /**
@@ -399,9 +417,10 @@ export function collectTemplates(
   ll: LovelaceConfig | null | undefined,
   view?: number,
   own?: DeclutteringTemplateConfig,
+  section?: number,
 ): Record<string, TemplateConfig> {
   const templates = resolveExtends(withOwn(collectRawTemplates(ll), own));
-  const here = collectViewDefaults(ll, view);
+  const here = collectViewDefaults(ll, view, section);
   const shared = collectDefaults(ll);
   if (!here.length && !shared.length) return templates;
 
@@ -504,14 +523,15 @@ export async function collectAllTemplates(
   ll: LovelaceConfig | null | undefined,
   view?: number,
   own?: DeclutteringTemplateConfig,
+  section?: number,
 ): Promise<Record<string, TemplateConfig>> {
-  const local = collectTemplates(ll, view, own);
+  const local = collectTemplates(ll, view, own, section);
   let sources = getTemplateSources(ll);
   if (!hass || !sources.length) return local;
   if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
 
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
-  const viewValues = collectViewDefaults(ll, view);
+  const viewValues = collectViewDefaults(ll, view, section);
   const here = collectDefaults(ll);
   const borrowed: Record<string, TemplateConfig> = {};
   for (const config of configs) {
@@ -535,8 +555,9 @@ export function findTemplate(
   ll: LovelaceConfig | null | undefined,
   template: string,
   view?: number,
+  section?: number,
 ): TemplateConfig | null {
-  return collectTemplates(ll, view)[template] ?? null;
+  return collectTemplates(ll, view, undefined, section)[template] ?? null;
 }
 
 /** A single template from this dashboard or one it borrows from. */
@@ -545,8 +566,9 @@ export async function findTemplateAnywhere(
   ll: LovelaceConfig | null | undefined,
   template: string,
   view?: number,
+  section?: number,
 ): Promise<TemplateConfig | null> {
-  return (await collectAllTemplates(hass, ll, view))[template] ?? null;
+  return (await collectAllTemplates(hass, ll, view, undefined, section))[template] ?? null;
 }
 
 // The cards that consume a template, as opposed to the ones that define it.

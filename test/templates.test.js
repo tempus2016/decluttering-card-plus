@@ -8,6 +8,7 @@ const {
   collectDefaults,
   collectTemplates,
   getTemplateSources,
+  hasSectionDefaults,
   isTemplateCardType,
   collectUsages,
   findTemplateLocation,
@@ -89,6 +90,50 @@ check(
   'the view values are not written into the template where an export would see them',
   Object.keys(collectTemplates(viewDefaultsDashboard, 1).tile).sort(),
   ['card', 'default', 'variables'],
+);
+
+/* ------------------------------------------------------- section-level defaults */
+
+const sectionsDashboard = {
+  decluttering_defaults: { room: 'dashboard', size: 'small' },
+  decluttering_templates: { tile: { card: {}, default: [{ room: 'template' }, { colour: 'white' }] } },
+  views: [
+    {
+      type: 'sections',
+      decluttering_defaults: { room: 'view', colour: 'black' },
+      sections: [
+        { type: 'grid', decluttering_defaults: { room: 'kitchen' }, cards: [] },
+        { type: 'grid', cards: [] },
+      ],
+    },
+  ],
+};
+
+const inSection = (section, cardVariables) =>
+  variableValues(resolveVariables(cardVariables, collectTemplates(sectionsDashboard, 0, undefined, section).tile));
+
+check('a section sets values that beat its view, the template and the dashboard', inSection(0), {
+  room: 'kitchen',
+  colour: 'black',
+  size: 'small',
+});
+
+check('a value on the card still beats the section', inSection(0, [{ room: 'pantry' }]).room, 'pantry');
+
+check('a section with no values of its own leaves the view in charge', inSection(1).room, 'view');
+
+check('no section given reads as before', inSection(undefined).room, 'view');
+
+check(
+  'a section only counts where it says something',
+  [
+    hasSectionDefaults(sectionsDashboard, { view: 0, section: 0 }),
+    hasSectionDefaults(sectionsDashboard, { view: 0, section: 1 }),
+    hasSectionDefaults(sectionsDashboard, { view: 0, section: 9 }),
+    hasSectionDefaults(sectionsDashboard, undefined),
+    hasSectionDefaults(null, { view: 0, section: 0 }),
+  ],
+  [true, false, false, false, false],
 );
 
 /* ------------------------------------------------ a template card's own preview */
