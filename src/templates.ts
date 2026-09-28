@@ -377,12 +377,30 @@ function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<stri
   return templates;
 }
 
+/*
+ * A template card previews the definition it is handed rather than the saved one: in the
+ * edit dialog that is the change being typed, which the dashboard has not seen yet. So it
+ * goes into the list in place of whatever the dashboard has under that name, and is then
+ * resolved like any other - its parent folded in, the shared values put underneath.
+ */
+function withOwn(
+  templates: Record<string, TemplateConfig>,
+  own: DeclutteringTemplateConfig | undefined,
+): Record<string, TemplateConfig> {
+  if (own && typeof own.template === 'string') templates[own.template] = own;
+  return templates;
+}
+
 /**
  * The same, with the dashboard's own shared values put underneath each template - which is
  * what a card on this dashboard is rendered from.
  */
-export function collectTemplates(ll: LovelaceConfig | null | undefined, view?: number): Record<string, TemplateConfig> {
-  const templates = resolveExtends(collectRawTemplates(ll));
+export function collectTemplates(
+  ll: LovelaceConfig | null | undefined,
+  view?: number,
+  own?: DeclutteringTemplateConfig,
+): Record<string, TemplateConfig> {
+  const templates = resolveExtends(withOwn(collectRawTemplates(ll), own));
   const here = collectViewDefaults(ll, view);
   const shared = collectDefaults(ll);
   if (!here.length && !shared.length) return templates;
@@ -485,8 +503,9 @@ export async function collectAllTemplates(
   hass: HomeAssistant | undefined,
   ll: LovelaceConfig | null | undefined,
   view?: number,
+  own?: DeclutteringTemplateConfig,
 ): Promise<Record<string, TemplateConfig>> {
-  const local = collectTemplates(ll, view);
+  const local = collectTemplates(ll, view, own);
   let sources = getTemplateSources(ll);
   if (!hass || !sources.length) return local;
   if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));

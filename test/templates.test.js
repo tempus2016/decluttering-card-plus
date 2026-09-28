@@ -91,6 +91,65 @@ check(
   ['card', 'default', 'variables'],
 );
 
+/* ------------------------------------------------ a template card's own preview */
+
+// A template card previews the definition it is handed, which in the edit dialog is the
+// unsaved one - so it is passed in rather than read back off the dashboard.
+const previewDashboard = {
+  decluttering_defaults: { dashboard: 'home' },
+  views: [
+    {
+      cards: [
+        {
+          type: 'custom:decluttering-template-plus',
+          template: 'room_button',
+          card: { type: 'button', name: '[[room]]', tap_action: { navigation_path: '/[[dashboard]]/[[room]]' } },
+          default: [{ room: 'lounge' }],
+        },
+        { type: 'custom:decluttering-template-plus', template: 'room_button_kitchen', extends: 'room_button' },
+      ],
+    },
+    { decluttering_defaults: { room: 'hall' } },
+  ],
+};
+
+const kitchenCard = {
+  type: 'custom:decluttering-template-plus',
+  template: 'room_button_kitchen',
+  extends: 'room_button',
+  default: [{ room: 'kitchen' }],
+};
+
+check(
+  'a template card previews with its parent folded in',
+  collectTemplates(previewDashboard, 0, kitchenCard).room_button_kitchen.card,
+  { type: 'button', name: '[[room]]', tap_action: { navigation_path: '/[[dashboard]]/[[room]]' } },
+);
+
+check(
+  "a template card previews with the dashboard's defaults underneath its own",
+  variableValues(resolveVariables([], collectTemplates(previewDashboard, 0, kitchenCard).room_button_kitchen)),
+  { room: 'kitchen', dashboard: 'home' },
+);
+
+check(
+  "a template card previews with its view's defaults on top",
+  variableValues(resolveVariables([], collectTemplates(previewDashboard, 1, kitchenCard).room_button_kitchen)).room,
+  'hall',
+);
+
+check(
+  'the definition handed in beats the saved one of the same name',
+  variableValues(resolveVariables([], collectTemplates(previewDashboard, 0, kitchenCard).room_button_kitchen)).room,
+  'kitchen',
+);
+
+check(
+  'a template card on no dashboard previews as written',
+  collectTemplates(null, undefined, kitchenCard).room_button_kitchen,
+  kitchenCard,
+);
+
 check('no view given reads as before', valuesOn(undefined), {
   colour: 'white',
   own: 'mine',
@@ -973,5 +1032,18 @@ collectAllTemplates(hass, borrower).then((all) => {
     PLAIN_DASH,
   );
 
-  report();
+  // A template card whose parent lives on a dashboard this one borrows from.
+  const childOfBorrowed = {
+    type: 'custom:decluttering-template-plus',
+    template: 'badge_child',
+    extends: 'shared_badge',
+  };
+  return collectAllTemplates(hass, borrower, undefined, childOfBorrowed).then((withChild) => {
+    check(
+      'a template card previews with a borrowed parent folded in',
+      [withChild.badge_child.extends, withChild.badge_child.card],
+      [undefined, all.shared_badge.card],
+    );
+    report();
+  });
 });
