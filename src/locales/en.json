@@ -39,6 +39,7 @@
   "editor.columns_helper": "How many copies sit side by side. One stacks them vertically",
   "editor.min_column_width_label": "Minimum column width",
   "editor.min_column_width_helper": "Pixels. Drops a column rather than going narrower, so the card suits a phone too",
+  "editor.columns_without_min_width": "Copies stay in {columns} columns however narrow the screen gets. Set a minimum column width and the card drops columns on a phone instead.",
   "editor.fit_label": "Fit into the layout",
   "editor.fit_helper": "Get out of the way if a card that sizes itself comes out spread across the row",
   "editor.fit_box": "Keep its own box (default)",

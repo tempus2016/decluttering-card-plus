@@ -39,6 +39,7 @@
   "editor.columns_helper": "Quantas cópias ficam lado a lado. Uma empilha-as na vertical",
   "editor.min_column_width_label": "Largura mínima de coluna",
   "editor.min_column_width_helper": "Píxeis. Retira uma coluna em vez de estreitar, para que o cartão sirva também num telemóvel",
+  "editor.columns_without_min_width": "As cópias ficam em {columns} colunas por mais estreito que seja o ecrã. Defina uma largura mínima de coluna e o cartão retira colunas num telemóvel.",
   "editor.fit_label": "Ajustar à disposição",
   "editor.fit_helper": "Sai do caminho se um cartão que define o seu próprio tamanho aparecer espalhado pela linha",
   "editor.fit_box": "Manter a sua própria caixa (predefinição)",

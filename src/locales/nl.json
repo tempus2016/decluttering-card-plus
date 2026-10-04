@@ -39,6 +39,7 @@
   "editor.columns_helper": "Hoeveel kopieën naast elkaar staan. Eén stapelt ze onder elkaar",
   "editor.min_column_width_label": "Minimale kolombreedte",
   "editor.min_column_width_helper": "In pixels. Laat liever een kolom vallen dan smaller te worden, zodat de kaart ook op een telefoon past",
+  "editor.columns_without_min_width": "De kopieën blijven in {columns} kolommen, hoe smal het scherm ook is. Stel een minimale kolombreedte in, dan laat de kaart op een telefoon kolommen vallen.",
   "editor.fit_label": "In de lay-out passen",
   "editor.fit_helper": "Ga uit de weg als een kaart met een eigen maat uitgesmeerd over de rij terechtkomt",
   "editor.fit_box": "Eigen vak houden (standaard)",

@@ -39,6 +39,7 @@
   "editor.columns_helper": "Combien de copies côte à côte. Une seule les empile verticalement",
   "editor.min_column_width_label": "Largeur minimale de colonne",
   "editor.min_column_width_helper": "En pixels. Retire une colonne plutôt que de rétrécir, pour que la carte convienne aussi à un téléphone",
+  "editor.columns_without_min_width": "Les copies restent sur {columns} colonnes, même sur un écran étroit. Définissez une largeur minimale de colonne et la carte en retirera sur un téléphone.",
   "editor.fit_label": "S'adapter à la disposition",
   "editor.fit_helper": "S'efface si une carte qui fixe sa propre taille se retrouve étalée sur la ligne",
   "editor.fit_box": "Garder sa propre boîte (par défaut)",

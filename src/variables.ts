@@ -685,7 +685,8 @@ export function validateDeclared(
     const value = values[declaration.name];
     if (value === undefined || value === null || value === '') continue;
     if (Array.isArray(declaration.allowed)) {
-      if (!declaration.allowed.some((each) => each === value)) {
+      // Compared as text: a dropdown hands back strings, and `allowed: [1, 2]` still means 1 and 2.
+      if (!declaration.allowed.some((each) => String(each) === String(value))) {
         bad.push({ name: declaration.name, expected: declaration.allowed.map((each) => String(each)).join(', ') });
       }
       continue;
