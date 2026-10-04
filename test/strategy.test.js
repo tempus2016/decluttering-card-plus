@@ -2,7 +2,14 @@
  * Unit tests for src/strategy.ts - the view strategy that writes out a section or a badge
  * per item. Run with `npm test`.
  */
-const { generateView, expandEntry, isRepeatEntry, wantsLabels } = require('../.test-build/strategy.js');
+const {
+  generateView,
+  expandEntry,
+  isRepeatEntry,
+  wantsLabels,
+  findRepeatingCard,
+  sectionPerCopy,
+} = require('../.test-build/strategy.js');
 
 const { check, report } = require('./harness');
 
@@ -182,5 +189,105 @@ check(
 );
 
 check('and not otherwise', wantsLabels({ sections: [{ for_each_from: { areas: true } }] }), false);
+
+/* ------------------------------------------------------------- one section per copy */
+
+const repeating = {
+  type: 'custom:decluttering-card-plus',
+  template: 'room',
+  for_each_from: { areas: true },
+  columns: 2,
+  empty: { type: 'markdown', content: 'none' },
+  variables: [{ shade: 'dark' }],
+};
+const dashboard = {
+  decluttering_templates: { room: { card: {} } },
+  views: [
+    { title: 'Masonry', cards: [repeating] },
+    {
+      title: 'Rooms',
+      path: 'rooms',
+      badges: [{ entity: 'sun.sun' }],
+      sections: [
+        { type: 'grid', cards: [{ type: 'heading', heading: 'Top' }] },
+        { type: 'grid', background: true, cards: [{ type: 'heading', heading: 'Rooms' }, repeating] },
+      ],
+    },
+  ],
+};
+
+check('a repeating card in a section is found', findRepeatingCard(dashboard, repeating), {
+  view: 1,
+  section: 1,
+  card: 1,
+});
+
+check(
+  'a card that does not repeat is not offered',
+  findRepeatingCard(dashboard, { type: 'heading', heading: 'Top' }),
+  undefined,
+);
+
+check(
+  'a card in a masonry view is not offered',
+  findRepeatingCard({ views: [dashboard.views[0]] }, repeating),
+  undefined,
+);
+
+const converted = sectionPerCopy(dashboard, repeating);
+
+check('the view keeps its own settings', [converted.views[1].title, converted.views[1].path], ['Rooms', 'rooms']);
+
+check('the view is handed to the strategy', converted.views[1].strategy.type, 'custom:decluttering-card-plus');
+
+check(
+  'its sections and badges move into the strategy',
+  [converted.views[1].sections, converted.views[1].badges],
+  [undefined, undefined],
+);
+
+check('the badges go along unchanged', converted.views[1].strategy.badges, [{ entity: 'sun.sun' }]);
+
+check(
+  'the strategy has the sections in order, the rest of the section kept ahead of the repeat',
+  converted.views[1].strategy.sections,
+  [
+    { type: 'grid', cards: [{ type: 'heading', heading: 'Top' }] },
+    { type: 'grid', background: true, cards: [{ type: 'heading', heading: 'Rooms' }] },
+    {
+      for_each_from: { areas: true },
+      section: {
+        type: 'grid',
+        background: true,
+        cards: [{ type: 'custom:decluttering-card-plus', template: 'room', variables: [{ shade: 'dark' }] }],
+      },
+      empty: { type: 'grid', background: true, cards: [{ type: 'markdown', content: 'none' }] },
+    },
+  ],
+);
+
+check('other views are untouched', converted.views[0], dashboard.views[0]);
+
+check('the original is not mutated', dashboard.views[1].sections[1].cards.length, 2);
+
+check(
+  'a section holding only the card becomes only the repeat',
+  sectionPerCopy(
+    { views: [{ sections: [{ type: 'grid', cards: [{ ...repeating, empty: undefined }] }] }] },
+    {
+      ...repeating,
+      empty: undefined,
+    },
+  ).views[0].strategy.sections.length,
+  1,
+);
+
+check('a card that is not there leaves the dashboard as it was', sectionPerCopy(dashboard, { type: 'x' }), dashboard);
+
+check(
+  'what the conversion writes generates the same sections the card would have repeated over',
+  generateView(converted.views[1].strategy, hass).sections.map((each) => each.cards[0].variables?.[1]),
+  [undefined, undefined, { area_id: 'bedroom' }, { area_id: 'kitchen' }],
+);
 
 report();

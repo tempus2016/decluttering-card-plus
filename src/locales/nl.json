@@ -68,6 +68,9 @@
   "editor.card_variable_clear": "Een andere kaart kiezen",
   "editor.eject": "Deze kaart vervangen door wat ze bouwt",
   "editor.eject_confirm": "Druk nogmaals om te vervangen - het sjabloon geldt dan niet meer",
+  "editor.section_per_copy_hint": "Elke kopie kan in plaats daarvan een eigen sectie krijgen - elk met een eigen kop en achtergrond, en de weergave herschikt ze op een smal scherm. De weergave wordt dan door de strategie van deze kaart opgebouwd en in YAML bewerkt.",
+  "editor.section_per_copy": "Geef elke kopie een eigen sectie",
+  "editor.section_per_copy_confirm": "Druk nogmaals om deze weergave te herschrijven - daarna bewerk je hem in YAML",
 
   "template_editor.declutter_header": "Een bestaande kaart opruimen",
 

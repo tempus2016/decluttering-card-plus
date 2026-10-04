@@ -68,6 +68,9 @@
   "editor.card_variable_clear": "Escolher outro cartão",
   "editor.eject": "Substituir este cartão pelo que ele constrói",
   "editor.eject_confirm": "Prima novamente para substituir - o modelo deixa de se aplicar",
+  "editor.section_per_copy_hint": "Cada cópia pode ter antes a sua própria secção - um título e um fundo cada uma, e a vista reorganiza-as num ecrã estreito. A vista passa a ser gerada pela estratégia deste cartão e editada em YAML.",
+  "editor.section_per_copy": "Dar a cada cópia a sua própria secção",
+  "editor.section_per_copy_confirm": "Prima novamente para reescrever esta vista - a partir daí edita-se em YAML",
 
   "template_editor.declutter_header": "Arrumar um cartão existente",
 

@@ -68,6 +68,9 @@
   "editor.card_variable_clear": "Elegir otra tarjeta",
   "editor.eject": "Sustituir esta tarjeta por lo que construye",
   "editor.eject_confirm": "Pulsa otra vez para sustituirla; la plantilla dejará de aplicarse",
+  "editor.section_per_copy_hint": "Cada copia puede tener su propia sección: un título y un fondo cada una, y la vista las recoloca en una pantalla estrecha. La vista pasa a generarla la estrategia de esta tarjeta y se edita en YAML.",
+  "editor.section_per_copy": "Dar a cada copia su propia sección",
+  "editor.section_per_copy_confirm": "Pulsa otra vez para reescribir esta vista; a partir de entonces se editará en YAML",
 
   "template_editor.declutter_header": "Despejar una tarjeta existente",
 

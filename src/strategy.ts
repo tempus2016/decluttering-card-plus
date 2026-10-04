@@ -108,3 +108,71 @@ export function generateView(config: any, hass?: any): any {
 export function wantsLabels(config: any): boolean {
   return /label/i.test(JSON.stringify([config?.sections, config?.badges]));
 }
+
+/** The card options that shape a repeat inside one card, and mean nothing once each copy has a section. */
+const IN_CARD_REPEAT_KEYS = ['for_each', 'for_each_from', 'columns', 'min_column_width', 'gap', 'empty'];
+
+/**
+ * Where a repeating card sits: the view, and the section it is directly in. Only a card
+ * written straight into a section of an ordinary sections view qualifies - one in a stack
+ * is somebody's layout, and a view the strategy already writes has nothing to convert.
+ */
+export function findRepeatingCard(ll: any, card: any): { view: number; section: number; card: number } | undefined {
+  if (!isRepeatEntry(card)) return undefined;
+  const wanted = JSON.stringify(card);
+  const views: any[] = Array.isArray(ll?.views) ? ll.views : [];
+  for (let view = 0; view < views.length; view += 1) {
+    if (views[view]?.strategy || !Array.isArray(views[view]?.sections)) continue;
+    const sections: any[] = views[view].sections;
+    for (let section = 0; section < sections.length; section += 1) {
+      const cards: any[] = Array.isArray(sections[section]?.cards) ? sections[section].cards : [];
+      const index = cards.findIndex((each) => JSON.stringify(each) === wanted);
+      if (index !== -1) return { view, section, card: index };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The dashboard with a repeating card's view handed to the strategy, and the card's
+ * section repeated in its place - one section per copy, each holding the card once. The
+ * rest of that section stays where it was as a section of its own, and every other
+ * section and badge in the view goes into the strategy exactly as written.
+ *
+ * Nothing is mutated; the caller gets a new configuration to save, or the same one back
+ * when the card is not somewhere this can work.
+ */
+export function sectionPerCopy(ll: any, card: any): any {
+  const place = findRepeatingCard(ll, card);
+  if (!place) return ll;
+
+  const view = ll.views[place.view];
+  const section = view.sections[place.section];
+  const others = section.cards.filter((_: unknown, index: number) => index !== place.card);
+
+  const once: any = {};
+  for (const [key, value] of Object.entries(card)) if (!IN_CARD_REPEAT_KEYS.includes(key)) once[key] = value;
+
+  const repeat: any = {};
+  if (card.for_each !== undefined) repeat.for_each = card.for_each;
+  else repeat.for_each_from = card.for_each_from;
+  repeat.section = { ...section, cards: [once] };
+  if (card.empty !== undefined) repeat.empty = { ...section, cards: [card.empty] };
+
+  const sections = view.sections.flatMap((each: any, index: number) =>
+    index !== place.section ? [each] : others.length ? [{ ...section, cards: others }, repeat] : [repeat],
+  );
+
+  const rest: any = { ...view };
+  const badges = rest.badges;
+  delete rest.sections;
+  delete rest.badges;
+  const strategy: any = { type: 'custom:decluttering-card-plus' };
+  if (badges !== undefined) strategy.badges = badges;
+  strategy.sections = sections;
+
+  return {
+    ...ll,
+    views: ll.views.map((each: any, index: number) => (index === place.view ? { ...rest, strategy } : each)),
+  };
+}

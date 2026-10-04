@@ -68,6 +68,9 @@
   "editor.card_variable_clear": "Eine andere Karte wählen",
   "editor.eject": "Diese Karte durch das ersetzen, was sie baut",
   "editor.eject_confirm": "Zum Ersetzen erneut drücken - die Vorlage gilt dann nicht mehr",
+  "editor.section_per_copy_hint": "Jede Kopie kann stattdessen einen eigenen Abschnitt bekommen - mit eigener Überschrift und eigenem Hintergrund, und die Ansicht ordnet sie auf schmalen Bildschirmen neu an. Die Ansicht wird dann von der Strategie dieser Karte erzeugt und in YAML bearbeitet.",
+  "editor.section_per_copy": "Jeder Kopie einen eigenen Abschnitt geben",
+  "editor.section_per_copy_confirm": "Zum Umschreiben dieser Ansicht erneut drücken - sie wird danach in YAML bearbeitet",
 
   "template_editor.declutter_header": "Eine bestehende Karte entrümpeln",
 
