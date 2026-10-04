@@ -68,6 +68,9 @@
   "editor.card_variable_clear": "Choisir une autre carte",
   "editor.eject": "Remplacer cette carte par ce qu’elle construit",
   "editor.eject_confirm": "Appuyez à nouveau pour la remplacer - le modèle ne s’appliquera plus",
+  "editor.section_per_copy_hint": "Chaque copie peut plutôt avoir sa propre section - un titre et un fond chacune, et la vue les réorganise sur un écran étroit. La vue est alors générée par la stratégie de cette carte et se modifie en YAML.",
+  "editor.section_per_copy": "Donner à chaque copie sa propre section",
+  "editor.section_per_copy_confirm": "Appuyez à nouveau pour réécrire cette vue - elle se modifiera ensuite en YAML",
 
   "template_editor.declutter_header": "Désencombrer une carte existante",
 

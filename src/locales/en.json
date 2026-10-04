@@ -68,6 +68,9 @@
   "editor.card_variable_clear": "Choose a different card",
   "editor.eject": "Replace this card with what it builds",
   "editor.eject_confirm": "Press again to replace it - the template will no longer apply",
+  "editor.section_per_copy_hint": "Each copy can have a section of its own instead - a heading and background each, and the view reflows them on a narrow screen. The view is then written out by this card's strategy and edited as YAML.",
+  "editor.section_per_copy": "Give each copy its own section",
+  "editor.section_per_copy_confirm": "Press again to rewrite this view - it will be edited as YAML from then on",
 
   "template_editor.declutter_header": "Declutter an existing card",
 

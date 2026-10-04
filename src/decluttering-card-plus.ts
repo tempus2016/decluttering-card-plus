@@ -104,7 +104,7 @@ import { chainOf, chainWith, describeCycle, describeTooDeep, findCycle, MAX_NEST
 import { columnsFor } from './layout';
 import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
 import { loadLabels } from './labels';
-import { generateView, wantsLabels } from './strategy';
+import { findRepeatingCard, generateView, sectionPerCopy, wantsLabels } from './strategy';
 import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize } from './localize';
 import { VERSION } from './version';
@@ -1203,6 +1203,9 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       .result .hint {
         margin: 8px 0;
       }
+      .section-per-copy {
+        margin-top: 16px;
+      }
     `;
   }
 
@@ -1214,6 +1217,8 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   private _templates?: Record<string, TemplateConfig>;
   @state() private _loadingTemplates = false;
   @state() private _ejectPending = false;
+  @state() private _sectionsPending = false;
+  @state() private _sectionsError?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private _schema: any;
 
@@ -1317,7 +1322,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         .computeHelper=${(s): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
       ></ha-form>
-      ${this._renderCardVariables(declarations)} ${this._renderResult(template)}
+      ${this._renderCardVariables(declarations)} ${this._renderResult(template)} ${this._renderSectionPerCopy()}
     `;
   }
 
@@ -1431,6 +1436,55 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
         </div>
       </ha-expansion-panel>
     `;
+  }
+
+  /*
+   * A repeat inside one card stays inside that card's section, however wide the screen.
+   * Offered only for a card sitting straight in a section of an ordinary sections view, as
+   * saved - an unsaved edit has no place on the dashboard to convert yet.
+   */
+  private _renderSectionPerCopy(): TemplateResult {
+    const ll = getLovelacePanel()?.config;
+    if (!this._config || !ll || !findRepeatingCard(ll, this._config)) return html``;
+    return html`
+      <div class="section-per-copy">
+        <p class="hint">${localize('editor.section_per_copy_hint', undefined, this.hass)}</p>
+        ${this._sectionsError ? html`<ha-alert alert-type="error">${this._sectionsError}</ha-alert>` : html``}
+        <ha-button @click=${this._sectionPerCopy}>
+          ${localize(
+            this._sectionsPending ? 'editor.section_per_copy_confirm' : 'editor.section_per_copy',
+            undefined,
+            this.hass,
+          )}
+        </ha-button>
+      </div>
+    `;
+  }
+
+  /*
+   * Rewrites the dashboard rather than this card, so it saves through the dashboard - and
+   * then closes the dialog, whose card no longer exists where the dialog would save it.
+   */
+  private async _sectionPerCopy(): Promise<void> {
+    if (!this._sectionsPending) {
+      this._sectionsPending = true;
+      return;
+    }
+    this._sectionsPending = false;
+    const panel = getLovelacePanel();
+    if (!panel || !this._config) return;
+    try {
+      await panel.saveConfig(sectionPerCopy(panel.config, this._config));
+    } catch (err) {
+      this._sectionsError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, this.hass);
+      return;
+    }
+    let node: Node | null = this.parentNode instanceof ShadowRoot ? this.parentNode.host : this.parentNode;
+    while (node && (node as Element).localName !== 'hui-dialog-edit-card') {
+      node = node.parentNode instanceof ShadowRoot ? node.parentNode.host : node.parentNode;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (node as any)?.closeDialog?.();
   }
 
   private _eject(resolved: unknown): void {

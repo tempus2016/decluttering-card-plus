@@ -146,7 +146,8 @@ Templates][wiki-defining].
 
   A templated card inside a repeated section is handed that copy's values, so `room_lights`
   above gets `area_id` without being told. A generated view is edited as YAML, from the
-  view's pencil and then the menu.
+  view's pencil and then the menu. A card already repeating in a section can be turned
+  into this from its editor: **Give each copy its own section** rewrites the view for you.
 
 - **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
   every other dashboard, or from all of them at once with `'*'`.
