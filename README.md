@@ -124,6 +124,30 @@ Templates][wiki-defining].
 
   *One `for_each` card, four copies of the same template.*
 
+- **Whole sections and badges, repeated** — a view strategy writes out a section, or a badge,
+  per item: one section per room, each with its own heading and background, reflowing with
+  the screen like any other sections view. Ordinary sections and badges sit alongside.
+
+  ```yaml
+  views:
+    - title: Rooms
+      strategy:
+        type: custom:decluttering-card-plus
+        sections:
+          - for_each_from: { areas: true }
+            section:
+              type: grid
+              cards:
+                - type: heading
+                  heading: '[[area]]'
+                - type: custom:decluttering-card-plus
+                  template: room_lights
+  ```
+
+  A templated card inside a repeated section is handed that copy's values, so `room_lights`
+  above gets `area_id` without being told. A generated view is edited as YAML, from the
+  view's pencil and then the menu.
+
 - **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
   every other dashboard, or from all of them at once with `'*'`.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,

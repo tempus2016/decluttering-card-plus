@@ -125,6 +125,25 @@ check('a section with no values of its own leaves the view in charge', inSection
 check('no section given reads as before', inSection(undefined).room, 'view');
 
 check(
+  'a view the strategy writes out takes its values from inside the strategy',
+  variableValues(
+    resolveVariables(
+      undefined,
+      collectTemplates(
+        {
+          decluttering_templates: { tile: { card: {} } },
+          views: [{ strategy: { type: 'custom:decluttering-card-plus', decluttering_defaults: { room: 'strategy' } } }],
+        },
+        0,
+        undefined,
+        2,
+      ).tile,
+    ),
+  ).room,
+  'strategy',
+);
+
+check(
   'a section only counts where it says something',
   [
     hasSectionDefaults(sectionsDashboard, { view: 0, section: 0 }),
@@ -1089,6 +1108,28 @@ collectAllTemplates(hass, borrower).then((all) => {
       [withChild.badge_child.extends, withChild.badge_child.card],
       [undefined, all.shared_badge.card],
     );
+    check(
+      'the health check counts what a repeated section in the view strategy hands its cards',
+      checkDashboard({
+        decluttering_templates: { room: { card: { type: 'markdown', content: '[[area_id]] [[shade]] [[gone]]' } } },
+        views: [
+          {
+            strategy: {
+              type: 'custom:decluttering-card-plus',
+              sections: [
+                {
+                  for_each_from: { areas: true },
+                  variables: [{ shade: 'dark' }],
+                  section: { type: 'grid', cards: [{ type: 'custom:decluttering-card-plus', template: 'room' }] },
+                },
+              ],
+            },
+          },
+        ],
+      }).unsetVariables,
+      [{ template: 'room', names: ['gone'], count: 1 }],
+    );
+
     report();
   });
 });

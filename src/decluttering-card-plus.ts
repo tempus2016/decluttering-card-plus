@@ -104,6 +104,7 @@ import { chainOf, chainWith, describeCycle, describeTooDeep, findCycle, MAX_NEST
 import { columnsFor } from './layout';
 import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
 import { loadLabels } from './labels';
+import { generateView, wantsLabels } from './strategy';
 import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize } from './localize';
 import { VERSION } from './version';
@@ -113,6 +114,8 @@ const CARD_TAG = 'decluttering-card-plus';
 const CARD_EDITOR_TAG = 'decluttering-card-plus-editor';
 const TEMPLATE_TAG = 'decluttering-template-plus';
 const TEMPLATE_EDITOR_TAG = 'decluttering-template-plus-editor';
+// Home Assistant finds a custom view strategy by this tag, from `type: custom:decluttering-card-plus`.
+const STRATEGY_TAG = 'll-strategy-view-decluttering-card-plus';
 
 // Tags of the original custom-cards/decluttering-card, claimed when it is not installed
 // so that existing configurations keep working unchanged.
@@ -3222,6 +3225,26 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
     description: localize('picker.badge_description'),
   });
 }
+
+/*
+ * The view strategy - `strategy: { type: custom:decluttering-card-plus }` on a view - which
+ * writes out a section or a badge per item. Home Assistant asks the element for the view
+ * through a static `generate`, and never creates one; see strategy.ts.
+ */
+class DeclutteringViewStrategy extends HTMLElement {
+  // What Home Assistant compares between one hass and the next to decide whether the view
+  // needs writing out again. Floors are not in its own default list, and a repeat can
+  // depend on them as much as on areas.
+  static registryDependencies = ['entities', 'devices', 'areas', 'floors'];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static async generate(config: any, hass: HomeAssistant): Promise<unknown> {
+    if (wantsLabels(config)) await loadLabels(hass);
+    return generateView(config, hass);
+  }
+}
+
+defineElement(STRATEGY_TAG, DeclutteringViewStrategy);
 
 if (defineElement(TEMPLATE_TAG, DeclutteringTemplate)) {
   customCards.push({
