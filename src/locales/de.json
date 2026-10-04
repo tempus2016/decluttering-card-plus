@@ -39,6 +39,7 @@
   "editor.columns_helper": "Wie viele Kopien nebeneinander stehen. Eins stapelt sie untereinander",
   "editor.min_column_width_label": "Minimale Spaltenbreite",
   "editor.min_column_width_helper": "In Pixeln. Lässt lieber eine Spalte weg, als schmaler zu werden, damit die Karte auch aufs Handy passt",
+  "editor.columns_without_min_width": "Die Kopien bleiben in {columns} Spalten, egal wie schmal der Bildschirm ist. Leg eine Mindestspaltenbreite fest, dann lässt die Karte auf dem Handy Spalten weg.",
   "editor.fit_label": "Ins Layout einfügen",
   "editor.fit_helper": "Aus dem Weg gehen, wenn eine Karte mit eigener Größe über die Zeile verteilt landet",
   "editor.fit_box": "Eigene Box behalten (Standard)",

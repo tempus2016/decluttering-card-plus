@@ -39,6 +39,7 @@
   "editor.columns_helper": "Cuántas copias van una al lado de otra. Una las apila en vertical",
   "editor.min_column_width_label": "Anchura mínima de columna",
   "editor.min_column_width_helper": "Píxeles. Quita una columna antes que estrecharse, para que la tarjeta valga también en un móvil",
+  "editor.columns_without_min_width": "Las copias se quedan en {columns} columnas por estrecha que sea la pantalla. Indica un ancho mínimo de columna y la tarjeta quitará columnas en un móvil.",
   "editor.fit_label": "Encajar en la disposición",
   "editor.fit_helper": "Se aparta si una tarjeta que fija su propio tamaño acaba desparramada por la fila",
   "editor.fit_box": "Mantener su propia caja (por defecto)",

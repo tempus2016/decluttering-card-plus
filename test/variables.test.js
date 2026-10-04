@@ -895,4 +895,10 @@ check(
   ['spare'],
 );
 
+check(
+  'an allowed number matches the same number written as text, which is what a dropdown gives back',
+  validateDeclared([{ size: '2' }], { card: {}, variables: [{ name: 'size', allowed: [1, 2] }] }),
+  [],
+);
+
 report();

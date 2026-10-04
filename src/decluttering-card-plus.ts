@@ -217,6 +217,17 @@ function fitSchema(): unknown[] {
  * Splits a translated sentence at the one part that has to be rendered as markup - a
  * link, a `<code>` - so the words either side stay in the translator's order.
  */
+/*
+ * A variable that can only take a handful of values is offered them, rather than a text
+ * box that warns afterwards. An explicit selector still wins - the template author may
+ * want something else entirely.
+ */
+function allowedSelector(declaration: VariableDeclaration): unknown {
+  if (!Array.isArray(declaration.allowed) || !declaration.allowed.length) return undefined;
+  const options = declaration.allowed.map((each) => ({ value: String(each), label: String(each) }));
+  return { select: { mode: 'dropdown', options } };
+}
+
 function splitAt(sentence: string, token: string): [string, string] {
   const at = sentence.indexOf(token);
   return at === -1 ? [sentence, ''] : [sentence.slice(0, at), sentence.slice(at + token.length)];
@@ -1598,7 +1609,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       name: VARIABLE_FIELD_PREFIX + declaration.name,
       label: declaration.label ?? declaration.name,
       helper: declaration.description,
-      selector: declaration.selector ?? { text: {} },
+      selector: declaration.selector ?? allowedSelector(declaration) ?? { text: {} },
       required: declaration.required === true,
     });
 
@@ -1681,7 +1692,22 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
      */
     const paintsOnHost = HOST_SELECTOR.test(`${template.style ?? ''}\n${this._config?.style ?? ''}`);
     const fitHidesStyle = this._config?.fit === 'contents' && paintsOnHost;
+    /*
+     * A repeat in several columns keeps them all on a phone, squeezing each copy, unless
+     * it is told how narrow a copy may get. Easy to miss: it looks right on the desktop
+     * where it was set up.
+     */
+    const columns = Number(this._config?.columns);
+    const repeats = this._config?.for_each !== undefined || this._config?.for_each_from !== undefined;
+    const fixedColumns = repeats && columns > 1 && !(Number(this._config?.min_column_width) > 0);
     return html`
+      ${
+        fixedColumns
+          ? html`<ha-alert alert-type="info">
+              ${localize('editor.columns_without_min_width', { columns }, this.hass)}
+            </ha-alert>`
+          : html``
+      }
       ${
         fitHidesStyle
           ? html`<ha-alert alert-type="warning">${localize('editor.fit_hides_style', undefined, this.hass)}</ha-alert>`
