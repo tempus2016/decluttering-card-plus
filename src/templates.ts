@@ -69,10 +69,18 @@ export function checkDashboard(
   const missing = new Map<string, number>();
   const unset = new Map<string, { names: Set<string>; count: number }>();
 
-  const walk = (node: any): void => {
+  // The names a repeat supplies to each copy, whether the repeat is a card's or a section's.
+  const suppliedBy = (repeat: any): string[] => [
+    ...forEachNames(repeat.for_each),
+    ...registryNames(repeat.for_each_from),
+    ...(isRegistrySource(repeat.for_each_from) ? ['index', 'index0', 'count', 'first', 'last', 'total'] : []),
+  ];
+
+  // `handed` is what an enclosing repeat in the view strategy gives every card inside it.
+  const walk = (node: any, handed: string[] = []): void => {
     if (!node) return;
     if (Array.isArray(node)) {
-      for (const item of node) walk(item);
+      for (const item of node) walk(item, handed);
       return;
     }
     if (typeof node !== 'object') return;
@@ -81,11 +89,7 @@ export function checkDashboard(
       if (!template) {
         if (!elsewhere.has(node.template)) missing.set(node.template, (missing.get(node.template) ?? 0) + 1);
       } else {
-        const supplements = [
-          ...forEachNames(node.for_each),
-          ...registryNames(node.for_each_from),
-          ...(isRegistrySource(node.for_each_from) ? ['index', 'index0', 'count', 'first', 'last', 'total'] : []),
-        ].map((name) => ({ [name]: null }));
+        const supplements = [...suppliedBy(node), ...handed].map((name) => ({ [name]: null }));
         const problems = diagnoseInstance(node.variables, template, supplements);
         if (problems.missing.length) {
           const entry = unset.get(node.template) ?? { names: new Set<string>(), count: 0 };
@@ -96,7 +100,12 @@ export function checkDashboard(
       }
       return;
     }
-    for (const value of Object.values(node)) walk(value);
+    // A repeated section or badge in the view strategy hands its copy's values down.
+    const repeats = (node.for_each !== undefined || node.for_each_from !== undefined) && (node.section || node.badge);
+    const inside = repeats
+      ? [...handed, ...suppliedBy(node), ...normaliseVariables(node.variables).map((v) => Object.keys(v)[0])]
+      : handed;
+    for (const value of Object.values(node)) walk(value, inside);
   };
   walk((ll as any)?.views);
 
@@ -330,7 +339,9 @@ function collectViewDefaults(
   if (view === undefined) return [];
   const viewConfig = (ll as any)?.views?.[view];
   const inSection = section === undefined ? [] : normaliseVariables(viewConfig?.sections?.[section]?.[DEFAULTS_KEY]);
-  return [...inSection, ...normaliseVariables(viewConfig?.[DEFAULTS_KEY])];
+  // A view written out by the strategy is configured inside it, so its values may be there.
+  const inView = viewConfig?.[DEFAULTS_KEY] ?? viewConfig?.strategy?.[DEFAULTS_KEY];
+  return [...inSection, ...normaliseVariables(inView)];
 }
 
 /** Whether a section sets any values of its own, which is when where a card sits matters. */
