@@ -819,6 +819,89 @@ check(
   { b: '5' },
 );
 
+/* --------------------------------------------------- bool (discussion #142) */
+
+const menu = { enabled: '[[menu_link|bool]]', title: 'Link shown: [[menu_link|bool]]' };
+check(
+  'bool switches a whole value on with a real true when the link is passed',
+  deepReplace([{ menu_link: '/x' }], {}, menu),
+  {
+    enabled: true,
+    title: 'Link shown: true',
+  },
+);
+check(
+  'bool switches a whole value off with a real false when the link is empty',
+  deepReplace([{ menu_link: '' }], {}, menu),
+  {
+    enabled: false,
+    title: 'Link shown: false',
+  },
+);
+warnings.length = 0;
+check('bool switches off when the link is never passed at all', deepReplace([], {}, menu), {
+  enabled: false,
+  title: 'Link shown: false',
+});
+check('bool on a variable nobody set is an answer, not an unresolved placeholder', warnings, []);
+check(
+  'bool switches off when there are no variables of any kind',
+  deepReplace(undefined, {}, { enabled: '[[menu_link|bool]]' }),
+  { enabled: false },
+);
+check('bool passes a real boolean through', deepReplace([{ on: false }], {}, { enabled: '[[on|bool]]' }), {
+  enabled: false,
+});
+check('bool reads the word false as no', deepReplace([{ on: 'false' }], {}, { enabled: '[[on|bool]]' }), {
+  enabled: false,
+});
+check('bool reads an empty list as no', deepReplace([{ items: [] }], {}, { enabled: '[[items|bool]]' }), {
+  enabled: false,
+});
+check(
+  'bool reads a mapping with something in it as yes',
+  deepReplace([{ tap: { action: 'more-info' } }], {}, { enabled: '[[tap|bool]]' }),
+  {
+    enabled: true,
+  },
+);
+check(
+  'a chain that carries on after bool gives text, not a boolean',
+  deepReplace([{ menu_link: '/x' }], {}, { state: '[[menu_link|bool|map:true=on,false=off]]' }),
+  { state: 'on' },
+);
+check(
+  'bool through a let variable reaches the card as a real boolean',
+  deepReplace([{ menu_link: '/x' }], { let: { link_enable: '[[menu_link|bool]]' } }, { enabled: '[[link_enable]]' }),
+  { enabled: true },
+);
+check(
+  'bool through a let variable switches off when the link is never passed',
+  deepReplace([], { let: { link_enable: '[[menu_link|bool]]' } }, { enabled: '[[link_enable]]' }),
+  { enabled: false },
+);
+check(
+  'the example from discussion #142 renders as asked',
+  deepReplace(
+    [{ camera_entity: 'camera.door' }],
+    {},
+    {
+      type: 'custom:advanced-camera-card',
+      elements: [
+        {
+          type: 'custom:advanced-camera-card-menu-icon',
+          enabled: '[[menu_link|bool]]',
+          tap_action: { action: 'navigate', url: '[[menu_link?]]' },
+        },
+      ],
+    },
+  ),
+  {
+    type: 'custom:advanced-camera-card',
+    elements: [{ type: 'custom:advanced-camera-card-menu-icon', enabled: false, tap_action: { action: 'navigate' } }],
+  },
+);
+
 /* --------------------------------------------------- a variable bomb is stopped */
 
 // A chain where each variable expands into two of the next doubles the text on every step,
