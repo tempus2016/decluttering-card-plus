@@ -28,6 +28,8 @@ const {
   checkDashboard,
   listPlainCards,
   replaceCard,
+  applyOverride,
+  misplacedOverrides,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -434,6 +436,63 @@ check(
   Object.keys(collectTemplates({ views: [{ title: 'Empty' }, { cards: null }] })),
   [],
 );
+
+/* ---------------------------------------------------------------- overrides */
+
+const builtTile = {
+  type: 'tile',
+  entity: 'light.living_room',
+  icon: 'mdi:lightbulb',
+  tap_action: { action: 'toggle', haptic: 'light' },
+  features: [{ type: 'light-brightness' }],
+};
+
+check(
+  'override: a card: block merges over what the template built, key by key',
+  applyOverride(builtTile, { card: { icon: 'mdi:flood-light', tap_action: { action: 'more-info' } } }, 'card'),
+  {
+    type: 'tile',
+    entity: 'light.living_room',
+    icon: 'mdi:flood-light',
+    tap_action: { action: 'more-info', haptic: 'light' },
+    features: [{ type: 'light-brightness' }],
+  },
+);
+check(
+  'override: a list replaces rather than merges',
+  applyOverride(builtTile, { card: { features: [{ type: 'toggle' }] } }, 'card').features,
+  [{ type: 'toggle' }],
+);
+check(
+  'override: a null drops the key the template set',
+  Object.keys(applyOverride(builtTile, { card: { icon: null, tap_action: { haptic: null } } }, 'card')),
+  ['type', 'entity', 'tap_action', 'features'],
+);
+check(
+  'override: a null nested under a new key is dropped too',
+  applyOverride({ type: 'tile' }, { card: { hold_action: { action: 'none', data: null } } }, 'card'),
+  { type: 'tile', hold_action: { action: 'none' } },
+);
+check(
+  'override: placeholders in it are taken literally',
+  applyOverride(builtTile, { card: { name: '[[room]]' } }, 'card').name,
+  '[[room]]',
+);
+check(
+  'override: only the block matching the kind applies',
+  applyOverride({ type: 'entity' }, { card: { icon: 'mdi:x' }, badge: { color: 'red' } }, 'badge'),
+  { type: 'entity', color: 'red' },
+);
+check('override: no block leaves the result as it was', applyOverride(builtTile, { template: 't' }, 'card'), builtTile);
+check(
+  'override: a block that is not a mapping is ignored',
+  applyOverride(builtTile, { card: 'tile' }, 'card'),
+  builtTile,
+);
+check('override: the original is not touched', builtTile.icon, 'mdi:lightbulb');
+check('misplaced: a card: block on a badge template', misplacedOverrides({ card: {}, badge: {} }, 'badge'), ['card']);
+check('misplaced: the matching block is fine', misplacedOverrides({ card: {} }, 'card'), []);
+check('misplaced: unknown kind says nothing', misplacedOverrides({ card: {} }, undefined), []);
 
 /* ---------------------------------------------------------------- extends */
 

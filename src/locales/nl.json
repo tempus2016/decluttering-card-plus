@@ -59,6 +59,7 @@
   "editor.matches_more": "en {count} meer.",
   "editor.matches_hint": "Wat overeenkomt wordt opnieuw bepaald zodra het register van Home Assistant verandert – deze lijst is dus wat de kaart nu zou bouwen.",
   "editor.fit_hides_style": "Deze kaart staat ingesteld om uit de weg te gaan en heeft dus geen eigen vak – de stijlen hier die erop schilderen hebben niets om op te schilderen. Stijl de kaart erin, of zet dit terug op het eigen vak.",
+  "editor.override_misplaced": "Het {key}:-blok van deze kaart wordt genegeerd – het sjabloon \"{template}\" bouwt een {kind}, dus alleen een {kind}:-blok wordt eroverheen gelegd.",
   "editor.required_one": "Dit sjabloon heeft een variabele nodig die je niet hebt ingesteld: {names}.",
   "editor.required_many": "Dit sjabloon heeft variabelen nodig die je niet hebt ingesteld: {names}.",
   "editor.optional_one": "Dit sjabloon gebruikt een variabele zonder waarde en zonder standaard: {names}.",
@@ -219,6 +220,7 @@
   "warn.kind_list": "een lijst",
   "warn.kind_mapping": "een mapping",
   "warn.many_copies": "decluttering-card-plus: het sjabloon \"{template}\" wordt op één kaart {count} keer herhaald. Dat is veel om te bouwen en veel om te scrollen – beperk waar het over herhaalt.",
+  "warn.override_misplaced": "decluttering-card-plus: het {key}:-blok van deze kaart wordt genegeerd – het sjabloon \"{template}\" bouwt een {kind}, dus alleen een {kind}:-blok wordt eroverheen gelegd.",
   "warn.tag_taken": "decluttering-card-plus: <{tag}> is al door iets anders geregistreerd, wordt overgeslagen.",
 
   "picker.card_description": "Gebruik dezelfde kaartconfiguratie meerdere keren met variabelen om je configuratie op te ruimen.",

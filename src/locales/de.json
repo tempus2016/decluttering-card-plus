@@ -59,6 +59,7 @@
   "editor.matches_more": "und {count} weitere.",
   "editor.matches_hint": "Was zutrifft, wird neu ermittelt, sobald sich Home Assistants Register ändert – diese Liste ist also das, was die Karte jetzt bauen würde.",
   "editor.fit_hides_style": "Diese Karte ist darauf gestellt, aus dem Weg zu gehen, und hat daher keine eigene Box – die Stile hier, die auf sie malen, haben nichts zum Bemalen. Style die Karte darin, oder stelle dies zurück auf die eigene Box.",
+  "editor.override_misplaced": "Der {key}:-Block dieser Karte wird ignoriert – die Vorlage \"{template}\" baut ein {kind}, daher wird nur ein {kind}:-Block darübergelegt.",
   "editor.required_one": "Diese Vorlage braucht eine Variable, die du nicht gesetzt hast: {names}.",
   "editor.required_many": "Diese Vorlage braucht Variablen, die du nicht gesetzt hast: {names}.",
   "editor.optional_one": "Diese Vorlage verwendet eine Variable ohne Wert und ohne Standard: {names}.",
@@ -219,6 +220,7 @@
   "warn.kind_list": "eine Liste",
   "warn.kind_mapping": "ein Mapping",
   "warn.many_copies": "decluttering-card-plus: die Vorlage \"{template}\" wird auf einer Karte {count}-mal wiederholt. Das ist viel zu bauen und viel zu scrollen – grenze ein, worüber sie wiederholt.",
+  "warn.override_misplaced": "decluttering-card-plus: der {key}:-Block dieser Karte wird ignoriert – die Vorlage \"{template}\" baut ein {kind}, daher wird nur ein {kind}:-Block darübergelegt.",
   "warn.tag_taken": "decluttering-card-plus: <{tag}> ist bereits von etwas anderem registriert, wird übersprungen.",
 
   "picker.card_description": "Verwende dieselbe Kartenkonfiguration mit Variablen mehrfach, um deine Konfiguration zu entrümpeln.",

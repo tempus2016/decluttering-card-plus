@@ -153,6 +153,9 @@ Templates][wiki-defining].
   every other dashboard, or from all of them at once with `'*'`.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
   and `category:` groups a big collection in the picker.
+- **One-off tweaks without a new template** — a card's own `card:` block is laid over what
+  its template builds, so a single card can change an icon or an action and nothing else.
+  Mappings merge key by key, lists replace, and `null` drops a key the template sets.
 - **[Visibility][wiki-visibility]** conditions inside a template, including leaving out a copy
   that has nothing to show.
 - **[Styling][wiki-styling]** with a `style` option and CSS custom properties, a `gap`
