@@ -320,6 +320,40 @@ function resolveExtends(templates: Record<string, TemplateConfig>): Record<strin
   return out;
 }
 
+/* ---------------------------------------------------------------- overrides */
+
+const isMapping = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** `extends:`'s rules, plus a null taking the key away rather than setting it to null. */
+function mergeOver(base: unknown, over: unknown): unknown {
+  if (!isMapping(over)) return over;
+  const out: Record<string, unknown> = isMapping(base) ? { ...base } : {};
+  for (const [key, value] of Object.entries(over)) {
+    if (value === null) delete out[key];
+    else out[key] = mergeOver(out[key], value);
+  }
+  return out;
+}
+
+/*
+ * A card can carry its own `card:` (or `badge:`, `row:`, `element:`) block, laid over
+ * what its template builds once the variables are in - so a one-off tweak needs neither
+ * a template of its own nor an `extends:` child. It is taken literally, placeholders and
+ * all, and a null is the one way to drop something the template sets.
+ */
+export function applyOverride<T>(resolved: T, instance: Record<string, unknown> | undefined, kind: string): T {
+  const override = instance?.[kind];
+  if (!isMapping(override) || !isMapping(resolved)) return resolved;
+  return mergeOver(resolved, override) as T;
+}
+
+/** The override blocks a card carries that its template's kind will never read. */
+export function misplacedOverrides(instance: Record<string, unknown> | undefined, kind: string | undefined): string[] {
+  if (!instance || !kind) return [];
+  return TEMPLATE_CONTENT_KEYS.filter((key) => key !== kind && instance[key] !== undefined);
+}
+
 /** The values this dashboard offers every template, as a flat list of one name each. */
 export function collectDefaults(ll: LovelaceConfig | null | undefined): VariablesConfig[] {
   return normaliseVariables((ll as any)?.[DEFAULTS_KEY]);

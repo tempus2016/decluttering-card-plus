@@ -59,6 +59,7 @@
   "editor.matches_more": "and {count} more.",
   "editor.matches_hint": "What it matches is worked out again whenever Home Assistant's registry changes, so this list is what the card would build now.",
   "editor.fit_hides_style": "This card is set to get out of the way, so it has no box of its own - and the styles here that paint on it have nothing to paint on. Style the card inside it, or set this back to keeping its own box.",
+  "editor.override_misplaced": "This card's {key}: block is ignored - the template \"{template}\" builds a {kind}, so only a {kind}: block is laid over it.",
   "editor.required_one": "This template needs a variable you have not set: {names}.",
   "editor.required_many": "This template needs variables you have not set: {names}.",
   "editor.optional_one": "This template uses a variable with no value and no default: {names}.",
@@ -219,6 +220,7 @@
   "warn.kind_list": "a list",
   "warn.kind_mapping": "a mapping",
   "warn.many_copies": "decluttering-card-plus: the template \"{template}\" is being repeated {count} times on one card. That is a lot to build and a lot to scroll - narrow what it repeats over.",
+  "warn.override_misplaced": "decluttering-card-plus: this card's {key}: block is ignored - the template \"{template}\" builds a {kind}, so only a {kind}: block is laid over it.",
   "warn.tag_taken": "decluttering-card-plus: <{tag}> is already registered by something else, skipping it.",
 
   "picker.card_description": "Reuse multiple times the same card configuration with variables to declutter your config.",

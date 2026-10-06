@@ -59,6 +59,7 @@
   "editor.matches_more": "y {count} más.",
   "editor.matches_hint": "Las coincidencias se recalculan cada vez que cambia el registro de Home Assistant, así que esta lista es lo que la tarjeta construiría ahora.",
   "editor.fit_hides_style": "Esta tarjeta está puesta a apartarse, así que no tiene caja propia - y los estilos de aquí que pintan sobre ella no tienen dónde pintar. Estiliza la tarjeta de dentro, o vuelve a poner esta a mantener su propia caja.",
+  "editor.override_misplaced": "El bloque {key}: de esta tarjeta se ignora - la plantilla \"{template}\" construye un {kind}, así que solo se superpone un bloque {kind}:.",
   "editor.required_one": "Esta plantilla necesita una variable que no has definido: {names}.",
   "editor.required_many": "Esta plantilla necesita variables que no has definido: {names}.",
   "editor.optional_one": "Esta plantilla usa una variable sin valor y sin valor por defecto: {names}.",
@@ -219,6 +220,7 @@
   "warn.kind_list": "una lista",
   "warn.kind_mapping": "un mapeo",
   "warn.many_copies": "decluttering-card-plus: la plantilla \"{template}\" se está repitiendo {count} veces en una sola tarjeta. Es mucho que construir y mucho que desplazar - acota sobre qué repite.",
+  "warn.override_misplaced": "decluttering-card-plus: el bloque {key}: de esta tarjeta se ignora - la plantilla \"{template}\" construye un {kind}, así que solo se superpone un bloque {kind}:.",
   "warn.tag_taken": "decluttering-card-plus: <{tag}> ya está registrado por otra cosa, así que se omite.",
 
   "picker.card_description": "Reutiliza varias veces la misma configuración de tarjeta con variables para despejar tu configuración.",

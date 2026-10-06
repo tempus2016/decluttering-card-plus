@@ -59,6 +59,7 @@
   "editor.matches_more": "et {count} de plus.",
   "editor.matches_hint": "Les correspondances sont recalculées chaque fois que le registre de Home Assistant change, cette liste est donc ce que la carte construirait maintenant.",
   "editor.fit_hides_style": "Cette carte est réglée pour s'effacer, elle n'a donc pas de boîte à elle - et les styles ici qui peignent dessus n'ont rien sur quoi peindre. Stylez la carte à l'intérieur, ou remettez celle-ci à garder sa propre boîte.",
+  "editor.override_misplaced": "Le bloc {key}: de cette carte est ignoré - le modèle \"{template}\" construit un {kind}, donc seul un bloc {kind}: s'y superpose.",
   "editor.required_one": "Ce modèle a besoin d'une variable que vous n'avez pas définie : {names}.",
   "editor.required_many": "Ce modèle a besoin de variables que vous n'avez pas définies : {names}.",
   "editor.optional_one": "Ce modèle utilise une variable sans valeur et sans défaut : {names}.",
@@ -219,6 +220,7 @@
   "warn.kind_list": "une liste",
   "warn.kind_mapping": "un mappage",
   "warn.many_copies": "decluttering-card-plus : le modèle \"{template}\" est répété {count} fois sur une seule carte. C'est beaucoup à construire et beaucoup à faire défiler - restreignez ce sur quoi il répète.",
+  "warn.override_misplaced": "decluttering-card-plus: le bloc {key}: de cette carte est ignoré - le modèle \"{template}\" construit un {kind}, donc seul un bloc {kind}: s'y superpose.",
   "warn.tag_taken": "decluttering-card-plus : <{tag}> est déjà enregistré par autre chose, il est donc ignoré.",
 
   "picker.card_description": "Réutilisez plusieurs fois la même configuration de carte avec des variables pour désencombrer votre configuration.",

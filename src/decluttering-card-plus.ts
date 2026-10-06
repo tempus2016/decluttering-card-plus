@@ -45,6 +45,8 @@ import {
   checkDashboard,
   listPlainCards,
   replaceCard,
+  applyOverride,
+  misplacedOverrides,
 } from './templates';
 
 /*
@@ -518,6 +520,7 @@ abstract class DeclutteringElement extends LitElement {
     variables: VariablesConfig[] | undefined,
     cardStyle?: string,
     templateName?: string,
+    instance?: DeclutteringCardConfig,
   ): void {
     const thingType = getThingType(templateConfig);
     if (!thingType) {
@@ -533,8 +536,12 @@ abstract class DeclutteringElement extends LitElement {
     const unresolved: string[] = [];
     this._setResolved(
       thingType,
-      deepReplace(variables, templateConfig, thingContent, templateName, this._hass, false, (names) =>
-        unresolved.push(...names),
+      applyOverride(
+        deepReplace(variables, templateConfig, thingContent, templateName, this._hass, false, (names) =>
+          unresolved.push(...names),
+        ),
+        instance,
+        thingType,
       ),
       this._resolveStyles(templateConfig, variables, cardStyle, templateName),
     );
@@ -643,13 +650,18 @@ abstract class DeclutteringElement extends LitElement {
       console.warn(localize('warn.many_copies', { template: config.template, count: wanted.length }, this._hass));
     }
 
+    // The card's own `card:` block is laid over every copy alike.
     const cards = wanted.map((item, index) =>
-      deepReplace(
-        forEachVariables(item, config.variables, index, wanted.length),
-        templateConfig,
-        templateConfig.card,
-        config.template,
-        this._hass,
+      applyOverride(
+        deepReplace(
+          forEachVariables(item, config.variables, index, wanted.length),
+          templateConfig,
+          templateConfig.card,
+          config.template,
+          this._hass,
+        ),
+        config,
+        'card',
       ),
     );
 
@@ -973,6 +985,7 @@ class DeclutteringCard extends DeclutteringElement {
   // than repeating over it.
   private _fromResolvers?: { templateConfig: TemplateConfig; config: DeclutteringCardConfig };
   private _resolverRegistry?: unknown[];
+  private _misplacedWarnedFor?: DeclutteringCardConfig;
 
   static getConfigElement(): HTMLElement {
     return document.createElement(CARD_EDITOR_TAG);
@@ -1055,6 +1068,7 @@ class DeclutteringCard extends DeclutteringElement {
     this._debug = config.debug === true;
     // What the card asks for beats what the template says it wants.
     this._gridOptions = config.grid_options ?? (templateConfig as { grid_options?: unknown }).grid_options;
+    this._warnMisplacedOverrides(templateConfig, config);
 
     /*
      * A resolver reads the registry, and the registry can arrive after the card has first
@@ -1081,7 +1095,23 @@ class DeclutteringCard extends DeclutteringElement {
       if (this._hass) this._resolveFromRegistry(this._hass);
       return;
     }
-    this._setTemplateConfig(templateConfig, config.variables, config.style, config.template);
+    this._setTemplateConfig(templateConfig, config.variables, config.style, config.template, config);
+  }
+
+  /*
+   * A `card:` block on a card whose template builds a badge is never read, which looks
+   * exactly like the override not working. Said once per config rather than refused: the
+   * template may be switched to the matching kind in a moment.
+   */
+  private _warnMisplacedOverrides(templateConfig: TemplateConfig, config: DeclutteringCardConfig): void {
+    if (this._misplacedWarnedFor === config) return;
+    this._misplacedWarnedFor = config;
+    const kind = getThingType(templateConfig);
+    for (const key of misplacedOverrides(config, kind)) {
+      console.warn(
+        localize('warn.override_misplaced', { key, kind: kind as string, template: config.template }, this._hass),
+      );
+    }
   }
 
   /*
@@ -1109,6 +1139,7 @@ class DeclutteringCard extends DeclutteringElement {
       pending.config.variables,
       pending.config.style,
       pending.config.template,
+      pending.config,
     );
   }
 
@@ -1413,7 +1444,11 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     try {
       // Quietly: the editor re-renders on every keystroke, and the card itself already
       // says what it could not resolve when it renders for real.
-      resolved = deepReplace(variables, template, content, this._config.template, this.hass, true);
+      resolved = applyOverride(
+        deepReplace(variables, template, content, this._config.template, this.hass, true),
+        this._config,
+        thingType,
+      );
     } catch (err) {
       return html`<ha-alert alert-type="warning">
         ${localize('editor.result_error', { error: String(err) }, this.hass)}
@@ -1700,7 +1735,15 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     const columns = Number(this._config?.columns);
     const repeats = this._config?.for_each !== undefined || this._config?.for_each_from !== undefined;
     const fixedColumns = repeats && columns > 1 && !(Number(this._config?.min_column_width) > 0);
+    const kind = getThingType(template);
+    const misplaced = misplacedOverrides(this._config, kind);
     return html`
+      ${misplaced.map(
+        (key) =>
+          html`<ha-alert alert-type="warning">
+            ${localize('editor.override_misplaced', { key, kind: kind as string, template: this._config?.template ?? '' }, this.hass)}
+          </ha-alert>`,
+      )}
       ${
         fixedColumns
           ? html`<ha-alert alert-type="info">
