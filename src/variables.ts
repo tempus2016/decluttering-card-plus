@@ -136,7 +136,41 @@ export const TRANSFORMS: Record<string, (value: string) => string> = {
  */
 export const JSON_STEP = 'json';
 
-const TRANSFORM_NAMES = [...Object.keys(TRANSFORMS), JSON_STEP].join('|');
+/*
+ * `bool` turns a value into a yes or a no - `enabled: '[[link|bool]]'` switches a button
+ * on when the card was given a link and off when it was not (discussion #142). Two things
+ * set it apart from the text transforms: it has an answer for a variable nothing sets,
+ * which is "no", and when it ends the chain of a whole value it puts a real true or false
+ * there rather than the words, because a card checking `enabled` reads the word "false"
+ * as switched on.
+ */
+export const BOOL_STEP = 'bool';
+
+// Words that mean no, as people and Home Assistant write them. Anything else with
+// something in it means yes.
+const FALSE_WORDS = new Set(['', 'false', 'no', 'off', '0']);
+
+/** Whether a value counts as a yes, read the way the `bool` step reads it. */
+export function truthy(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0 && !Number.isNaN(value);
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value).length > 0;
+  return !FALSE_WORDS.has(String(value).trim().toLowerCase());
+}
+
+/** Whether a chain ends in `bool`, so a whole value should become a real true or false. */
+export function yieldsBoolean(chain: string | undefined): boolean {
+  return !!chain && chain.split('|').pop() === BOOL_STEP;
+}
+
+/** Whether a step has an answer for a variable nothing sets. */
+export function answersUnset(step: string): boolean {
+  return isFallback(step) || step === BOOL_STEP;
+}
+
+const TRANSFORM_NAMES = [...Object.keys(TRANSFORMS), JSON_STEP, BOOL_STEP].join('|');
 
 /*
  * Some of what a template wants is not in the card's config at all - it is in Home
@@ -355,7 +389,15 @@ export function applyTransform(
    */
   let empty = value === undefined || value === null || value === '';
 
-  for (const name of steps.slice(takesJson ? 1 : 0)) {
+  for (const [index, name] of steps.slice(takesJson ? 1 : 0).entries()) {
+    if (name === BOOL_STEP) {
+      // First in the chain it reads the value itself, so an empty list is a no rather
+      // than the text "[]"; further along it reads what the steps before it made.
+      text = String(truthy(index === 0 && !takesJson ? value : text));
+      empty = false;
+      continue;
+    }
+
     if (isFallback(name)) {
       if (empty) {
         const or = orTarget(name);
@@ -398,15 +440,15 @@ export function applyTransform(
 
 /*
  * A placeholder naming a variable nothing sets is normally left alone - there is no value
- * to put there. One carrying `default:` or `or:` is the exception: it says what to do in
- * exactly that case, so it is worked out separately once ordinary substitution has run out
+ * to put there. One carrying `default:`, `or:` or `bool` is the exception: it says what to
+ * do in exactly that case, so it is worked out separately once ordinary substitution has run out
  * of things to replace.
  */
 export function resolveFallback(inside: string, values: Record<string, any>, hass?: any): string | undefined {
   if (inside.startsWith(ESCAPE)) return undefined;
 
   const [name, ...steps] = withoutOptional(inside).split('|');
-  if (!steps.some(isFallback)) return undefined;
+  if (!steps.some(answersUnset)) return undefined;
   return applyTransform(steps.join('|'), values[name], hass, values);
 }
 

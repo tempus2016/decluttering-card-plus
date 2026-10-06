@@ -5,6 +5,7 @@
  */
 const {
   applyTransform,
+  truthy,
   resolveFallback,
   isFallback,
   orTarget,
@@ -437,6 +438,31 @@ check(
 check('capitalize leaves the rest of the casing as it was', applyTransform('capitalize', 'back DOOR'), 'Back DOOR');
 check('capitalize on nothing is still nothing', applyTransform('capitalize', ''), '');
 check('trim and capitalize chain left to right', applyTransform('trim|capitalize', '  back door  '), 'Back door');
+
+/* --------------------------------------------------- bool (discussion #142) */
+
+check('bool reads a real boolean as itself', [truthy(true), truthy(false)], [true, false]);
+check(
+  'bool reads the words for no as no, whatever their case or spacing',
+  ['false', 'No', ' OFF ', '0', ''].map(truthy),
+  [false, false, false, false, false],
+);
+check('bool reads the words for yes as yes', ['true', 'Yes', 'on', '1'].map(truthy), [true, true, true, true]);
+check('bool reads any other text as yes', truthy('/lovelace/cameras'), true);
+check(
+  'bool reads zero as no and any other number as yes',
+  [truthy(0), truthy(1), truthy(-2), truthy(NaN)],
+  [false, true, true, false],
+);
+check('bool reads unset and null as no', [truthy(undefined), truthy(null)], [false, false]);
+check('bool reads an empty list or mapping as no', [truthy([]), truthy({})], [false, false]);
+check('bool reads a list or mapping with something in it as yes', [truthy([1]), truthy({ a: 1 })], [true, true]);
+check('bool as a transform gives the word', applyTransform('bool', '/x'), 'true');
+check('bool answers for a value nobody set', applyTransform('bool', undefined), 'false');
+check('bool reads what the steps before it made', applyTransform('trim|bool', '   '), 'false');
+check('a default ahead of bool stands in first', applyTransform('default:yes|bool', ''), 'true');
+check('steps after bool shape its word', applyTransform('bool|upper', 'x'), 'TRUE');
+check('map after bool can turn the word into anything', applyTransform('bool|map:true=on,false=off', ''), 'off');
 
 check('no transform leaves the value as its text', applyTransform(undefined, 42), '42');
 

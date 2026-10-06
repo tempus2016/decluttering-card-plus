@@ -1,10 +1,11 @@
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
 import {
+  answersUnset,
   applyTransform,
+  BOOL_STEP,
   ESCAPE,
   JSON_STEP,
-  isFallback,
   resolveFallback,
   variableValues,
   withoutOptional,
@@ -16,6 +17,7 @@ import {
   resolveVariables,
   TRANSFORM_SUFFIX,
   unescapePlaceholders,
+  yieldsBoolean,
 } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -78,6 +80,12 @@ function asPartOfString(value: any): string {
   return escapeForJsonString(String(value));
 }
 
+// A shaped whole value is a JSON string, unless its chain ends in `bool` - then it is the
+// bare true or false, which is the only way a card's on/off option can be given one.
+function asShapedWholeValue(text: string, chain: string): string {
+  return yieldsBoolean(chain) ? text : JSON.stringify(text);
+}
+
 /** How to describe a value that a transform cannot shape, in a sentence about it. */
 function kindOf(value: unknown): string {
   return localize(Array.isArray(value) ? 'warn.kind_list' : 'warn.kind_mapping');
@@ -106,10 +114,12 @@ function substitutePass(
     // A transform shapes text, so it only applies to a scalar: slugging or uppercasing a
     // mapping's JSON garbles its keys, so the placeholder is left visible instead - the
     // same treatment an unrecognised transform gets.
-    // Every transform but one shapes text and refuses anything else. `json` is the one
-    // that wants the mapping itself, so a chain starting with it is allowed through.
+    // Every transform but two shapes text and refuses anything else. `json` wants the
+    // mapping itself and `bool` asks whether there is anything in it, so a chain starting
+    // with either is allowed through.
     const isScalar = value === null || typeof value !== 'object';
-    const transformable = (transform?: string): boolean => isScalar || (transform ?? '').split('|')[0] === JSON_STEP;
+    const transformable = (transform?: string): boolean =>
+      isScalar || [JSON_STEP, BOOL_STEP].includes((transform ?? '').split('|')[0]);
     // A placeholder left visible is the deliberate signal that something is wrong, but on
     // its own it does not say what - so each refusal is noted, to be reported once at the
     // end rather than on every pass over the same text.
@@ -151,7 +161,7 @@ function substitutePass(
       if (emptyOptional(optional)) return match;
       return transform
         ? transformable(transform)
-          ? shaped(match, transform, (text) => JSON.stringify(text))
+          ? shaped(match, transform, (text) => asShapedWholeValue(text, transform))
           : refuse(match, transform)
         : asWholeValue(value, match);
     });
@@ -242,7 +252,8 @@ function fallbackPass(jsonConfig: string, values: Record<string, any>, hass?: an
   // landing inside them twice.
   json = json.replace(/"\[\[([^[\]]+)\]\]"/g, (match: string, inside: string) => {
     const text = resolveFallback(inside, values, hass);
-    return text === undefined ? match : JSON.stringify(text);
+    if (text === undefined) return match;
+    return asShapedWholeValue(text, withoutOptional(inside).split('|').slice(1).join('|'));
   });
   return json.replace(/\[\[([^[\]]+)\]\]/g, (match: string, inside: string) => {
     const text = resolveFallback(inside, values, hass);
@@ -255,7 +266,7 @@ function hasFallback(jsonConfig: string): boolean {
   const pattern = /\[\[([^[\]]+)\]\]/g;
   let match = pattern.exec(jsonConfig);
   while (match !== null) {
-    if (withoutOptional(match[1]).split('|').slice(1).some(isFallback)) return true;
+    if (withoutOptional(match[1]).split('|').slice(1).some(answersUnset)) return true;
     match = pattern.exec(jsonConfig);
   }
   return false;
@@ -313,7 +324,7 @@ export default (
     }
   }
 
-  // Anything still saying `default:` or `or:` gets its turn now, whether or not there were
+  // Anything still saying `default:`, `or:` or `bool` gets its turn now, whether or not there were
   // any variables to substitute in the first place.
   const fallbacks = hasFallback(jsonConfig);
   if (fallbacks) jsonConfig = fallbackPass(jsonConfig, variableValues(variableArray), hass);
