@@ -621,6 +621,51 @@ check(
 
 check('an escaped one is still just brackets', deepReplace(undefined, {}, { a: '[[!name?]]' }), { a: '[[name?]]' });
 
+// A block left empty by its options goes too (discussion #141).
+const featured = { type: 'tile', entity: 'light.hall', features: [{ type: '[[light_type?]]' }] };
+check('a block that only held an option goes with it, all the way up', deepReplace(undefined, {}, featured), {
+  type: 'tile',
+  entity: 'light.hall',
+});
+check('and is there as written when the option has a value', deepReplace([{ light_type: 'toggle' }], {}, featured), {
+  type: 'tile',
+  entity: 'light.hall',
+  features: [{ type: 'toggle' }],
+});
+check(
+  'a block with something else in it stays, less the option',
+  deepReplace(undefined, {}, { features: [{ type: 'light-brightness', style: '[[style?]]' }] }),
+  { features: [{ type: 'light-brightness' }] },
+);
+check(
+  'a mapping emptied by its options goes too',
+  deepReplace(undefined, {}, { type: 'tile', card_mod: { style: '[[style?]]', class: '[[cls?]]' } }),
+  { type: 'tile' },
+);
+check(
+  'only the emptied items leave a list, the rest stay in order',
+  deepReplace([{ b: 'two' }], {}, { features: [{ type: '[[a?]]' }, { type: '[[b?]]' }, { type: 'fixed' }] }),
+  { features: [{ type: 'two' }, { type: 'fixed' }] },
+);
+check(
+  'a block written empty is left alone',
+  deepReplace(undefined, {}, { features: [], tap_action: {}, name: '[[name?]]' }),
+  { features: [], tap_action: {} },
+);
+check('an escaped option keeps its block', deepReplace(undefined, {}, { features: [{ type: '[[!name?]]' }] }), {
+  features: [{ type: '[[name?]]' }],
+});
+check(
+  'text left empty inside a longer string is still a value, so its block stays',
+  deepReplace(undefined, {}, { tap_action: { navigation_path: '/[[path?]]' } }),
+  { tap_action: { navigation_path: '/' } },
+);
+check(
+  'the card itself is never taken away, however little is left',
+  deepReplace(undefined, {}, { name: '[[name?]]' }),
+  {},
+);
+
 warnings.length = 0;
 check(
   'a required-looking plain placeholder still warns beside an optional one',

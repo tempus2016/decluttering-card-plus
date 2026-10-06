@@ -234,6 +234,12 @@ are values and keep their place.
 
 That is different from `[[name?]]`, which removes the key from the card entirely. Use `?`
 when the option should not be there at all, and `default:` when something should be shown.
+A block left with nothing in it goes too, so a whole section can hang on one variable:
+
+```yaml
+features:
+  - type: '[[light_type?]]'   # no light_type, no features
+```
 
 ## Working out what a card built
 

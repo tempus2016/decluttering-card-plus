@@ -212,24 +212,48 @@ function isEmptyOption(value: unknown): boolean {
  * Done on the parsed config rather than on its JSON text, because removing a key from JSON
  * by hand means getting its commas right, and getting them wrong means a card that will
  * not parse at all.
+ *
+ * A block left with nothing in it once its options have gone goes too, and so on upward:
+ * `features: [{ type: '[[light_type?]]' }]` with no `light_type` loses the `type`, then the
+ * item that only held it, then `features` itself - which is the only way to make a whole
+ * block depend on one variable (discussion #141). A block that was written empty, a `[]`
+ * or `{}` in the template, never had an option in it and is left exactly as it was.
  */
-function pruneEmptyOptions(value: any): any {
+const GONE = Symbol('gone');
+
+function pruneBlock(value: any): any {
+  if (isEmptyOption(value)) return GONE;
   if (Array.isArray(value)) {
+    if (!value.length) return value;
     // A dropped item leaves no hole: a list of cards with one missing is a shorter list,
     // not a list with a gap in it.
-    return value.filter((item) => !isEmptyOption(item)).map((item) => pruneEmptyOptions(item));
+    const kept = value.map((item) => pruneBlock(item)).filter((item) => item !== GONE);
+    return kept.length ? kept : GONE;
   }
   if (value && typeof value === 'object') {
+    const entries = Object.entries(value);
     // Rebuilt without a prototype so that a config key of `__proto__` sets a plain own
     // property here rather than reparenting the object it is copied into. The card is parsed
     // straight back from this with JSON, which does not care whether the object has a
     // prototype, so nothing downstream is affected.
     const out: Record<string, any> = Object.create(null);
-    for (const [key, entry] of Object.entries(value)) {
-      if (isEmptyOption(entry)) continue;
-      out[key] = pruneEmptyOptions(entry);
+    if (!entries.length) return out;
+    for (const [key, entry] of entries) {
+      const pruned = pruneBlock(entry);
+      if (pruned !== GONE) out[key] = pruned;
     }
-    return out;
+    return Object.keys(out).length ? out : GONE;
+  }
+  return pruneEmptyOptions(value);
+}
+
+function pruneEmptyOptions(value: any): any {
+  if (Array.isArray(value) || (value && typeof value === 'object')) {
+    // The card itself is never taken away, however little is left of it: an empty one is
+    // still the card that was asked for, and says so more clearly than nothing at all.
+    const pruned = pruneBlock(value);
+    if (pruned !== GONE) return pruned;
+    return Array.isArray(value) ? [] : Object.create(null);
   }
   if (typeof value === 'string') {
     const anyOptional = new RegExp(PLACEHOLDER.source, 'g');
