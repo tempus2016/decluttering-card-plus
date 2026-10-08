@@ -748,6 +748,34 @@ check(
 );
 
 check(
+  'an empty default: with ? is still a gap, so the key goes',
+  deepReplace([{ name: null }], {}, { a: '[[name|default:?]]', b: 'x' }),
+  { b: 'x' },
+);
+
+check(
+  'an empty default: with ? goes for a variable nothing sets too',
+  deepReplace(undefined, {}, { a: '[[name|default:?]]', b: 'Hi [[name|default:?]]!' }),
+  { b: 'Hi !' },
+);
+
+check(
+  'an empty default: without ? still gives the empty text',
+  deepReplace([{ name: null }], {}, { a: '[[name|default:]]' }),
+  { a: '' },
+);
+
+console.warn = (m) => warnings.push(m);
+warnings.length = 0;
+deepReplace([{ name: '' }, { other: null }], {}, { a: '[[name|or:other]]' }, 't');
+console.warn = realWarn;
+check(
+  'an or: that finds nothing is reported as unset, not blamed on Home Assistant',
+  warnings.length === 1 && /\[\[name\|or:other\]\]/.test(warnings[0]) && !/Home Assistant/.test(warnings[0]),
+  true,
+);
+
+check(
   'a stand-in rescues a resolver that found nothing',
   deepReplace([{ e: 'light.loose' }], {}, { a: '[[e|area|default:Unassigned]]' }, undefined, HOUSE),
   { a: 'Unassigned' },

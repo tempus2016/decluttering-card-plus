@@ -15,6 +15,7 @@ import {
   OPTIONAL,
   OPTIONAL_SUFFIX,
   hasEscape,
+  isFallback,
   PLACEHOLDER,
   resolveVariables,
   TRANSFORM_SUFFIX,
@@ -151,9 +152,11 @@ function substitutePass(
      */
     const shaped = (match: string, transform: string, wrap: (text: string) => string, written = transform): string => {
       const text = applyTransform(transform, value, hass, values, read);
-      return text === undefined
-        ? refuse(match, written, localize('warn.nothing_for', { value }), 'missing')
-        : wrap(text);
+      if (text !== undefined) return wrap(text);
+      // A gap that an `or:` could not fill is still just a gap - nothing gives it a value -
+      // so it is left to be reported as unset rather than blamed on Home Assistant.
+      if (gap && transform.split('|').some(isFallback)) return match;
+      return refuse(match, written, localize('warn.nothing_for', { value }), 'missing');
     };
 
     /*
@@ -161,8 +164,8 @@ function substitutePass(
      * that the pass at the end can take the whole option out. Empty means unset, null or
      * the empty string - a zero and a false are values, and stay.
      */
-    const emptyOptional = (optional?: string): boolean =>
-      !!optional && (value === undefined || value === null || value === '');
+    const gap = value === undefined || value === null || value === '';
+    const emptyOptional = (optional?: string): boolean => !!optional && gap;
 
     /*
      * A transform argument runs to the closing brackets, so it swallows a trailing `?`
@@ -321,16 +324,23 @@ function fallbackPass(
   read: (name: string) => unknown,
   hass?: any,
 ): string {
+  // An empty stand-in is still a gap, so an optional placeholder that ends up with one is
+  // left for the pruning pass to take out - `[[name|default:?]]` drops the key, as
+  // `[[name?]]` would (discussion #155).
+  const standIn = (inside: string): string | undefined => {
+    const text = resolveFallback(inside, values, hass, read);
+    return text === '' && isOptional(inside) ? undefined : text;
+  };
   let json = jsonConfig;
   // The whole value first, so a stand-in replaces the quotes around it too rather than
   // landing inside them twice.
   json = json.replace(/"\[\[([^[\]]+)\]\]"/g, (match: string, inside: string) => {
-    const text = resolveFallback(inside, values, hass, read);
+    const text = standIn(inside);
     if (text === undefined) return match;
     return asShapedWholeValue(text, withoutOptional(inside).split('|').slice(1).join('|'));
   });
   return json.replace(/\[\[([^[\]]+)\]\]/g, (match: string, inside: string) => {
-    const text = resolveFallback(inside, values, hass, read);
+    const text = standIn(inside);
     return text === undefined ? match : escapeForJsonString(text);
   });
 }
