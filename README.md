@@ -275,6 +275,9 @@ word `"false"` as switched on, so `hide_state: '[[compact|bool]]'` turns `yes`, 
 variable put in. The editor's **Result** view answers the same question, but not when the
 card only misbehaves on a phone, or in a view whose editor is awkward to reach.
 
+`debug: yaml` *(v1.13.0+)* shows the same thing as YAML rather than JSON, which is easier
+to hold up against a card you know works, or to paste straight back into a dashboard.
+
 `strict: true` turns the usual warnings into a card that refuses. Nothing normally stops a
 card rendering — a template can be edited after the cards that use it — but somebody
 building a template for other people wants the opposite.
