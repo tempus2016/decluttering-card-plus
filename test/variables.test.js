@@ -77,6 +77,17 @@ check('a variables key that is not a list declares nothing', getDeclarations({ v
 
 check('placeholders are found anywhere in the content', usedVariables({ card: { entity: '[[entity]]' } }), ['entity']);
 
+check(
+  'the variable an if: reads counts as used, with or without a value to compare',
+  usedVariables({ card: { a: '[[element|if:entity?]]', b: '[[block|if:provider=go2rtc]]' } }),
+  ['element', 'entity', 'block', 'provider'],
+);
+check(
+  'a variable only an if: reads is not called unused',
+  diagnoseInstance([{ entity: 'binary_sensor.car' }, { element: 'x' }], { card: { a: '[[element|if:entity?]]' } })
+    .unused,
+  [],
+);
 check('placeholders are found in the style block', usedVariables({ card: {}, style: 'border: [[colour]]' }), [
   'colour',
 ]);

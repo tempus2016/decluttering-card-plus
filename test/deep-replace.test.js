@@ -902,6 +902,128 @@ check(
   },
 );
 
+/* --------------------------------------------------- if (discussion #150) */
+
+const carElement = { type: 'conditional', conditions: [{ entity: '[[car_entity]]', state: 'on' }] };
+const elements = { elements: ['[[light_element?]]', '[[car_element|if:car_entity?]]'] };
+check(
+  'if keeps a whole mapping when the variable it reads is set',
+  deepReplace([{ car_entity: 'binary_sensor.car' }], { default: [{ car_element: carElement }] }, elements),
+  { elements: [{ type: 'conditional', conditions: [{ entity: 'binary_sensor.car', state: 'on' }] }] },
+);
+warnings.length = 0;
+check(
+  'if drops an optional list item when the variable it reads is not set',
+  deepReplace([], { default: [{ car_element: carElement }] }, elements),
+  {},
+);
+check('a closed optional if is the point of it, not something to warn about', warnings, []);
+check(
+  'if reads its variable the way bool does, so false closes it',
+  deepReplace([{ car_entity: false }, { car_element: carElement }], {}, elements),
+  {},
+);
+check(
+  'if:name=text holds only when the variable is exactly that text',
+  [
+    deepReplace(
+      [{ provider: 'go2rtc' }, { block: { stream: 'cam' } }],
+      {},
+      { go2rtc: '[[block|if:provider=go2rtc?]]' },
+    ),
+    deepReplace([{ provider: 'image' }, { block: { stream: 'cam' } }], {}, { go2rtc: '[[block|if:provider=go2rtc?]]' }),
+    deepReplace([{ block: { stream: 'cam' } }], {}, { go2rtc: '[[block|if:provider=go2rtc?]]' }),
+  ],
+  [{ go2rtc: { stream: 'cam' } }, {}, {}],
+);
+check(
+  'if:name=text compares a number as text',
+  deepReplace([{ columns: 2 }, { wide: 'yes' }], {}, { a: '[[wide|if:columns=2]]', b: '[[wide|if:columns=3?]]' }),
+  { a: 'yes' },
+);
+check(
+  'if composes with the text transforms, wherever it sits in the chain',
+  deepReplace(
+    [{ room: 'Living Room' }, { show: true }],
+    {},
+    { a: '[[room|if:show|slug]]', b: '[[room|slug|if:show]]' },
+  ),
+  { a: 'living_room', b: 'living_room' },
+);
+check(
+  'a closed if is a gap, so a default after it stands in',
+  deepReplace([{ name: 'Kitchen' }, { show: false }], {}, { name: '[[name|if:show|default:Hidden]]' }),
+  { name: 'Hidden' },
+);
+check(
+  'every if in a chain has to hold',
+  deepReplace([{ v: 'x' }, { a: true }, { b: false }], {}, { one: '[[v|if:a|if:b?]]', both: '[[v|if:a|if:a]]' }),
+  { both: 'x' },
+);
+console.warn = (m) => warnings.push(m);
+warnings.length = 0;
+check(
+  'a closed if with no ? and no default stays visible',
+  deepReplace([{ v: 'x' }, { show: false }], {}, { name: '[[v|if:show]]' }),
+  { name: '[[v|if:show]]' },
+);
+check(
+  'and says it was the condition, not a missing variable',
+  warnings.length === 1 && /if:/.test(warnings[0]) && !/nothing gives a value/.test(warnings[0]),
+  true,
+);
+console.warn = realWarn;
+check(
+  'if inside a longer piece of text drops just that part',
+  deepReplace([{ unit: 'kWh' }, { show: false }], {}, { name: 'Energy [[unit|prefix:(|suffix:)|if:show?]]' }),
+  { name: 'Energy ' },
+);
+check(
+  'if reads a let value as it ends up, not as it was written',
+  [
+    deepReplace(
+      [{ provider: 'go2rtc' }, { v: 'x' }],
+      { let: { live: '[[provider|map:go2rtc=yes,*=]]' } },
+      {
+        a: '[[v|if:live?]]',
+      },
+    ),
+    deepReplace(
+      [{ provider: 'image' }, { v: 'x' }],
+      { let: { live: '[[provider|map:go2rtc=yes,*=]]' } },
+      {
+        a: '[[v|if:live?]]',
+      },
+    ),
+  ],
+  [{ a: 'x' }, {}],
+);
+check(
+  'a condition reading itself is stopped rather than followed forever',
+  deepReplace([{ loop: '[[v|if:loop]]' }, { v: 'x' }], {}, { a: '[[v|if:loop?]]' }, undefined, undefined, true),
+  { a: 'x' },
+);
+check(
+  'the example from discussion #150 renders as asked',
+  [
+    deepReplace(
+      [{ detect_car_entity: 'binary_sensor.car' }],
+      {
+        default: [
+          {
+            detect_car_element: { type: 'conditional', conditions: [{ entity: '[[detect_car_entity]]', state: 'on' }] },
+          },
+          { light_switch_element: { type: 'icon', entity: '[[light_switch_entity]]' } },
+        ],
+      },
+      {
+        elements: ['[[light_switch_element|if:light_switch_entity?]]', '[[detect_car_element|if:detect_car_entity?]]'],
+      },
+    ),
+  ],
+  [{ elements: [{ type: 'conditional', conditions: [{ entity: 'binary_sensor.car', state: 'on' }] }] }],
+);
+
 /* --------------------------------------------------- a variable bomb is stopped */
 
 // A chain where each variable expands into two of the next doubles the text on every step,
