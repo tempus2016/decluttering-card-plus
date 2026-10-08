@@ -107,7 +107,8 @@ Templates][wiki-defining].
 - **[Variables][wiki-variables]** with defaults, nesting, transforms (`[[room|slug]]`), values
   read from Home Assistant (`[[entity|friendly_name]]`, its domain, object id, labels, area,
   floor or device), values a template works out for itself with `let:`, stand-ins for what
-  nothing sets (`[[name|default:Unnamed]]`), optional placeholders, dashboard-wide
+  nothing sets (`[[name|default:Unnamed]]`), values that only appear when another is set
+  (`[[name|if:other]]`), optional placeholders, dashboard-wide
   fallbacks, and values a whole view, or one section of it, sets for every card in it. A
   declaration can say what a good value looks like (`pattern:`, `allowed:`), fold into a
   section of the editor (`group:`), or take a whole card.
@@ -242,6 +243,18 @@ A block left with nothing in it goes too, so a whole section can hang on one var
 ```yaml
 features:
   - type: '[[light_type?]]'   # no light_type, no features
+```
+
+`if:` makes a value depend on a different variable. `[[name|if:other]]` keeps the value
+only while `other` is a yes, and `[[name|if:other=text]]` only while `other` is exactly that
+text. When the condition fails, the placeholder is treated as unset, so `?` drops it and a
+`default:` after it still applies. It works on whole mappings too, which means one card can
+choose which list items it gets:
+
+```yaml
+elements:
+  - '[[car_element|if:car_entity?]]'          # only on cards that name a car_entity
+go2rtc: '[[go2rtc_block|if:live_provider=go2rtc?]]'
 ```
 
 ## Working out what a card built

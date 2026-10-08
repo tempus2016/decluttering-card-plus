@@ -5,6 +5,8 @@ import {
   applyTransform,
   BOOL_STEP,
   ESCAPE,
+  gateOpen,
+  hasCondition,
   JSON_STEP,
   resolveFallback,
   variableValues,
@@ -17,18 +19,29 @@ import {
   resolveVariables,
   TRANSFORM_SUFFIX,
   unescapePlaceholders,
+  withoutConditions,
   yieldsBoolean,
 } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-// What a refusal says, and which of the two ways it happened: Home Assistant had nothing
-// to give, or a transform was handed something it cannot shape. The flag carries the
-// difference so the wording never has to - the wording is translated.
+// What a refusal says, and which way it happened: a transform was handed something it
+// cannot shape, Home Assistant had nothing to give, or an `if:` did not hold. The reason
+// carries the difference so the wording never has to - the wording is translated.
+type RefusalReason = 'shape' | 'missing' | 'closed';
+
 interface Refusal {
   text: string;
-  missing: boolean;
+  reason: RefusalReason;
 }
+
+/*
+ * How deep a condition's own value is worked out. `if:` reads a variable as it will end up,
+ * not as it was written - a `let:` value built from the others is still `[[...]]` text until
+ * it is substituted - so a condition settles that value first, with the same variables.
+ * The settling can meet conditions of its own; past this depth they are read as written.
+ */
+const MAX_CONDITION_DEPTH = 3;
 
 // A variable's value can itself contain placeholders, so substitution runs repeatedly
 // until nothing changes. The cap only matters for a variable that refers to itself,
@@ -95,6 +108,8 @@ function substitutePass(
   jsonConfig: string,
   variableArray: VariablesConfig[],
   refused: Map<string, Refusal>,
+  read: (name: string) => unknown,
+  values: Record<string, any>,
   hass?: any,
   limit?: number,
 ): string {
@@ -123,8 +138,8 @@ function substitutePass(
     // A placeholder left visible is the deliberate signal that something is wrong, but on
     // its own it does not say what - so each refusal is noted, to be reported once at the
     // end rather than on every pass over the same text.
-    const refuse = (match: string, transform: string, why?: string, missing = false): string => {
-      refused.set(`${Object.keys(variable)[0]}|${transform}`, { text: why ?? kindOf(value), missing });
+    const refuse = (match: string, transform: string, why?: string, reason: RefusalReason = 'shape'): string => {
+      refused.set(`${Object.keys(variable)[0]}|${transform}`, { text: why ?? kindOf(value), reason });
       return match;
     };
 
@@ -134,9 +149,11 @@ function substitutePass(
      * in its place, so the placeholder stays visible and says why, exactly as a transform
      * refusing a mapping does.
      */
-    const shaped = (match: string, transform: string, wrap: (text: string) => string): string => {
-      const text = applyTransform(transform, value, hass);
-      return text === undefined ? refuse(match, transform, localize('warn.nothing_for', { value }), true) : wrap(text);
+    const shaped = (match: string, transform: string, wrap: (text: string) => string, written = transform): string => {
+      const text = applyTransform(transform, value, hass, values, read);
+      return text === undefined
+        ? refuse(match, written, localize('warn.nothing_for', { value }), 'missing')
+        : wrap(text);
     };
 
     /*
@@ -156,24 +173,52 @@ function substitutePass(
     const marked = (transform?: string, optional?: string): [string | undefined, string | undefined] =>
       !optional && transform?.endsWith(OPTIONAL) ? [transform.slice(0, -1), OPTIONAL] : [transform, optional];
 
-    json = json.replace(wholeValue, (match: string, rawTransform?: string, rawOptional?: string) => {
-      const [transform, optional] = marked(rawTransform, rawOptional);
+    /*
+     * An `if:` that does not hold makes the value a gap, read exactly as an unset variable
+     * is: an optional placeholder is left for the pruning pass to take out, a `default:`
+     * or `or:` further along still supplies its stand-in, and anything else stays visible -
+     * saying why, because the variable is set and the brackets alone would suggest not.
+     */
+    const closed = (match: string, chain: string, optional: string | undefined, whole: boolean): string => {
+      if (optional) return match;
+      const text = applyTransform(chain, undefined, hass, values, read);
+      if (text === undefined) return refuse(match, chain, localize('warn.condition_closed'), 'closed');
+      return whole ? asShapedWholeValue(text, chain) : escapeForJsonString(text);
+    };
+
+    const substitute = (
+      match: string,
+      rawTransform: string | undefined,
+      rawOptional: string | undefined,
+      whole: boolean,
+    ) => {
+      const [written, optional] = marked(rawTransform, rawOptional);
       if (emptyOptional(optional)) return match;
-      return transform
-        ? transformable(transform)
-          ? shaped(match, transform, (text) => asShapedWholeValue(text, transform))
-          : refuse(match, transform)
-        : asWholeValue(value, match);
-    });
-    json = json.replace(withinString, (match: string, rawTransform?: string, rawOptional?: string) => {
-      const [transform, optional] = marked(rawTransform, rawOptional);
-      if (emptyOptional(optional)) return match;
-      return transform
-        ? transformable(transform)
-          ? shaped(match, transform, escapeForJsonString)
-          : refuse(match, transform)
-        : asPartOfString(value);
-    });
+      // A condition decides whether there is a value at all, and once it holds it has
+      // nothing more to say - so it comes out of the chain, and a mapping gated by nothing
+      // but conditions goes in whole like any other.
+      let transform = written;
+      if (written && hasCondition(written)) {
+        if (!gateOpen(written, read)) return closed(match, written, optional, whole);
+        transform = withoutConditions(written);
+      }
+      if (!transform) return whole ? asWholeValue(value, match) : asPartOfString(value);
+      const chain = transform;
+      if (!transformable(chain)) return refuse(match, written as string);
+      return shaped(
+        match,
+        chain,
+        whole ? (text) => asShapedWholeValue(text, chain) : escapeForJsonString,
+        written as string,
+      );
+    };
+
+    json = json.replace(wholeValue, (match: string, rawTransform?: string, rawOptional?: string) =>
+      substitute(match, rawTransform, rawOptional, true),
+    );
+    json = json.replace(withinString, (match: string, rawTransform?: string, rawOptional?: string) =>
+      substitute(match, rawTransform, rawOptional, false),
+    );
   }
   return json;
 }
@@ -270,17 +315,22 @@ function pruneEmptyOptions(value: any): any {
  * never even reached by it - this pass is what gives those their turn, once everything that
  * could be substituted has been.
  */
-function fallbackPass(jsonConfig: string, values: Record<string, any>, hass?: any): string {
+function fallbackPass(
+  jsonConfig: string,
+  values: Record<string, any>,
+  read: (name: string) => unknown,
+  hass?: any,
+): string {
   let json = jsonConfig;
   // The whole value first, so a stand-in replaces the quotes around it too rather than
   // landing inside them twice.
   json = json.replace(/"\[\[([^[\]]+)\]\]"/g, (match: string, inside: string) => {
-    const text = resolveFallback(inside, values, hass);
+    const text = resolveFallback(inside, values, hass, read);
     if (text === undefined) return match;
     return asShapedWholeValue(text, withoutOptional(inside).split('|').slice(1).join('|'));
   });
   return json.replace(/\[\[([^[\]]+)\]\]/g, (match: string, inside: string) => {
-    const text = resolveFallback(inside, values, hass);
+    const text = resolveFallback(inside, values, hass, read);
     return text === undefined ? match : escapeForJsonString(text);
   });
 }
@@ -296,7 +346,7 @@ function hasFallback(jsonConfig: string): boolean {
   return false;
 }
 
-export default (
+function deepReplace(
   variables: VariablesConfig[] | undefined,
   templateConfig: TemplateConfig,
   content: any,
@@ -304,10 +354,25 @@ export default (
   hass?: any,
   quiet?: boolean,
   onUnresolved?: (names: string[]) => void,
-): any => {
+  depth = 0,
+): any {
   if (content === undefined) return content;
   const variableArray = resolveVariables(variables, templateConfig);
+  const values = variableValues(variableArray);
   let jsonConfig = JSON.stringify(content);
+
+  // What an `if:` reads: a variable's value as it will end up, worked out once per name.
+  const settled = new Map<string, unknown>();
+  const read = (name: string): unknown => {
+    if (settled.has(name)) return settled.get(name);
+    const raw = values[name];
+    const value =
+      typeof raw === 'string' && PLACEHOLDER.test(raw) && depth < MAX_CONDITION_DEPTH
+        ? deepReplace(variableArray, {}, raw, templateName, hass, true, undefined, depth + 1)
+        : raw;
+    settled.set(name, value);
+    return value;
+  };
   // Worth knowing before any work is done: a template with no optional placeholder in it
   // never needs the pruning pass at the end.
   const hasOptional = new RegExp(`\\[\\[[^[\\]]*\\${'?'}\\]\\]`).test(jsonConfig);
@@ -320,7 +385,7 @@ export default (
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
       const before = jsonConfig;
-      jsonConfig = substitutePass(jsonConfig, variableArray, refused, hass, limit);
+      jsonConfig = substitutePass(jsonConfig, variableArray, refused, read, values, hass, limit);
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
@@ -337,11 +402,14 @@ export default (
 
     if (!quiet && refused.size) {
       const each = [...refused].map(([placeholder, refusal]) => `[[${placeholder}]] (${refusal.text})`);
-      // The two ways a chain gives up read differently, so say whichever applies rather
-      // than a sentence that only half fits.
-      const missing = [...refused.values()].some((refusal) => refusal.missing);
-      const shaping = [...refused.values()].some((refusal) => !refusal.missing);
-      const why = [shaping ? localize('warn.refused_transform') : '', missing ? localize('warn.refused_resolver') : '']
+      // The ways a chain gives up read differently, so say whichever apply rather than a
+      // sentence that only half fits.
+      const reasons = new Set([...refused.values()].map((refusal) => refusal.reason));
+      const why = [
+        reasons.has('shape') ? localize('warn.refused_transform') : '',
+        reasons.has('missing') ? localize('warn.refused_resolver') : '',
+        reasons.has('closed') ? localize('warn.refused_condition') : '',
+      ]
         .filter(Boolean)
         .join(' ');
       console.warn(localize('warn.refused', { which: each.join(', '), why }));
@@ -351,7 +419,7 @@ export default (
   // Anything still saying `default:`, `or:` or `bool` gets its turn now, whether or not there were
   // any variables to substitute in the first place.
   const fallbacks = hasFallback(jsonConfig);
-  if (fallbacks) jsonConfig = fallbackPass(jsonConfig, variableValues(variableArray), hass);
+  if (fallbacks) jsonConfig = fallbackPass(jsonConfig, values, read, hass);
 
   /*
    * A variable nobody set renders as the literal `[[name]]` on the card. The editors
@@ -389,4 +457,6 @@ export default (
   const pruned = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig)) : JSON.parse(jsonConfig);
   if (!hasEscape(jsonConfig)) return pruned;
   return JSON.parse(unescapePlaceholders(JSON.stringify(pruned)));
-};
+}
+
+export default deepReplace;
