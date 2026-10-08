@@ -108,7 +108,8 @@ Templates][wiki-defining].
   read from Home Assistant (`[[entity|friendly_name]]`, its domain, object id, labels, area,
   floor or device), values a template works out for itself with `let:`, stand-ins for what
   nothing sets (`[[name|default:Unnamed]]`), values that only appear when another is set
-  (`[[name|if:other]]`), optional placeholders, dashboard-wide
+  (`[[name|if:other]]`), real yes/no values for options that switch on and off
+  (`[[name|bool]]`), optional placeholders, dashboard-wide
   fallbacks, and values a whole view, or one section of it, sets for every card in it. A
   declaration can say what a good value looks like (`pattern:`, `allowed:`), fold into a
   section of the editor (`group:`), or take a whole card.
@@ -154,7 +155,7 @@ Templates][wiki-defining].
   every other dashboard, or from all of them at once with `'*'`.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
   and `category:` groups a big collection in the picker.
-- **One-off tweaks without a new template** — a card's own `card:` block is laid over what
+- **One-off tweaks without a new template** *(v1.12.0+)* — a card's own `card:` block is laid over what
   its template builds, so a single card can change an icon or an action and nothing else.
   Mappings merge key by key, lists replace, and `null` drops a key the template sets.
 - **[Visibility][wiki-visibility]** conditions inside a template, including leaving out a copy
@@ -238,14 +239,15 @@ are values and keep their place.
 
 That is different from `[[name?]]`, which removes the key from the card entirely. Use `?`
 when the option should not be there at all, and `default:` when something should be shown.
-A block left with nothing in it goes too, so a whole section can hang on one variable:
+From v1.12.0, a block left with nothing in it goes too, so a whole section can hang on one
+variable:
 
 ```yaml
 features:
   - type: '[[light_type?]]'   # no light_type, no features
 ```
 
-`if:` makes a value depend on a different variable. `[[name|if:other]]` keeps the value
+`if:` *(v1.12.0+)* makes a value depend on a different variable. `[[name|if:other]]` keeps the value
 only while `other` is a yes, and `[[name|if:other=text]]` only while `other` is exactly that
 text. When the condition fails, the placeholder is treated as unset, so `?` drops it and a
 `default:` after it still applies. It works on whole mappings too, which means one card can
@@ -256,6 +258,10 @@ elements:
   - '[[car_element|if:car_entity?]]'          # only on cards that name a car_entity
 go2rtc: '[[go2rtc_block|if:live_provider=go2rtc?]]'
 ```
+
+`bool` *(v1.12.0+)* is for options that want a real `true` or `false`. A card reads the
+word `"false"` as switched on, so `hide_state: '[[compact|bool]]'` turns `yes`, `on` or
+`1` into `true`, and `no`, `off`, `0`, nothing at all or an unset variable into `false`.
 
 ## Working out what a card built
 
