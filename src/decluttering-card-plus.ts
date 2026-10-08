@@ -320,7 +320,7 @@ abstract class DeclutteringElement extends LitElement {
   @state() private _wrapperPreview = false;
 
   protected _thingConfig?: LovelaceThingConfig;
-  private _thingType?: LovelaceThingType;
+  protected _thingType?: LovelaceThingType;
   // One observer for the element's lifetime. A new one per wrapped card leaked a live
   // observer on every reconfigure, and left them all running after the card was gone.
   private _resizes?: ResizeObserver;
@@ -986,6 +986,42 @@ class DeclutteringCard extends DeclutteringElement {
   private _fromResolvers?: { templateConfig: TemplateConfig; config: DeclutteringCardConfig };
   private _resolverRegistry?: unknown[];
   private _misplacedWarnedFor?: DeclutteringCardConfig;
+
+  /*
+   * Asks the hui-card or hui-badge around this card to leave it on the page while it is
+   * hidden. They would otherwise take it off, and a card that is off the page stops
+   * watching the card inside it, so it would never notice that card coming back.
+   */
+  public connectedWhileHidden = true;
+
+  constructor() {
+    super();
+    // The hui-card inside says when its visibility conditions change. Heard here, on the
+    // way out, so this card is hidden or shown before the wrapper around it checks.
+    const heard = (ev: Event) => {
+      if (ev.composedPath()[0] !== this) this._displayHidden();
+    };
+    this.addEventListener('card-visibility-changed', heard);
+    this.addEventListener('badge-visibility-changed', heard);
+  }
+
+  /*
+   * Collapsing this element is not enough in a sections view. The section gives every card
+   * a grid cell and only frees it when the card has the hidden attribute, and hides a
+   * whole section only once every card in it does - so a template card that hid itself
+   * left an empty cell behind, and a section of nothing else stayed on the page and pushed
+   * the others off centre (#152). The wrapper around this card only looks again when it
+   * is told, so it is told.
+   */
+  protected _displayHidden(): void {
+    super._displayHidden();
+    if (this._thingType !== 'card' && this._thingType !== 'badge') return;
+    const hidden = this.classList.contains('child-card-hidden');
+    if (this.hasAttribute('hidden') === hidden) return;
+    this.toggleAttribute('hidden', hidden);
+    const event = this._thingType === 'badge' ? 'badge-visibility-changed' : 'card-visibility-changed';
+    this.dispatchEvent(new Event(event, { bubbles: true, composed: true }));
+  }
 
   static getConfigElement(): HTMLElement {
     return document.createElement(CARD_EDITOR_TAG);
