@@ -235,7 +235,13 @@ name: '[[name|or:label|default:Unnamed]]' # try another variable first
 `default:` supplies the text itself and `or:` names another variable to try. Both chain
 with the transforms, and with each other, so the last word is always something. A variable
 set to nothing — unset, `null` or an empty string — counts as a gap; a `0` and a `false`
-are values and keep their place.
+are values and keep their place. `none` is not a gap either: it is the text "none".
+
+`or:` only takes a variable name (letters, digits, `_` and `-`), so text with a space in it
+belongs in a `default:`. Put `or:` first and `default:` last: a `default:` with text in it
+always fills the gap, so an `or:` after it never gets a turn. An empty `default:` is still a
+gap, so the next step does get one, and from v1.12.1 `[[name|default:?]]` drops the key
+just as `[[name?]]` does.
 
 That is different from `[[name?]]`, which removes the key from the card entirely. Use `?`
 when the option should not be there at all, and `default:` when something should be shown.
