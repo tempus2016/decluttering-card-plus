@@ -110,6 +110,7 @@ import { findRepeatingCard, generateView, sectionPerCopy, wantsLabels } from './
 import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize } from './localize';
 import { VERSION } from './version';
+import { toYaml } from './yaml';
 
 // Tags this bundle owns.
 const CARD_TAG = 'decluttering-card-plus';
@@ -329,7 +330,7 @@ abstract class DeclutteringElement extends LitElement {
   protected _templateName?: string;
   protected _gridOptions?: unknown;
   protected _strict = false;
-  @state() protected _debug = false;
+  @state() protected _debug: false | 'json' | 'yaml' = false;
   protected _openTemplates: string[] = [];
   // The copies of a repeated template, kept so the layout can change without resolving
   // them again, and the column count currently on show so it only rebuilds when it moves.
@@ -392,14 +393,23 @@ abstract class DeclutteringElement extends LitElement {
       }
       .debug {
         padding: 12px 16px;
+        text-align: start;
       }
       .debug p {
         margin: 0 0 8px;
         color: var(--secondary-text-color);
         font-size: 0.9em;
       }
+      /*
+       * A card that handles taps - button-card, Mushroom - turns text selection off, and
+       * the wrapped debug view would inherit that and could not be copied out (#156). The
+       * same cards centre their text, which is what the start alignment above undoes.
+       */
       .debug pre {
         margin: 0;
+        -webkit-user-select: text;
+        user-select: text;
+        cursor: text;
         overflow: auto;
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.85em;
@@ -879,7 +889,8 @@ abstract class DeclutteringElement extends LitElement {
                   : localize('card.debug_builds', undefined, this._hass)
               }
             </p>
-            <pre>${JSON.stringify(this._thingConfig, null, 2)}</pre>
+            <pre>
+${this._debug === 'yaml' ? toYaml(this._thingConfig) : JSON.stringify(this._thingConfig, null, 2)}</pre>
           </div>
         </ha-card>
       `;
@@ -1101,7 +1112,7 @@ class DeclutteringCard extends DeclutteringElement {
     this._registry = undefined;
     this._applyGap(config.gap);
     this._strict = config.strict === true;
-    this._debug = config.debug === true;
+    this._debug = config.debug === 'yaml' ? 'yaml' : config.debug === true ? 'json' : false;
     // What the card asks for beats what the template says it wants.
     this._gridOptions = config.grid_options ?? (templateConfig as { grid_options?: unknown }).grid_options;
     this._warnMisplacedOverrides(templateConfig, config);
