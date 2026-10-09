@@ -293,6 +293,22 @@ async function loadRowEditor(): Promise<void> {
 // The four things a template can define, exactly one of which it must.
 const THING_TYPE_KEYS = ['card', 'row', 'element', 'badge'];
 
+/*
+ * A picture element is centred on its position and clipped by the card it sits in, so an
+ * element's debug view - far bigger than the icon it stands in for - lost its top and
+ * bottom, with no way to scroll to them (discussion #150). In debug it covers the card
+ * from the top-left corner instead, and scrolls when the config is longer than that.
+ */
+const DEBUG_ELEMENT_STYLE: Record<string, string> = {
+  top: '0',
+  left: '0',
+  transform: 'none',
+  width: '100%',
+  height: '100%',
+  overflow: 'auto',
+  'z-index': '1',
+};
+
 function getThingType(templateConfig: TemplateConfig): LovelaceThingType | undefined {
   const thingTypes = Object.keys(templateConfig).filter((key) => THING_TYPE_KEYS.includes(key));
   return thingTypes.length === 1 ? (thingTypes[0] as LovelaceThingType) : undefined;
@@ -596,7 +612,10 @@ abstract class DeclutteringElement extends LitElement {
     this._thingType = thingType;
     DeclutteringElement._createThing(stamped, thingType, (thing: LovelaceThing) => {
       if (this._thingConfig === stamped) {
-        this._setThing(thing, thingType === 'element' ? thingConfig.style : undefined);
+        this._setThing(
+          thing,
+          thingType === 'element' ? (this._debug ? DEBUG_ELEMENT_STYLE : thingConfig.style) : undefined,
+        );
       }
     });
   }
