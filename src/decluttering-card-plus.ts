@@ -34,6 +34,7 @@ import {
   findTemplateAnywhere,
   findTemplateLocation,
   getTemplateSources,
+  mayBorrowTemplates,
   hasSectionDefaults,
   renameTemplate,
   TemplateUsages,
@@ -1233,13 +1234,14 @@ class DeclutteringCard extends DeclutteringElement {
       this._applyTemplate(templateConfig, config);
       return;
     }
-    if (!getTemplateSources(ll).length) {
+    if (!mayBorrowTemplates(ll)) {
       throw new Error(
         localize('error.template_missing', { template: config.template }, this._hass) +
           didYouMean(config.template, Object.keys(collectTemplates(ll))),
       );
     }
-    // The template may live on a dashboard this one borrows from, which has to be fetched.
+    // The template may live on a dashboard this one borrows from, or on the library
+    // dashboard every one borrows from, which has to be fetched.
     // setConfig cannot wait, so it is picked up as soon as hass arrives.
     this._pendingConfig = config;
     if (this._hass) this.hassAvailable(this._hass);
@@ -1396,7 +1398,9 @@ class DeclutteringCard extends DeclutteringElement {
           this._applyTemplate(templateConfig, config);
           this._loadLabelsIfWanted(hass);
         } else {
-          this._error = localize('error.template_missing_anywhere', { template: config.template }, hass);
+          // Only a dashboard that names somewhere to borrow from is told it was looked for there.
+          const key = getTemplateSources(ll).length ? 'error.template_missing_anywhere' : 'error.template_missing';
+          this._error = localize(key, { template: config.template }, hass);
           // Every name there is, borrowed ones included, is known by the time this runs.
           collectAllTemplates(hass, ll).then((all) => {
             this._error += didYouMean(config.template, Object.keys(all));
@@ -2026,7 +2030,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   // The dropdown starts with this dashboard's templates and gains the borrowed ones once
   // the other dashboards have been read.
   private _loadBorrowedTemplates(): void {
-    if (!getTemplateSources(this._lovelace).length) return;
+    if (!mayBorrowTemplates(this._lovelace)) return;
     this._loadingTemplates = true;
     collectAllTemplates(this.hass, this._lovelace)
       .then((templates) => {
@@ -2119,7 +2123,7 @@ class DeclutteringTemplate extends DeclutteringElement {
     // one this dashboard borrows from, which has to be fetched, so drawing waits for hass
     // - drawn now, a child with no card of its own would fail before its parent arrived.
     const unresolved = typeof (resolved as { extends?: unknown }).extends === 'string';
-    if (unresolved && getTemplateSources(ll).length) {
+    if (unresolved && mayBorrowTemplates(ll)) {
       this._pendingPreview = config;
       if (this._hass) this.hassAvailable(this._hass);
       return;
@@ -2749,7 +2753,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     // A dashboard that borrows templates has names defined elsewhere, and the sweep must
     // know them or every card using one is reported as pointing at nothing. Fetched once
     // per dashboard config; until it lands, "does not exist" is held back rather than said.
-    const borrowing = getTemplateSources(ll).length > 0;
+    const borrowing = mayBorrowTemplates(ll);
     if (borrowing && this._borrowed?.ll !== ll) {
       this._borrowed = { ll };
       const local = new Set(Object.keys(collectTemplates(ll)));

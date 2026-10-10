@@ -152,7 +152,10 @@ Templates][wiki-defining].
   into this from its editor: **Give each copy its own section** rewrites the view for you.
 
 - **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
-  every other dashboard, or from all of them at once with `'*'`.
+  every other dashboard, or from all of them at once with `'*'`. A dashboard at the path
+  `decluttering-templates` *(v1.13.0+)* is borrowed from by every dashboard without being
+  named, so a template library written there, with its `decluttering_defaults`, is available
+  everywhere. A dashboard's own templates, and any it names, win over the library's.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
   and `category:` groups a big collection in the picker. A card nested inside a template
   can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
