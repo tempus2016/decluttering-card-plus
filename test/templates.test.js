@@ -319,6 +319,55 @@ check('no star changes nothing', expandSources(['a', 'b'], ['guests']), ['a', 'b
 check('a star with nothing known is just the named ones', expandSources(['a', '*'], []), ['a']);
 check('sources as a single string', getTemplateSources({ decluttering_templates_from: 'a' }), ['a']);
 check('no sources', getTemplateSources({}), []);
+/* ------------------------------------------------- shared variable declarations */
+
+const SHARED_DECLARATIONS = {
+  decluttering_variables: [
+    { name: 'colour', label: 'Colour', selector: { select: { options: ['red', 'blue'] } }, default: 'red' },
+    { name: 'light', label: 'Light', selector: { entity: { domain: 'light' } } },
+  ],
+  decluttering_templates: {
+    takes_colour: { variables: [{ name: 'colour' }], card: { type: 'tile', color: '[[colour]]' } },
+    own_words: {
+      variables: [
+        { name: 'colour', description: 'The background' },
+        { name: 'size', default: 2 },
+      ],
+      card: { type: 'tile' },
+    },
+    child: { extends: 'takes_colour', variables: [{ name: 'colour', label: 'Shade' }] },
+    nothing_shared: { card: { type: 'tile' } },
+  },
+};
+const sharedOut = collectTemplates(SHARED_DECLARATIONS);
+
+check('a template naming a shared declaration takes all of it', sharedOut.takes_colour.variables, [
+  SHARED_DECLARATIONS.decluttering_variables[0],
+]);
+check('what a template writes beside the name wins', sharedOut.own_words.variables[0], {
+  name: 'colour',
+  label: 'Colour',
+  selector: { select: { options: ['red', 'blue'] } },
+  default: 'red',
+  description: 'The background',
+});
+check('a declaration nothing shares is left as written', sharedOut.own_words.variables[1], {
+  name: 'size',
+  default: 2,
+});
+check(
+  'a shared declaration is not pushed onto a template that never names it',
+  sharedOut.nothing_shared.variables,
+  undefined,
+);
+check('extends keeps the child override on top of the shared declaration', sharedOut.child.variables[0].label, 'Shade');
+check('and the rest of the shared declaration underneath', sharedOut.child.variables[0].default, 'red');
+check(
+  'a shared default is a default like any other',
+  resolveVariables([], sharedOut.takes_colour).find((entry) => 'colour' in entry),
+  { colour: 'red' },
+);
+
 check('the library is read first, so anything named beats it', withLibrary(['a', 'b'], false), [
   'decluttering-templates',
   'a',

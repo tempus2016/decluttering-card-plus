@@ -112,7 +112,10 @@ Templates][wiki-defining].
   (`[[name|bool]]`), optional placeholders, dashboard-wide
   fallbacks, and values a whole view, or one section of it, sets for every card in it. A
   declaration can say what a good value looks like (`pattern:`, `allowed:`), fold into a
-  section of the editor (`group:`), or take a whole card.
+  section of the editor (`group:`), or take a whole card. Declarations used by many
+  templates can be written once in the dashboard's `decluttering_variables:` *(v1.13.0+)*;
+  a template takes one up with `- name: colour`, and anything it writes beside the name
+  wins.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
   area, device, floor or label Home Assistant knows about, narrowed by domain, area, floor,
   label, device class or integration, with anything you name excluded, sorted, limited, and a card of your own to
