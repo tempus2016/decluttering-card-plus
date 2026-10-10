@@ -117,6 +117,7 @@ import {
   withoutStamps,
 } from './cycles';
 import { columnsFor } from './layout';
+import { entitySuggestions } from './picker';
 import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
 import { loadLabels } from './labels';
 import { findRepeatingCard, generateView, sectionPerCopy, wantsLabels } from './strategy';
@@ -3529,6 +3530,44 @@ const DOCUMENTATION_URL = 'https://github.com/tempus2016/decluttering-card-plus'
 defineElement(CARD_EDITOR_TAG, DeclutteringCardEditor);
 defineElement(TEMPLATE_EDITOR_TAG, DeclutteringTemplateEditor);
 
+/*
+ * Home Assistant asks for suggestions synchronously, while the add-card dialog is open, so
+ * templates on other dashboards have to be fetched before it asks. They are read when the
+ * page loads and again on every question, for the next one; this dashboard's own
+ * templates are read fresh each time, edits not yet saved included.
+ */
+let borrowedForSuggestions: Record<string, TemplateConfig> = {};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function refreshSuggestionTemplates(hass: any): void {
+  if (!hass) return;
+  void collectAllTemplates(hass, getLovelaceConfig())
+    .then((all) => {
+      borrowedForSuggestions = all;
+      // Labels are not on hass, and only a template narrowing by one needs them fetched.
+      if (Object.values(all).some((template) => (template.suggest_for as { label?: unknown })?.label)) {
+        void loadLabels(hass);
+      }
+    })
+    .catch(() => undefined);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function suggestionsFor(hass: any, entityId: string, kind: 'card' | 'badge'): unknown[] | null {
+  refreshSuggestionTemplates(hass);
+  const templates = { ...borrowedForSuggestions, ...collectTemplates(getLovelaceConfig()) };
+  const found = entitySuggestions(hass, entityId, templates, kind, `custom:${CARD_TAG}`);
+  return found.length ? found : null;
+}
+
+// The page's hass is there a moment after the resources load, not before.
+function preloadSuggestionTemplates(tries = 0): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hass = (document.querySelector('home-assistant') as any)?.hass;
+  if (hass) refreshSuggestionTemplates(hass);
+  else if (tries < 30) setTimeout(() => preloadSuggestionTemplates(tries + 1), 1000);
+}
+
 if (defineElement(CARD_TAG, DeclutteringCard)) {
   customCards.push({
     type: CARD_TAG,
@@ -3536,6 +3575,8 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
     name: 'Decluttering Card Plus',
     preview: false,
     description: localize('picker.card_description'),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getEntitySuggestion: (hass: any, entityId: string) => suggestionsFor(hass, entityId, 'card'),
   });
   customBadges.push({
     type: CARD_TAG,
@@ -3543,7 +3584,10 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
     name: 'Decluttering Card Plus',
     preview: false,
     description: localize('picker.badge_description'),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getEntitySuggestion: (hass: any, entityId: string) => suggestionsFor(hass, entityId, 'badge'),
   });
+  preloadSuggestionTemplates();
 }
 
 /*

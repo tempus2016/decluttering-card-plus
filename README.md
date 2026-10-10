@@ -156,6 +156,11 @@ Templates][wiki-defining].
   `decluttering-templates` *(v1.13.0+)* is borrowed from by every dashboard without being
   named, so a template library written there, with its `decluttering_defaults`, is available
   everywhere. A dashboard's own templates, and any it names, win over the library's.
+- **Offered in the add-card dialog** *(v1.13.0+)* — a template with `suggest_for:` appears
+  under Community when you pick a matching entity in the dialog's By entity tab, with the
+  entity filled in as `entity`. It takes the filters a repeat does: `suggest_for:
+  { domain: camera, area: Garden }`. Badge templates are offered in the badge dialog.
+  Needs Home Assistant 2026.6 or later.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
   and `category:` groups a big collection in the picker. A card nested inside a template
   can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
