@@ -22,8 +22,9 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   gap?: number;
   /** How much of a sections grid the card asks for, overriding what the template says. */
   grid_options?: unknown;
-  /** Renders what the card builds instead of the card itself, for working out why - `yaml` to show it as YAML. */
-  debug?: boolean | 'yaml';
+  /** Renders what the card builds instead of the card itself, for working out why - `yaml` to show it as YAML,
+   *  `console` to render the card as normal and log how it was built. */
+  debug?: boolean | 'yaml' | 'console';
   /** Turns what is normally a warning into a card that refuses to render. */
   strict?: boolean;
   /** Inside another template: be handed every variable of the card that builds this one. */

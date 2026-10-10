@@ -123,6 +123,16 @@ import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize } from './localize';
 import { VERSION } from './version';
 import { toYaml } from './yaml';
+import {
+  BuildTrace,
+  handedDownNames,
+  logTrace,
+  newTrace,
+  TraceSection,
+  variableRows,
+  wantsTrace,
+  withTrace,
+} from './trace';
 
 // Tags this bundle owns.
 const CARD_TAG = 'decluttering-card-plus';
@@ -358,6 +368,10 @@ abstract class DeclutteringElement extends LitElement {
   protected _templateName?: string;
   protected _gridOptions?: unknown;
   protected _strict = false;
+  // `debug: console`: the card renders as normal and logs how it was built (#160).
+  protected _trace = false;
+  // Which of the card's variables were handed down to it, so the log can say so.
+  protected _handedDown: string[] = [];
   @state() protected _debug: false | 'json' | 'yaml' = false;
   protected _openTemplates: string[] = [];
   // The copies of a repeated template, kept so the layout can change without resolving
@@ -574,19 +588,44 @@ abstract class DeclutteringElement extends LitElement {
     const unresolved: string[] = [];
     // Only a card that uses a template has variables to hand down; a template's own preview does not.
     const inherited = instance ? (): unknown[] => this._handDown(variables, templateConfig, templateName) : undefined;
-    this._setResolved(
-      thingType,
-      applyOverride(
-        deepReplace(variables, templateConfig, thingContent, templateName, this._hass, false, (names) =>
-          unresolved.push(...names),
-        ),
-        instance,
-        thingType,
+    // Only a card using a template logs; a template's own preview has nothing to say.
+    const trace = this._trace && instance ? newTrace() : undefined;
+    const started = performance.now();
+    const built = applyOverride(
+      deepReplace(
+        variables,
+        templateConfig,
+        thingContent,
+        templateName,
+        this._hass,
+        false,
+        (names) => unresolved.push(...names),
+        0,
+        trace,
       ),
-      this._resolveStyles(templateConfig, variables, cardStyle, templateName),
-      inherited,
+      instance,
+      thingType,
     );
+    const styles = this._resolveStyles(templateConfig, variables, cardStyle, templateName, trace);
+    if (trace) {
+      this._logBuild(started, [
+        { variables: variableRows(variables, templateConfig, this._handedDown), trace, built: withoutStamps(built) },
+      ]);
+    }
+    this._setResolved(thingType, built, styles, inherited);
     this._refuseIfStrict(unresolved);
+  }
+
+  private _logBuild(started: number, sections: TraceSection[]): void {
+    logTrace(
+      {
+        template: this._templateName ?? '',
+        chain: this._openTemplates,
+        ms: performance.now() - started,
+        sections,
+      },
+      this._hass,
+    );
   }
 
   /*
@@ -607,13 +646,24 @@ abstract class DeclutteringElement extends LitElement {
     variables: VariablesConfig[] | undefined,
     cardStyle?: string,
     templateName?: string,
+    trace?: BuildTrace,
   ): string {
     let styles = '';
     if (templateConfig.style) {
-      styles += deepReplace(variables, templateConfig, templateConfig.style, templateName, this._hass);
+      styles += deepReplace(
+        variables,
+        templateConfig,
+        templateConfig.style,
+        templateName,
+        this._hass,
+        false,
+        undefined,
+        0,
+        trace,
+      );
     }
     if (cardStyle) {
-      styles += deepReplace(variables, templateConfig, cardStyle, templateName, this._hass);
+      styles += deepReplace(variables, templateConfig, cardStyle, templateName, this._hass, false, undefined, 0, trace);
     }
     return styles;
   }
@@ -649,10 +699,8 @@ abstract class DeclutteringElement extends LitElement {
   ): void {
     // Anything inside this card is told which templates are open above it, so a card that
     // ends up using a template already being drawn can refuse instead of going round again.
-    const stamped = withInherited(
-      withChain(thingConfig, chainWith(this._openTemplates, this._templateName)),
-      inherited,
-    );
+    const chained = withChain(thingConfig, chainWith(this._openTemplates, this._templateName));
+    const stamped = withInherited(this._trace ? withTrace(chained) : chained, inherited);
     this._style = styles;
     this._thingConfig = stamped;
     this._thingType = thingType;
@@ -728,17 +776,46 @@ abstract class DeclutteringElement extends LitElement {
 
     // The card's own `card:` block is laid over every copy alike.
     // Each copy hands down its own item's values, so it is stamped here rather than as a whole.
+    const started = performance.now();
+    const sections: TraceSection[] = [];
     const cards = wanted.map((item, index) => {
       const variables = forEachVariables(item, config.variables, index, wanted.length);
-      return withInherited(
-        applyOverride(
-          deepReplace(variables, templateConfig, templateConfig.card, config.template, this._hass),
-          config,
-          'card',
+      const trace = this._trace ? newTrace() : undefined;
+      // What the item and its position set, as opposed to what the card set for every copy.
+      // The item beats the card, and the card beats the position, as forEachVariables orders them.
+      const names = (list: unknown): string[] => ownVariables(list).map((entry) => Object.keys(entry)[0]);
+      const repeated = trace
+        ? [
+            ...names(item),
+            ...['index', 'index0', 'count', 'first', 'last'].filter((name) => !names(config.variables).includes(name)),
+          ]
+        : [];
+      const built = applyOverride(
+        deepReplace(
+          variables,
+          templateConfig,
+          templateConfig.card,
+          config.template,
+          this._hass,
+          false,
+          undefined,
+          0,
+          trace,
         ),
-        () => this._handDown(variables, templateConfig, config.template),
+        config,
+        'card',
       );
+      if (trace) {
+        sections.push({
+          label: localize('trace.copy', { number: index + 1, count: wanted.length }, this._hass),
+          variables: variableRows(variables, templateConfig, this._handedDown, repeated),
+          trace,
+          built: withoutStamps(built),
+        });
+      }
+      return withInherited(built, () => this._handDown(variables, templateConfig, config.template));
     });
+    if (this._trace) this._logBuild(started, sections);
 
     // The styles belong to the whole card rather than to any one copy, and resolve against
     // the real template so its declared defaults still apply.
@@ -1125,6 +1202,7 @@ class DeclutteringCard extends DeclutteringElement {
     this._openTemplates = chainOf(config);
     this._templateName = config.template;
     // Whatever the card around it handed down, read from here on as if written on this card.
+    this._handedDown = handedDownNames(config);
     config = withInheritedVariables(config);
 
     // Said here rather than thrown: Home Assistant collapses a card that throws in
@@ -1180,6 +1258,7 @@ class DeclutteringCard extends DeclutteringElement {
     this._applyGap(config.gap);
     this._strict = config.strict === true;
     this._debug = config.debug === 'yaml' ? 'yaml' : config.debug === true ? 'json' : false;
+    this._trace = wantsTrace(config);
     // What the card asks for beats what the template says it wants.
     this._gridOptions = config.grid_options ?? (templateConfig as { grid_options?: unknown }).grid_options;
     this._warnMisplacedOverrides(templateConfig, config);
