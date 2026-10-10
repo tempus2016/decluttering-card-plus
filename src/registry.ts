@@ -466,6 +466,18 @@ function excluded(exclude: RegistrySource['exclude']): RegistrySource | undefine
   return { entities: exclude as string | string[] };
 }
 
+/**
+ * Whether one entity passes a set of filters, its `exclude` included - the same test a
+ * repeat over entities puts each one through, for asking about a single entity.
+ */
+export function entityPasses(hass: any, entityId: string, source: RegistrySource): boolean {
+  if (!source || typeof source !== 'object') return false;
+  const entity = hass?.entities?.[entityId];
+  if (!entityMatches(hass, entityId, entity, source)) return false;
+  const drop = excluded(source.exclude);
+  return !(drop && entityMatches(hass, entityId, entity, drop));
+}
+
 function entityItems(hass: any, source: RegistrySource): Record<string, any>[] {
   const drop = excluded(source.exclude);
   const items: Record<string, any>[] = [];
