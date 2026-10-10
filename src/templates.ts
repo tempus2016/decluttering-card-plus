@@ -1,6 +1,14 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
-import { OWN_DEFAULTS, VIEW_VALUES, diagnoseInstance, forEachNames, normaliseVariables } from './variables';
+import {
+  OWN_DEFAULTS,
+  VIEW_VALUES,
+  VariableDeclaration,
+  diagnoseInstance,
+  forEachNames,
+  getDeclarations,
+  normaliseVariables,
+} from './variables';
 import { isRegistrySource, registryNames } from './registry';
 import { localize } from './localize';
 
@@ -23,6 +31,10 @@ const DEFAULTS_KEY = 'decluttering_defaults';
  * when there is no such dashboard, looking for it costs one quiet request per page.
  */
 export const LIBRARY_DASHBOARD = 'decluttering-templates';
+
+// Variable declarations every template on the dashboard can take up by name, so a
+// selector, label and default written once serve every template that uses the variable.
+const DECLARATIONS_KEY = 'decluttering_variables';
 
 // The original dashboard has no url_path of its own; the websocket API wants null for it.
 const DEFAULT_DASHBOARD_PATHS = ['lovelace', 'default', ''];
@@ -450,6 +462,40 @@ function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<stri
   return templates;
 }
 
+/** The declarations a dashboard shares, in the same shape as a template's own `variables:`. */
+export function collectSharedDeclarations(ll: LovelaceConfig | null | undefined): VariableDeclaration[] {
+  return getDeclarations({ variables: (ll as any)?.[DECLARATIONS_KEY] } as TemplateConfig);
+}
+
+/**
+ * A template's declarations with the shared ones of the same name underneath, so
+ * `{ name: colour }` takes the whole shared declaration and anything written beside the
+ * name - a different description, say - wins. Only names the template declares are
+ * touched; sharing a declaration never adds a variable to a template that has no use for it.
+ */
+export function withSharedDeclarations(template: TemplateConfig, shared: VariableDeclaration[]): TemplateConfig {
+  if (!shared.length || !Array.isArray(template?.variables)) return template;
+  const byName = new Map<string, VariableDeclaration>();
+  for (const declaration of shared) if (!byName.has(declaration.name)) byName.set(declaration.name, declaration);
+  let changed = false;
+  const variables = template.variables.map((entry: any) => {
+    const base = entry && typeof entry === 'object' ? byName.get(entry.name) : undefined;
+    if (!base) return entry;
+    changed = true;
+    return { ...base, ...entry };
+  });
+  return changed ? ({ ...template, variables } as TemplateConfig) : template;
+}
+
+function withShared(
+  templates: Record<string, TemplateConfig>,
+  shared: VariableDeclaration[],
+): Record<string, TemplateConfig> {
+  if (!shared.length) return templates;
+  for (const name of Object.keys(templates)) templates[name] = withSharedDeclarations(templates[name], shared);
+  return templates;
+}
+
 /*
  * A template card previews the definition it is handed rather than the saved one: in the
  * edit dialog that is the change being typed, which the dashboard has not seen yet. So it
@@ -474,7 +520,7 @@ export function collectTemplates(
   own?: DeclutteringTemplateConfig,
   section?: number,
 ): Record<string, TemplateConfig> {
-  const templates = resolveExtends(withOwn(collectRawTemplates(ll), own));
+  const templates = resolveExtends(withShared(withOwn(collectRawTemplates(ll), own), collectSharedDeclarations(ll)));
   const here = collectViewDefaults(ll, view, section);
   const shared = collectDefaults(ll);
   if (!here.length && !shared.length) return templates;
@@ -614,6 +660,7 @@ export async function collectAllTemplates(
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
   const viewValues = collectViewDefaults(ll, view, section);
   const here = collectDefaults(ll);
+  const declaredHere = collectSharedDeclarations(ll);
   const borrowed: Record<string, TemplateConfig> = {};
   for (const config of configs) {
     /*
@@ -624,8 +671,10 @@ export async function collectAllTemplates(
      * folded the lender's in already, ahead of ours.
      */
     const shared = [...here, ...collectDefaults(config)];
+    // Shared declarations travel the same way, this dashboard's ahead of the lender's.
+    const declarations = [...declaredHere, ...collectSharedDeclarations(config)];
     for (const [name, template] of Object.entries(collectRawTemplates(config))) {
-      borrowed[name] = withDefaults(template, viewValues, shared);
+      borrowed[name] = withDefaults(withSharedDeclarations(template, declarations), viewValues, shared);
     }
   }
   return resolveExtends({ ...borrowed, ...local });
