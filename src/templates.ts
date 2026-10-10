@@ -1,6 +1,6 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
-import { VIEW_VALUES, diagnoseInstance, forEachNames, normaliseVariables } from './variables';
+import { OWN_DEFAULTS, VIEW_VALUES, diagnoseInstance, forEachNames, normaliseVariables } from './variables';
 import { isRegistrySource, registryNames } from './registry';
 import { localize } from './localize';
 
@@ -418,7 +418,10 @@ export function viewIndexFromPath(ll: LovelaceConfig | null | undefined, segment
 function withDefaults(template: TemplateConfig, view: VariablesConfig[], shared: VariablesConfig[]): TemplateConfig {
   if (!view.length && !shared.length) return template;
   const copy: any = { ...template };
-  if (shared.length) copy.default = [...normaliseVariables(template.default), ...shared];
+  if (shared.length) {
+    copy.default = [...normaliseVariables(template.default), ...shared];
+    copy[OWN_DEFAULTS] = template.default;
+  }
   if (view.length) copy[VIEW_VALUES] = view;
   return copy;
 }

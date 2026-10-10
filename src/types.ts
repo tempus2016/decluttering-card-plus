@@ -26,6 +26,8 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   debug?: boolean | 'yaml';
   /** Turns what is normally a warning into a card that refuses to render. */
   strict?: boolean;
+  /** Inside another template: be handed every variable of the card that builds this one. */
+  inherit_variables?: boolean;
   /** Whether this card keeps a box of its own in the layout, or gets out of the way. */
   fit?: 'box' | 'contents';
 }

@@ -684,6 +684,53 @@ export function resolveVariables(
   return firstDefinitionWins(combined);
 }
 
+/**
+ * Where a template copy keeps its own `default:` list once the dashboard's shared values
+ * have been added under it, so what a card hands down can leave the shared ones out.
+ */
+export const OWN_DEFAULTS = Symbol('decluttering own defaults');
+
+/** The flag a nested card sets to be handed every variable of the card that builds it. */
+export const INHERIT_FLAG = 'inherit_variables';
+
+/** The key the variables handed down ride on, the same way the chain of open templates does. */
+export const INHERITED_KEY = 'decluttering_inherited_variables';
+
+/*
+ * What a card hands down to a nested card that asks for its variables (#161): what it was
+ * given, what its view sets, and what its own template defaults to. Not `let:` - those are
+ * the template's own internals - and not the dashboard's shared values, which the nested
+ * card already reads for itself and which would otherwise beat its own template's defaults.
+ * Dotted copies of mappings are left out too; the nested card works those out again.
+ */
+export function inheritableVariables(
+  variables: VariablesConfig[] | VariablesConfig | undefined,
+  template: TemplateConfig | undefined,
+): VariablesConfig[] {
+  const combined: VariablesConfig[] = [];
+  combined.push(...ownVariables(variables));
+  combined.push(...ownVariables((template as any)?.[VIEW_VALUES]));
+  for (const declaration of getDeclarations(template)) {
+    if ('default' in declaration) combined.push({ [declaration.name]: declaration.default });
+  }
+  // Checked with `in`: a template with no `default:` of its own keeps an undefined here, and
+  // falling back on that would hand down the shared values after all.
+  const own = template && OWN_DEFAULTS in template ? (template as any)[OWN_DEFAULTS] : template?.default;
+  combined.push(...ownVariables(own));
+  return firstDefinitionWins(combined);
+}
+
+/*
+ * A card with `inherit_variables: true` and something handed down to it, as if it had
+ * written those variables itself - after its own, so anything it does write still wins.
+ * Everything downstream then reads them the way it reads any instance variable.
+ */
+export function withInheritedVariables<T extends { variables?: unknown }>(config: T): T {
+  const inherited = (config as any)?.[INHERITED_KEY];
+  if ((config as any)?.[INHERIT_FLAG] !== true || !Array.isArray(inherited) || !inherited.length) return config;
+  return { ...config, variables: [...ownVariables(config.variables), ...ownVariables(inherited)] };
+}
+
 /** What each variable is set to, reading one name per entry as substitution does. */
 export function variableValues(variableArray: VariablesConfig[] | VariablesConfig | undefined): Record<string, any> {
   // No prototype, so `key in map` answers about this dashboard's variables rather than about

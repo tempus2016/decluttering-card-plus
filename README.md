@@ -154,7 +154,8 @@ Templates][wiki-defining].
 - **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
   every other dashboard, or from all of them at once with `'*'`.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
-  and `category:` groups a big collection in the picker.
+  and `category:` groups a big collection in the picker. A card nested inside a template
+  can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
 - **One-off tweaks without a new template** *(v1.12.0+)* — a card's own `card:` block is laid over what
   its template builds, so a single card can change an icon or an action and nothing else.
   Mappings merge key by key, lists replace, and `null` drops a key the template sets.
@@ -268,6 +269,37 @@ go2rtc: '[[go2rtc_block|if:live_provider=go2rtc?]]'
 `bool` *(v1.12.0+)* is for options that want a real `true` or `false`. A card reads the
 word `"false"` as switched on, so `hide_state: '[[compact|bool]]'` turns `yes`, `on` or
 `1` into `true`, and `no`, `off`, `0`, nothing at all or an unset variable into `false`.
+
+## Templates inside templates
+
+A template can hold decluttering cards of its own, a stack of two cameras say. Each of those
+gets only the variables written on it, so a stack that needs the same twenty values in both
+cards has to pass every one down by name.
+
+`inherit_variables: true` *(v1.13.0+)* on the nested card hands it everything the card
+around it has instead: what that card was given, what its view sets and what its template
+defaults to. Anything the nested card writes for itself still wins.
+
+```yaml
+cam_backup:
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:decluttering-card-plus
+        template: camera
+        inherit_variables: true
+      - type: custom:decluttering-card-plus
+        template: camera
+        inherit_variables: true
+        variables:
+          - camera_entity: '[[direct_camera_entity]]'   # this one differs
+```
+
+Placeholders in the values are filled in by the outer card before they are handed down, and
+it works through any number of levels as long as each nested card asks. Two things stay
+behind: the outer template's `let:` values, which are its own internals, and the dashboard's
+`decluttering_defaults`, which every card reads for itself anyway. It is off unless asked
+for, because a value handed down beats the nested template's own default for the same name.
 
 ## Working out what a card built
 

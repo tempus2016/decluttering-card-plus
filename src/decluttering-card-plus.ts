@@ -93,6 +93,7 @@ import {
   forEachNames,
   forEachVariables,
   getDeclarations,
+  inheritableVariables,
   mergeVariables,
   ownVariables,
   POSITION_NAMES,
@@ -101,8 +102,19 @@ import {
   variableName,
   variableValues,
   VariableDeclaration,
+  withInheritedVariables,
 } from './variables';
-import { chainOf, chainWith, describeCycle, describeTooDeep, findCycle, MAX_NESTING, withChain } from './cycles';
+import {
+  chainOf,
+  chainWith,
+  describeCycle,
+  describeTooDeep,
+  findCycle,
+  MAX_NESTING,
+  withChain,
+  withInherited,
+  withoutStamps,
+} from './cycles';
 import { columnsFor } from './layout';
 import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
 import { loadLabels } from './labels';
@@ -560,6 +572,8 @@ abstract class DeclutteringElement extends LitElement {
     this._templateName = templateName ?? this._templateName;
     const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
     const unresolved: string[] = [];
+    // Only a card that uses a template has variables to hand down; a template's own preview does not.
+    const inherited = instance ? (): unknown[] => this._handDown(variables, templateConfig, templateName) : undefined;
     this._setResolved(
       thingType,
       applyOverride(
@@ -570,6 +584,7 @@ abstract class DeclutteringElement extends LitElement {
         thingType,
       ),
       this._resolveStyles(templateConfig, variables, cardStyle, templateName),
+      inherited,
     );
     this._refuseIfStrict(unresolved);
   }
@@ -603,10 +618,41 @@ abstract class DeclutteringElement extends LitElement {
     return styles;
   }
 
-  private _setResolved(thingType: LovelaceThingType, thingConfig: LovelaceThingConfig, styles: string): void {
+  /*
+   * What this card hands down to a nested card that asks for its variables, with any
+   * placeholders in them filled in here - in the nested card they would be read against
+   * the wrong values. An optional placeholder that nothing fills drops its entry.
+   */
+  private _handDown(
+    variables: VariablesConfig[] | undefined,
+    templateConfig: TemplateConfig,
+    templateName?: string,
+  ): unknown[] {
+    const list = deepReplace(
+      variables,
+      templateConfig,
+      inheritableVariables(variables, templateConfig),
+      templateName,
+      this._hass,
+      true,
+    );
+    return (Array.isArray(list) ? list : []).filter(
+      (entry: unknown) => !!entry && typeof entry === 'object' && Object.keys(entry as object).length > 0,
+    );
+  }
+
+  private _setResolved(
+    thingType: LovelaceThingType,
+    thingConfig: LovelaceThingConfig,
+    styles: string,
+    inherited?: () => unknown[],
+  ): void {
     // Anything inside this card is told which templates are open above it, so a card that
     // ends up using a template already being drawn can refuse instead of going round again.
-    const stamped = withChain(thingConfig, chainWith(this._openTemplates, this._templateName));
+    const stamped = withInherited(
+      withChain(thingConfig, chainWith(this._openTemplates, this._templateName)),
+      inherited,
+    );
     this._style = styles;
     this._thingConfig = stamped;
     this._thingType = thingType;
@@ -665,6 +711,7 @@ abstract class DeclutteringElement extends LitElement {
         'card',
         config.empty as LovelaceThingConfig,
         this._resolveStyles(templateConfig, config.variables, config.style, config.template),
+        () => this._handDown(config.variables, templateConfig, config.template),
       );
       return;
     }
@@ -680,19 +727,18 @@ abstract class DeclutteringElement extends LitElement {
     }
 
     // The card's own `card:` block is laid over every copy alike.
-    const cards = wanted.map((item, index) =>
-      applyOverride(
-        deepReplace(
-          forEachVariables(item, config.variables, index, wanted.length),
-          templateConfig,
-          templateConfig.card,
-          config.template,
-          this._hass,
+    // Each copy hands down its own item's values, so it is stamped here rather than as a whole.
+    const cards = wanted.map((item, index) => {
+      const variables = forEachVariables(item, config.variables, index, wanted.length);
+      return withInherited(
+        applyOverride(
+          deepReplace(variables, templateConfig, templateConfig.card, config.template, this._hass),
+          config,
+          'card',
         ),
-        config,
-        'card',
-      ),
-    );
+        () => this._handDown(variables, templateConfig, config.template),
+      );
+    });
 
     // The styles belong to the whole card rather than to any one copy, and resolve against
     // the real template so its declared defaults still apply.
@@ -909,7 +955,7 @@ abstract class DeclutteringElement extends LitElement {
               }
             </p>
             <pre>
-${this._debug === 'yaml' ? toYaml(this._thingConfig) : JSON.stringify(this._thingConfig, null, 2)}</pre>
+${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.stringify(withoutStamps(this._thingConfig), null, 2)}</pre>
           </div>
         </ha-card>
       `;
@@ -1078,6 +1124,8 @@ class DeclutteringCard extends DeclutteringElement {
      */
     this._openTemplates = chainOf(config);
     this._templateName = config.template;
+    // Whatever the card around it handed down, read from here on as if written on this card.
+    config = withInheritedVariables(config);
 
     // Said here rather than thrown: Home Assistant collapses a card that throws in
     // setConfig to "Configuration error" with the reason hidden, and the reason - which

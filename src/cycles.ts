@@ -1,5 +1,6 @@
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE } from './templates';
 import { localize } from './localize';
+import { INHERIT_FLAG, INHERITED_KEY } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -107,4 +108,52 @@ export function withChain<T>(config: T, chain: string[]): T {
   };
   walk(copy);
   return copy;
+}
+
+/*
+ * The variables a card hands down, stamped on each nested card that asks for them with
+ * `inherit_variables: true` (#161). Worked out only when one is found, since most cards
+ * hold none. A card that has already been given its values - a repeated copy, stamped with
+ * that copy's own - keeps them. Like the chain, a nested card's own content is built from
+ * its template, so the walk stops at it.
+ */
+export function withInherited<T>(config: T, values: (() => unknown[]) | undefined): T {
+  if (!values || !wantsInherited(config)) return config;
+
+  const list = values();
+  const copy = JSON.parse(JSON.stringify(config));
+  const walk = (node: any): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.type === 'string' && CONSUMER_TYPES.includes(node.type)) {
+      if (node[INHERIT_FLAG] === true && node[INHERITED_KEY] === undefined) node[INHERITED_KEY] = list;
+      return;
+    }
+    Object.values(node).forEach(walk);
+  };
+  walk(copy);
+  return copy;
+}
+
+function wantsInherited(node: any): boolean {
+  if (Array.isArray(node)) return node.some(wantsInherited);
+  if (!node || typeof node !== 'object') return false;
+  if (typeof node.type === 'string' && CONSUMER_TYPES.includes(node.type)) {
+    return node[INHERIT_FLAG] === true && node[INHERITED_KEY] === undefined;
+  }
+  return Object.values(node).some(wantsInherited);
+}
+
+/*
+ * A built config as somebody wrote it, for the debug view: the chain and the handed-down
+ * variables are bookkeeping between cards, and on a nested card the variables can run to
+ * dozens of lines that bury what was actually built.
+ */
+export function withoutStamps<T>(config: T): T {
+  return JSON.parse(JSON.stringify(config ?? null), (key, value) =>
+    key === CHAIN_KEY || key === INHERITED_KEY ? undefined : value,
+  );
 }
