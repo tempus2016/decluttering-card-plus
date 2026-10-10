@@ -11,7 +11,10 @@ const {
   describeCycle,
   describeTooDeep,
   withChain,
+  withInherited,
+  withoutStamps,
 } = require('../.test-build/cycles.js');
+const { INHERITED_KEY } = require('../.test-build/variables.js');
 
 const { check, report } = require('./harness');
 
@@ -176,6 +179,69 @@ check(
   withChain({ type: 'vertical-stack', cards: [{ type: 'custom:decluttering-template-plus', template: 'X' }] }, ['top'])
     .cards[0][CHAIN_KEY],
   ['top'],
+);
+
+/* --------------------------------------------------------------- handing variables down (#161) */
+
+const asking = (extra = {}) => ({
+  type: 'custom:decluttering-card-plus',
+  template: 'inner',
+  inherit_variables: true,
+  ...extra,
+});
+const handed = [{ camera: 'camera.porch' }];
+
+check(
+  'a nested card that asks is handed the values',
+  withInherited({ type: 'vertical-stack', cards: [asking()] }, () => handed).cards[0][INHERITED_KEY],
+  handed,
+);
+check(
+  'a nested card that does not ask is left alone',
+  withInherited(
+    { type: 'vertical-stack', cards: [{ type: 'custom:decluttering-card-plus', template: 'inner' }] },
+    () => handed,
+  ).cards[0][INHERITED_KEY],
+  undefined,
+);
+let asked = 0;
+const counted = () => {
+  asked += 1;
+  return handed;
+};
+withInherited({ type: 'vertical-stack', cards: [{ type: 'tile' }] }, counted);
+check('the values are not worked out when nothing asks for them', asked, 0);
+check(
+  'a card that has its values already keeps them',
+  withInherited({ type: 'vertical-stack', cards: [asking({ [INHERITED_KEY]: [{ a: 1 }] })] }, () => handed).cards[0][
+    INHERITED_KEY
+  ],
+  [{ a: 1 }],
+);
+const original = { type: 'vertical-stack', cards: [asking()] };
+withInherited(original, () => handed);
+check('the config it was given is not written to', original.cards[0][INHERITED_KEY], undefined);
+check(
+  'the walk stops at a nested card - what is inside it is its own business',
+  withInherited(asking({ variables: [{ car: asking() }] }), () => handed).variables[0].car[INHERITED_KEY],
+  undefined,
+);
+check(
+  'no values function hands nothing down',
+  withInherited({ cards: [asking()] }, undefined).cards[0][INHERITED_KEY],
+  undefined,
+);
+
+check(
+  'the debug view leaves out the chain and the handed-down values, at any depth',
+  withoutStamps({
+    type: 'vertical-stack',
+    cards: [asking({ [CHAIN_KEY]: ['outer'], [INHERITED_KEY]: handed })],
+  }),
+  {
+    type: 'vertical-stack',
+    cards: [{ type: 'custom:decluttering-card-plus', template: 'inner', inherit_variables: true }],
+  },
 );
 
 report();

@@ -27,6 +27,11 @@ const {
   forEachNames,
   forEachItems,
   normaliseVariables,
+  inheritableVariables,
+  withInheritedVariables,
+  INHERITED_KEY,
+  OWN_DEFAULTS,
+  VIEW_VALUES,
   validateDeclared,
   groupDeclarations,
   isCardDeclaration,
@@ -936,6 +941,91 @@ check(
   'an allowed number matches the same number written as text, which is what a dropdown gives back',
   validateDeclared([{ size: '2' }], { card: {}, variables: [{ name: 'size', allowed: [1, 2] }] }),
   [],
+);
+
+/* --------------------------------------------------------------- handing variables down (#161) */
+
+check(
+  'a card hands down what it was given, what its view sets, and its template defaults',
+  inheritableVariables([{ camera: 'camera.porch' }], {
+    card: {},
+    variables: [{ name: 'light_show', default: true }],
+    default: [{ weather_show: false }],
+    [VIEW_VALUES]: [{ room: 'porch' }],
+  }),
+  [{ camera: 'camera.porch' }, { room: 'porch' }, { light_show: true }, { weather_show: false }],
+);
+check(
+  'what the card was given beats its template default',
+  inheritableVariables([{ light_show: false }], { card: {}, variables: [{ name: 'light_show', default: true }] }),
+  [{ light_show: false }],
+);
+check(
+  'let: values stay inside the template',
+  inheritableVariables([{ a: 1 }], { card: {}, let: [{ derived: '[[a]]' }] }),
+  [{ a: 1 }],
+);
+check(
+  "the dashboard's shared values are not handed down - the nested card reads them itself",
+  inheritableVariables([], { card: {}, default: [{ own: 1 }, { shared: 2 }], [OWN_DEFAULTS]: [{ own: 1 }] }),
+  [{ own: 1 }],
+);
+check(
+  'nor when the template has no default: list of its own',
+  inheritableVariables([], { card: {}, default: [{ shared: 2 }], [OWN_DEFAULTS]: undefined }),
+  [],
+);
+check(
+  'dotted copies of a mapping are left for the nested card to work out',
+  inheritableVariables([{ room: { light: 'light.porch' } }], { card: {} }),
+  [{ room: { light: 'light.porch' } }],
+);
+check('a mapping of variables is handed down like a list', inheritableVariables({ a: 1, b: 2 }, { card: {} }), [
+  { a: 1 },
+  { b: 2 },
+]);
+
+check(
+  'a card that asks reads what it was handed after its own',
+  withInheritedVariables({
+    template: 'x',
+    inherit_variables: true,
+    variables: [{ weather_show: true }],
+    [INHERITED_KEY]: [{ weather_show: false }, { camera: 'camera.porch' }],
+  }).variables,
+  [{ weather_show: true }, { weather_show: false }, { camera: 'camera.porch' }],
+);
+check(
+  'its own value wins once resolved',
+  variableValues(
+    resolveVariables(
+      withInheritedVariables({
+        template: 'x',
+        inherit_variables: true,
+        variables: { weather_show: true },
+        [INHERITED_KEY]: [{ weather_show: false }],
+      }).variables,
+      { card: {} },
+    ),
+  ).weather_show,
+  true,
+);
+check(
+  'what it is handed beats its own template default',
+  variableValues(
+    resolveVariables(
+      withInheritedVariables({ template: 'x', inherit_variables: true, [INHERITED_KEY]: [{ size: 3 }] }).variables,
+      { card: {}, variables: [{ name: 'size', default: 1 }] },
+    ),
+  ).size,
+  3,
+);
+const notAsking = { template: 'x', variables: [{ a: 1 }], [INHERITED_KEY]: [{ b: 2 }] };
+check('a card that does not ask ignores anything handed to it', withInheritedVariables(notAsking), notAsking);
+check(
+  'only a real true turns it on',
+  withInheritedVariables({ template: 'x', inherit_variables: 'yes', [INHERITED_KEY]: [{ b: 2 }] }).variables,
+  undefined,
 );
 
 report();
