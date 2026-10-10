@@ -1,5 +1,6 @@
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
+import { BuildTrace } from './trace';
 import {
   answersUnset,
   applyTransform,
@@ -105,6 +106,23 @@ function kindOf(value: unknown): string {
   return localize(Array.isArray(value) ? 'warn.kind_list' : 'warn.kind_mapping');
 }
 
+/*
+ * For `debug: console`: what a placeholder became, read back out of the JSON text it was
+ * turned into. One left as it was is not noted here - why it stayed is only known once every
+ * pass is done, so the end of deepReplace says.
+ */
+function noted(trace: BuildTrace | undefined, placeholder: string, out: string, whole: boolean): string {
+  if (!trace || trace.placeholders.has(placeholder)) return out;
+  const unchanged = whole ? out === `"${placeholder}"` : out === placeholder;
+  if (unchanged) return out;
+  try {
+    trace.placeholders.set(placeholder, JSON.parse(whole ? out : `"${out}"`));
+  } catch {
+    trace.placeholders.set(placeholder, out);
+  }
+  return out;
+}
+
 function substitutePass(
   jsonConfig: string,
   variableArray: VariablesConfig[],
@@ -113,6 +131,7 @@ function substitutePass(
   values: Record<string, any>,
   hass?: any,
   limit?: number,
+  trace?: BuildTrace,
 ): string {
   let json = jsonConfig;
   for (const variable of variableArray) {
@@ -217,10 +236,10 @@ function substitutePass(
     };
 
     json = json.replace(wholeValue, (match: string, rawTransform?: string, rawOptional?: string) =>
-      substitute(match, rawTransform, rawOptional, true),
+      noted(trace, match.slice(1, -1), substitute(match, rawTransform, rawOptional, true), true),
     );
     json = json.replace(withinString, (match: string, rawTransform?: string, rawOptional?: string) =>
-      substitute(match, rawTransform, rawOptional, false),
+      noted(trace, match, substitute(match, rawTransform, rawOptional, false), false),
     );
   }
   return json;
@@ -269,14 +288,21 @@ function isEmptyOption(value: unknown): boolean {
  */
 const GONE = Symbol('gone');
 
-function pruneBlock(value: any): any {
-  if (isEmptyOption(value)) return GONE;
+function pruneBlock(value: any, path = '', dropped?: string[]): any {
+  if (isEmptyOption(value)) {
+    dropped?.push(localize('trace.dropped_option', { path: path || '/', placeholder: value }));
+    return GONE;
+  }
   if (Array.isArray(value)) {
     if (!value.length) return value;
     // A dropped item leaves no hole: a list of cards with one missing is a shorter list,
     // not a list with a gap in it.
-    const kept = value.map((item) => pruneBlock(item)).filter((item) => item !== GONE);
-    return kept.length ? kept : GONE;
+    const kept = value
+      .map((item, index) => pruneBlock(item, `${path}[${index}]`, dropped))
+      .filter((item) => item !== GONE);
+    if (kept.length) return kept;
+    if (path) dropped?.push(localize('trace.dropped_block', { path }));
+    return GONE;
   }
   if (value && typeof value === 'object') {
     const entries = Object.entries(value);
@@ -287,19 +313,21 @@ function pruneBlock(value: any): any {
     const out: Record<string, any> = Object.create(null);
     if (!entries.length) return out;
     for (const [key, entry] of entries) {
-      const pruned = pruneBlock(entry);
+      const pruned = pruneBlock(entry, path ? `${path}.${key}` : key, dropped);
       if (pruned !== GONE) out[key] = pruned;
     }
-    return Object.keys(out).length ? out : GONE;
+    if (Object.keys(out).length) return out;
+    if (path) dropped?.push(localize('trace.dropped_block', { path }));
+    return GONE;
   }
   return pruneEmptyOptions(value);
 }
 
-function pruneEmptyOptions(value: any): any {
+function pruneEmptyOptions(value: any, dropped?: string[]): any {
   if (Array.isArray(value) || (value && typeof value === 'object')) {
     // The card itself is never taken away, however little is left of it: an empty one is
     // still the card that was asked for, and says so more clearly than nothing at all.
-    const pruned = pruneBlock(value);
+    const pruned = pruneBlock(value, '', dropped);
     if (pruned !== GONE) return pruned;
     return Array.isArray(value) ? [] : Object.create(null);
   }
@@ -323,6 +351,7 @@ function fallbackPass(
   values: Record<string, any>,
   read: (name: string) => unknown,
   hass?: any,
+  trace?: BuildTrace,
 ): string {
   // An empty stand-in is still a gap, so an optional placeholder that ends up with one is
   // left for the pruning pass to take out - `[[name|default:?]]` drops the key, as
@@ -337,11 +366,16 @@ function fallbackPass(
   json = json.replace(/"\[\[([^[\]]+)\]\]"/g, (match: string, inside: string) => {
     const text = standIn(inside);
     if (text === undefined) return match;
-    return asShapedWholeValue(text, withoutOptional(inside).split('|').slice(1).join('|'));
+    return noted(
+      trace,
+      `[[${inside}]]`,
+      asShapedWholeValue(text, withoutOptional(inside).split('|').slice(1).join('|')),
+      true,
+    );
   });
   return json.replace(/\[\[([^[\]]+)\]\]/g, (match: string, inside: string) => {
     const text = standIn(inside);
-    return text === undefined ? match : escapeForJsonString(text);
+    return text === undefined ? match : noted(trace, match, escapeForJsonString(text), false);
   });
 }
 
@@ -356,6 +390,28 @@ function hasFallback(jsonConfig: string): boolean {
   return false;
 }
 
+/*
+ * The placeholders still standing once every pass is done, and why: an optional one found
+ * nothing and is about to be taken out, a refused one says what refused it, and anything else
+ * is a name nothing sets. Escaped ones are meant to be there, so they are not mentioned.
+ */
+function noteLeftStanding(trace: BuildTrace, json: string, refused: Map<string, Refusal>): void {
+  const everyPlaceholder = new RegExp(PLACEHOLDER.source, 'g');
+  let match = everyPlaceholder.exec(json);
+  while (match) {
+    const placeholder = match[0];
+    const inside = match[1];
+    if (!inside.startsWith(ESCAPE) && !trace.placeholders.has(placeholder)) {
+      const refusal = refused.get(inside) ?? refused.get(withoutOptional(inside));
+      const why = refusal
+        ? localize('trace.left_refused', { why: refusal.text })
+        : localize(isOptional(inside) ? 'trace.left_empty' : 'trace.left_unset');
+      trace.placeholders.set(placeholder, why);
+    }
+    match = everyPlaceholder.exec(json);
+  }
+}
+
 function deepReplace(
   variables: VariablesConfig[] | undefined,
   templateConfig: TemplateConfig,
@@ -365,6 +421,7 @@ function deepReplace(
   quiet?: boolean,
   onUnresolved?: (names: string[]) => void,
   depth = 0,
+  trace?: BuildTrace,
 ): any {
   if (content === undefined) return content;
   const variableArray = resolveVariables(variables, templateConfig);
@@ -395,7 +452,7 @@ function deepReplace(
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
       const before = jsonConfig;
-      jsonConfig = substitutePass(jsonConfig, variableArray, refused, read, values, hass, limit);
+      jsonConfig = substitutePass(jsonConfig, variableArray, refused, read, values, hass, limit, trace);
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
@@ -429,7 +486,8 @@ function deepReplace(
   // Anything still saying `default:`, `or:` or `bool` gets its turn now, whether or not there were
   // any variables to substitute in the first place.
   const fallbacks = hasFallback(jsonConfig);
-  if (fallbacks) jsonConfig = fallbackPass(jsonConfig, values, read, hass);
+  if (fallbacks) jsonConfig = fallbackPass(jsonConfig, values, read, hass, trace);
+  if (trace) noteLeftStanding(trace, jsonConfig, refused);
 
   /*
    * A variable nobody set renders as the literal `[[name]]` on the card. The editors
@@ -464,7 +522,7 @@ function deepReplace(
   const nothingToDo = !variableArray.length && !hasOptional && !fallbacks && !hasEscape(jsonConfig);
   if (nothingToDo) return content;
 
-  const pruned = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig)) : JSON.parse(jsonConfig);
+  const pruned = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig), trace?.dropped) : JSON.parse(jsonConfig);
   if (!hasEscape(jsonConfig)) return pruned;
   return JSON.parse(unescapePlaceholders(JSON.stringify(pruned)));
 }

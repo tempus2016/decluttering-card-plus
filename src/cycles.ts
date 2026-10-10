@@ -1,6 +1,7 @@
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE } from './templates';
 import { localize } from './localize';
 import { INHERIT_FLAG, INHERITED_KEY } from './variables';
+import { TRACE_KEY } from './trace';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -154,6 +155,6 @@ function wantsInherited(node: any): boolean {
  */
 export function withoutStamps<T>(config: T): T {
   return JSON.parse(JSON.stringify(config ?? null), (key, value) =>
-    key === CHAIN_KEY || key === INHERITED_KEY ? undefined : value,
+    key === CHAIN_KEY || key === INHERITED_KEY || key === TRACE_KEY ? undefined : value,
   );
 }

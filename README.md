@@ -310,6 +310,15 @@ card only misbehaves on a phone, or in a view whose editor is awkward to reach.
 `debug: yaml` *(v1.13.0+)* shows the same thing as YAML rather than JSON, which is easier
 to hold up against a card you know works, or to paste straight back into a dashboard.
 
+`debug: console` *(v1.13.0+)* leaves the card looking as it should and writes how it was
+built to the browser console instead: every variable with where its value came from (the
+card, a `let:`, a default, the view, the card around it), what each placeholder turned into,
+which options an empty variable took out, the finished config, and how long it took. Any
+template card nested inside logs its own entry too, labelled with the templates it sits in,
+so you can see what each level was given. Open the developer tools (F12) and look for
+`decluttering-card-plus:` lines. The time covers building the config, not Home Assistant
+drawing the card afterwards.
+
 `strict: true` turns the usual warnings into a card that refuses. Nothing normally stops a
 card rendering — a template can be edited after the cards that use it — but somebody
 building a template for other people wants the opposite.
