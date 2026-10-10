@@ -160,7 +160,7 @@ Templates][wiki-defining].
   under Community when you pick a matching entity in the dialog's By entity tab, with the
   entity filled in as `entity`. It takes the filters a repeat does: `suggest_for:
   { domain: camera, area: Garden }`. Badge templates are offered in the badge dialog.
-  Needs Home Assistant 2026.6 or later.
+  Needs Home Assistant 2026.6 or later, 2026.7 for badges.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
   and `category:` groups a big collection in the picker. A card nested inside a template
   can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
