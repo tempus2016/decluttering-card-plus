@@ -254,6 +254,7 @@
   "trace.dropped_block": "{path} (não ficou nada dentro)",
 
   "picker.card_description": "Reutilize várias vezes a mesma configuração de cartão com variáveis para organizar a sua configuração.",
+  "picker.published_description": "Um cartão criado a partir do modelo decluttering \"{template}\".",
   "picker.badge_description": "Instancie um modelo cujo conteúdo é um distintivo.",
   "picker.template_description": "Defina um modelo reutilizável para os cartões decluttering instanciarem.",
   "picker.legacy_card_description": "Nome alternativo de compatibilidade para configurações custom:decluttering-card existentes.",

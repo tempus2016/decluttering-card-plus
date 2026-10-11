@@ -254,6 +254,7 @@
   "trace.dropped_block": "{path} (nothing left in it)",
 
   "picker.card_description": "Reuse multiple times the same card configuration with variables to declutter your config.",
+  "picker.published_description": "A card built from the decluttering template \"{template}\".",
   "picker.badge_description": "Instantiate a template whose content is a badge.",
   "picker.template_description": "Define a reusable template for decluttering cards to instantiate.",
   "picker.legacy_card_description": "Compatibility alias for existing custom:decluttering-card configurations.",

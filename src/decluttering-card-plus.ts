@@ -117,7 +117,7 @@ import {
   withoutStamps,
 } from './cycles';
 import { columnsFor } from './layout';
-import { entitySuggestions } from './picker';
+import { entitySuggestions, publishedStub, publishedTemplates } from './picker';
 import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
 import { loadLabels } from './labels';
 import { findRepeatingCard, generateView, sectionPerCopy, wantsLabels } from './strategy';
@@ -3587,6 +3587,7 @@ function refreshSuggestionTemplates(hass: any): void {
   void collectAllTemplates(hass, getLovelaceConfig())
     .then((all) => {
       borrowedForSuggestions = all;
+      publishTemplates();
       // Labels are not on hass, and only a template narrowing by one needs them fetched.
       if (Object.values(all).some((template) => (template.suggest_for as { label?: unknown })?.label)) {
         void loadLabels(hass);
@@ -3602,6 +3603,61 @@ function suggestionsFor(hass: any, entityId: string, kind: 'card' | 'badge'): un
   const found = entitySuggestions(hass, entityId, templates, kind, `custom:${CARD_TAG}`);
   return found.length ? found : null;
 }
+
+/*
+ * Templates with `publish:` are listed in the add-card dialog as cards of their own. The
+ * dialog only knows an entry by its element type, so each one gets an element whose stub
+ * config is an ordinary decluttering card using that template - nothing on a dashboard
+ * ever names the element itself, so a template unpublished or deleted later breaks nothing.
+ */
+const publishedEntries = new Set<unknown>();
+const publishedAs = new Map<string, string>();
+const publishedConfigs = new Map<string, TemplateConfig>();
+
+function publishTemplates(): void {
+  const templates = { ...borrowedForSuggestions, ...collectTemplates(getLovelaceConfig()) };
+  for (const list of [customCards, customBadges]) {
+    for (let i = list.length - 1; i >= 0; i--) if (publishedEntries.has(list[i])) list.splice(i, 1);
+  }
+  publishedEntries.clear();
+  publishedConfigs.clear();
+  for (const [name, template] of Object.entries(templates)) publishedConfigs.set(name, template);
+  for (const published of publishedTemplates(templates)) {
+    publishedAs.set(published.tag, published.template);
+    if (!customElements.get(published.tag)) {
+      const tag = published.tag;
+      customElements.define(
+        tag,
+        class extends DeclutteringCard {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          static getStubConfig(hass?: any): DeclutteringCardConfig {
+            const template = publishedAs.get(tag) ?? '';
+            return publishedStub(hass, template, publishedConfigs.get(template), `custom:${CARD_TAG}`);
+          }
+        },
+      );
+    }
+    const entry = {
+      type: published.tag,
+      documentationURL: DOCUMENTATION_URL,
+      name: published.name,
+      preview: true,
+      description: published.description ?? localize('picker.published_description', { template: published.template }),
+    };
+    publishedEntries.add(entry);
+    (published.kind === 'badge' ? customBadges : customCards).push(entry);
+  }
+}
+
+// The dialog reads the list as it opens, so the list is brought up to date just before.
+window.addEventListener(
+  'show-dialog',
+  (event) => {
+    const tag = (event as CustomEvent).detail?.dialogTag;
+    if (tag === 'hui-dialog-create-card' || tag === 'hui-dialog-create-badge') publishTemplates();
+  },
+  true,
+);
 
 // The page's hass is there a moment after the resources load, not before.
 function preloadSuggestionTemplates(tries = 0): void {
