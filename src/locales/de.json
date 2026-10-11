@@ -254,6 +254,7 @@
   "trace.dropped_block": "{path} (nichts mehr darin)",
 
   "picker.card_description": "Verwende dieselbe Kartenkonfiguration mit Variablen mehrfach, um deine Konfiguration zu entrümpeln.",
+  "picker.published_description": "Eine Karte aus der Decluttering-Vorlage \"{template}\".",
   "picker.badge_description": "Instanziiert eine Vorlage, deren Inhalt ein Badge ist.",
   "picker.template_description": "Definiert eine wiederverwendbare Vorlage, die Decluttering-Karten instanziieren.",
   "picker.legacy_card_description": "Kompatibilitäts-Alias für bestehende custom:decluttering-card-Konfigurationen.",

@@ -50,6 +50,8 @@ export interface TemplateConfig {
   name?: string;
   /** Groups templates in the picker - "Rooms", "Badges" - for dashboards with many. */
   category?: string;
+  /** Lists the template as a card of its own in Home Assistant's add-card dialog; a string names the entry. */
+  publish?: boolean | string;
   /** Which entities Home Assistant's add-card dialog offers this template for. */
   suggest_for?: unknown;
   /** The template this one builds on: its content underneath, this one's last word on top. */

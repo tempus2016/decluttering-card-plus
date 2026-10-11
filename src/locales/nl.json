@@ -254,6 +254,7 @@
   "trace.dropped_block": "{path} (er bleef niets in over)",
 
   "picker.card_description": "Gebruik dezelfde kaartconfiguratie meerdere keren met variabelen om je configuratie op te ruimen.",
+  "picker.published_description": "Een kaart gebouwd uit het decluttering-sjabloon \"{template}\".",
   "picker.badge_description": "Instantieert een sjabloon waarvan de inhoud een badge is.",
   "picker.template_description": "Definieert een herbruikbaar sjabloon voor decluttering-kaarten om te instantiëren.",
   "picker.legacy_card_description": "Compatibiliteitsalias voor bestaande custom:decluttering-card-configuraties.",

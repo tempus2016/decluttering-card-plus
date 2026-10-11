@@ -1,4 +1,4 @@
-const { entitySuggestions } = require('../.test-build/picker.js');
+const { entitySuggestions, publishTag, publishedTemplates, publishedStub } = require('../.test-build/picker.js');
 const { check, report } = require('./harness');
 
 const hass = {
@@ -42,6 +42,62 @@ check(
   'a suggest_for that is not a mapping offers nothing',
   entitySuggestions(hass, 'camera.hall', { odd: { suggest_for: 'camera', card: {} } }, 'card', TYPE),
   [],
+);
+
+/* ----------------------------------------------------------- published templates */
+
+check('a template name becomes a valid element name', publishTag('My Camera!'), 'decluttering-card-plus--my-camera');
+check('a name with nothing usable in it still gets one', publishTag('!!!'), 'decluttering-card-plus--template');
+
+const PUBLISHED = publishedTemplates({
+  house_light: { publish: true, description: 'A light tile', card: { type: 'tile' } },
+  'House Light': { publish: 'The other light', card: { type: 'tile' } },
+  'house-light': { publish: true, card: { type: 'tile' } },
+  quiet_badge: { publish: true, badge: { type: 'entity' } },
+  a_row: { publish: true, row: { entity: 'light.a' } },
+  not_asked: { card: { type: 'tile' } },
+  blank: { publish: '  ', card: { type: 'tile' } },
+});
+const each = (key) => PUBLISHED.map((p) => p[key]);
+check('only templates that ask, and only cards and badges, are listed', each('template'), [
+  'House Light',
+  'house-light',
+  'house_light',
+  'quiet_badge',
+]);
+check('a string names the entry, true uses the template name', each('name'), [
+  'The other light',
+  'house-light',
+  'house_light',
+  'quiet_badge',
+]);
+check('two names that make the same element name are told apart', each('tag'), [
+  'decluttering-card-plus--house-light',
+  'decluttering-card-plus--house-light-2',
+  'decluttering-card-plus--house_light',
+  'decluttering-card-plus--quiet_badge',
+]);
+check('a badge is listed as a badge', PUBLISHED[3].kind, 'badge');
+check('the description comes along', PUBLISHED[2].description, 'A light tile');
+
+const stateful = { ...hass, states: { 'camera.hall': {}, 'camera.garden': {}, 'light.garden': {} } };
+check(
+  'a published card starts as the template and nothing else',
+  publishedStub(stateful, 'plain', { card: {} }, TYPE),
+  {
+    type: TYPE,
+    template: 'plain',
+  },
+);
+check(
+  'with suggest_for it starts with the first matching entity filled in',
+  publishedStub(stateful, 'any_camera', TEMPLATES.any_camera, TYPE),
+  { type: TYPE, template: 'any_camera', variables: [{ entity: 'camera.garden' }] },
+);
+check(
+  'and with nothing matching, without one',
+  publishedStub(stateful, 'x', { suggest_for: { domain: 'vacuum' }, card: {} }, TYPE),
+  { type: TYPE, template: 'x' },
 );
 
 report();

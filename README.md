@@ -164,6 +164,11 @@ Templates][wiki-defining].
   entity filled in as `entity`. It takes the filters a repeat does: `suggest_for:
   { domain: camera, area: Garden }`. Badge templates are offered in the badge dialog.
   Needs Home Assistant 2026.6 or later, 2026.7 for badges.
+- **Listed as a card of its own** *(v1.14.0+)* — `publish: true` on a template puts it in
+  the add-card dialog's By card list, under its template name or under the name you give
+  (`publish: House light`). Picking it adds an ordinary decluttering card using that
+  template, with the first entity its `suggest_for:` matches filled in if it has one.
+  Badge templates go in the badge list.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
   and `category:` groups a big collection in the picker. A card nested inside a template
   can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
