@@ -27,6 +27,8 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   debug?: boolean | 'yaml' | 'console';
   /** Turns what is normally a warning into a card that refuses to render. */
   strict?: boolean;
+  /** What `debug: console` calls this card, placeholders and all. Beats the template's. */
+  name?: string;
   /** Inside another template: be handed every variable of the card that builds this one. */
   inherit_variables?: boolean;
   /** Whether this card keeps a box of its own in the layout, or gets out of the way. */
@@ -44,6 +46,8 @@ export interface VariablesConfig {
 export interface TemplateConfig {
   /** What the template is for, shown to whoever uses it. */
   description?: string;
+  /** What `debug: console` calls a card built from this template; it can use the card's variables. */
+  name?: string;
   /** Groups templates in the picker - "Rooms", "Badges" - for dashboards with many. */
   category?: string;
   /** Which entities Home Assistant's add-card dialog offers this template for. */

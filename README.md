@@ -330,6 +330,18 @@ so you can see what each level was given. Open the developer tools (F12) and loo
 `decluttering-card-plus:` lines. The time covers building the config, not Home Assistant
 drawing the card afterwards.
 
+Ten cards from one template all log under its name, so a card or its template can have a
+`name:` *(v1.14.0+)*, filled in with the card's own variables. A card's beats its
+template's. A card nested in a logging card also says where it sits:
+
+```text
+decluttering-card-plus: "back_yard" [camera] built in 0.8 ms
+decluttering-card-plus: "but2 button" [ele_button] built in 0.1 ms (inside "back_yard" [camera], at elements[1])
+```
+
+with `name: '[[camera]]'` on the `camera` template and `name: '[[ele_name]] button'` on
+`ele_button`.
+
 `strict: true` turns the usual warnings into a card that refuses. Nothing normally stops a
 card rendering — a template can be edited after the cards that use it — but somebody
 building a template for other people wants the opposite.

@@ -130,7 +130,10 @@ import {
   handedDownNames,
   logTrace,
   newTrace,
+  TracePlace,
   TraceSection,
+  traceLabel,
+  tracePlace,
   variableRows,
   wantsTrace,
   withTrace,
@@ -372,6 +375,9 @@ abstract class DeclutteringElement extends LitElement {
   protected _strict = false;
   // `debug: console`: the card renders as normal and logs how it was built (#160).
   protected _trace = false;
+  // What this card's console entry calls it, and where a logging card around it put it.
+  protected _traceLabel?: string;
+  protected _tracePlace?: TracePlace;
   // Which of the card's variables were handed down to it, so the log can say so.
   protected _handedDown: string[] = [];
   @state() protected _debug: false | 'json' | 'yaml' = false;
@@ -592,6 +598,11 @@ abstract class DeclutteringElement extends LitElement {
     const inherited = instance ? (): unknown[] => this._handDown(variables, templateConfig, templateName) : undefined;
     // Only a card using a template logs; a template's own preview has nothing to say.
     const trace = this._trace && instance ? newTrace() : undefined;
+    if (trace)
+      this._traceLabel = traceLabel(
+        templateName ?? '',
+        this._traceName(variables, templateConfig, templateName, instance),
+      );
     const started = performance.now();
     const built = applyOverride(
       deepReplace(
@@ -621,13 +632,32 @@ abstract class DeclutteringElement extends LitElement {
   private _logBuild(started: number, sections: TraceSection[]): void {
     logTrace(
       {
-        template: this._templateName ?? '',
-        chain: this._openTemplates,
+        label: this._traceLabel ?? traceLabel(this._templateName ?? ''),
+        chain: this._traceParents(),
+        at: this._tracePlace?.at,
         ms: performance.now() - started,
         sections,
       },
       this._hass,
     );
+  }
+
+  /** The cards around this one as the console names them, or the templates open above it when none of them is logging. */
+  private _traceParents(): string[] {
+    return this._tracePlace?.parents ?? this._openTemplates.map((template) => traceLabel(template));
+  }
+
+  // A card's own `name:` beats its template's, and either is filled in with this card's values.
+  private _traceName(
+    variables: VariablesConfig[] | undefined,
+    templateConfig: TemplateConfig,
+    templateName: string | undefined,
+    instance: DeclutteringCardConfig | undefined,
+  ): string | undefined {
+    const name = instance?.name ?? templateConfig.name;
+    if (typeof name !== 'string') return undefined;
+    const filled = deepReplace(variables, templateConfig, name, templateName, this._hass, true);
+    return typeof filled === 'string' ? filled : undefined;
   }
 
   /*
@@ -702,7 +732,8 @@ abstract class DeclutteringElement extends LitElement {
     // Anything inside this card is told which templates are open above it, so a card that
     // ends up using a template already being drawn can refuse instead of going round again.
     const chained = withChain(thingConfig, chainWith(this._openTemplates, this._templateName));
-    const stamped = withInherited(this._trace ? withTrace(chained) : chained, inherited);
+    const named = [...this._traceParents(), this._traceLabel ?? traceLabel(this._templateName ?? '')];
+    const stamped = withInherited(this._trace ? withTrace(chained, named) : chained, inherited);
     this._style = styles;
     this._thingConfig = stamped;
     this._thingType = thingType;
@@ -780,6 +811,14 @@ abstract class DeclutteringElement extends LitElement {
     // Each copy hands down its own item's values, so it is stamped here rather than as a whole.
     const started = performance.now();
     const sections: TraceSection[] = [];
+    // Only the card's own name can stand for every copy; a template's names each copy apart.
+    if (this._trace) {
+      const own =
+        config.name === undefined
+          ? undefined
+          : this._traceName(config.variables, templateConfig, config.template, config);
+      this._traceLabel = traceLabel(config.template, own);
+    }
     const cards = wanted.map((item, index) => {
       const variables = forEachVariables(item, config.variables, index, wanted.length);
       const trace = this._trace ? newTrace() : undefined;
@@ -808,8 +847,10 @@ abstract class DeclutteringElement extends LitElement {
         'card',
       );
       if (trace) {
+        const copyName = this._traceName(variables, templateConfig, config.template, config);
+        const copy = localize('trace.copy', { number: index + 1, count: wanted.length }, this._hass);
         sections.push({
-          label: localize('trace.copy', { number: index + 1, count: wanted.length }, this._hass),
+          label: copyName ? `${copy}: "${copyName}"` : copy,
           variables: variableRows(variables, templateConfig, this._handedDown, repeated),
           trace,
           built: withoutStamps(built),
@@ -1262,6 +1303,8 @@ class DeclutteringCard extends DeclutteringElement {
     this._strict = config.strict === true;
     this._debug = config.debug === 'yaml' ? 'yaml' : config.debug === true ? 'json' : false;
     this._trace = wantsTrace(config);
+    this._tracePlace = tracePlace(config);
+    this._traceLabel = undefined;
     // What the card asks for beats what the template says it wants.
     this._gridOptions = config.grid_options ?? (templateConfig as { grid_options?: unknown }).grid_options;
     this._warnMisplacedOverrides(templateConfig, config);
