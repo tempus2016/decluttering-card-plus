@@ -5,6 +5,7 @@
   "error.strict_many": "Deze variabelen hebben geen waarde: {which}. De kaart staat op strict en weigert dus, in plaats van de haken weer te geven.",
   "error.for_each_not_card": "for_each heeft een sjabloon nodig dat een kaart definieert. \"{template}\" definieert {kind}, waar Home Assistant maar één plek voor geeft – zet wat je herhaald wilt hebben in een kaartsjabloon.",
   "error.a_different_kind": "iets anders",
+  "error.group_needs_cards": "group: heeft een lijst met kaarten nodig, onder cards:",
   "error.unsupported_thing_type": "Niet-ondersteund type '{kind}'",
   "error.missing_template": "Het template-object ontbreekt in je configuratie",
   "error.missing_template_property": "De eigenschap template ontbreekt",

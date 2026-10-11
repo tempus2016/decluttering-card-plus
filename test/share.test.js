@@ -164,8 +164,15 @@ check(
     validateImport({ template: 'a', badge: { type: 'entity' } }).ok,
     validateImport({ template: 'a', row: { entity: 'sun.sun' } }).ok,
     validateImport({ template: 'a', element: { type: 'icon' } }).ok,
+    validateImport({ template: 'a', group: { cards: [] } }).ok,
   ],
-  [true, true, true],
+  [true, true, true, true],
+);
+
+check(
+  'a template with both a card and a group is refused',
+  validateImport({ template: 'a', card: { type: 'tile' }, group: { cards: [] } }).ok,
+  false,
 );
 
 check('text that is not a mapping is rejected', validateImport('template: a'), {

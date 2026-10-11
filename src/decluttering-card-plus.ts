@@ -48,6 +48,7 @@ import {
   replaceCard,
   applyOverride,
   misplacedOverrides,
+  groupCard,
 } from './templates';
 
 /*
@@ -125,6 +126,7 @@ import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize } from './localize';
 import { VERSION } from './version';
 import { toYaml } from './yaml';
+import './group';
 import {
   BuildTrace,
   handedDownNames,
@@ -317,8 +319,8 @@ async function loadRowEditor(): Promise<void> {
   if (cls && (cls as any).getConfigElement) await (cls as any).getConfigElement();
 }
 
-// The four things a template can define, exactly one of which it must.
-const THING_TYPE_KEYS = ['card', 'row', 'element', 'badge'];
+// The things a template can define, exactly one of which it must. A group is a kind of card.
+const THING_TYPE_KEYS = ['card', 'row', 'element', 'badge', 'group'];
 
 /*
  * A picture element is centred on its position and clipped by the card it sits in, so an
@@ -338,7 +340,15 @@ const DEBUG_ELEMENT_STYLE: Record<string, string> = {
 
 function getThingType(templateConfig: TemplateConfig): LovelaceThingType | undefined {
   const thingTypes = Object.keys(templateConfig).filter((key) => THING_TYPE_KEYS.includes(key));
-  return thingTypes.length === 1 ? (thingTypes[0] as LovelaceThingType) : undefined;
+  if (thingTypes.length !== 1) return undefined;
+  return thingTypes[0] === 'group' ? 'card' : (thingTypes[0] as LovelaceThingType);
+}
+
+// What a template builds, before its variables are put in. A group builds the card that lays it out.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function thingContent(templateConfig: TemplateConfig): any {
+  if (templateConfig.group !== undefined) return groupCard(templateConfig.group);
+  return templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
 }
 
 abstract class DeclutteringElement extends LitElement {
@@ -384,7 +394,7 @@ abstract class DeclutteringElement extends LitElement {
   protected _openTemplates: string[] = [];
   // The copies of a repeated template, kept so the layout can change without resolving
   // them again, and the column count currently on show so it only rebuilds when it moves.
-  private _forEach?: { cards: unknown[]; max: number; minWidth?: number; styles: string };
+  private _forEach?: { cards: unknown[]; max: number; minWidth?: number; styles: string; group: boolean };
   private _columnsShown?: number;
   // The size a repeat was last mentioned at, so a rebuild does not say it all over again.
   private _manyWarnedFor?: number;
@@ -592,7 +602,7 @@ abstract class DeclutteringElement extends LitElement {
       );
     }
     this._templateName = templateName ?? this._templateName;
-    const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
+    const content = thingContent(templateConfig);
     const unresolved: string[] = [];
     // Only a card that uses a template has variables to hand down; a template's own preview does not.
     const inherited = instance ? (): unknown[] => this._handDown(variables, templateConfig, templateName) : undefined;
@@ -608,7 +618,7 @@ abstract class DeclutteringElement extends LitElement {
       deepReplace(
         variables,
         templateConfig,
-        thingContent,
+        content,
         templateName,
         this._hass,
         false,
@@ -835,7 +845,7 @@ abstract class DeclutteringElement extends LitElement {
         deepReplace(
           variables,
           templateConfig,
-          templateConfig.card,
+          thingContent(templateConfig),
           config.template,
           this._hass,
           false,
@@ -867,6 +877,7 @@ abstract class DeclutteringElement extends LitElement {
       max: Number(config.columns) || 1,
       minWidth: Number(config.min_column_width) || undefined,
       styles: this._resolveStyles(templateConfig, config.variables, config.style, config.template),
+      group: templateConfig.group !== undefined,
     };
     this._columnsShown = undefined;
     this._layoutForEach();
@@ -887,10 +898,17 @@ abstract class DeclutteringElement extends LitElement {
     if (columns === this._columnsShown) return;
     this._columnsShown = columns;
 
+    /*
+     * A vertical-stack would undo what a group is for, laying every card in each copy out
+     * one under another - so copies of a group go in a group of their own, which hands the
+     * section's grid on to each of them.
+     */
     const stack =
       columns > 1
         ? { type: 'grid', columns, square: false, cards: forEach.cards }
-        : { type: 'vertical-stack', cards: forEach.cards };
+        : forEach.group
+          ? groupCard(forEach.cards)
+          : { type: 'vertical-stack', cards: forEach.cards };
 
     // Each copy is already fully resolved, so the assembled stack must not go through
     // substitution again.
@@ -1673,7 +1691,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
     const thingType = getThingType(template);
     if (!thingType) return html``;
 
-    const content = template.card ?? template.element ?? template.row ?? template.badge;
+    const content = thingContent(template);
     // for_each renders the same template once per item, so one copy stands for all of
     // them - showing every copy would bury the thing you opened this to look at.
     const items = forEachItems(this._config.for_each);
@@ -2460,7 +2478,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           ${localize('template_editor.tab_settings', undefined, this.hass)}
         </ha-tab-group-tab>
         ${
-          data.thingType === 'card'
+          // The card editor edits `card:`, which a group has none of - its cards are edited as YAML.
+          data.thingType === 'card' && this._config.group === undefined
             ? html`
                 <ha-tab-group-tab slot="nav" panel="card">
                   ${localize('template_editor.tab_card', undefined, this.hass)}
@@ -2963,7 +2982,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     let built: unknown;
     try {
       const template = { ...this._config } as TemplateConfig;
-      const content = template.card ?? template.badge ?? template.row ?? template.element;
+      const content = thingContent(template);
       built = deepReplace(usage.variables, template, content, name, this.hass, true);
     } catch {
       return html``;
@@ -3499,8 +3518,12 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     // filling in what is absent.
     setOrDelete(config, 'description', data.description);
     setOrDelete(config, 'variables', data.variables);
+    // A group is a card template's body too, so it stays while the type stays a card - without
+    // this, editing any setting gave the group a starter card beside it and broke the template.
+    const keepsGroup = config.group !== undefined && data.thingType === 'card';
+    if (!keepsGroup) delete config.group;
     for (const [thingType, stub] of Object.entries(THING_STUBS)) {
-      DeclutteringTemplateEditor.stubMember(data.thingType === thingType, config, thingType, stub);
+      DeclutteringTemplateEditor.stubMember(!keepsGroup && data.thingType === thingType, config, thingType, stub);
     }
     this._fireConfigChanged(config);
   }

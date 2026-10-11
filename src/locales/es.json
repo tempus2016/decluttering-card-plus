@@ -5,6 +5,7 @@
   "error.strict_many": "Estas variables no tienen valor: {which}. La tarjeta está en modo estricto, así que se niega en lugar de mostrar los corchetes.",
   "error.for_each_not_card": "for_each necesita una plantilla que defina un card. \"{template}\" define un {kind}, al que Home Assistant da un solo hueco - pon lo que quieras repetir dentro de una plantilla de tarjeta.",
   "error.a_different_kind": "tipo de cosa distinto",
+  "error.group_needs_cards": "group: necesita una lista de tarjetas, escrita bajo cards:",
   "error.unsupported_thing_type": "Tipo de elemento no admitido: '{kind}'",
   "error.missing_template": "Falta el campo template en tu configuración",
   "error.missing_template_property": "Falta la propiedad template",

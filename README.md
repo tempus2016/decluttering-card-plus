@@ -172,6 +172,8 @@ Templates][wiki-defining].
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
   and `category:` groups a big collection in the picker. A card nested inside a template
   can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
+- **A set of cards as one card** *(v1.14.0+)* — a `group:` template puts several cards on a
+  view from one decluttering card, each laid out in the section as if it were written there.
 - **One-off tweaks without a new template** *(v1.12.0+)* — a card's own `card:` block is laid over what
   its template builds, so a single card can change an icon or an action and nothing else.
   Mappings merge key by key, lists replace, and `null` drops a key the template sets.
@@ -316,6 +318,46 @@ it works through any number of levels as long as each nested card asks. Two thin
 behind: the outer template's `let:` values, which are its own internals, and the dashboard's
 `decluttering_defaults`, which every card reads for itself anyway. It is off unless asked
 for, because a value handed down beats the nested template's own default for the same name.
+
+### A set of cards as one card (v1.14.0+)
+
+Cards in a stack are sized by the stack, so a template holding six tiles in a
+vertical-stack shows them one under another, not two to a row as the section would.
+`group:` in place of `card:` holds the cards without a stack. Each one gets the place in
+the section it would have had written out on its own, `grid_options` and all:
+
+```yaml
+decluttering_templates:
+  room:
+    default:
+      - room: kitchen
+    group:
+      cards:
+        - type: heading
+          heading: '[[room]]'
+        - type: custom:decluttering-card-plus
+          template: light_tile
+          variables:
+            - entity: 'light.[[room]]'
+        - type: tile
+          entity: 'sensor.[[room]]_temperature'
+```
+
+```yaml
+- type: custom:decluttering-card-plus
+  template: room
+  variables:
+    - room: bedroom
+```
+
+The group fills the width of its section and lays its cards out on the section's own grid,
+so a wider section gives them more room the same way it would anyway. Variables reach the
+cards in a group like any other content, and the group's `default:` covers the defaults
+for the whole set. `for_each` repeats the whole group, one copy under another.
+
+On the dashboard the group is still one card: it is dragged, edited and deleted as a whole.
+Outside a sections view its cards go one under another, which is where they would be in a
+masonry column anyway.
 
 ## Working out what a card built
 

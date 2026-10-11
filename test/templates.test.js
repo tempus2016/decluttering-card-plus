@@ -33,6 +33,8 @@ const {
   replaceCard,
   applyOverride,
   misplacedOverrides,
+  groupCard,
+  GROUP_CARD_TYPE,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -42,6 +44,33 @@ check(
   Object.keys(collectTemplates({ decluttering_templates: { a: { card: {} } } })),
   ['a'],
 );
+
+/* ---------------------------------------------------------------- group (#176) */
+
+check(
+  'a group builds the card that lays its cards out',
+  groupCard({ cards: [{ type: 'tile' }, { type: 'heading' }] }),
+  { type: GROUP_CARD_TYPE, cards: [{ type: 'tile' }, { type: 'heading' }] },
+);
+
+check('a group written as a bare list is the same list', groupCard([{ type: 'tile' }]).cards, [{ type: 'tile' }]);
+
+check('a group with no cards is passed on for the card to refuse', groupCard({}).cards, undefined);
+
+check(
+  'a group template extends like any other, the child list replacing the parent one',
+  collectTemplates({
+    decluttering_templates: {
+      base: { group: { cards: [{ type: 'tile' }] }, default: [{ a: 1 }] },
+      child: { extends: 'base', group: { cards: [{ type: 'heading' }] } },
+    },
+  }).child.group,
+  { cards: [{ type: 'heading' }] },
+);
+
+check('a group: block on a card using a card template is never read', misplacedOverrides({ group: {} }, 'card'), [
+  'group',
+]);
 
 /* --------------------------------------------------------- view-level defaults */
 

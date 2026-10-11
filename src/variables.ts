@@ -527,7 +527,7 @@ export function resolveFallback(
 
 // The parts of a template that get substituted into, and so the only places a placeholder
 // can do anything.
-const CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'style'];
+const CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group', 'style'];
 
 // Substitution reads one name and one value per entry, so everything here has to agree
 // with that or the warnings would describe a card nobody is rendering.
