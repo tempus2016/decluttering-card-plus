@@ -85,7 +85,12 @@ export function publishedTemplates(templates: Record<string, TemplateConfig>): P
     const config = templates[template] as any;
     const publish = config?.publish;
     if (publish !== true && !(typeof publish === 'string' && publish.trim())) continue;
-    const kind = config.card !== undefined ? 'card' : config.badge !== undefined ? 'badge' : undefined;
+    const kind =
+      config.card !== undefined || config.group !== undefined
+        ? 'card'
+        : config.badge !== undefined
+          ? 'badge'
+          : undefined;
     if (!kind) continue;
     let tag = publishTag(template);
     for (let n = 2; taken.has(tag); n++) tag = `${publishTag(template)}-${n}`;

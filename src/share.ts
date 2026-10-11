@@ -6,8 +6,8 @@ import { localize } from './localize';
 // Anything this bundle provides itself, which whoever receives the export already has.
 const OWN_TYPES = [TEMPLATE_TYPE, LEGACY_TEMPLATE_TYPE, ...CONSUMER_TYPES];
 
-// The four things a template can define, exactly one of which it must.
-const THING_KEYS = ['card', 'badge', 'row', 'element'];
+// The things a template can define, exactly one of which it must.
+const THING_KEYS = ['card', 'badge', 'row', 'element', 'group'];
 
 // Read order for the exported YAML: what the template is, then what it takes, then what
 // it draws. Whatever is left over follows, so nothing is silently dropped.

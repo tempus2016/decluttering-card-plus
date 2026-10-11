@@ -69,6 +69,8 @@ export interface TemplateConfig {
   row?: any;
   element?: any;
   badge?: any;
+  /** Cards that take their places in the section one by one, as if each were written there. */
+  group?: any;
   style?: string;
   /** How much of a sections grid a card built from this template asks for. */
   grid_options?: any;

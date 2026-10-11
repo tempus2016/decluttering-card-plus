@@ -271,9 +271,26 @@ export function templatePickerLabel(name: string, template: TemplateConfig | und
   return typeof category === 'string' && category ? `${category} · ${described}` : described;
 }
 
+/* -------------------------------------------------------------------- group */
+
+// The card a `group:` template builds. Internal: nobody writes it, and it is not offered anywhere.
+export const GROUP_CARD_TYPE = 'custom:decluttering-card-plus-group';
+
+/*
+ * A template holding several cards used to have to put them in a stack, and a stack sizes
+ * its cards itself - the tiles a section would have laid out side by side came out one
+ * under another (#176). `group:` builds a card that lays its cards out the way the section
+ * around it would, so one card stands in for the set without changing how any of it looks.
+ * `group: { cards: [...] }` is how it is written; a bare list is taken as that list.
+ */
+export function groupCard(group: unknown): { type: string; cards: unknown } {
+  const cards = Array.isArray(group) ? group : (group as any)?.cards;
+  return { type: GROUP_CARD_TYPE, cards };
+}
+
 /* ------------------------------------------------------------------ extends */
 
-const TEMPLATE_CONTENT_KEYS = ['card', 'badge', 'row', 'element'] as const;
+const TEMPLATE_CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group'] as const;
 
 /** Child over parent: mappings merge key by key, lists and scalars are the child's. */
 function deepMergeConfig(parent: any, child: any): any {

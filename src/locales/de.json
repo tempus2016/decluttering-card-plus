@@ -5,6 +5,7 @@
   "error.strict_many": "Diese Variablen haben keinen Wert: {which}. Die Karte ist auf strict gestellt und verweigert daher, statt die Klammern darzustellen.",
   "error.for_each_not_card": "for_each braucht eine Vorlage, die eine Karte definiert. \"{template}\" definiert {kind}, wofür Home Assistant nur einen Platz vergibt – lege, was wiederholt werden soll, stattdessen in eine Kartenvorlage.",
   "error.a_different_kind": "etwas anderes",
+  "error.group_needs_cards": "group: braucht eine Liste von Karten unter cards:",
   "error.unsupported_thing_type": "Nicht unterstützter Typ '{kind}'",
   "error.missing_template": "In deiner Konfiguration fehlt das template-Objekt",
   "error.missing_template_property": "Die Eigenschaft template fehlt",

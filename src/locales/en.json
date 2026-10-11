@@ -5,6 +5,7 @@
   "error.strict_many": "These variables have no value: {which}. The card is set to strict, so it refuses rather than rendering the brackets.",
   "error.for_each_not_card": "for_each needs a template that defines a card. \"{template}\" defines a {kind}, which Home Assistant gives one slot - put what you want repeated inside a card template instead.",
   "error.a_different_kind": "different kind of thing",
+  "error.group_needs_cards": "group: needs a list of cards, written under cards:",
   "error.unsupported_thing_type": "Unsupported thing type '{kind}'",
   "error.missing_template": "Missing template object in your config",
   "error.missing_template_property": "Missing template property",

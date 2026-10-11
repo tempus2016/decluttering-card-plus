@@ -5,6 +5,7 @@
   "error.strict_many": "Ces variables n'ont pas de valeur : {which}. La carte est en mode strict, elle refuse donc plutôt que d'afficher les crochets.",
   "error.for_each_not_card": "for_each a besoin d'un modèle qui définit un card. \"{template}\" définit un {kind}, auquel Home Assistant ne donne qu'une seule place - mettez ce que vous voulez répéter dans un modèle de carte.",
   "error.a_different_kind": "autre genre de chose",
+  "error.group_needs_cards": "group: a besoin d’une liste de cartes, écrite sous cards:",
   "error.unsupported_thing_type": "Type d'élément non pris en charge : '{kind}'",
   "error.missing_template": "Le champ template manque dans votre configuration",
   "error.missing_template_property": "La propriété template manque",

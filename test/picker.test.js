@@ -65,6 +65,11 @@ check('only templates that ask, and only cards and badges, are listed', each('te
   'house_light',
   'quiet_badge',
 ]);
+check(
+  'a group is listed as a card',
+  publishedTemplates({ room_set: { publish: true, group: { cards: [] } } }).map((p) => p.kind),
+  ['card'],
+);
 check('a string names the entry, true uses the template name', each('name'), [
   'The other light',
   'house-light',

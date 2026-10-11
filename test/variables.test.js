@@ -93,6 +93,7 @@ check(
     .unused,
   [],
 );
+check('placeholders are found in a group', usedVariables({ group: { cards: [{ entity: '[[light]]' }] } }), ['light']);
 check('placeholders are found in the style block', usedVariables({ card: {}, style: 'border: [[colour]]' }), [
   'colour',
 ]);
