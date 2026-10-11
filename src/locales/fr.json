@@ -225,8 +225,9 @@
   "warn.override_misplaced": "decluttering-card-plus: le bloc {key}: de cette carte est ignoré - le modèle \"{template}\" construit un {kind}, donc seul un bloc {kind}: s'y superpose.",
   "warn.tag_taken": "decluttering-card-plus : <{tag}> est déjà enregistré par autre chose, il est donc ignoré.",
 
-  "trace.built": "decluttering-card-plus : « {template} » construite en {ms} ms",
+  "trace.built": "decluttering-card-plus : {label} construite en {ms} ms",
   "trace.inside": "(dans {chain})",
+  "trace.inside_at": "(dans {chain}, à {path})",
   "trace.copy": "Copie {number} sur {count}",
   "trace.variables": "Variables, et d'où vient chacune :",
   "trace.placeholders": "Espaces réservés, et ce que chacun est devenu :",

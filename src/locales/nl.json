@@ -225,8 +225,9 @@
   "warn.override_misplaced": "decluttering-card-plus: het {key}:-blok van deze kaart wordt genegeerd – het sjabloon \"{template}\" bouwt een {kind}, dus alleen een {kind}:-blok wordt eroverheen gelegd.",
   "warn.tag_taken": "decluttering-card-plus: <{tag}> is al door iets anders geregistreerd, wordt overgeslagen.",
 
-  "trace.built": "decluttering-card-plus: \"{template}\" gebouwd in {ms} ms",
+  "trace.built": "decluttering-card-plus: {label} gebouwd in {ms} ms",
   "trace.inside": "(binnen {chain})",
+  "trace.inside_at": "(binnen {chain}, op {path})",
   "trace.copy": "Kopie {number} van {count}",
   "trace.variables": "Variabelen, en waar elke vandaan komt:",
   "trace.placeholders": "Plaatshouders, en wat elke werd:",

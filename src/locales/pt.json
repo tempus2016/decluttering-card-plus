@@ -225,8 +225,9 @@
   "warn.override_misplaced": "decluttering-card-plus: o bloco {key}: deste cartão é ignorado - o modelo \"{template}\" constrói um {kind}, por isso só um bloco {kind}: é sobreposto.",
   "warn.tag_taken": "decluttering-card-plus: <{tag}> já está registado por outra coisa, por isso fica de fora.",
 
-  "trace.built": "decluttering-card-plus: \"{template}\" construído em {ms} ms",
+  "trace.built": "decluttering-card-plus: {label} construído em {ms} ms",
   "trace.inside": "(dentro de {chain})",
+  "trace.inside_at": "(dentro de {chain}, em {path})",
   "trace.copy": "Cópia {number} de {count}",
   "trace.variables": "Variáveis, e de onde veio cada uma:",
   "trace.placeholders": "Marcadores, e no que cada um se tornou:",

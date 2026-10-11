@@ -12,7 +12,10 @@ const {
   handedDownNames,
   wantsTrace,
   withTrace,
+  traceLabel,
+  tracePlace,
   TRACE_KEY,
+  TRACE_PLACE_KEY,
 } = require('../.test-build/trace.js');
 const { withoutStamps } = require('../.test-build/cycles.js');
 const { OWN_DEFAULTS } = require('../.test-build/variables.js');
@@ -173,14 +176,30 @@ check('nothing is handed down without inherit_variables', handedDownNames({ vari
 
 check(
   'the headline names the template and the time',
-  headline({ template: 'room', chain: [], ms: 1.234, sections: [] }),
+  headline({ label: traceLabel('room'), chain: [], ms: 1.234, sections: [] }),
   'decluttering-card-plus: "room" built in 1.2 ms',
 );
 
 check(
   'a nested card says which templates it sits inside',
-  headline({ template: 'light', chain: ['page', 'room'], ms: 0.5, sections: [] }),
-  'decluttering-card-plus: "light" built in 0.5 ms (inside page › room)',
+  headline({ label: traceLabel('light'), chain: ['"page"', '"room"'], ms: 0.5, sections: [] }),
+  'decluttering-card-plus: "light" built in 0.5 ms (inside "page" › "room")',
+);
+
+check('a name leads the label, with the template after it', traceLabel('camera', 'back_yard'), '"back_yard" [camera]');
+check('an empty name is no name', traceLabel('camera', '  '), '"camera"');
+check('a name that is not text is ignored', traceLabel('camera', 3), '"camera"');
+
+check(
+  'a card a logging card told to log says where it sits',
+  headline({
+    label: traceLabel('button', 'but2 button'),
+    chain: ['"back_yard" [camera]'],
+    at: 'elements[1]',
+    ms: 3.4,
+    sections: [],
+  }),
+  'decluttering-card-plus: "but2 button" [button] built in 3.4 ms (inside "back_yard" [camera], at elements[1])',
 );
 
 /* ----------------------------------------------------------------- nested cards */
@@ -198,8 +217,23 @@ check('debug: true is the on-card view, not the log', wantsTrace({ debug: true }
       { type: 'tile', entity: 'sun.sun' },
     ],
   };
-  const stamped = withTrace(config);
+  const stamped = withTrace(config, ['"page"', '"back_yard" [camera]']);
   check('every nested card of ours is told to log', stamped.cards[0][TRACE_KEY], true);
+  check('and where it sits, and what the cards around it are called', tracePlace(stamped.cards[0]), {
+    parents: ['"page"', '"back_yard" [camera]'],
+    at: 'cards[0]',
+  });
+  check(
+    'a deeper card is placed by its whole path',
+    tracePlace(
+      withTrace({ type: 'picture-elements', elements: [{ type: 'icon' }, { type: 'custom:decluttering-card-plus' }] }, [
+        '"a"',
+      ]).elements[1],
+    ),
+    { parents: ['"a"'], at: 'elements[1]' },
+  );
+  check('a card nobody placed has no place', tracePlace({ type: 'custom:decluttering-card-plus' }), undefined);
+  check('the place is not shown in the debug view', TRACE_PLACE_KEY in withoutStamps(stamped).cards[0], false);
   check('other cards are left alone', stamped.cards[1][TRACE_KEY], undefined);
   check('the original is not written to', config.cards[0][TRACE_KEY], undefined);
   check('the stamp is not shown in the debug view', withoutStamps(stamped), config);

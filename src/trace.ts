@@ -28,6 +28,31 @@ export function newTrace(): BuildTrace {
 /** The key a card uses to tell the cards inside it to log as well. */
 export const TRACE_KEY = 'decluttering_trace';
 
+/** Where a nested card sits in the card that told it to log, and what that card and the ones above it are called. */
+export const TRACE_PLACE_KEY = 'decluttering_trace_in';
+
+export interface TracePlace {
+  /** The cards around this one, outermost first, as their console entries name them. */
+  parents: string[];
+  /** Where this card sits inside the config of the card around it - `elements[3]`. */
+  at: string;
+}
+
+/*
+ * What a card is called in the console. Ten cards built from one template all log under
+ * that template's name, so a card or its template can give it a `name:` of its own - with
+ * placeholders, so a template can name each card after the camera it shows.
+ */
+export function traceLabel(template: string, name?: unknown): string {
+  return typeof name === 'string' && name.trim() ? `"${name}" [${template}]` : `"${template}"`;
+}
+
+/** Where a card was told it sits, if a card around it is logging. */
+export function tracePlace(config: any): TracePlace | undefined {
+  const place = config?.[TRACE_PLACE_KEY];
+  return place && Array.isArray(place.parents) && typeof place.at === 'string' ? place : undefined;
+}
+
 /** Whether a card should log its build: it asked to, or a card around it did and it said nothing itself. */
 export function wantsTrace(config: any): boolean {
   if (config?.debug === 'console') return true;
@@ -39,7 +64,7 @@ export function wantsTrace(config: any): boolean {
  * question is usually about answer it without each one being edited. Like the chain of open
  * templates, a nested card's own content is built from its template, so the walk stops at it.
  */
-export function withTrace<T>(config: T): T {
+export function withTrace<T>(config: T, parents: string[] = []): T {
   const holds = (node: any): boolean => {
     if (Array.isArray(node)) return node.some(holds);
     if (!node || typeof node !== 'object') return false;
@@ -49,19 +74,21 @@ export function withTrace<T>(config: T): T {
   if (!holds(config)) return config;
 
   const copy = JSON.parse(JSON.stringify(config));
-  const walk = (node: any): void => {
+  const walk = (node: any, at: string): void => {
     if (Array.isArray(node)) {
-      node.forEach(walk);
+      node.forEach((item, index) => walk(item, `${at}[${index}]`));
       return;
     }
     if (!node || typeof node !== 'object') return;
     if (typeof node.type === 'string' && CONSUMER_TYPES.includes(node.type)) {
       node[TRACE_KEY] = true;
+      // Ten copies of one element template log alike; where each sits tells them apart.
+      if (parents.length) node[TRACE_PLACE_KEY] = { parents, at: at || '.' };
       return;
     }
-    Object.values(node).forEach(walk);
+    for (const [key, value] of Object.entries(node)) walk(value, at ? `${at}.${key}` : key);
   };
-  walk(copy);
+  walk(copy, '');
   return copy;
 }
 
@@ -131,9 +158,12 @@ export interface TraceSection {
 }
 
 export interface TraceReport {
-  template: string;
-  /** The templates open above this card, outermost first. */
+  /** What the card is called: its template, and its name when it has one. */
+  label: string;
+  /** The cards open above this one, outermost first. */
   chain: string[];
+  /** Where it sits in the card around it, when that card is logging too. */
+  at?: string;
   ms: number;
   sections: TraceSection[];
 }
@@ -168,10 +198,12 @@ export function describeSection(
 }
 
 export function headline(report: TraceReport, hass?: any): string {
-  const built = localize('trace.built', { template: report.template, ms: report.ms.toFixed(1) }, hass);
-  return report.chain.length
-    ? `${built} ${localize('trace.inside', { chain: report.chain.join(' › ') }, hass)}`
-    : built;
+  const built = localize('trace.built', { label: report.label, ms: report.ms.toFixed(1) }, hass);
+  if (!report.chain.length) return built;
+  const chain = report.chain.join(' › ');
+  return report.at
+    ? `${built} ${localize('trace.inside_at', { chain, path: report.at }, hass)}`
+    : `${built} ${localize('trace.inside', { chain }, hass)}`;
 }
 
 /*

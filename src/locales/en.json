@@ -225,8 +225,9 @@
   "warn.override_misplaced": "decluttering-card-plus: this card's {key}: block is ignored - the template \"{template}\" builds a {kind}, so only a {kind}: block is laid over it.",
   "warn.tag_taken": "decluttering-card-plus: <{tag}> is already registered by something else, skipping it.",
 
-  "trace.built": "decluttering-card-plus: \"{template}\" built in {ms} ms",
+  "trace.built": "decluttering-card-plus: {label} built in {ms} ms",
   "trace.inside": "(inside {chain})",
+  "trace.inside_at": "(inside {chain}, at {path})",
   "trace.copy": "Copy {number} of {count}",
   "trace.variables": "Variables, and where each came from:",
   "trace.placeholders": "Placeholders, and what each became:",
