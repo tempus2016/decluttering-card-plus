@@ -131,8 +131,14 @@ import {
   BuildTrace,
   handedDownNames,
   logTrace,
+  nestedCardPaths,
+  newExpansionId,
   newTrace,
+  reportExpansion,
+  startExpansion,
   TracePlace,
+  TraceRoot,
+  traceRoot,
   TraceSection,
   traceLabel,
   tracePlace,
@@ -388,6 +394,8 @@ abstract class DeclutteringElement extends LitElement {
   // What this card's console entry calls it, and where a logging card around it put it.
   protected _traceLabel?: string;
   protected _tracePlace?: TracePlace;
+  // The outermost logging card this one reports what it built to, when it is nested in one.
+  protected _traceRoot?: TraceRoot;
   // Which of the card's variables were handed down to it, so the log can say so.
   protected _handedDown: string[] = [];
   @state() protected _debug: false | 'json' | 'yaml' = false;
@@ -742,8 +750,19 @@ abstract class DeclutteringElement extends LitElement {
     // Anything inside this card is told which templates are open above it, so a card that
     // ends up using a template already being drawn can refuse instead of going round again.
     const chained = withChain(thingConfig, chainWith(this._openTemplates, this._templateName));
-    const named = [...this._traceParents(), this._traceLabel ?? traceLabel(this._templateName ?? '')];
-    const stamped = withInherited(this._trace ? withTrace(chained, named) : chained, inherited);
+    const label = this._traceLabel ?? traceLabel(this._templateName ?? '');
+    const named = [...this._traceParents(), label];
+    /*
+     * The cards inside are told which card to report to and where they sit in it, so the
+     * outermost one can log the whole thing once they have all built. Not while the debug
+     * view is showing: that view is all that is drawn, so nothing inside it is ever built.
+     */
+    const expanding = this._trace && !this._debug;
+    const root: TraceRoot | undefined = expanding ? (this._traceRoot ?? { id: newExpansionId(), path: [] }) : undefined;
+    const stamped = withInherited(this._trace ? withTrace(chained, named, root) : chained, inherited);
+    const nested = expanding ? nestedCardPaths(chained) : [];
+    if (this._traceRoot) reportExpansion(this._traceRoot, withoutStamps(chained), nested);
+    else if (root) startExpansion(root.id, label, withoutStamps(chained), nested, this._hass);
     this._style = styles;
     this._thingConfig = stamped;
     this._thingType = thingType;
@@ -1322,6 +1341,7 @@ class DeclutteringCard extends DeclutteringElement {
     this._debug = config.debug === 'yaml' ? 'yaml' : config.debug === true ? 'json' : false;
     this._trace = wantsTrace(config);
     this._tracePlace = tracePlace(config);
+    this._traceRoot = traceRoot(config);
     this._traceLabel = undefined;
     // What the card asks for beats what the template says it wants.
     this._gridOptions = config.grid_options ?? (templateConfig as { grid_options?: unknown }).grid_options;

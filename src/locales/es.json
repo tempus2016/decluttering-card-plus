@@ -235,6 +235,8 @@
   "trace.none": "(ninguno)",
   "trace.taken_out": "Quitado porque una variable estaba vacía:",
   "trace.result": "Resultado:",
+  "trace.in_full": "decluttering-card-plus: {label} completa, con las tarjetas de dentro construidas",
+  "trace.never_built": "Nunca construidas, así que quedan tal cual (ocultas, aún no mostradas o con error):",
   "trace.col_variable": "variable",
   "trace.col_value": "valor",
   "trace.col_from": "origen",

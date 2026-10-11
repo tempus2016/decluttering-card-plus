@@ -16,6 +16,12 @@ const {
   tracePlace,
   TRACE_KEY,
   TRACE_PLACE_KEY,
+  TRACE_ROOT_KEY,
+  traceRoot,
+  nestedCardPaths,
+  formatPath,
+  startExpansion,
+  reportExpansion,
 } = require('../.test-build/trace.js');
 const { withoutStamps } = require('../.test-build/cycles.js');
 const { OWN_DEFAULTS } = require('../.test-build/variables.js');
@@ -207,7 +213,9 @@ check(
 check('debug: console asks for the log', wantsTrace({ debug: 'console' }), true);
 check('a card told to by the card around it logs', wantsTrace({ [TRACE_KEY]: true }), true);
 check('but its own debug: wins', wantsTrace({ [TRACE_KEY]: true, debug: false }), false);
-check('debug: true is the on-card view, not the log', wantsTrace({ debug: true }), false);
+check('debug: true logs as well as showing the view', wantsTrace({ debug: true }), true);
+check('so does debug: yaml', wantsTrace({ debug: 'yaml' }), true);
+check('debug: false does not', wantsTrace({ debug: false }), false);
 
 {
   const config = {
@@ -242,6 +250,85 @@ check('debug: true is the on-card view, not the log', wantsTrace({ debug: true }
 {
   const config = { type: 'tile', entity: 'sun.sun' };
   check('a config with nothing of ours in it is not copied', withTrace(config) === config, true);
+}
+
+/* ------------------------------------------------------------ the whole thing (#160) */
+
+{
+  const config = {
+    type: 'vertical-stack',
+    cards: [
+      { type: 'custom:decluttering-card-plus', template: 'camera' },
+      { type: 'tile', entity: 'sun.sun' },
+    ],
+  };
+  const stamped = withTrace(config, ['"page"'], { id: 'r1', path: ['elements', 2] });
+  check('a nested card is told which card to report to, and its whole path in it', traceRoot(stamped.cards[0]), {
+    id: 'r1',
+    path: ['elements', 2, 'cards', 0],
+  });
+  check(
+    'without a card to report to there is no stamp',
+    TRACE_ROOT_KEY in withTrace(config, ['"page"']).cards[0],
+    false,
+  );
+  check('the stamp is not shown in the debug view', withoutStamps(stamped), config);
+  check('a card nobody stamped reports nowhere', traceRoot({ type: 'custom:decluttering-card-plus' }), undefined);
+}
+
+check(
+  'every card of ours is found, and not the cards inside its own config',
+  nestedCardPaths({
+    cards: [
+      { type: 'custom:decluttering-card-plus', template: 'a', card: { type: 'custom:decluttering-card-plus' } },
+      { type: 'picture-elements', elements: [{ type: 'icon' }, { type: 'custom:decluttering-card' }] },
+    ],
+  }),
+  [
+    ['cards', 0],
+    ['cards', 1, 'elements', 1],
+  ],
+);
+
+check('a path reads the way it is written in YAML', formatPath(['cards', 0, 'elements', 3]), 'cards[0].elements[3]');
+check('the card itself is a dot', formatPath([]), '.');
+
+{
+  // The console is what is being checked, so it is listened to rather than printed.
+  const logged = [];
+  const saved = { groupCollapsed: console.groupCollapsed, log: console.log, groupEnd: console.groupEnd };
+  console.groupCollapsed = (...args) => logged.push(['group', ...args]);
+  console.log = (...args) => logged.push(['log', ...args]);
+  console.groupEnd = () => logged.push(['end']);
+
+  const outer = { type: 'vertical-stack', cards: [{ type: 'custom:decluttering-card-plus', template: 'camera' }] };
+  startExpansion('x1', '"page"', outer, [['cards', 0]]);
+  check('nothing is logged while a nested card has still to build', logged.length, 0);
+  reportExpansion(
+    { id: 'x1', path: ['cards', 0] },
+    { type: 'picture-glance', elements: [{ type: 'custom:decluttering-card-plus' }] },
+    [['elements', 0]],
+  );
+  check('nor while a card inside that one has', logged.length, 0);
+  reportExpansion({ id: 'x1', path: ['cards', 0, 'elements', 0] }, { type: 'icon', icon: 'mdi:car' }, []);
+  check('once all of them have, the whole thing is logged once', logged[0], [
+    'group',
+    'decluttering-card-plus: "page" in full, with the cards inside it built',
+  ]);
+  check('with every nested card replaced by what it built', logged[1][2], {
+    type: 'vertical-stack',
+    cards: [{ type: 'picture-glance', elements: [{ type: 'icon', icon: 'mdi:car' }] }],
+  });
+  check('and nothing listed as missing', logged.length, 3);
+  reportExpansion({ id: 'x1', path: ['cards', 0] }, { type: 'tile' }, []);
+  check('a report after it is finished is ignored', logged.length, 3);
+  check('the card that started it is not written to', outer.cards[0].type, 'custom:decluttering-card-plus');
+
+  logged.length = 0;
+  startExpansion('x2', '"plain"', { type: 'tile' }, []);
+  check('a card with nothing of ours inside it logs nothing more', logged.length, 0);
+
+  Object.assign(console, saved);
 }
 
 report();
