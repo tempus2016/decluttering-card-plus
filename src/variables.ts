@@ -250,6 +250,65 @@ export function orTarget(step: string): string | undefined {
   return step.startsWith(OR_PREFIX) ? step.slice(OR_PREFIX.length) : undefined;
 }
 
+/*
+ * `if:` keeps a value only while another variable says so (discussion #150). Written
+ * `if:name` it asks whether that variable is a yes, read the way `bool` reads one;
+ * written `if:name=text` it asks whether the variable is exactly that text. A condition
+ * that does not hold makes the value a gap, read exactly as though nothing had set it -
+ * so `[[element|if:entity?]]` drops out of its list when the card names no entity, and a
+ * `default:` after it still gets its turn. It gates the value rather than reshaping it,
+ * so unlike the text transforms it lets a mapping or a list through whole.
+ */
+const IF_PREFIX = 'if:';
+
+const IF_STEP = `${IF_PREFIX}[A-Za-z0-9_.-]+(?:=[^|\\]]*)?`;
+
+/** Whether a step is a condition rather than something done to the value. */
+export function isCondition(step: string): boolean {
+  return step.startsWith(IF_PREFIX);
+}
+
+/** The variable an `if:` step reads, for counting it as used. */
+export function conditionTarget(step: string): string | undefined {
+  if (!isCondition(step)) return undefined;
+  const body = step.slice(IF_PREFIX.length);
+  const equals = body.indexOf('=');
+  return equals === -1 ? body : body.slice(0, equals);
+}
+
+/** Whether one `if:` step holds, given a way to read a variable's value. */
+export function conditionHolds(step: string, read: (name: string) => unknown): boolean {
+  const body = step.slice(IF_PREFIX.length);
+  const equals = body.indexOf('=');
+  if (equals === -1) return truthy(read(body));
+  const value = read(body.slice(0, equals));
+  // Compared as text, as a dropdown and YAML both hand it over - but a mapping or a list
+  // has no text to compare, and an unset variable equals nothing.
+  if (value === undefined || value === null || typeof value === 'object') return false;
+  return String(value) === body.slice(equals + 1);
+}
+
+/** Whether a chain carries any condition at all. */
+export function hasCondition(chain: string | undefined): boolean {
+  return !!chain && chain.split('|').some(isCondition);
+}
+
+/** Whether every condition in a chain holds. Where they sit in it makes no difference. */
+export function gateOpen(chain: string, read: (name: string) => unknown): boolean {
+  return chain
+    .split('|')
+    .filter(isCondition)
+    .every((step) => conditionHolds(step, read));
+}
+
+/** The chain with its conditions taken out, leaving what is actually done to the value. */
+export function withoutConditions(chain: string): string {
+  return chain
+    .split('|')
+    .filter((step) => !isCondition(step))
+    .join('|');
+}
+
 /** `attr:brightness` asks for one named attribute of the entity's current state. */
 const ATTRIBUTE_PREFIX = 'attr:';
 
@@ -352,7 +411,7 @@ function paramTransform(
   return { fn: PARAM_TRANSFORMS[name], arg: step.slice(colon + 1) };
 }
 
-const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES}|${OR_STEP}|${DEFAULT_STEP}|${PARAM_STEP})`;
+const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES}|${OR_STEP}|${DEFAULT_STEP}|${IF_STEP}|${PARAM_STEP})`;
 
 const TRANSFORM_CHAIN = `${CHAIN_STEP}(?:\\|${CHAIN_STEP})*`;
 
@@ -372,6 +431,7 @@ export function applyTransform(
   value: unknown,
   hass?: any,
   values?: Record<string, any>,
+  read: (name: string) => unknown = (name) => values?.[name],
 ): string | undefined {
   const steps = transform ? transform.split('|') : [];
 
@@ -395,6 +455,14 @@ export function applyTransform(
       // than the text "[]"; further along it reads what the steps before it made.
       text = String(truthy(index === 0 && !takesJson ? value : text));
       empty = false;
+      continue;
+    }
+
+    if (isCondition(name)) {
+      if (!conditionHolds(name, read)) {
+        text = undefined;
+        empty = true;
+      }
       continue;
     }
 
@@ -444,12 +512,17 @@ export function applyTransform(
  * do in exactly that case, so it is worked out separately once ordinary substitution has run out
  * of things to replace.
  */
-export function resolveFallback(inside: string, values: Record<string, any>, hass?: any): string | undefined {
+export function resolveFallback(
+  inside: string,
+  values: Record<string, any>,
+  hass?: any,
+  read?: (name: string) => unknown,
+): string | undefined {
   if (inside.startsWith(ESCAPE)) return undefined;
 
   const [name, ...steps] = withoutOptional(inside).split('|');
   if (!steps.some(answersUnset)) return undefined;
-  return applyTransform(steps.join('|'), values[name], hass, values);
+  return applyTransform(steps.join('|'), values[name], hass, values, read);
 }
 
 // The parts of a template that get substituted into, and so the only places a placeholder
@@ -611,6 +684,53 @@ export function resolveVariables(
   return firstDefinitionWins(combined);
 }
 
+/**
+ * Where a template copy keeps its own `default:` list once the dashboard's shared values
+ * have been added under it, so what a card hands down can leave the shared ones out.
+ */
+export const OWN_DEFAULTS = Symbol('decluttering own defaults');
+
+/** The flag a nested card sets to be handed every variable of the card that builds it. */
+export const INHERIT_FLAG = 'inherit_variables';
+
+/** The key the variables handed down ride on, the same way the chain of open templates does. */
+export const INHERITED_KEY = 'decluttering_inherited_variables';
+
+/*
+ * What a card hands down to a nested card that asks for its variables (#161): what it was
+ * given, what its view sets, and what its own template defaults to. Not `let:` - those are
+ * the template's own internals - and not the dashboard's shared values, which the nested
+ * card already reads for itself and which would otherwise beat its own template's defaults.
+ * Dotted copies of mappings are left out too; the nested card works those out again.
+ */
+export function inheritableVariables(
+  variables: VariablesConfig[] | VariablesConfig | undefined,
+  template: TemplateConfig | undefined,
+): VariablesConfig[] {
+  const combined: VariablesConfig[] = [];
+  combined.push(...ownVariables(variables));
+  combined.push(...ownVariables((template as any)?.[VIEW_VALUES]));
+  for (const declaration of getDeclarations(template)) {
+    if ('default' in declaration) combined.push({ [declaration.name]: declaration.default });
+  }
+  // Checked with `in`: a template with no `default:` of its own keeps an undefined here, and
+  // falling back on that would hand down the shared values after all.
+  const own = template && OWN_DEFAULTS in template ? (template as any)[OWN_DEFAULTS] : template?.default;
+  combined.push(...ownVariables(own));
+  return firstDefinitionWins(combined);
+}
+
+/*
+ * A card with `inherit_variables: true` and something handed down to it, as if it had
+ * written those variables itself - after its own, so anything it does write still wins.
+ * Everything downstream then reads them the way it reads any instance variable.
+ */
+export function withInheritedVariables<T extends { variables?: unknown }>(config: T): T {
+  const inherited = (config as any)?.[INHERITED_KEY];
+  if ((config as any)?.[INHERIT_FLAG] !== true || !Array.isArray(inherited) || !inherited.length) return config;
+  return { ...config, variables: [...ownVariables(config.variables), ...ownVariables(inherited)] };
+}
+
 /** What each variable is set to, reading one name per entry as substitution does. */
 export function variableValues(variableArray: VariablesConfig[] | VariablesConfig | undefined): Record<string, any> {
   // No prototype, so `key in map` answers about this dashboard's variables rather than about
@@ -638,10 +758,11 @@ function placeholdersIn(value: unknown): string[] {
     if (!match[1].startsWith(ESCAPE)) {
       const inside = withoutOptional(match[1]);
       names.push(inside.replace(TRANSFORM_TAIL, ''));
-      // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing.
+      // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing -
+      // and `[[a|if:b]]` reads b to decide whether a is shown at all.
       for (const step of inside.split('|').slice(1)) {
-        const or = orTarget(step);
-        if (or) names.push(or);
+        const other = orTarget(step) ?? conditionTarget(step);
+        if (other) names.push(other);
       }
     }
     match = pattern.exec(json);

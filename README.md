@@ -107,10 +107,15 @@ Templates][wiki-defining].
 - **[Variables][wiki-variables]** with defaults, nesting, transforms (`[[room|slug]]`), values
   read from Home Assistant (`[[entity|friendly_name]]`, its domain, object id, labels, area,
   floor or device), values a template works out for itself with `let:`, stand-ins for what
-  nothing sets (`[[name|default:Unnamed]]`), optional placeholders, dashboard-wide
+  nothing sets (`[[name|default:Unnamed]]`), values that only appear when another is set
+  (`[[name|if:other]]`), real yes/no values for options that switch on and off
+  (`[[name|bool]]`), optional placeholders, dashboard-wide
   fallbacks, and values a whole view, or one section of it, sets for every card in it. A
   declaration can say what a good value looks like (`pattern:`, `allowed:`), fold into a
-  section of the editor (`group:`), or take a whole card.
+  section of the editor (`group:`), or take a whole card. Declarations used by many
+  templates can be written once in the dashboard's `decluttering_variables:` *(v1.13.0+)*;
+  a template takes one up with `- name: colour`, and anything it writes beside the name
+  wins.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
   area, device, floor or label Home Assistant knows about, narrowed by domain, area, floor,
   label, device class or integration, with anything you name excluded, sorted, limited, and a card of your own to
@@ -150,10 +155,19 @@ Templates][wiki-defining].
   into this from its editor: **Give each copy its own section** rewrites the view for you.
 
 - **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
-  every other dashboard, or from all of them at once with `'*'`.
+  every other dashboard, or from all of them at once with `'*'`. A dashboard at the path
+  `decluttering-templates` *(v1.13.0+)* is borrowed from by every dashboard without being
+  named, so a template library written there, with its `decluttering_defaults`, is available
+  everywhere. A dashboard's own templates, and any it names, win over the library's.
+- **Offered in the add-card dialog** *(v1.13.0+)* — a template with `suggest_for:` appears
+  under Community when you pick a matching entity in the dialog's By entity tab, with the
+  entity filled in as `entity`. It takes the filters a repeat does: `suggest_for:
+  { domain: camera, area: Garden }`. Badge templates are offered in the badge dialog.
+  Needs Home Assistant 2026.6 or later, 2026.7 for badges.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
-  and `category:` groups a big collection in the picker.
-- **One-off tweaks without a new template** — a card's own `card:` block is laid over what
+  and `category:` groups a big collection in the picker. A card nested inside a template
+  can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
+- **One-off tweaks without a new template** *(v1.12.0+)* — a card's own `card:` block is laid over what
   its template builds, so a single card can change an icon or an action and nothing else.
   Mappings merge key by key, lists replace, and `null` drops a key the template sets.
 - **[Visibility][wiki-visibility]** conditions inside a template, including leaving out a copy
@@ -233,22 +247,88 @@ name: '[[name|or:label|default:Unnamed]]' # try another variable first
 `default:` supplies the text itself and `or:` names another variable to try. Both chain
 with the transforms, and with each other, so the last word is always something. A variable
 set to nothing — unset, `null` or an empty string — counts as a gap; a `0` and a `false`
-are values and keep their place.
+are values and keep their place. `none` is not a gap either: it is the text "none".
+
+`or:` only takes a variable name (letters, digits, `_` and `-`), so text with a space in it
+belongs in a `default:`. Put `or:` first and `default:` last: a `default:` with text in it
+always fills the gap, so an `or:` after it never gets a turn. An empty `default:` is still a
+gap, so the next step does get one, and from v1.12.1 `[[name|default:?]]` drops the key
+just as `[[name?]]` does.
 
 That is different from `[[name?]]`, which removes the key from the card entirely. Use `?`
 when the option should not be there at all, and `default:` when something should be shown.
-A block left with nothing in it goes too, so a whole section can hang on one variable:
+From v1.12.0, a block left with nothing in it goes too, so a whole section can hang on one
+variable:
 
 ```yaml
 features:
   - type: '[[light_type?]]'   # no light_type, no features
 ```
 
+`if:` *(v1.12.0+)* makes a value depend on a different variable. `[[name|if:other]]` keeps the value
+only while `other` is a yes, and `[[name|if:other=text]]` only while `other` is exactly that
+text. When the condition fails, the placeholder is treated as unset, so `?` drops it and a
+`default:` after it still applies. It works on whole mappings too, which means one card can
+choose which list items it gets:
+
+```yaml
+elements:
+  - '[[car_element|if:car_entity?]]'          # only on cards that name a car_entity
+go2rtc: '[[go2rtc_block|if:live_provider=go2rtc?]]'
+```
+
+`bool` *(v1.12.0+)* is for options that want a real `true` or `false`. A card reads the
+word `"false"` as switched on, so `hide_state: '[[compact|bool]]'` turns `yes`, `on` or
+`1` into `true`, and `no`, `off`, `0`, nothing at all or an unset variable into `false`.
+
+## Templates inside templates
+
+A template can hold decluttering cards of its own, a stack of two cameras say. Each of those
+gets only the variables written on it, so a stack that needs the same twenty values in both
+cards has to pass every one down by name.
+
+`inherit_variables: true` *(v1.13.0+)* on the nested card hands it everything the card
+around it has instead: what that card was given, what its view sets and what its template
+defaults to. Anything the nested card writes for itself still wins.
+
+```yaml
+cam_backup:
+  card:
+    type: vertical-stack
+    cards:
+      - type: custom:decluttering-card-plus
+        template: camera
+        inherit_variables: true
+      - type: custom:decluttering-card-plus
+        template: camera
+        inherit_variables: true
+        variables:
+          - camera_entity: '[[direct_camera_entity]]'   # this one differs
+```
+
+Placeholders in the values are filled in by the outer card before they are handed down, and
+it works through any number of levels as long as each nested card asks. Two things stay
+behind: the outer template's `let:` values, which are its own internals, and the dashboard's
+`decluttering_defaults`, which every card reads for itself anyway. It is off unless asked
+for, because a value handed down beats the nested template's own default for the same name.
+
 ## Working out what a card built
 
 `debug: true` on a card renders what it built instead of the card itself, with every
 variable put in. The editor's **Result** view answers the same question, but not when the
 card only misbehaves on a phone, or in a view whose editor is awkward to reach.
+
+`debug: yaml` *(v1.13.0+)* shows the same thing as YAML rather than JSON, which is easier
+to hold up against a card you know works, or to paste straight back into a dashboard.
+
+`debug: console` *(v1.13.0+)* leaves the card looking as it should and writes how it was
+built to the browser console instead: every variable with where its value came from (the
+card, a `let:`, a default, the view, the card around it), what each placeholder turned into,
+which options an empty variable took out, the finished config, and how long it took. Any
+template card nested inside logs its own entry too, labelled with the templates it sits in,
+so you can see what each level was given. Open the developer tools (F12) and look for
+`decluttering-card-plus:` lines. The time covers building the config, not Home Assistant
+drawing the card afterwards.
 
 `strict: true` turns the usual warnings into a card that refuses. Nothing normally stops a
 card rendering — a template can be edited after the cards that use it — but somebody

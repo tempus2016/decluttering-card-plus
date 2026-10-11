@@ -21,6 +21,9 @@ const {
   moderniseTypes,
   viewIndexFromPath,
   expandSources,
+  withLibrary,
+  mayBorrowTemplates,
+  LIBRARY_DASHBOARD,
   templatePickerLabel,
   addTemplateToRoot,
   firstUsage,
@@ -316,6 +319,66 @@ check('no star changes nothing', expandSources(['a', 'b'], ['guests']), ['a', 'b
 check('a star with nothing known is just the named ones', expandSources(['a', '*'], []), ['a']);
 check('sources as a single string', getTemplateSources({ decluttering_templates_from: 'a' }), ['a']);
 check('no sources', getTemplateSources({}), []);
+/* ------------------------------------------------- shared variable declarations */
+
+const SHARED_DECLARATIONS = {
+  decluttering_variables: [
+    { name: 'colour', label: 'Colour', selector: { select: { options: ['red', 'blue'] } }, default: 'red' },
+    { name: 'light', label: 'Light', selector: { entity: { domain: 'light' } } },
+  ],
+  decluttering_templates: {
+    takes_colour: { variables: [{ name: 'colour' }], card: { type: 'tile', color: '[[colour]]' } },
+    own_words: {
+      variables: [
+        { name: 'colour', description: 'The background' },
+        { name: 'size', default: 2 },
+      ],
+      card: { type: 'tile' },
+    },
+    child: { extends: 'takes_colour', variables: [{ name: 'colour', label: 'Shade' }] },
+    nothing_shared: { card: { type: 'tile' } },
+  },
+};
+const sharedOut = collectTemplates(SHARED_DECLARATIONS);
+
+check('a template naming a shared declaration takes all of it', sharedOut.takes_colour.variables, [
+  SHARED_DECLARATIONS.decluttering_variables[0],
+]);
+check('what a template writes beside the name wins', sharedOut.own_words.variables[0], {
+  name: 'colour',
+  label: 'Colour',
+  selector: { select: { options: ['red', 'blue'] } },
+  default: 'red',
+  description: 'The background',
+});
+check('a declaration nothing shares is left as written', sharedOut.own_words.variables[1], {
+  name: 'size',
+  default: 2,
+});
+check(
+  'a shared declaration is not pushed onto a template that never names it',
+  sharedOut.nothing_shared.variables,
+  undefined,
+);
+check('extends keeps the child override on top of the shared declaration', sharedOut.child.variables[0].label, 'Shade');
+check('and the rest of the shared declaration underneath', sharedOut.child.variables[0].default, 'red');
+check(
+  'a shared default is a default like any other',
+  resolveVariables([], sharedOut.takes_colour).find((entry) => 'colour' in entry),
+  { colour: 'red' },
+);
+
+check('the library is read first, so anything named beats it', withLibrary(['a', 'b'], false), [
+  'decluttering-templates',
+  'a',
+  'b',
+]);
+check('the library is read once however it is named', withLibrary(['decluttering-templates', 'a'], false), [
+  'decluttering-templates',
+  'a',
+]);
+check('the library borrows nothing from itself', withLibrary(['a', 'decluttering-templates'], true), ['a']);
+check('a dashboard naming nothing may still borrow from the library', mayBorrowTemplates({}), true);
 check('non-string sources are dropped', getTemplateSources({ decluttering_templates_from: ['a', 3, null] }), ['a']);
 
 check(
@@ -1025,7 +1088,32 @@ check(
 
 // The borrowing checks are asynchronous and call report() when they settle, so anything
 // added after this point would run after the totals were printed.
-const hass = { callWS: () => Promise.resolve(lender) };
+const library = {
+  decluttering_defaults: { colour: 'library-colour', reach: 'everywhere' },
+  decluttering_templates: {
+    library_only: { card: { type: 'markdown', content: '[[reach]]' } },
+    shared_badge: { card: { type: 'library-version' } },
+  },
+};
+const hass = {
+  callWS: ({ url_path }) => Promise.resolve(url_path === LIBRARY_DASHBOARD ? library : lender),
+};
+
+collectAllTemplates(hass, { views: [] }).then((all) => {
+  check('a dashboard naming nothing gets the library templates', Object.keys(all).sort(), [
+    'library_only',
+    'shared_badge',
+  ]);
+  check('a library template keeps the library defaults', all.library_only.default, [
+    { colour: 'library-colour' },
+    { reach: 'everywhere' },
+  ]);
+});
+
+collectAllTemplates(hass, borrower).then((all) => {
+  check('a dashboard named on purpose beats the library', all.shared_badge.card, { type: 'markdown' });
+  check('and the library still fills in what it does not have', !!all.library_only, true);
+});
 
 collectAllTemplates(hass, borrower).then((all) => {
   const badge = all.shared_badge;
