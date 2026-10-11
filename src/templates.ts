@@ -1,6 +1,14 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
-import { VIEW_VALUES, diagnoseInstance, forEachNames, normaliseVariables } from './variables';
+import {
+  OWN_DEFAULTS,
+  VIEW_VALUES,
+  VariableDeclaration,
+  diagnoseInstance,
+  forEachNames,
+  getDeclarations,
+  normaliseVariables,
+} from './variables';
 import { isRegistrySource, registryNames } from './registry';
 import { localize } from './localize';
 
@@ -16,6 +24,17 @@ const SOURCES_KEY = 'decluttering_templates_from';
 // by a library of templates is written once rather than repeated in each of their
 // `default:` lists. yaml anchors do this in yaml mode, and cannot in storage mode.
 const DEFAULTS_KEY = 'decluttering_defaults';
+
+/*
+ * A dashboard at this path is borrowed from by every other dashboard without being named,
+ * so a library of templates written once is available everywhere. Nothing requires it:
+ * when there is no such dashboard, looking for it costs one quiet request per page.
+ */
+export const LIBRARY_DASHBOARD = 'decluttering-templates';
+
+// Variable declarations every template on the dashboard can take up by name, so a
+// selector, label and default written once serve every template that uses the variable.
+const DECLARATIONS_KEY = 'decluttering_variables';
 
 // The original dashboard has no url_path of its own; the websocket API wants null for it.
 const DEFAULT_DASHBOARD_PATHS = ['lovelace', 'default', ''];
@@ -418,7 +437,10 @@ export function viewIndexFromPath(ll: LovelaceConfig | null | undefined, segment
 function withDefaults(template: TemplateConfig, view: VariablesConfig[], shared: VariablesConfig[]): TemplateConfig {
   if (!view.length && !shared.length) return template;
   const copy: any = { ...template };
-  if (shared.length) copy.default = [...normaliseVariables(template.default), ...shared];
+  if (shared.length) {
+    copy.default = [...normaliseVariables(template.default), ...shared];
+    copy[OWN_DEFAULTS] = template.default;
+  }
   if (view.length) copy[VIEW_VALUES] = view;
   return copy;
 }
@@ -437,6 +459,40 @@ function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<stri
   // nested inside either - it is found.
   if (ll.views) collectFromNode(ll.views, templates);
 
+  return templates;
+}
+
+/** The declarations a dashboard shares, in the same shape as a template's own `variables:`. */
+export function collectSharedDeclarations(ll: LovelaceConfig | null | undefined): VariableDeclaration[] {
+  return getDeclarations({ variables: (ll as any)?.[DECLARATIONS_KEY] } as TemplateConfig);
+}
+
+/**
+ * A template's declarations with the shared ones of the same name underneath, so
+ * `{ name: colour }` takes the whole shared declaration and anything written beside the
+ * name - a different description, say - wins. Only names the template declares are
+ * touched; sharing a declaration never adds a variable to a template that has no use for it.
+ */
+export function withSharedDeclarations(template: TemplateConfig, shared: VariableDeclaration[]): TemplateConfig {
+  if (!shared.length || !Array.isArray(template?.variables)) return template;
+  const byName = new Map<string, VariableDeclaration>();
+  for (const declaration of shared) if (!byName.has(declaration.name)) byName.set(declaration.name, declaration);
+  let changed = false;
+  const variables = template.variables.map((entry: any) => {
+    const base = entry && typeof entry === 'object' ? byName.get(entry.name) : undefined;
+    if (!base) return entry;
+    changed = true;
+    return { ...base, ...entry };
+  });
+  return changed ? ({ ...template, variables } as TemplateConfig) : template;
+}
+
+function withShared(
+  templates: Record<string, TemplateConfig>,
+  shared: VariableDeclaration[],
+): Record<string, TemplateConfig> {
+  if (!shared.length) return templates;
+  for (const name of Object.keys(templates)) templates[name] = withSharedDeclarations(templates[name], shared);
   return templates;
 }
 
@@ -464,7 +520,7 @@ export function collectTemplates(
   own?: DeclutteringTemplateConfig,
   section?: number,
 ): Record<string, TemplateConfig> {
-  const templates = resolveExtends(withOwn(collectRawTemplates(ll), own));
+  const templates = resolveExtends(withShared(withOwn(collectRawTemplates(ll), own), collectSharedDeclarations(ll)));
   const here = collectViewDefaults(ll, view, section);
   const shared = collectDefaults(ll);
   if (!here.length && !shared.length) return templates;
@@ -511,6 +567,29 @@ export function getTemplateSources(ll: LovelaceConfig | null | undefined): strin
   return (Array.isArray(sources) ? sources : [sources]).filter((s) => typeof s === 'string');
 }
 
+/** Whether the page is showing the library dashboard itself, which has nothing to borrow from itself. */
+function onLibraryDashboard(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location?.pathname?.split('/').filter(Boolean)[0] === LIBRARY_DASHBOARD;
+}
+
+/**
+ * Whether a template this dashboard does not define could still be on another one: one it
+ * names in decluttering_templates_from, or the library dashboard every dashboard borrows from.
+ */
+export function mayBorrowTemplates(ll: LovelaceConfig | null | undefined): boolean {
+  return getTemplateSources(ll).length > 0 || !onLibraryDashboard();
+}
+
+/**
+ * The dashboards to read, in the order they are merged - a later one wins a name clash.
+ * The library comes first, so any dashboard named on purpose beats it.
+ */
+export function withLibrary(sources: string[], onLibrary = onLibraryDashboard()): string[] {
+  const named = sources.filter((source) => source !== LIBRARY_DASHBOARD);
+  return onLibrary ? named : [LIBRARY_DASHBOARD, ...named];
+}
+
 // Fetching another dashboard is a round trip, and a dashboard full of templated cards would
 // otherwise make one per card, so each is fetched once and kept.
 const configCache = new Map<string, Promise<LovelaceConfig | null>>();
@@ -551,6 +630,8 @@ function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<Lov
 
   const url_path = DEFAULT_DASHBOARD_PATHS.includes(urlPath) ? null : urlPath;
   const request = (hass as any).callWS({ type: 'lovelace/config', url_path }).catch((err: any) => {
+    // The library is looked for on every page, and most installs will never have one.
+    if (urlPath === LIBRARY_DASHBOARD) return null;
     console.warn(`decluttering-card-plus: could not read the dashboard "${urlPath}":`, err?.message ?? err);
     return null;
   }) as Promise<LovelaceConfig | null>;
@@ -572,12 +653,14 @@ export async function collectAllTemplates(
 ): Promise<Record<string, TemplateConfig>> {
   const local = collectTemplates(ll, view, own, section);
   let sources = getTemplateSources(ll);
-  if (!hass || !sources.length) return local;
+  if (!hass || !mayBorrowTemplates(ll)) return local;
   if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
+  sources = withLibrary(sources);
 
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
   const viewValues = collectViewDefaults(ll, view, section);
   const here = collectDefaults(ll);
+  const declaredHere = collectSharedDeclarations(ll);
   const borrowed: Record<string, TemplateConfig> = {};
   for (const config of configs) {
     /*
@@ -588,8 +671,10 @@ export async function collectAllTemplates(
      * folded the lender's in already, ahead of ours.
      */
     const shared = [...here, ...collectDefaults(config)];
+    // Shared declarations travel the same way, this dashboard's ahead of the lender's.
+    const declarations = [...declaredHere, ...collectSharedDeclarations(config)];
     for (const [name, template] of Object.entries(collectRawTemplates(config))) {
-      borrowed[name] = withDefaults(template, viewValues, shared);
+      borrowed[name] = withDefaults(withSharedDeclarations(template, declarations), viewValues, shared);
     }
   }
   return resolveExtends({ ...borrowed, ...local });

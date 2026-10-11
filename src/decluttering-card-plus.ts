@@ -34,6 +34,7 @@ import {
   findTemplateAnywhere,
   findTemplateLocation,
   getTemplateSources,
+  mayBorrowTemplates,
   hasSectionDefaults,
   renameTemplate,
   TemplateUsages,
@@ -93,6 +94,7 @@ import {
   forEachNames,
   forEachVariables,
   getDeclarations,
+  inheritableVariables,
   mergeVariables,
   ownVariables,
   POSITION_NAMES,
@@ -101,15 +103,38 @@ import {
   variableName,
   variableValues,
   VariableDeclaration,
+  withInheritedVariables,
 } from './variables';
-import { chainOf, chainWith, describeCycle, describeTooDeep, findCycle, MAX_NESTING, withChain } from './cycles';
+import {
+  chainOf,
+  chainWith,
+  describeCycle,
+  describeTooDeep,
+  findCycle,
+  MAX_NESTING,
+  withChain,
+  withInherited,
+  withoutStamps,
+} from './cycles';
 import { columnsFor } from './layout';
+import { entitySuggestions } from './picker';
 import { isRegistrySource, registryKey, registryNames, resolveRegistryItems, sameRegistry } from './registry';
 import { loadLabels } from './labels';
 import { findRepeatingCard, generateView, sectionPerCopy, wantsLabels } from './strategy';
 import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize } from './localize';
 import { VERSION } from './version';
+import { toYaml } from './yaml';
+import {
+  BuildTrace,
+  handedDownNames,
+  logTrace,
+  newTrace,
+  TraceSection,
+  variableRows,
+  wantsTrace,
+  withTrace,
+} from './trace';
 
 // Tags this bundle owns.
 const CARD_TAG = 'decluttering-card-plus';
@@ -292,6 +317,22 @@ async function loadRowEditor(): Promise<void> {
 // The four things a template can define, exactly one of which it must.
 const THING_TYPE_KEYS = ['card', 'row', 'element', 'badge'];
 
+/*
+ * A picture element is centred on its position and clipped by the card it sits in, so an
+ * element's debug view - far bigger than the icon it stands in for - lost its top and
+ * bottom, with no way to scroll to them (discussion #150). In debug it covers the card
+ * from the top-left corner instead, and scrolls when the config is longer than that.
+ */
+const DEBUG_ELEMENT_STYLE: Record<string, string> = {
+  top: '0',
+  left: '0',
+  transform: 'none',
+  width: '100%',
+  height: '100%',
+  overflow: 'auto',
+  'z-index': '1',
+};
+
 function getThingType(templateConfig: TemplateConfig): LovelaceThingType | undefined {
   const thingTypes = Object.keys(templateConfig).filter((key) => THING_TYPE_KEYS.includes(key));
   return thingTypes.length === 1 ? (thingTypes[0] as LovelaceThingType) : undefined;
@@ -320,7 +361,7 @@ abstract class DeclutteringElement extends LitElement {
   @state() private _wrapperPreview = false;
 
   protected _thingConfig?: LovelaceThingConfig;
-  private _thingType?: LovelaceThingType;
+  protected _thingType?: LovelaceThingType;
   // One observer for the element's lifetime. A new one per wrapped card leaked a live
   // observer on every reconfigure, and left them all running after the card was gone.
   private _resizes?: ResizeObserver;
@@ -329,7 +370,11 @@ abstract class DeclutteringElement extends LitElement {
   protected _templateName?: string;
   protected _gridOptions?: unknown;
   protected _strict = false;
-  @state() protected _debug = false;
+  // `debug: console`: the card renders as normal and logs how it was built (#160).
+  protected _trace = false;
+  // Which of the card's variables were handed down to it, so the log can say so.
+  protected _handedDown: string[] = [];
+  @state() protected _debug: false | 'json' | 'yaml' = false;
   protected _openTemplates: string[] = [];
   // The copies of a repeated template, kept so the layout can change without resolving
   // them again, and the column count currently on show so it only rebuilds when it moves.
@@ -392,14 +437,23 @@ abstract class DeclutteringElement extends LitElement {
       }
       .debug {
         padding: 12px 16px;
+        text-align: start;
       }
       .debug p {
         margin: 0 0 8px;
         color: var(--secondary-text-color);
         font-size: 0.9em;
       }
+      /*
+       * A card that handles taps - button-card, Mushroom - turns text selection off, and
+       * the wrapped debug view would inherit that and could not be copied out (#156). The
+       * same cards centre their text, which is what the start alignment above undoes.
+       */
       .debug pre {
         margin: 0;
+        -webkit-user-select: text;
+        user-select: text;
+        cursor: text;
         overflow: auto;
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.85em;
@@ -534,18 +588,46 @@ abstract class DeclutteringElement extends LitElement {
     this._templateName = templateName ?? this._templateName;
     const thingContent = templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
     const unresolved: string[] = [];
-    this._setResolved(
-      thingType,
-      applyOverride(
-        deepReplace(variables, templateConfig, thingContent, templateName, this._hass, false, (names) =>
-          unresolved.push(...names),
-        ),
-        instance,
-        thingType,
+    // Only a card that uses a template has variables to hand down; a template's own preview does not.
+    const inherited = instance ? (): unknown[] => this._handDown(variables, templateConfig, templateName) : undefined;
+    // Only a card using a template logs; a template's own preview has nothing to say.
+    const trace = this._trace && instance ? newTrace() : undefined;
+    const started = performance.now();
+    const built = applyOverride(
+      deepReplace(
+        variables,
+        templateConfig,
+        thingContent,
+        templateName,
+        this._hass,
+        false,
+        (names) => unresolved.push(...names),
+        0,
+        trace,
       ),
-      this._resolveStyles(templateConfig, variables, cardStyle, templateName),
+      instance,
+      thingType,
     );
+    const styles = this._resolveStyles(templateConfig, variables, cardStyle, templateName, trace);
+    if (trace) {
+      this._logBuild(started, [
+        { variables: variableRows(variables, templateConfig, this._handedDown), trace, built: withoutStamps(built) },
+      ]);
+    }
+    this._setResolved(thingType, built, styles, inherited);
     this._refuseIfStrict(unresolved);
+  }
+
+  private _logBuild(started: number, sections: TraceSection[]): void {
+    logTrace(
+      {
+        template: this._templateName ?? '',
+        chain: this._openTemplates,
+        ms: performance.now() - started,
+        sections,
+      },
+      this._hass,
+    );
   }
 
   /*
@@ -566,27 +648,70 @@ abstract class DeclutteringElement extends LitElement {
     variables: VariablesConfig[] | undefined,
     cardStyle?: string,
     templateName?: string,
+    trace?: BuildTrace,
   ): string {
     let styles = '';
     if (templateConfig.style) {
-      styles += deepReplace(variables, templateConfig, templateConfig.style, templateName, this._hass);
+      styles += deepReplace(
+        variables,
+        templateConfig,
+        templateConfig.style,
+        templateName,
+        this._hass,
+        false,
+        undefined,
+        0,
+        trace,
+      );
     }
     if (cardStyle) {
-      styles += deepReplace(variables, templateConfig, cardStyle, templateName, this._hass);
+      styles += deepReplace(variables, templateConfig, cardStyle, templateName, this._hass, false, undefined, 0, trace);
     }
     return styles;
   }
 
-  private _setResolved(thingType: LovelaceThingType, thingConfig: LovelaceThingConfig, styles: string): void {
+  /*
+   * What this card hands down to a nested card that asks for its variables, with any
+   * placeholders in them filled in here - in the nested card they would be read against
+   * the wrong values. An optional placeholder that nothing fills drops its entry.
+   */
+  private _handDown(
+    variables: VariablesConfig[] | undefined,
+    templateConfig: TemplateConfig,
+    templateName?: string,
+  ): unknown[] {
+    const list = deepReplace(
+      variables,
+      templateConfig,
+      inheritableVariables(variables, templateConfig),
+      templateName,
+      this._hass,
+      true,
+    );
+    return (Array.isArray(list) ? list : []).filter(
+      (entry: unknown) => !!entry && typeof entry === 'object' && Object.keys(entry as object).length > 0,
+    );
+  }
+
+  private _setResolved(
+    thingType: LovelaceThingType,
+    thingConfig: LovelaceThingConfig,
+    styles: string,
+    inherited?: () => unknown[],
+  ): void {
     // Anything inside this card is told which templates are open above it, so a card that
     // ends up using a template already being drawn can refuse instead of going round again.
-    const stamped = withChain(thingConfig, chainWith(this._openTemplates, this._templateName));
+    const chained = withChain(thingConfig, chainWith(this._openTemplates, this._templateName));
+    const stamped = withInherited(this._trace ? withTrace(chained) : chained, inherited);
     this._style = styles;
     this._thingConfig = stamped;
     this._thingType = thingType;
     DeclutteringElement._createThing(stamped, thingType, (thing: LovelaceThing) => {
       if (this._thingConfig === stamped) {
-        this._setThing(thing, thingType === 'element' ? thingConfig.style : undefined);
+        this._setThing(
+          thing,
+          thingType === 'element' ? (this._debug ? DEBUG_ELEMENT_STYLE : thingConfig.style) : undefined,
+        );
       }
     });
   }
@@ -636,6 +761,7 @@ abstract class DeclutteringElement extends LitElement {
         'card',
         config.empty as LovelaceThingConfig,
         this._resolveStyles(templateConfig, config.variables, config.style, config.template),
+        () => this._handDown(config.variables, templateConfig, config.template),
       );
       return;
     }
@@ -651,19 +777,47 @@ abstract class DeclutteringElement extends LitElement {
     }
 
     // The card's own `card:` block is laid over every copy alike.
-    const cards = wanted.map((item, index) =>
-      applyOverride(
+    // Each copy hands down its own item's values, so it is stamped here rather than as a whole.
+    const started = performance.now();
+    const sections: TraceSection[] = [];
+    const cards = wanted.map((item, index) => {
+      const variables = forEachVariables(item, config.variables, index, wanted.length);
+      const trace = this._trace ? newTrace() : undefined;
+      // What the item and its position set, as opposed to what the card set for every copy.
+      // The item beats the card, and the card beats the position, as forEachVariables orders them.
+      const names = (list: unknown): string[] => ownVariables(list).map((entry) => Object.keys(entry)[0]);
+      const repeated = trace
+        ? [
+            ...names(item),
+            ...['index', 'index0', 'count', 'first', 'last'].filter((name) => !names(config.variables).includes(name)),
+          ]
+        : [];
+      const built = applyOverride(
         deepReplace(
-          forEachVariables(item, config.variables, index, wanted.length),
+          variables,
           templateConfig,
           templateConfig.card,
           config.template,
           this._hass,
+          false,
+          undefined,
+          0,
+          trace,
         ),
         config,
         'card',
-      ),
-    );
+      );
+      if (trace) {
+        sections.push({
+          label: localize('trace.copy', { number: index + 1, count: wanted.length }, this._hass),
+          variables: variableRows(variables, templateConfig, this._handedDown, repeated),
+          trace,
+          built: withoutStamps(built),
+        });
+      }
+      return withInherited(built, () => this._handDown(variables, templateConfig, config.template));
+    });
+    if (this._trace) this._logBuild(started, sections);
 
     // The styles belong to the whole card rather than to any one copy, and resolve against
     // the real template so its declared defaults still apply.
@@ -879,7 +1033,8 @@ abstract class DeclutteringElement extends LitElement {
                   : localize('card.debug_builds', undefined, this._hass)
               }
             </p>
-            <pre>${JSON.stringify(this._thingConfig, null, 2)}</pre>
+            <pre>
+${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.stringify(withoutStamps(this._thingConfig), null, 2)}</pre>
           </div>
         </ha-card>
       `;
@@ -987,6 +1142,42 @@ class DeclutteringCard extends DeclutteringElement {
   private _resolverRegistry?: unknown[];
   private _misplacedWarnedFor?: DeclutteringCardConfig;
 
+  /*
+   * Asks the hui-card or hui-badge around this card to leave it on the page while it is
+   * hidden. They would otherwise take it off, and a card that is off the page stops
+   * watching the card inside it, so it would never notice that card coming back.
+   */
+  public connectedWhileHidden = true;
+
+  constructor() {
+    super();
+    // The hui-card inside says when its visibility conditions change. Heard here, on the
+    // way out, so this card is hidden or shown before the wrapper around it checks.
+    const heard = (ev: Event) => {
+      if (ev.composedPath()[0] !== this) this._displayHidden();
+    };
+    this.addEventListener('card-visibility-changed', heard);
+    this.addEventListener('badge-visibility-changed', heard);
+  }
+
+  /*
+   * Collapsing this element is not enough in a sections view. The section gives every card
+   * a grid cell and only frees it when the card has the hidden attribute, and hides a
+   * whole section only once every card in it does - so a template card that hid itself
+   * left an empty cell behind, and a section of nothing else stayed on the page and pushed
+   * the others off centre (#152). The wrapper around this card only looks again when it
+   * is told, so it is told.
+   */
+  protected _displayHidden(): void {
+    super._displayHidden();
+    if (this._thingType !== 'card' && this._thingType !== 'badge') return;
+    const hidden = this.classList.contains('child-card-hidden');
+    if (this.hasAttribute('hidden') === hidden) return;
+    this.toggleAttribute('hidden', hidden);
+    const event = this._thingType === 'badge' ? 'badge-visibility-changed' : 'card-visibility-changed';
+    this.dispatchEvent(new Event(event, { bubbles: true, composed: true }));
+  }
+
   static getConfigElement(): HTMLElement {
     return document.createElement(CARD_EDITOR_TAG);
   }
@@ -1012,6 +1203,9 @@ class DeclutteringCard extends DeclutteringElement {
      */
     this._openTemplates = chainOf(config);
     this._templateName = config.template;
+    // Whatever the card around it handed down, read from here on as if written on this card.
+    this._handedDown = handedDownNames(config);
+    config = withInheritedVariables(config);
 
     // Said here rather than thrown: Home Assistant collapses a card that throws in
     // setConfig to "Configuration error" with the reason hidden, and the reason - which
@@ -1041,13 +1235,14 @@ class DeclutteringCard extends DeclutteringElement {
       this._applyTemplate(templateConfig, config);
       return;
     }
-    if (!getTemplateSources(ll).length) {
+    if (!mayBorrowTemplates(ll)) {
       throw new Error(
         localize('error.template_missing', { template: config.template }, this._hass) +
           didYouMean(config.template, Object.keys(collectTemplates(ll))),
       );
     }
-    // The template may live on a dashboard this one borrows from, which has to be fetched.
+    // The template may live on a dashboard this one borrows from, or on the library
+    // dashboard every one borrows from, which has to be fetched.
     // setConfig cannot wait, so it is picked up as soon as hass arrives.
     this._pendingConfig = config;
     if (this._hass) this.hassAvailable(this._hass);
@@ -1065,7 +1260,8 @@ class DeclutteringCard extends DeclutteringElement {
     this._registry = undefined;
     this._applyGap(config.gap);
     this._strict = config.strict === true;
-    this._debug = config.debug === true;
+    this._debug = config.debug === 'yaml' ? 'yaml' : config.debug === true ? 'json' : false;
+    this._trace = wantsTrace(config);
     // What the card asks for beats what the template says it wants.
     this._gridOptions = config.grid_options ?? (templateConfig as { grid_options?: unknown }).grid_options;
     this._warnMisplacedOverrides(templateConfig, config);
@@ -1203,7 +1399,9 @@ class DeclutteringCard extends DeclutteringElement {
           this._applyTemplate(templateConfig, config);
           this._loadLabelsIfWanted(hass);
         } else {
-          this._error = localize('error.template_missing_anywhere', { template: config.template }, hass);
+          // Only a dashboard that names somewhere to borrow from is told it was looked for there.
+          const key = getTemplateSources(ll).length ? 'error.template_missing_anywhere' : 'error.template_missing';
+          this._error = localize(key, { template: config.template }, hass);
           // Every name there is, borrowed ones included, is known by the time this runs.
           collectAllTemplates(hass, ll).then((all) => {
             this._error += didYouMean(config.template, Object.keys(all));
@@ -1833,7 +2031,7 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   // The dropdown starts with this dashboard's templates and gains the borrowed ones once
   // the other dashboards have been read.
   private _loadBorrowedTemplates(): void {
-    if (!getTemplateSources(this._lovelace).length) return;
+    if (!mayBorrowTemplates(this._lovelace)) return;
     this._loadingTemplates = true;
     collectAllTemplates(this.hass, this._lovelace)
       .then((templates) => {
@@ -1926,7 +2124,7 @@ class DeclutteringTemplate extends DeclutteringElement {
     // one this dashboard borrows from, which has to be fetched, so drawing waits for hass
     // - drawn now, a child with no card of its own would fail before its parent arrived.
     const unresolved = typeof (resolved as { extends?: unknown }).extends === 'string';
-    if (unresolved && getTemplateSources(ll).length) {
+    if (unresolved && mayBorrowTemplates(ll)) {
       this._pendingPreview = config;
       if (this._hass) this.hassAvailable(this._hass);
       return;
@@ -2556,7 +2754,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     // A dashboard that borrows templates has names defined elsewhere, and the sweep must
     // know them or every card using one is reported as pointing at nothing. Fetched once
     // per dashboard config; until it lands, "does not exist" is held back rather than said.
-    const borrowing = getTemplateSources(ll).length > 0;
+    const borrowing = mayBorrowTemplates(ll);
     if (borrowing && this._borrowed?.ll !== ll) {
       this._borrowed = { ll };
       const local = new Set(Object.keys(collectTemplates(ll)));
@@ -3332,6 +3530,44 @@ const DOCUMENTATION_URL = 'https://github.com/tempus2016/decluttering-card-plus'
 defineElement(CARD_EDITOR_TAG, DeclutteringCardEditor);
 defineElement(TEMPLATE_EDITOR_TAG, DeclutteringTemplateEditor);
 
+/*
+ * Home Assistant asks for suggestions synchronously, while the add-card dialog is open, so
+ * templates on other dashboards have to be fetched before it asks. They are read when the
+ * page loads and again on every question, for the next one; this dashboard's own
+ * templates are read fresh each time, edits not yet saved included.
+ */
+let borrowedForSuggestions: Record<string, TemplateConfig> = {};
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function refreshSuggestionTemplates(hass: any): void {
+  if (!hass) return;
+  void collectAllTemplates(hass, getLovelaceConfig())
+    .then((all) => {
+      borrowedForSuggestions = all;
+      // Labels are not on hass, and only a template narrowing by one needs them fetched.
+      if (Object.values(all).some((template) => (template.suggest_for as { label?: unknown })?.label)) {
+        void loadLabels(hass);
+      }
+    })
+    .catch(() => undefined);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function suggestionsFor(hass: any, entityId: string, kind: 'card' | 'badge'): unknown[] | null {
+  refreshSuggestionTemplates(hass);
+  const templates = { ...borrowedForSuggestions, ...collectTemplates(getLovelaceConfig()) };
+  const found = entitySuggestions(hass, entityId, templates, kind, `custom:${CARD_TAG}`);
+  return found.length ? found : null;
+}
+
+// The page's hass is there a moment after the resources load, not before.
+function preloadSuggestionTemplates(tries = 0): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hass = (document.querySelector('home-assistant') as any)?.hass;
+  if (hass) refreshSuggestionTemplates(hass);
+  else if (tries < 30) setTimeout(() => preloadSuggestionTemplates(tries + 1), 1000);
+}
+
 if (defineElement(CARD_TAG, DeclutteringCard)) {
   customCards.push({
     type: CARD_TAG,
@@ -3339,6 +3575,8 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
     name: 'Decluttering Card Plus',
     preview: false,
     description: localize('picker.card_description'),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getEntitySuggestion: (hass: any, entityId: string) => suggestionsFor(hass, entityId, 'card'),
   });
   customBadges.push({
     type: CARD_TAG,
@@ -3346,7 +3584,10 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
     name: 'Decluttering Card Plus',
     preview: false,
     description: localize('picker.badge_description'),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    getEntitySuggestion: (hass: any, entityId: string) => suggestionsFor(hass, entityId, 'badge'),
   });
+  preloadSuggestionTemplates();
 }
 
 /*
