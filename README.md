@@ -389,6 +389,16 @@ decluttering-card-plus: "but2 button" [ele_button] built in 0.1 ms (inside "back
 with `name: '[[camera]]'` on the `camera` template and `name: '[[ele_name]] button'` on
 `ele_button`.
 
+Each nested card builds after the card around it, once Home Assistant creates it, so the
+outer entry shows its nested cards as the decluttering cards they are. From v1.14.0 the
+outermost card waits for them and then logs one more entry, `"back_yard" [camera] in full`,
+with every nested card replaced by what it built. A nested card that never builds - hidden,
+not shown yet, or in error - is left as written and listed underneath, after a few seconds.
+
+`debug: true` and `debug: yaml` log too *(v1.14.0+)*, on top of showing what was built on
+the card. Nothing inside a card showing its debug view is built, so those log only the one
+level.
+
 `strict: true` turns the usual warnings into a card that refuses. Nothing normally stops a
 card rendering — a template can be edited after the cards that use it — but somebody
 building a template for other people wants the opposite.

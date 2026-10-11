@@ -235,6 +235,8 @@
   "trace.none": "(none)",
   "trace.taken_out": "Taken out because a variable was empty:",
   "trace.result": "Built:",
+  "trace.in_full": "decluttering-card-plus: {label} in full, with the cards inside it built",
+  "trace.never_built": "Never built, so left as written (hidden, not shown yet, or in error):",
   "trace.col_variable": "variable",
   "trace.col_value": "value",
   "trace.col_from": "from",

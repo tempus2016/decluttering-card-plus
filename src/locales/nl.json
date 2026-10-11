@@ -235,6 +235,8 @@
   "trace.none": "(geen)",
   "trace.taken_out": "Weggehaald omdat een variabele leeg was:",
   "trace.result": "Gebouwd:",
+  "trace.in_full": "decluttering-card-plus: {label} volledig, met de kaarten erin gebouwd",
+  "trace.never_built": "Nooit gebouwd, dus gelaten zoals geschreven (verborgen, nog niet getoond of met een fout):",
   "trace.col_variable": "variabele",
   "trace.col_value": "waarde",
   "trace.col_from": "bron",

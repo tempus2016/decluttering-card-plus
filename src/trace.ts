@@ -47,15 +47,35 @@ export function traceLabel(template: string, name?: unknown): string {
   return typeof name === 'string' && name.trim() ? `"${name}" [${template}]` : `"${template}"`;
 }
 
+/** The outermost logging card a nested card reports what it built to, and where in it the nested card sits. */
+export const TRACE_ROOT_KEY = 'decluttering_trace_root';
+
+export type TracePath = (string | number)[];
+
+export interface TraceRoot {
+  id: string;
+  path: TracePath;
+}
+
 /** Where a card was told it sits, if a card around it is logging. */
 export function tracePlace(config: any): TracePlace | undefined {
   const place = config?.[TRACE_PLACE_KEY];
   return place && Array.isArray(place.parents) && typeof place.at === 'string' ? place : undefined;
 }
 
-/** Whether a card should log its build: it asked to, or a card around it did and it said nothing itself. */
+/** Which outermost card a card reports to, if one is logging around it. */
+export function traceRoot(config: any): TraceRoot | undefined {
+  const root = config?.[TRACE_ROOT_KEY];
+  return root && typeof root.id === 'string' && Array.isArray(root.path) ? root : undefined;
+}
+
+/*
+ * Whether a card should log its build: it asked to, or a card around it did and it said
+ * nothing itself. Any debug setting asks: `debug: true` and `debug: yaml` show what was
+ * built on the card, and the log says how - and is still there if the view itself is not.
+ */
 export function wantsTrace(config: any): boolean {
-  if (config?.debug === 'console') return true;
+  if (config?.debug === 'console' || config?.debug === true || config?.debug === 'yaml') return true;
   return config?.debug === undefined && config?.[TRACE_KEY] === true;
 }
 
@@ -64,7 +84,7 @@ export function wantsTrace(config: any): boolean {
  * question is usually about answer it without each one being edited. Like the chain of open
  * templates, a nested card's own content is built from its template, so the walk stops at it.
  */
-export function withTrace<T>(config: T, parents: string[] = []): T {
+export function withTrace<T>(config: T, parents: string[] = [], root?: TraceRoot): T {
   const holds = (node: any): boolean => {
     if (Array.isArray(node)) return node.some(holds);
     if (!node || typeof node !== 'object') return false;
@@ -74,22 +94,132 @@ export function withTrace<T>(config: T, parents: string[] = []): T {
   if (!holds(config)) return config;
 
   const copy = JSON.parse(JSON.stringify(config));
-  const walk = (node: any, at: string): void => {
+  eachNestedCard(copy, (node, path) => {
+    node[TRACE_KEY] = true;
+    // Ten copies of one element template log alike; where each sits tells them apart.
+    if (parents.length) node[TRACE_PLACE_KEY] = { parents, at: formatPath(path) };
+    if (root) node[TRACE_ROOT_KEY] = { id: root.id, path: [...root.path, ...path] };
+  });
+  return copy;
+}
+
+// Every card of ours in a config, and where it sits. A nested card's own content is its template's, so the walk stops there.
+function eachNestedCard(config: unknown, visit: (node: any, path: TracePath) => void): void {
+  const walk = (node: any, path: TracePath): void => {
     if (Array.isArray(node)) {
-      node.forEach((item, index) => walk(item, `${at}[${index}]`));
+      node.forEach((item, index) => walk(item, [...path, index]));
       return;
     }
     if (!node || typeof node !== 'object') return;
     if (typeof node.type === 'string' && CONSUMER_TYPES.includes(node.type)) {
-      node[TRACE_KEY] = true;
-      // Ten copies of one element template log alike; where each sits tells them apart.
-      if (parents.length) node[TRACE_PLACE_KEY] = { parents, at: at || '.' };
+      visit(node, path);
       return;
     }
-    for (const [key, value] of Object.entries(node)) walk(value, at ? `${at}.${key}` : key);
+    for (const [key, value] of Object.entries(node)) walk(value, [...path, key]);
   };
-  walk(copy, '');
-  return copy;
+  walk(config, []);
+}
+
+/** Where each card of ours sits in a config. */
+export function nestedCardPaths(config: unknown): TracePath[] {
+  const paths: TracePath[] = [];
+  eachNestedCard(config, (_node, path) => paths.push(path));
+  return paths;
+}
+
+/** A path as the console shows it: `cards[0].elements[3]`. */
+export function formatPath(path: TracePath): string {
+  const text = path.map((step) => (typeof step === 'number' ? `[${step}]` : `.${step}`)).join('');
+  return text.replace(/^\./, '') || '.';
+}
+
+/*
+ * The whole of what a logging card ends up showing, nested cards built and all (#160). Its
+ * own entry can only show a nested card as the decluttering card it is, because each one
+ * builds after it, once Home Assistant creates it. So every nested card reports what it
+ * built to the outermost one, which logs the whole thing once nothing is left to wait for -
+ * or, when a nested card is never built (hidden, or not shown yet), once the reports stop.
+ */
+interface Expansion {
+  label: string;
+  config: any;
+  waiting: Map<string, TracePath>;
+  timer?: ReturnType<typeof setTimeout>;
+  hass?: any;
+}
+
+const expansions = new Map<string, Expansion>();
+const SETTLE_MS = 3000;
+let expansionCount = 0;
+
+/** A new id for an outermost card's build, so reports meant for an earlier build are not mixed in. */
+export function newExpansionId(): string {
+  expansionCount += 1;
+  return `dcp-${Date.now()}-${expansionCount}`;
+}
+
+const pathKey = (path: TracePath): string => JSON.stringify(path);
+
+function setAt(config: any, path: TracePath, value: unknown): any {
+  if (!path.length) return value;
+  let node = config;
+  for (const step of path.slice(0, -1)) {
+    if (!node || typeof node !== 'object') return config;
+    node = node[step];
+  }
+  if (node && typeof node === 'object') node[path[path.length - 1]] = value;
+  return config;
+}
+
+function settle(id: string): void {
+  const expansion = expansions.get(id);
+  if (!expansion) return;
+  if (expansion.timer) clearTimeout(expansion.timer);
+  if (!expansion.waiting.size) {
+    finish(id);
+    return;
+  }
+  expansion.timer = setTimeout(() => finish(id), SETTLE_MS);
+}
+
+function finish(id: string): void {
+  const expansion = expansions.get(id);
+  if (!expansion) return;
+  expansions.delete(id);
+  if (expansion.timer) clearTimeout(expansion.timer);
+  const { hass } = expansion;
+  console.groupCollapsed(localize('trace.in_full', { label: expansion.label }, hass));
+  console.log(localize('trace.result', undefined, hass), expansion.config);
+  if (expansion.waiting.size) {
+    console.log(localize('trace.never_built', undefined, hass), [...expansion.waiting.values()].map(formatPath));
+  }
+  console.groupEnd();
+}
+
+/** The outermost logging card has built: wait for the cards inside it, if it has any. */
+export function startExpansion(id: string, label: string, config: unknown, nested: TracePath[], hass?: any): void {
+  if (!nested.length) return;
+  expansions.set(id, {
+    label,
+    config: JSON.parse(JSON.stringify(config ?? null)),
+    waiting: new Map(nested.map((path) => [pathKey(path), path])),
+    hass,
+  });
+  settle(id);
+}
+
+/** A nested card has built: put what it built in its place, and wait for the cards inside it too. */
+export function reportExpansion(root: TraceRoot, config: unknown, nested: TracePath[]): void {
+  const expansion = expansions.get(root.id);
+  const key = pathKey(root.path);
+  if (!expansion || !expansion.waiting.has(key)) return;
+  expansion.waiting.delete(key);
+  expansion.config = setAt(expansion.config, root.path, JSON.parse(JSON.stringify(config ?? null)));
+  for (const path of nested) {
+    const full = [...root.path, ...path];
+    expansion.waiting.set(pathKey(full), full);
+  }
+  settle(root.id);
 }
 
 /** The variables a card was handed by the card around it rather than given itself, read before they are merged in. */
