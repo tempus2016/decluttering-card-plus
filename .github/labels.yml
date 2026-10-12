@@ -56,6 +56,14 @@
   color: 0366d6
   description: Dependency updates
 
+# Conversation state, set automatically when somebody comments on an issue
+- name: Author Reply
+  color: 5319e7
+  description: Maintainer has replied, waiting on the reporter
+- name: User Reply
+  color: 0e8a16
+  description: Reporter has replied, waiting on the maintainer
+
 # Upstream provenance — this fork answers issues raised on the projects it came from
 - name: upstream
   color: fef2c0
