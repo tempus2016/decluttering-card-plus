@@ -49,6 +49,7 @@ import {
   applyOverride,
   misplacedOverrides,
   groupCard,
+  GROUP_CARD_TYPE,
 } from './templates';
 
 /*
@@ -747,6 +748,11 @@ abstract class DeclutteringElement extends LitElement {
     styles: string,
     inherited?: () => unknown[],
   ): void {
+    // A group in a view's row of badges lays its cards out as badges, and is one itself (#184).
+    if (thingType === 'card' && thingConfig.type === GROUP_CARD_TYPE && this._inBadgeRow) {
+      thingType = 'badge';
+      thingConfig = { ...thingConfig, badges: true };
+    }
     // Anything inside this card is told which templates are open above it, so a card that
     // ends up using a template already being drawn can refuse instead of going round again.
     const chained = withChain(thingConfig, chainWith(this._openTemplates, this._templateName));
@@ -1019,10 +1025,30 @@ abstract class DeclutteringElement extends LitElement {
     if (this._forEach?.minWidth) this._watchWidth();
     this._announceSize();
     this._syncSection();
+    this._syncBadgeRow();
     this._syncWrapperPreview();
     requestAnimationFrame(() => {
       if (this.isConnected) this._syncWrapperPreview();
     });
+  }
+
+  /** Whether this element is a badge in a view's row of badges, which only being on the page can tell. */
+  private get _inBadgeRow(): boolean {
+    return this.parentElement?.localName === 'hui-badge';
+  }
+
+  /*
+   * setConfig runs before the card is on the page, so a group template is first built as a
+   * card. One that turns out to be in the row of badges builds again here as badges, before
+   * it is first painted.
+   */
+  private _syncBadgeRow(): void {
+    if (this._thingType !== 'card' || this._thingConfig?.type !== GROUP_CARD_TYPE || !this._inBadgeRow) return;
+    try {
+      this._rebuild();
+    } catch (err) {
+      this._error = (err as Error)?.message ?? String(err);
+    }
   }
 
   /*

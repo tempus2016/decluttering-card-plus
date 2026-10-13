@@ -174,6 +174,7 @@ Templates][wiki-defining].
   can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
 - **A set of cards as one card** *(v1.14.0+)* — a `group:` template puts several cards on a
   view from one decluttering card, each laid out in the section as if it were written there.
+  In a view's badges the same template is a set of badges *(v1.15.0+)*.
 - **One-off tweaks without a new template** *(v1.12.0+)* — a card's own `card:` block is laid over what
   its template builds, so a single card can change an icon or an action and nothing else.
   Mappings merge key by key, lists replace, and `null` drops a key the template sets.
@@ -358,6 +359,36 @@ for the whole set. `for_each` repeats the whole group, one copy under another.
 On the dashboard the group is still one card: it is dragged, edited and deleted as a whole.
 Outside a sections view its cards go one under another, which is where they would be in a
 masonry column anyway.
+
+### A set of badges as one badge (v1.15.0+)
+
+Put a group template in a view's badges and its cards are built as badges, side by side in
+the row with the others. Nothing changes in the template: the same `group:` is a set of
+cards in a section and a set of badges in the badges row.
+
+```yaml
+decluttering_templates:
+  lights:
+    group:
+      cards:
+        - type: custom:decluttering-card-plus
+          template: light_badge
+          variables:
+            - entity: light.kitchen
+        - type: entity
+          entity: light.living_room
+```
+
+```yaml
+badges:
+  - type: custom:decluttering-card-plus
+    template: lights
+```
+
+Everything in the group has to be something that works as a badge, the same as anything
+else in the badges row. A badge with `visibility` hides on its own and the row closes up
+around it. The group still wraps as one: when it does not fit at the end of a line, the
+whole set moves to the next. In edit mode it is one badge, dragged and edited as a whole.
 
 ## Working out what a card built
 
