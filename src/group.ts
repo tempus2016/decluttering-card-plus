@@ -18,12 +18,18 @@ const GROUP_TAG = GROUP_CARD_TYPE.replace(/^custom:/, '');
  * Anywhere else - a masonry view, a panel - a card's grid size means nothing, and written
  * out the cards would each take the whole column. So that is what they get here too: one
  * under another, the way a vertical stack would put them.
+ *
+ * In a view's row of badges it is told `badges: true`, and builds each of its cards as a
+ * badge instead (#184): they sit side by side and wrap the way the row's own badges do.
  */
 class DeclutteringGroup extends LitElement {
   @property({ attribute: false }) public layout?: string;
   @property({ type: Boolean }) public preview = false;
   @state() private _cards: any[] = [];
   @state() private _error?: string;
+  @state() private _badges = false;
+  // Edit mode, as the hui-badge around a group of badges knows it.
+  @state() private _wrapperPreview = false;
   private _hass?: any;
 
   set hass(hass: any) {
@@ -31,31 +37,61 @@ class DeclutteringGroup extends LitElement {
     for (const card of this._cards) card.hass = hass;
   }
 
-  public setConfig(config: { cards?: unknown }): void {
+  public setConfig(config: { cards?: unknown; badges?: boolean }): void {
     // Said rather than thrown: a throw here reaches the dashboard as "Configuration error", reason hidden.
     this._error = Array.isArray(config?.cards) ? undefined : localize('error.group_needs_cards', undefined, this._hass);
     const cards = Array.isArray(config?.cards) ? config.cards : [];
-    // hui-card is what the section wraps each of its cards in: visibility, sizes and rebuilds come with it.
+    const badges = config?.badges === true;
+    this._badges = badges;
+    /*
+     * hui-card is what the section wraps each of its cards in: visibility, sizes and
+     * rebuilds come with it. hui-badge does the same for the row of badges. A group
+     * nested in this one is a badge here too, so it is told so.
+     */
+    const tag = badges ? 'hui-badge' : 'hui-card';
     const build = (): void => {
-      const Wrapper = customElements.get('hui-card') as any;
-      this._cards = cards.map((cardConfig) => {
+      const Wrapper = customElements.get(tag) as any;
+      this._cards = cards.map((cardConfig: any) => {
         const card = new Wrapper();
-        card.config = cardConfig;
-        card.preview = this.preview;
-        card.layout = this.layout;
+        card.config = badges && cardConfig?.type === GROUP_CARD_TYPE ? { ...cardConfig, badges: true } : cardConfig;
+        card.preview = this._previewing;
+        if (!badges) card.layout = this.layout;
         if (this._hass) card.hass = this._hass;
         return card;
       });
     };
-    if (customElements.get('hui-card')) build();
-    else customElements.whenDefined('hui-card').then(build);
+    if (customElements.get(tag)) build();
+    else customElements.whenDefined(tag).then(build);
+  }
+
+  /*
+   * A badge is never told the dashboard is being edited - hui-badge keeps that to itself -
+   * so as a badge the group reads it off the hui-badge around it. Edit mode moves the badge
+   * into a wrapper and back, so a connect is when it can have changed.
+   */
+  private get _previewing(): boolean {
+    return this.preview || this._wrapperPreview;
+  }
+
+  private _syncWrapperPreview(): void {
+    const wrapper = this.parentElement as any;
+    if (wrapper?.localName === 'hui-badge') this._wrapperPreview = wrapper.preview === true;
+  }
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    this._syncWrapperPreview();
+    requestAnimationFrame(() => {
+      if (this.isConnected) this._syncWrapperPreview();
+    });
   }
 
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
+    this._syncWrapperPreview();
     for (const card of this._cards) {
-      card.preview = this.preview;
-      card.layout = this.layout;
+      card.preview = this._previewing;
+      if (!this._badges) card.layout = this.layout;
     }
   }
 
@@ -82,6 +118,8 @@ class DeclutteringGroup extends LitElement {
 
   protected render(): TemplateResult {
     if (this._error) return html`<ha-alert alert-type="error">${this._error}</ha-alert>`;
+    // A hidden badge hides its own hui-badge, so the row closes up around it with nothing to do here.
+    if (this._badges) return html`<div class="badges">${this._cards}</div>`;
     return html`
       <div class="container" @card-updated=${this._cardUpdated}>
         ${this._cards.map((card) => {
@@ -126,6 +164,17 @@ class DeclutteringGroup extends LitElement {
       }
       .card:has(> [hidden]) {
         display: none;
+      }
+      /* The row of badges a view puts above its sections, rule for rule. */
+      .badges {
+        display: flex;
+        flex-wrap: var(--badges-wrap, wrap);
+        align-items: flex-start;
+        justify-content: var(--badges-aligmnent, center);
+        gap: var(--ha-space-2, 8px);
+      }
+      .badges > * {
+        min-width: fit-content;
       }
     `;
   }
