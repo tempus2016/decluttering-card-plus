@@ -32,9 +32,42 @@ class DeclutteringGroup extends LitElement {
   @state() private _wrapperPreview = false;
   private _hass?: any;
 
+  /*
+   * The hui-card around a group nested in this one takes a hidden group off the page, and
+   * a group off the page never hears its cards coming back. Asked to leave it, as the
+   * template card is.
+   */
+  public connectedWhileHidden = true;
+
+  constructor() {
+    super();
+    // A card in the group was hidden or shown. Heard here, on the way out, so the group has
+    // hidden or shown itself before the template card around it checks (#186).
+    const heard = (ev: Event): void => {
+      if (ev.composedPath()[0] !== this) this._syncHidden();
+    };
+    this.addEventListener('card-visibility-changed', heard);
+    this.addEventListener('badge-visibility-changed', heard);
+  }
+
   set hass(hass: any) {
     this._hass = hass;
     for (const card of this._cards) card.hass = hass;
+    this._syncHidden();
+  }
+
+  /*
+   * A group whose cards are all hidden is hidden itself, the way a section whose cards are
+   * all hidden is. Otherwise it stays on the page as an empty card, and the section around
+   * it never goes (#186). A group with no cards at all is left as it is. The wrapper around
+   * the group only looks again when it is told, so it is told.
+   */
+  private _syncHidden(): void {
+    const hidden = !this._error && this._cards.length > 0 && this._cards.every((card) => card.hidden);
+    if (this.hasAttribute('hidden') === hidden) return;
+    this.toggleAttribute('hidden', hidden);
+    const event = this._badges ? 'badge-visibility-changed' : 'card-visibility-changed';
+    this.dispatchEvent(new Event(event, { bubbles: true, composed: true }));
   }
 
   public setConfig(config: { cards?: unknown; badges?: boolean }): void {
@@ -93,6 +126,7 @@ class DeclutteringGroup extends LitElement {
       card.preview = this._previewing;
       if (!this._badges) card.layout = this.layout;
     }
+    this._syncHidden();
   }
 
   // The group fills the section's width; how its cards share that is up to them.
@@ -142,6 +176,9 @@ class DeclutteringGroup extends LitElement {
     return css`
       :host {
         display: block;
+      }
+      :host([hidden]) {
+        display: none;
       }
       .container {
         display: grid;
