@@ -186,6 +186,11 @@ Templates][wiki-defining].
 - **A starter library** — worked examples of the shapes people build most, picked from a
   dropdown in the editor and installed into the view you are working on. Carried in the
   card, so a dashboard never reaches the internet to show one.
+- **Templates other people have shared** *(v1.15.0+)* — the Share tab lists templates posted
+  in the [Share your templates][discussions-share] discussions, and installs one the way the
+  starter library does, with the templates it carries. GitHub is only asked when you press
+  Load, and every template is shown in full before you install it, since nobody checks what
+  is posted. Copy as a post writes yours out ready to paste into a new discussion.
 - **[Visual editors][wiki-editors]** for both the template and the instance — see what a card
   actually builds, see what uses a template before you change it (on this dashboard and on
   every other one), see what one real card becomes under the edit in hand, rename a template
@@ -529,6 +534,7 @@ npm start       # rebuild on change, served on :5000 for the dev container
 [wiki-repeating]: https://github.com/tempus2016/decluttering-card-plus/wiki/Repeating-a-Template
 [wiki-rows]: https://github.com/tempus2016/decluttering-card-plus/wiki/Rows
 [wiki-sharing]: https://github.com/tempus2016/decluttering-card-plus/wiki/Sharing-a-Template
+[discussions-share]: https://github.com/tempus2016/decluttering-card-plus/discussions/categories/share-your-templates
 [wiki-sharing-between]: https://github.com/tempus2016/decluttering-card-plus/wiki/Sharing-Templates-Between-Dashboards
 [wiki-styling]: https://github.com/tempus2016/decluttering-card-plus/wiki/Styling
 [wiki-troubleshooting]: https://github.com/tempus2016/decluttering-card-plus/wiki/Troubleshooting

@@ -1,5 +1,6 @@
 import { LitElement, html, TemplateResult, css, CSSResult, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
+import { keyed } from 'lit/directives/keyed.js';
 import {
   HomeAssistant,
   createThing,
@@ -21,6 +22,15 @@ import deepReplace from './deep-replace';
 import { buildExport, validateImport, freeName } from './share';
 import { suggestVariables } from './suggest';
 import { LIBRARY, libraryEntry, libraryNeeds } from './library';
+import {
+  COMMUNITY_POST_URL,
+  CommunityEntry,
+  CommunityError,
+  CommunityList,
+  communityNeeds,
+  fetchCommunity,
+  postBody,
+} from './community';
 import {
   collectTemplates,
   collectAllTemplates,
@@ -2333,6 +2343,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _installPending?: string;
   @state() private _librarySelected?: string;
   @state() private _libraryDestination: 'view' | 'root' = 'view';
+  // Templates shared on GitHub: nothing until the button is pressed, then the list, and
+  // what went wrong if fetching it did.
+  @state() private _community?: CommunityList;
+  @state() private _communityLoading = false;
+  @state() private _communityError?: string;
+  @state() private _communitySelected?: number;
+  @state() private _postCopyState: '' | 'done' | 'failed' = '';
   @state() private _remoteUsages?: { name: string; list: { urlPath: string; total: number }[] };
   @state() private _borrowed?: { ll: unknown; names?: string[] };
   @state() private _declutterOriginal?: Record<string, unknown>;
@@ -2423,6 +2440,9 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       }
       .share ha-button {
         margin-top: 8px;
+      }
+      .share a {
+        color: var(--primary-color);
       }
       .suggest {
         margin-bottom: 16px;
@@ -3069,6 +3089,21 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 : localize('share.copy', undefined, this.hass)
           }
         </ha-button>
+        <ha-button @click=${this._copyPost}>
+          ${
+            this._postCopyState === 'done'
+              ? localize('share.copied', undefined, this.hass)
+              : this._postCopyState === 'failed'
+                ? localize('share.copy_failed', undefined, this.hass)
+                : localize('share.post_copy', undefined, this.hass)
+          }
+        </ha-button>
+        <p class="hint">
+          ${localize('share.post_hint', undefined, this.hass)}
+          <a href=${COMMUNITY_POST_URL} target="_blank" rel="noopener noreferrer"
+            >${localize('share.post_open', undefined, this.hass)}</a
+          >
+        </p>
 
         <h3>${localize('share.import_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.import_hint', undefined, this.hass)}</p>
@@ -3095,8 +3130,232 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         <h3>${localize('share.library_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.library_hint', undefined, this.hass)}</p>
         ${this._renderLibrary()}
+
+        <h3>${localize('share.community_header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('share.community_hint', undefined, this.hass)}</p>
+        ${this._renderCommunity()}
+        ${this._toolError ? html`<ha-alert alert-type="error">${this._toolError}</ha-alert>` : html``}
       </div>
     `;
+  }
+
+  /*
+   * The library, but for templates other people have posted. Fetching is the user's call -
+   * the button is the only thing that reaches GitHub - and what a post holds is shown in
+   * full before anything is installed, because nobody has checked it.
+   */
+  private _renderCommunity(): TemplateResult {
+    const list = this._community;
+    const when = (ms: number): string => new Date(ms).toLocaleString(this.hass?.locale?.language);
+    const status = html`
+      ${this._communityError ? html`<ha-alert alert-type="warning">${this._communityError}</ha-alert>` : html``}
+      ${
+        this._communityError && list
+          ? html`<p class="hint">
+              ${localize('share.community_showing_cached', { time: when(list.fetched) }, this.hass)}
+            </p>`
+          : html``
+      }
+    `;
+
+    if (!list) {
+      return html`
+        <div class="library">
+          ${status}
+          <ha-button .disabled=${this._communityLoading} @click=${(): void => void this._loadCommunity(false)}>
+            ${localize(this._communityLoading ? 'share.community_loading' : 'share.community_load', undefined, this.hass)}
+          </ha-button>
+        </div>
+      `;
+    }
+
+    const existing = Object.keys(collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()));
+    const entry = list.entries.find((each) => each.id === this._communitySelected);
+    const key = entry ? `community:${entry.id}` : '';
+    const armed = !!entry && this._installPending === key;
+    const installAs = entry && existing.includes(entry.name) ? freeName(entry.name, existing) : undefined;
+    const needs = entry ? communityNeeds(entry, existing) : undefined;
+    const brings = entry ? Object.keys(entry.includes).filter((each) => !existing.includes(each)) : [];
+
+    return html`
+      <div class="library">
+        ${status}
+        ${
+          list.entries.length
+            ? html`<ha-form
+                .hass=${this.hass}
+                .data=${{ entry: entry ? String(entry.id) : '' }}
+                .schema=${[
+                  {
+                    name: 'entry',
+                    selector: {
+                      select: {
+                        mode: 'dropdown',
+                        options: list.entries.map((each) => ({
+                          value: String(each.id),
+                          label: localize('share.community_by', { title: each.title, author: each.author }, this.hass),
+                        })),
+                      },
+                    },
+                  },
+                ]}
+                .computeLabel=${(): string => localize('share.community_pick', undefined, this.hass)}
+                @value-changed=${this._communityPicked}
+              ></ha-form>`
+            : html`<p class="hint">${localize('share.community_none', undefined, this.hass)}</p>`
+        }
+        ${
+          entry && needs
+            ? html`
+                <p class="hint">
+                  ${entry.template.description ?? ''}
+                  <a href=${entry.url} target="_blank" rel="noopener noreferrer"
+                    >${localize('share.community_open', undefined, this.hass)}</a
+                  >
+                </p>
+                ${
+                  brings.length
+                    ? html`<p class="hint">
+                        ${localize('share.library_needs', { names: brings.join(', ') }, this.hass)}
+                      </p>`
+                    : html``
+                }
+                ${
+                  needs.customTypes.length
+                    ? html`<ha-alert alert-type="info">
+                        ${localize('share.community_needs_cards', { types: needs.customTypes.join(', ') }, this.hass)}
+                      </ha-alert>`
+                    : html``
+                }
+                ${
+                  needs.templates.length
+                    ? html`<ha-alert alert-type="warning">
+                        ${localize('share.community_needs_templates', { names: needs.templates.join(', ') }, this.hass)}
+                      </ha-alert>`
+                    : html``
+                }
+                <ha-expansion-panel outlined>
+                  <span slot="header">${localize('share.library_preview', undefined, this.hass)}</span>
+                  ${keyed(
+                    entry.id,
+                    html`<ha-yaml-editor
+                      .hass=${this.hass}
+                      .defaultValue=${{
+                        template: entry.name,
+                        ...entry.template,
+                        ...(Object.keys(entry.includes).length ? { includes: entry.includes } : {}),
+                      }}
+                      read-only
+                    ></ha-yaml-editor>`,
+                  )}
+                </ha-expansion-panel>
+                <ha-form
+                  .hass=${this.hass}
+                  .data=${{ where: this._libraryDestination }}
+                  .schema=${[
+                    {
+                      name: 'where',
+                      selector: {
+                        select: {
+                          mode: 'dropdown',
+                          options: [
+                            { value: 'view', label: localize('share.library_where_view', undefined, this.hass) },
+                            { value: 'root', label: localize('share.library_where_root', undefined, this.hass) },
+                          ],
+                        },
+                      },
+                    },
+                  ]}
+                  .computeLabel=${(): string => localize('share.library_where', undefined, this.hass)}
+                  @value-changed=${this._libraryDestinationPicked}
+                ></ha-form>
+                <ha-button .disabled=${this._busy} @click=${(): void => void this._installShared(entry)}>
+                  ${
+                    armed
+                      ? localize('share.install_anyway', undefined, this.hass)
+                      : installAs
+                        ? localize('share.community_install_as', { name: installAs }, this.hass)
+                        : localize('share.install', undefined, this.hass)
+                  }
+                </ha-button>
+              `
+            : html``
+        }
+        <ha-button .disabled=${this._communityLoading} @click=${(): void => void this._loadCommunity(true)}>
+          ${localize(this._communityLoading ? 'share.community_loading' : 'share.community_refresh', undefined, this.hass)}
+        </ha-button>
+      </div>
+    `;
+  }
+
+  private async _loadCommunity(refresh: boolean): Promise<void> {
+    this._communityLoading = true;
+    this._communityError = undefined;
+    try {
+      this._community = await fetchCommunity({ refresh });
+    } catch (err) {
+      const error = err as CommunityError;
+      if (error.cached) this._community = error.cached;
+      this._communityError = error.retryAt
+        ? localize(
+            'share.community_rate_limited',
+            { time: new Date(error.retryAt).toLocaleTimeString(this.hass?.locale?.language) },
+            this.hass,
+          )
+        : localize('share.community_failed', { message: error.message }, this.hass);
+    } finally {
+      this._communityLoading = false;
+    }
+  }
+
+  private _communityPicked(ev: CustomEvent): void {
+    // Not part of the card's configuration, so it must not reach the settings handler.
+    ev.stopPropagation();
+    const picked = Number((ev.detail.value as { entry?: string }).entry);
+    this._communitySelected = Number.isFinite(picked) && picked > 0 ? picked : undefined;
+    this._installPending = undefined;
+  }
+
+  /*
+   * Installs a shared template the way the library installs one, asked twice. A name this
+   * dashboard already uses is not overwritten: the template goes in under the first free
+   * spelling instead. Templates it carries go in beside it unless they are already here.
+   */
+  private async _installShared(entry: CommunityEntry): Promise<void> {
+    const key = `community:${entry.id}`;
+    if (this._installPending !== key) {
+      this._installPending = key;
+      return;
+    }
+
+    const panel = getLovelacePanel();
+    const existing = Object.keys(collectTemplates(panel?.config ?? this.lovelace ?? getLovelaceConfig()));
+    const name = existing.includes(entry.name) ? freeName(entry.name, existing) : entry.name;
+    const wanted: [string, Record<string, unknown>][] = [
+      ...Object.entries(entry.includes).filter(([each]) => !existing.includes(each)),
+      [name, entry.template],
+    ];
+    const here = findTemplateLocation(panel?.config ?? this.lovelace, this._config?.template ?? '');
+    const view = here?.view?.index ?? 0;
+
+    const saved = await this._saveDashboard((config) =>
+      wanted.reduce(
+        (built, [each, template]) =>
+          this._libraryDestination === 'root'
+            ? addTemplateToRoot(built, each, template as TemplateConfig)
+            : // Name and type lead, as on any template card, and nothing in the post overrides them.
+              addCardToView(
+                built,
+                view,
+                Object.assign({ type: TEMPLATE_TYPE, template: each }, template, {
+                  type: TEMPLATE_TYPE,
+                  template: each,
+                }),
+              ),
+        config,
+      ),
+    );
+    if (saved) this._installPending = undefined;
   }
 
   /*
@@ -3143,7 +3402,15 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 }
                 <ha-expansion-panel outlined>
                   <span slot="header">${localize('share.library_preview', undefined, this.hass)}</span>
-                  <ha-yaml-editor .hass=${this.hass} .defaultValue=${entry.template} read-only></ha-yaml-editor>
+                  ${keyed(
+                    entry.name,
+                    // ha-yaml-editor reads defaultValue once, so a new entry needs a new box.
+                    html`<ha-yaml-editor
+                      .hass=${this.hass}
+                      .defaultValue=${entry.template}
+                      read-only
+                    ></ha-yaml-editor>`,
+                  )}
                 </ha-expansion-panel>
                 <ha-form
                   .hass=${this.hass}
@@ -3467,6 +3734,22 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
     this._copyState = (await copyText(text)) ? 'done' : 'failed';
     setTimeout(() => (this._copyState = ''), 3000);
+  }
+
+  /*
+   * The same export, written as a GitHub discussion post: what it is, what it needs, and
+   * the YAML in a code block - which is exactly what the shared-templates list reads back.
+   */
+  private async _copyPost(): Promise<void> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const yaml = (this.renderRoot.querySelector('#export') as any)?.yaml;
+    if (!yaml) return;
+    const { notes } = buildExport(
+      this._config,
+      collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()),
+    );
+    this._postCopyState = (await copyText(postBody(yaml, notes, this._config?.description))) ? 'done' : 'failed';
+    setTimeout(() => (this._postCopyState = ''), 3000);
   }
 
   private _importChanged(ev: CustomEvent): void {

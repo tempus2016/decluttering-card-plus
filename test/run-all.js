@@ -17,6 +17,7 @@ const SUITES = [
   'library',
   'localize',
   'trace',
+  'community',
 ];
 
 // Each suite calls report(), which exits the process. Patching it here lets them run one
