@@ -58,6 +58,32 @@ check('a group written as a bare list is the same list', groupCard([{ type: 'til
 
 check('a group with no cards is passed on for the card to refuse', groupCard({}).cards, undefined);
 
+/* ------------------------------------------------------- group grid_options (#194) */
+
+check(
+  'a group keeps its grid_options, so the hui-card around a copy can size it',
+  groupCard({ grid_options: { columns: 6 }, cards: [{ type: 'tile' }] }),
+  { type: GROUP_CARD_TYPE, cards: [{ type: 'tile' }], grid_options: { columns: 6 } },
+);
+
+check('a group without grid_options adds no key', Object.keys(groupCard({ cards: [] })), ['type', 'cards']);
+
+check(
+  'a width variable in the group grid_options is put in per copy, as a number',
+  require('../.test-build/deep-replace.js').default(
+    [{ width: 12 }],
+    { default: [{ width: 6 }] },
+    groupCard({ grid_options: { columns: '[[width]]' }, cards: [{ type: 'tile' }] }),
+  ).grid_options,
+  { columns: 12 },
+);
+
+check('nothing else on the group is carried over', groupCard({ cards: [], grid_options: { columns: 6 }, title: 'x' }), {
+  type: GROUP_CARD_TYPE,
+  cards: [],
+  grid_options: { columns: 6 },
+});
+
 check(
   'a group template extends like any other, the child list replacing the parent one',
   collectTemplates({

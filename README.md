@@ -366,6 +366,42 @@ On the dashboard the group is still one card: it is dragged, edited and deleted 
 Outside a sections view its cards go one under another, which is where they would be in a
 masonry column anyway.
 
+#### Sizing the group itself (v1.15.2+)
+
+`grid_options` on the `group:` sizes the group in its section, the same way it sizes any
+card. It can take variables, so a repeated group can give each copy its own width:
+
+```yaml
+decluttering_templates:
+  room_tile:
+    default:
+      - width: 6
+    group:
+      grid_options:
+        columns: '[[width]]'
+      cards:
+        - type: tile
+          entity: '[[entity]]'
+          grid_options:
+            columns: full
+```
+
+```yaml
+- type: custom:decluttering-card-plus
+  template: room_tile
+  for_each_from:
+    area: bathroom
+    overrides:
+      climate.bathroom_floor:
+        width: 12
+```
+
+Each copy here takes half the section, two to a row, and the climate tile takes the whole
+row. The `grid_options` of the cards inside the group still size them within the group.
+A `grid_options` written at the top of the template, or on the card using it, sizes the
+whole card and is the same for every copy. Copies laid out with `columns:` go in a grid
+card of their own, which leaves the group's `grid_options` unread.
+
 ### A set of badges as one badge (v1.15.0+)
 
 Put a group template in a view's badges and its cards are built as badges, side by side in
