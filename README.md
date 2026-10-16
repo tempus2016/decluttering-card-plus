@@ -104,7 +104,8 @@ Templates][wiki-defining].
 - **[Cards][wiki-cards], [badges][wiki-badges], [Entities rows][wiki-rows] and
   [Picture elements][wiki-elements]** — a template can hold any of the four, and goes wherever
   that kind of content goes.
-- **[Variables][wiki-variables]** with defaults, nesting, transforms (`[[room|slug]]`), values
+- **[Variables][wiki-variables]** with defaults, nesting, lookups in a mapping by another
+  variable (`[[colours.[[level]]]]`), transforms (`[[room|slug]]`), values
   read from Home Assistant (`[[entity|friendly_name]]`, its domain, object id, labels, area,
   floor or device), values a template works out for itself with `let:`, stand-ins for what
   nothing sets (`[[name|default:Unnamed]]`), values that only appear when another is set
@@ -170,7 +171,7 @@ Templates][wiki-defining].
   template, with the first entity its `suggest_for:` matches filled in if it has one.
   Badge templates go in the badge list.
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
-  and `category:` groups a big collection in the picker. A card nested inside a template
+  merging the way a card's own `card:` block does, `null` included, and `category:` groups a big collection in the picker. A card nested inside a template
   can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
 - **A set of cards as one card** *(v1.14.0+)* — a `group:` template puts several cards on a
   view from one decluttering card, each laid out in the section as if it were written there.

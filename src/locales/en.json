@@ -182,6 +182,11 @@
   "share.community_needs_cards": "Needs these custom cards, which installing it will not add: {types}",
   "share.community_needs_templates": "Calls these templates, which it does not bring and this dashboard does not have: {names}",
   "share.community_install_as": "Install as {name}",
+  "share.community_risks": "Before installing, note that this template:",
+  "share.community_risk_actions": "calls {list} when something on it is pressed",
+  "share.community_risk_urls": "reaches addresses outside Home Assistant: {list}",
+  "share.community_risk_embeds": "embeds a web page",
+  "share.community_risk_scripts": "carries JavaScript or Jinja templates, which run with your login",
 
   "tools.health_header": "Dashboard health",
 

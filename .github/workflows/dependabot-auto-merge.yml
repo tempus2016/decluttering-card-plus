@@ -2,9 +2,15 @@ name: Dependabot auto-merge
 
 # Patch and minor bumps of development dependencies are chores. CI still has to pass -
 # this only removes the click, not the gate. For the gate to be real, `main` must have a
-# branch protection rule requiring the "Lint and test", "Build" and "Release notes" checks:
-# without required checks, `gh pr merge --auto` merges the moment the PR opens, before CI
-# has run. See SECURITY.md.
+# ruleset requiring the "Lint and test", "Build", "Release notes" and "Dependency review"
+# checks: without required checks, `gh pr merge --auto` merges the moment the PR opens,
+# before CI has run. See SECURITY.md.
+#
+# The release tooling is the exception to "development dependencies are chores": the
+# release job runs semantic-release, rollup and terser with a token that can write to the
+# repository and publish the asset every install downloads. A bump to any of those waits for
+# a person, whatever its version step. dependabot.yml groups them separately so the rest
+# still merge on their own.
 on: pull_request_target
 
 permissions:
@@ -31,7 +37,10 @@ jobs:
         if: >-
           steps.meta.outputs.dependency-type == 'direct:development' &&
           (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
-           steps.meta.outputs.update-type == 'version-update:semver-minor')
+           steps.meta.outputs.update-type == 'version-update:semver-minor') &&
+          !contains(steps.meta.outputs.dependency-names, 'semantic-release') &&
+          !contains(steps.meta.outputs.dependency-names, 'rollup') &&
+          !contains(steps.meta.outputs.dependency-names, 'terser')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

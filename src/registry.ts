@@ -8,6 +8,7 @@
  */
 
 import { labelRegistry } from './labels';
+import { asHaText } from './variables';
 
 /** What to repeat over. `areas` and `entities` choose the kind of copy; the rest narrow. */
 export interface RegistrySource {
@@ -557,10 +558,13 @@ export function resolveRegistryItems(hass: any, source: any): Record<string, any
           : source.labels !== undefined
             ? labelItems(hass, source)
             : entityItems(hass, source);
+  // Every word in a copy is Home Assistant's - a name somebody typed into an integration,
+  // or that a device announced about itself - and is substituted as that text, never read
+  // as a placeholder of its own.
   if (isEntitySource(source) && typeof source.group_by === 'string') {
-    return ordered(groupedItems(hass, items, source.group_by), source, hass);
+    return asHaText(ordered(groupedItems(hass, items, source.group_by), source, hass));
   }
-  return ordered(items, source, hass);
+  return asHaText(ordered(items, source, hass));
 }
 
 /** Whether the copies are entities, rather than areas, devices, floors or labels. */

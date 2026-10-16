@@ -96,9 +96,20 @@ function asPartOfString(value: any): string {
 }
 
 // A shaped whole value is a JSON string, unless its chain ends in `bool` - then it is the
-// bare true or false, which is the only way a card's on/off option can be given one.
+// bare true or false, which is the only way a card's on/off option can be given one. Only
+// exactly those two words go in bare: this is text being spliced into JSON, and anything
+// else would be read as structure.
 function asShapedWholeValue(text: string, chain: string): string {
-  return yieldsBoolean(chain) ? text : JSON.stringify(text);
+  return yieldsBoolean(chain) && (text === 'true' || text === 'false') ? text : JSON.stringify(text);
+}
+
+/*
+ * What a style does to text Home Assistant gives it. A name is written into a declaration's
+ * value, and these are the characters that would let it end that declaration and start
+ * another, or escape its way to one.
+ */
+export function cssSafe(text: string): string {
+  return text.replace(/[{};\\@]/g, '');
 }
 
 /** How to describe a value that a transform cannot shape, in a sentence about it. */
@@ -132,13 +143,23 @@ function substitutePass(
   hass?: any,
   limit?: number,
   trace?: BuildTrace,
+  shield?: (text: string) => string,
 ): string {
   let json = jsonConfig;
   for (const variable of variableArray) {
     // A single pass fully unrolls a self-doubling chain, so the size is checked before each
-    // variable is applied rather than only after the pass. The text can at most double per
-    // variable, so stopping here holds the result to about twice the ceiling.
+    // variable is applied rather than only after the pass - and inside each replace as well,
+    // because one variable whose value holds two hundred placeholders grows the text two
+    // hundredfold in a single step, not twofold. Once what has been added would pass the
+    // ceiling, the matches still to come are left as written.
     if (limit !== undefined && json.length > limit) break;
+    let room = limit === undefined ? Infinity : limit - json.length;
+    const within = (match: string, out: string): string => {
+      const growth = out.length - match.length;
+      if (growth > room) return match;
+      room -= growth;
+      return out;
+    };
     const key = escapeForRegExp(Object.keys(variable)[0]);
     const value = Object.values(variable)[0];
     const wholeValue = new RegExp(`"\\[\\[${key}${TRANSFORM_SUFFIX}${OPTIONAL_SUFFIX}\\]\\]"`, 'gm');
@@ -170,7 +191,7 @@ function substitutePass(
      * refusing a mapping does.
      */
     const shaped = (match: string, transform: string, wrap: (text: string) => string, written = transform): string => {
-      const text = applyTransform(transform, value, hass, values, read);
+      const text = applyTransform(transform, value, hass, values, read, shield);
       if (text !== undefined) return wrap(text);
       // A gap that an `or:` could not fill is still just a gap - nothing gives it a value -
       // so it is left to be reported as unset rather than blamed on Home Assistant.
@@ -203,7 +224,7 @@ function substitutePass(
      */
     const closed = (match: string, chain: string, optional: string | undefined, whole: boolean): string => {
       if (optional) return match;
-      const text = applyTransform(chain, undefined, hass, values, read);
+      const text = applyTransform(chain, undefined, hass, values, read, shield);
       if (text === undefined) return refuse(match, chain, localize('warn.condition_closed'), 'closed');
       return whole ? asShapedWholeValue(text, chain) : escapeForJsonString(text);
     };
@@ -236,10 +257,10 @@ function substitutePass(
     };
 
     json = json.replace(wholeValue, (match: string, rawTransform?: string, rawOptional?: string) =>
-      noted(trace, match.slice(1, -1), substitute(match, rawTransform, rawOptional, true), true),
+      within(match, noted(trace, match.slice(1, -1), substitute(match, rawTransform, rawOptional, true), true)),
     );
     json = json.replace(withinString, (match: string, rawTransform?: string, rawOptional?: string) =>
-      noted(trace, match, substitute(match, rawTransform, rawOptional, false), false),
+      within(match, noted(trace, match, substitute(match, rawTransform, rawOptional, false), false)),
     );
   }
   return json;
@@ -352,12 +373,13 @@ function fallbackPass(
   read: (name: string) => unknown,
   hass?: any,
   trace?: BuildTrace,
+  shield?: (text: string) => string,
 ): string {
   // An empty stand-in is still a gap, so an optional placeholder that ends up with one is
   // left for the pruning pass to take out - `[[name|default:?]]` drops the key, as
   // `[[name?]]` would (discussion #155).
   const standIn = (inside: string): string | undefined => {
-    const text = resolveFallback(inside, values, hass, read);
+    const text = resolveFallback(inside, values, hass, read, shield);
     return text === '' && isOptional(inside) ? undefined : text;
   };
   let json = jsonConfig;
@@ -422,6 +444,8 @@ function deepReplace(
   onUnresolved?: (names: string[]) => void,
   depth = 0,
   trace?: BuildTrace,
+  // What to do to text Home Assistant supplies before it goes in; a style passes cssSafe.
+  shield?: (text: string) => string,
 ): any {
   if (content === undefined) return content;
   const variableArray = resolveVariables(variables, templateConfig);
@@ -440,10 +464,6 @@ function deepReplace(
     settled.set(name, value);
     return value;
   };
-  // Worth knowing before any work is done: a template with no optional placeholder in it
-  // never needs the pruning pass at the end.
-  const hasOptional = new RegExp(`\\[\\[[^[\\]]*\\${'?'}\\]\\]`).test(jsonConfig);
-
   // Each placeholder a transform refused, and what its value turned out to be.
   const refused = new Map<string, Refusal>();
 
@@ -452,7 +472,7 @@ function deepReplace(
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
       const before = jsonConfig;
-      jsonConfig = substitutePass(jsonConfig, variableArray, refused, read, values, hass, limit, trace);
+      jsonConfig = substitutePass(jsonConfig, variableArray, refused, read, values, hass, limit, trace, shield);
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
@@ -486,7 +506,7 @@ function deepReplace(
   // Anything still saying `default:`, `or:` or `bool` gets its turn now, whether or not there were
   // any variables to substitute in the first place.
   const fallbacks = hasFallback(jsonConfig);
-  if (fallbacks) jsonConfig = fallbackPass(jsonConfig, values, read, hass, trace);
+  if (fallbacks) jsonConfig = fallbackPass(jsonConfig, values, read, hass, trace, shield);
   if (trace) noteLeftStanding(trace, jsonConfig, refused);
 
   /*
@@ -519,6 +539,12 @@ function deepReplace(
    * value once it has been unwrapped. Doing it in this order, the escaped one is still
    * wearing its bang and is left alone.
    */
+  /*
+   * Asked of the text as substitution left it, not as it was written: `[[colours.[[level]]?]]`
+   * has brackets inside it, so it only reads as one optional placeholder once `[[level]]` is
+   * in - and one whose key the mapping does not have still has to drop out (#192).
+   */
+  const hasOptional = new RegExp(`\\[\\[[^[\\]]*\\${'?'}\\]\\]`).test(jsonConfig);
   const nothingToDo = !variableArray.length && !hasOptional && !fallbacks && !hasEscape(jsonConfig);
   if (nothingToDo) return content;
 

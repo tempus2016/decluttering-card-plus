@@ -25,6 +25,14 @@ const CACHE_HOURS = 6;
 // A page is 100 discussions; ten pages is more than this project will have for a long time.
 const MAX_PAGES = 10;
 
+// Anyone with a GitHub account can post, and every post is read by everyone who loads the
+// list - so a post gets a bounded amount of work, however it is written. A body longer than
+// this is not a template, and a parsed value with more pieces than this has been pumped up
+// by aliases: a few hundred bytes of `&a1 [*a0,*a0,...]` otherwise unfold into hundreds of
+// megabytes the moment they are copied, and take the tab with them.
+const MAX_BODY_LENGTH = 65_536;
+const MAX_NODES = 20_000;
+
 export interface CommunityEntry {
   /** The discussion's number, which is how an entry is told apart from the others. */
   id: number;
@@ -57,13 +65,62 @@ export interface CommunityList {
  * one. Anything else in the post is prose for people, not for the card.
  */
 export function extractYaml(body: string): string | undefined {
-  if (typeof body !== 'string') return undefined;
-  const fence = /^[ \t]*(`{3,}|~{3,})[ \t]*([\w-]*)[^\n]*\n([\s\S]*?)^[ \t]*\1[ \t]*$/gm;
-  const blocks: RegExpExecArray[] = [];
-  for (let found = fence.exec(body); found; found = fence.exec(body)) blocks.push(found);
-  const marked = blocks.find((block) => /^ya?ml$/i.test(block[2]));
-  const chosen = marked ?? blocks.find((block) => block[2] === '');
-  return chosen?.[3];
+  if (typeof body !== 'string' || body.length > MAX_BODY_LENGTH) return undefined;
+  // Read a line at a time rather than with one expression over the whole post: a post made
+  // of fences that never close would otherwise be tried from every one of them.
+  const opening = /^[ \t]*(`{3,}|~{3,})[ \t]*([\w-]*)/;
+  const blocks: { lang: string; text: string }[] = [];
+  let open: { fence: string; lang: string; lines: string[] } | undefined;
+  for (const line of body.split('\n')) {
+    if (open) {
+      if (line.trim() === open.fence) {
+        blocks.push({ lang: open.lang, text: open.lines.join('\n') + '\n' });
+        open = undefined;
+      } else {
+        open.lines.push(line);
+      }
+      continue;
+    }
+    const found = opening.exec(line);
+    if (found) open = { fence: found[1], lang: found[2], lines: [] };
+  }
+  const marked = blocks.find((block) => /^ya?ml$/i.test(block.lang));
+  const chosen = marked ?? blocks.find((block) => block.lang === '');
+  return chosen?.text;
+}
+
+/** Whether a parsed value is of a size a template could be, counting what aliases share. */
+function withinBudget(value: unknown): boolean {
+  let left = MAX_NODES;
+  const walk = (node: unknown): boolean => {
+    if ((left -= 1) < 0) return false;
+    if (Array.isArray(node)) return node.every(walk);
+    if (node && typeof node === 'object') return Object.values(node).every(walk);
+    return true;
+  };
+  return walk(value);
+}
+
+const isMapping = (value: unknown): value is Record<string, any> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+const THING_KEYS = ['card', 'badge', 'row', 'element', 'group'];
+
+/** The templates a post carries with it: mappings that define something, nothing else. */
+function usableIncludes(includes: unknown): Record<string, any> {
+  if (!isMapping(includes)) return {};
+  const out: Record<string, any> = {};
+  for (const [name, template] of Object.entries(includes)) {
+    if (isMapping(template) && THING_KEYS.some((key) => template[key] !== undefined)) out[name] = template;
+  }
+  return out;
+}
+
+/** Where a post lives: GitHub's own link to it, or the one its number says, never anything else. */
+function postUrl(id: number, given: unknown): string {
+  return typeof given === 'string' && /^https:\/\/github\.com\//.test(given)
+    ? given
+    : `https://github.com/${COMMUNITY_REPO}/discussions/${id}`;
 }
 
 /**
@@ -76,28 +133,81 @@ export function parseDiscussion(discussion: any): CommunityEntry | undefined {
 
   let parsed: any;
   try {
+    const loaded = load(text);
+    // Sized before it is copied: the copy is what unfolds every alias.
+    if (!withinBudget(loaded)) return undefined;
     // A round trip through JSON leaves plain objects, lists and values only, which is all a
     // card config is. A `__proto__` key goes too: copied onto an object later, it would
     // replace the object's prototype instead of becoming a key.
-    parsed = JSON.parse(JSON.stringify(load(text)), (key, value) => (key === '__proto__' ? undefined : value));
+    parsed = JSON.parse(JSON.stringify(loaded), (key, value) => (key === '__proto__' ? undefined : value));
   } catch {
     return undefined;
   }
   if (!validateImport(parsed).ok) return undefined;
+  if (typeof discussion?.number !== 'number') return undefined;
 
   const { template: name, includes, ...template } = parsed;
   delete template.type;
+  // The description is shown as text next to the install button, so it has to be text.
+  if (typeof template.description !== 'string') delete template.description;
   return {
     id: discussion.number,
     title: typeof discussion.title === 'string' && discussion.title.trim() ? discussion.title.trim() : name,
-    author: discussion.user?.login ?? '',
-    url: discussion.html_url ?? '',
+    author: typeof discussion.user?.login === 'string' ? discussion.user.login : '',
+    url: postUrl(discussion.number, discussion.html_url),
     name: name.trim(),
     template,
-    includes: includes && typeof includes === 'object' && !Array.isArray(includes) ? includes : {},
-    reactions: discussion.reactions?.total_count ?? 0,
-    updated: discussion.updated_at ?? discussion.created_at ?? '',
+    includes: usableIncludes(includes),
+    reactions: typeof discussion.reactions?.total_count === 'number' ? discussion.reactions.total_count : 0,
+    updated:
+      typeof (discussion.updated_at ?? discussion.created_at) === 'string'
+        ? (discussion.updated_at ?? discussion.created_at)
+        : '',
   };
+}
+
+export interface CommunityRisks {
+  /** Services the template calls when something on it is pressed. */
+  actions: string[];
+  /** Addresses outside Home Assistant that it reaches. */
+  urls: string[];
+  /** Whether it embeds a web page. */
+  embeds: boolean;
+  /** Whether it carries JavaScript or Jinja that runs with the viewer's login. */
+  scripts: boolean;
+}
+
+/*
+ * What installing a post would let it do, read off its config: nobody has checked the post,
+ * so the card says what it found and lets the person decide. A false alarm costs a sentence;
+ * a lock opened by a tile labelled "Lights" costs rather more.
+ */
+export function communityRisks(entry: Pick<CommunityEntry, 'template' | 'includes'>): CommunityRisks {
+  const actions = new Set<string>();
+  const urls = new Set<string>();
+  let embeds = false;
+  let scripts = false;
+  const walk = (node: unknown): void => {
+    if (typeof node === 'string') {
+      // The address up to its first template marker: what is after `{{` is not part of it.
+      for (const url of node.match(/https?:\/\/[^\s"'<>)\]{}]+/g) ?? []) urls.add(url);
+      if (node.includes('[[[') || node.includes('{{') || node.includes('{%')) scripts = true;
+      return;
+    }
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!isMapping(node)) return;
+    if (node.action === 'perform-action' || node.action === 'call-service') {
+      const service = node.perform_action ?? node.service;
+      actions.add(typeof service === 'string' ? service : '?');
+    }
+    if (node.type === 'iframe' || node.type === 'webpage') embeds = true;
+    Object.values(node).forEach(walk);
+  };
+  walk([entry.template, ...Object.values(entry.includes)]);
+  return { actions: [...actions].sort(), urls: [...urls].sort(), embeds, scripts };
 }
 
 /** The posts in the shared-templates category, best received first, then newest. */
@@ -145,10 +255,31 @@ export class CommunityError extends Error {
   retryAt?: number;
 }
 
+/** An entry read back from storage, checked as if it had just arrived, or nothing. */
+function cachedEntry(value: any): CommunityEntry | undefined {
+  if (!isMapping(value) || typeof value.id !== 'number' || typeof value.name !== 'string') return undefined;
+  if (!isMapping(value.template)) return undefined;
+  return {
+    id: value.id,
+    title: typeof value.title === 'string' ? value.title : value.name,
+    author: typeof value.author === 'string' ? value.author : '',
+    url: postUrl(value.id, value.url),
+    name: value.name,
+    template: value.template,
+    includes: usableIncludes(value.includes),
+    reactions: typeof value.reactions === 'number' ? value.reactions : 0,
+    updated: typeof value.updated === 'string' ? value.updated : '',
+  };
+}
+
 function readCache(storage: Storage | undefined): CommunityList | undefined {
   try {
     const cached = JSON.parse(storage?.getItem(CACHE_KEY) ?? 'null');
-    return cached && Array.isArray(cached.entries) && typeof cached.fetched === 'number' ? cached : undefined;
+    if (!cached || !Array.isArray(cached.entries) || typeof cached.fetched !== 'number') return undefined;
+    // Storage is shared with everything else on the origin, so what is in it is checked the
+    // way a fresh post is rather than trusted for having been written here.
+    const entries = cached.entries.map(cachedEntry).filter((entry: CommunityEntry | undefined) => !!entry);
+    return { entries, fetched: cached.fetched };
   } catch {
     return undefined;
   }

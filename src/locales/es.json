@@ -182,6 +182,11 @@
   "share.community_needs_cards": "Necesita estas tarjetas personalizadas, que la instalación no añade: {types}",
   "share.community_needs_templates": "Usa estas plantillas, que no trae consigo y que este panel no tiene: {names}",
   "share.community_install_as": "Instalar como {name}",
+  "share.community_risks": "Antes de instalar, ten en cuenta que esta plantilla:",
+  "share.community_risk_actions": "llama a {list} cuando se pulsa algo en ella",
+  "share.community_risk_urls": "accede a direcciones fuera de Home Assistant: {list}",
+  "share.community_risk_embeds": "incrusta una página web",
+  "share.community_risk_scripts": "contiene JavaScript o plantillas Jinja, que se ejecutan con tu sesión",
 
   "tools.health_header": "Salud del panel",
 
