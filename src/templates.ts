@@ -282,10 +282,14 @@ export const GROUP_CARD_TYPE = 'custom:decluttering-card-plus-group';
  * under another (#176). `group:` builds a card that lays its cards out the way the section
  * around it would, so one card stands in for the set without changing how any of it looks.
  * `group: { cards: [...] }` is how it is written; a bare list is taken as that list.
+ *
+ * The group's own `grid_options` go with it (#194). Repeated, each copy is put in a hui-card,
+ * which reads them off the config - so copies can each be a different width.
  */
-export function groupCard(group: unknown): { type: string; cards: unknown } {
-  const cards = Array.isArray(group) ? group : (group as any)?.cards;
-  return { type: GROUP_CARD_TYPE, cards };
+export function groupCard(group: unknown): { type: string; cards: unknown; grid_options?: unknown } {
+  if (Array.isArray(group)) return { type: GROUP_CARD_TYPE, cards: group };
+  const { cards, grid_options } = (group as any) ?? {};
+  return grid_options === undefined ? { type: GROUP_CARD_TYPE, cards } : { type: GROUP_CARD_TYPE, cards, grid_options };
 }
 
 /* ------------------------------------------------------------------ extends */

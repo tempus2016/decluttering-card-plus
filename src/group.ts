@@ -31,6 +31,7 @@ class DeclutteringGroup extends LitElement {
   // Edit mode, as the hui-badge around a group of badges knows it.
   @state() private _wrapperPreview = false;
   private _hass?: any;
+  private _gridOptions?: unknown;
 
   /*
    * The hui-card around a group nested in this one takes a hidden group off the page, and
@@ -70,12 +71,13 @@ class DeclutteringGroup extends LitElement {
     this.dispatchEvent(new Event(event, { bubbles: true, composed: true }));
   }
 
-  public setConfig(config: { cards?: unknown; badges?: boolean }): void {
+  public setConfig(config: { cards?: unknown; badges?: boolean; grid_options?: unknown }): void {
     // Said rather than thrown: a throw here reaches the dashboard as "Configuration error", reason hidden.
     this._error = Array.isArray(config?.cards) ? undefined : localize('error.group_needs_cards', undefined, this._hass);
     const cards = Array.isArray(config?.cards) ? config.cards : [];
     const badges = config?.badges === true;
     this._badges = badges;
+    this._gridOptions = config?.grid_options;
     /*
      * hui-card is what the section wraps each of its cards in: visibility, sizes and
      * rebuilds come with it. hui-badge does the same for the row of badges. A group
@@ -129,9 +131,9 @@ class DeclutteringGroup extends LitElement {
     this._syncHidden();
   }
 
-  // The group fills the section's width; how its cards share that is up to them.
+  // The group fills the section's width unless it says otherwise; how its cards share that is up to them.
   public getGridOptions(): unknown {
-    return { columns: 'full' };
+    return this._gridOptions ?? { columns: 'full' };
   }
 
   public async getCardSize(): Promise<number> {
