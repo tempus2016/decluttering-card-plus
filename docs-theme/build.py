@@ -17,7 +17,10 @@ import sys
 # to, and upload-pages-artifact serves the whole directory - so a `login.html` or an
 # `evil.js` pushed alongside the pages would go live next to them. Only the markdown this
 # script turns into pages, and the images those pages show, have any business being served.
+# Inside images/ that means image files: a script or a page there is served just the same,
+# and an SVG is a page. Symlinks are followed by both git and open(), so they go first.
 ALLOWED_DIRS = {'images'}
+IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.webp'}
 
 # A wiki links to `[Variables](Variables)`, which works because GitHub's wiki serves
 # extensionless URLs. Jekyll produces Variables.html, so every one of those links would
@@ -89,18 +92,39 @@ def split_home(text):
 
 
 def drop_unpublishable(root):
-    """Remove anything in the wiki clone that is not a page or an image directory, so only
-    what this script publishes can be served. Runs before the theme is laid over the clone,
-    so it only ever sees wiki content, never the theme's own files."""
+    """Remove anything in the wiki clone that is not a page or an image, so only what this
+    script publishes can be served. Runs before the theme is laid over the clone, so it only
+    ever sees wiki content, never the theme's own files."""
     for name in sorted(os.listdir(root)):
         path = os.path.join(root, name)
-        if os.path.isdir(path):
+        if os.path.islink(path):
+            os.remove(path)
+            print("dropped link", name)
+        elif os.path.isdir(path):
             if name not in ALLOWED_DIRS:
                 shutil.rmtree(path)
                 print("dropped directory", name)
+            else:
+                drop_non_images(path)
         elif not name.endswith(".md"):
             os.remove(path)
             print("dropped file", name)
+
+
+def drop_non_images(root):
+    """Inside an image directory, at any depth: images stay, everything else goes."""
+    for folder, dirs, files in os.walk(root, topdown=True):
+        for name in list(dirs):
+            path = os.path.join(folder, name)
+            if os.path.islink(path):
+                os.remove(path)
+                dirs.remove(name)
+                print("dropped link", os.path.relpath(path, root))
+        for name in files:
+            path = os.path.join(folder, name)
+            if os.path.islink(path) or os.path.splitext(name)[1].lower() not in IMAGE_EXTENSIONS:
+                os.remove(path)
+                print("dropped file", os.path.relpath(path, root))
 
 
 def main(root):

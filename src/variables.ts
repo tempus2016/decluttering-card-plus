@@ -76,6 +76,28 @@ export function unescapePlaceholders(text: string): string {
 }
 
 /*
+ * Text that came from Home Assistant rather than from the template: a friendly name, an
+ * attribute, a device's model, a label. It is somebody's words and is shown as written,
+ * so anything in it shaped like a placeholder is escaped here, once, where it comes in.
+ * Without this a device named `[[model|json|bool]]` by whatever registered it - MQTT
+ * discovery will take any name - is read as template code on the next pass and rewrites
+ * the card for everyone who views the dashboard. A text with no `[[...]]` in it is returned
+ * as it was, so the common case costs one regex test.
+ */
+export function asHaText<T>(value: T): T {
+  if (typeof value === 'string') {
+    return value.replace(new RegExp(PLACEHOLDER_SOURCE, 'g'), `[[${ESCAPE}$1]]`) as unknown as T;
+  }
+  if (Array.isArray(value)) return value.map(asHaText) as unknown as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) out[key] = asHaText(entry);
+    return out as T;
+  }
+  return value;
+}
+
+/*
  * A placeholder written `[[name?]]` is one the template can do without: when nothing gives
  * it a value, the option it stands for is dropped from the card rather than left showing
  * the brackets. It is what lets one template serve a room with four lights and a room with
@@ -319,7 +341,11 @@ const ATTRIBUTE_STEP = `${ATTRIBUTE_PREFIX}[a-zA-Z0-9_]+`;
 // carries that token in its url - so a template pasted from elsewhere must never be able to
 // pull either into a config it then puts in an outbound url. Blocked here, at the one place
 // an attribute is read, rather than trusting every sink downstream not to leak it.
-const SENSITIVE_ATTRIBUTES = new Set(['access_token', 'entity_picture']);
+const SENSITIVE_ATTRIBUTES = new Set(['access_token', 'entity_picture', 'entity_picture_local']);
+
+// Other attributes carry a token in their url - a media player's proxied artwork does - so
+// a value that looks like one is refused whatever the attribute is called.
+const CARRIES_TOKEN = /[?&]token=/i;
 
 const RESOLVER_NAMES = `${Object.keys(RESOLVERS)
   .sort((a, b) => b.length - a.length)
@@ -327,7 +353,8 @@ const RESOLVER_NAMES = `${Object.keys(RESOLVERS)
 
 /** Whether a step of a chain asks Home Assistant for something rather than shaping text. */
 export function isResolver(step: string): boolean {
-  return step in RESOLVERS || step.startsWith(ATTRIBUTE_PREFIX);
+  // Own properties only: `__proto__` is in every object, and is not a resolver.
+  return Object.prototype.hasOwnProperty.call(RESOLVERS, step) || step.startsWith(ATTRIBUTE_PREFIX);
 }
 
 /**
@@ -340,10 +367,12 @@ function resolve(step: string, entityId: string, hass: any): string | undefined 
     const name = step.slice(ATTRIBUTE_PREFIX.length);
     if (SENSITIVE_ATTRIBUTES.has(name)) return undefined;
     const attribute = hass?.states?.[entityId]?.attributes?.[name];
-    return attribute === undefined || attribute === null ? undefined : String(attribute);
+    if (attribute === undefined || attribute === null) return undefined;
+    const text = String(attribute);
+    return CARRIES_TOKEN.test(text) ? undefined : asHaText(text);
   }
   const found = RESOLVERS[step]?.(entityId, hass);
-  return found === undefined || found === null ? undefined : String(found);
+  return found === undefined || found === null ? undefined : asHaText(String(found));
 }
 
 /*
@@ -432,6 +461,9 @@ export function applyTransform(
   hass?: any,
   values?: Record<string, any>,
   read: (name: string) => unknown = (name) => values?.[name],
+  // Applied to what Home Assistant gives, and only to that: the author's own values are
+  // theirs to write. A style passes one that keeps a name from ending a CSS declaration.
+  shield?: (text: string) => string,
 ): string | undefined {
   const steps = transform ? transform.split('|') : [];
 
@@ -486,6 +518,7 @@ export function applyTransform(
       // A resolver reads the value as an entity id, so it has to run before anything has
       // reshaped it - `[[entity|friendly_name|slug]]` resolves, then slugs.
       text = resolve(name, text, hass);
+      if (text !== undefined && shield) text = shield(text);
       empty = text === undefined || text === '';
       continue;
     }
@@ -498,8 +531,10 @@ export function applyTransform(
     }
 
     const fn = TRANSFORMS[name];
-    // The grammar only ever matches known names, so this is belt and braces.
-    if (!fn) return value === undefined ? undefined : String(value);
+    // The grammar only ever matches known names, but the fallback pass reads any chain. An
+    // unknown step has no answer: handing the raw value back would let a chain ending in
+    // `bool` paste that value into the card's JSON unquoted.
+    if (!Object.prototype.hasOwnProperty.call(TRANSFORMS, name) || !fn) return undefined;
     text = fn(text);
     empty = text === '';
   }
@@ -517,12 +552,13 @@ export function resolveFallback(
   values: Record<string, any>,
   hass?: any,
   read?: (name: string) => unknown,
+  shield?: (text: string) => string,
 ): string | undefined {
   if (inside.startsWith(ESCAPE)) return undefined;
 
   const [name, ...steps] = withoutOptional(inside).split('|');
   if (!steps.some(answersUnset)) return undefined;
-  return applyTransform(steps.join('|'), values[name], hass, values, read);
+  return applyTransform(steps.join('|'), values[name], hass, values, read, shield);
 }
 
 // The parts of a template that get substituted into, and so the only places a placeholder
@@ -855,16 +891,70 @@ export function validateDeclared(
       continue;
     }
     if (typeof declaration.pattern === 'string' && declaration.pattern) {
+      // Checked in the editor, on the main thread, against a value and a pattern that may
+      // both have come from somebody else's template - so one that could run away is not
+      // run at all, and nor is one against text longer than any pattern here is for.
+      const text = String(value);
+      if (text.length > MAX_CHECKED_LENGTH || !patternIsSafe(declaration.pattern)) continue;
       let expression: RegExp;
       try {
         expression = new RegExp(declaration.pattern);
       } catch {
         continue;
       }
-      if (!expression.test(String(value))) bad.push({ name: declaration.name, expected: declaration.pattern });
+      if (!expression.test(text)) bad.push({ name: declaration.name, expected: declaration.pattern });
     }
   }
   return bad;
+}
+
+// Longer than any entity id, colour or name a pattern is written to check.
+const MAX_CHECKED_LENGTH = 1000;
+const MAX_PATTERN_LENGTH = 200;
+
+/*
+ * Whether a pattern can be run against text somebody else chose. A quantifier applied to a
+ * group that itself holds a quantifier or an alternation - `(a+)+`, `(x|xy)*` - is the shape
+ * that backtracks for seconds on thirty characters; a plain `^light\.` or `^[a-z-]+$` is
+ * not. Read character by character so that an escaped bracket or one inside a class does
+ * not count.
+ */
+export function patternIsSafe(pattern: string): boolean {
+  if (pattern.length > MAX_PATTERN_LENGTH) return false;
+  // One flag per open group: whether a quantifier or a bar has been seen inside it.
+  const groups: boolean[] = [];
+  let inClass = false;
+  for (let i = 0; i < pattern.length; i += 1) {
+    const char = pattern[i];
+    if (char === '\\') {
+      i += 1;
+      continue;
+    }
+    if (inClass) {
+      if (char === ']') inClass = false;
+      continue;
+    }
+    if (char === '[') {
+      inClass = true;
+      continue;
+    }
+    if (char === '(') {
+      groups.push(false);
+      continue;
+    }
+    const quantifier = char === '+' || char === '*' || char === '{' || char === '?';
+    if (char === ')') {
+      const busy = groups.pop() ?? false;
+      const next = pattern[i + 1];
+      const quantified = next === '+' || next === '*' || next === '{';
+      if (busy && quantified) return false;
+      // A quantified group counts as busy for the group around it.
+      if (quantified && groups.length) groups[groups.length - 1] = true;
+      continue;
+    }
+    if ((quantifier || char === '|') && groups.length) groups[groups.length - 1] = true;
+  }
+  return true;
 }
 
 export function usedVariables(template: TemplateConfig | undefined): string[] {

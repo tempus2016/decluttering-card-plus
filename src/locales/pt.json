@@ -182,6 +182,11 @@
   "share.community_needs_cards": "Precisa destes cartões personalizados, que a instalação não adiciona: {types}",
   "share.community_needs_templates": "Usa estes modelos, que não traz consigo e que este painel não tem: {names}",
   "share.community_install_as": "Instalar como {name}",
+  "share.community_risks": "Antes de instalar, note que este modelo:",
+  "share.community_risk_actions": "chama {list} quando algo nele é premido",
+  "share.community_risk_urls": "acede a endereços fora do Home Assistant: {list}",
+  "share.community_risk_embeds": "incorpora uma página web",
+  "share.community_risk_scripts": "contém JavaScript ou modelos Jinja, que correm com a sua sessão",
 
   "tools.health_header": "Saúde do painel",
 

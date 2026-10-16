@@ -433,13 +433,15 @@ check('a star pair catches whatever nothing else did', applyTransform('map:low=g
 check('a named pair beats the star wherever it is written', applyTransform('map:*=grey,low=green', 'low'), 'green');
 check('what map gives chains onward', applyTransform('map:low=green|upper', 'low'), 'GREEN');
 
+// Nor does an unknown step hand the value back: a chain that ends in `bool` would paste it
+// into the card's JSON as it stands.
 check(
-  'a step named after an inherited property is not a transform',
+  'a step named after an inherited property is not a transform, and gives no answer',
   applyTransform('toString:x', 'Kitchen'),
-  'Kitchen',
+  undefined,
 );
-check('nor is valueOf', applyTransform('valueOf:x', 'Kitchen'), 'Kitchen');
-check('nor is constructor', applyTransform('constructor:x', 'Kitchen'), 'Kitchen');
+check('nor is valueOf', applyTransform('valueOf:x', 'Kitchen'), undefined);
+check('nor is constructor', applyTransform('constructor:x', 'Kitchen'), undefined);
 check('max leaves a short value alone', applyTransform('max:10', 'Kitchen'), 'Kitchen');
 check('max of exactly the length changes nothing', applyTransform('max:7', 'Kitchen'), 'Kitchen');
 check('max with a length that is not a number changes nothing', applyTransform('max:lots', 'Kitchen'), 'Kitchen');
@@ -1027,6 +1029,31 @@ check(
   'only a real true turns it on',
   withInheritedVariables({ template: 'x', inherit_variables: 'yes', [INHERITED_KEY]: [{ b: 2 }] }).variables,
   undefined,
+);
+
+/* ---------------------------------------------- patterns that cannot be checked safely */
+
+const RISKY = {
+  variables: [
+    { name: 'a', pattern: '^(a+)+$' },
+    { name: 'b', pattern: '^(?:x|xy|y)*$' },
+    { name: 'c', pattern: '^[a-z]+$' },
+  ],
+  card: { a: '[[a]]', b: '[[b]]', c: '[[c]]' },
+};
+
+check(
+  'a pattern that nests one quantifier inside another is not run against the value',
+  validateDeclared([{ a: 'a'.repeat(40) + '!' }, { b: 'xy'.repeat(30) + '!' }], RISKY),
+  [],
+);
+
+check('a plain pattern is still checked', validateDeclared([{ c: 'A' }], RISKY), [{ name: 'c', expected: '^[a-z]+$' }]);
+
+check(
+  'a value longer than anything a pattern is for is left unchecked',
+  validateDeclared([{ c: 'a'.repeat(2000) + '!' }], RISKY),
+  [],
 );
 
 report();

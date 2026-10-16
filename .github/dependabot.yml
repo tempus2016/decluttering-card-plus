@@ -13,8 +13,9 @@ updates:
     cooldown:
       default-days: 7
 
-  # Build tooling only. lit is the one runtime dependency that ends up in the
-  # bundle, so it is deliberately left out of the group and raises its own PR.
+  # Build tooling only. The runtime dependencies - lit, js-yaml, custom-card-helpers and
+  # home-assistant-js-websocket - end up in the bundle, so they are deliberately left out
+  # of the groups and each raises its own PR, which nothing merges unattended.
   - package-ecosystem: 'npm'
     directory: '/'
     schedule:
@@ -26,8 +27,28 @@ updates:
     cooldown:
       default-days: 7
     groups:
+      # What the release job runs with a token that can write to the repository and publish
+      # the asset. Kept apart so a person looks at these, while the rest merge on their own
+      # (see workflows/dependabot-auto-merge.yml).
+      release-tooling:
+        dependency-type: 'development'
+        patterns:
+          - 'semantic-release'
+          - '@semantic-release/*'
+          - 'rollup'
+          - '@rollup/*'
+          - 'terser'
+        update-types:
+          - minor
+          - patch
       build-tooling:
         dependency-type: 'development'
+        exclude-patterns:
+          - 'semantic-release'
+          - '@semantic-release/*'
+          - 'rollup'
+          - '@rollup/*'
+          - 'terser'
         update-types:
           - minor
           - patch

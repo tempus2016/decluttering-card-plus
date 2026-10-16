@@ -11,6 +11,7 @@ const {
   hasSectionDefaults,
   isTemplateCardType,
   collectUsages,
+  findTemplate,
   findTemplateLocation,
   renameTemplate,
   dashboardsToForget,
@@ -632,6 +633,17 @@ check('extends chains, grandchild through child to parent', collectTemplates(FAM
   name: 'Dimmer',
 });
 
+check(
+  'a null in a child takes the parent key away, as on a card (#193)',
+  collectTemplates({
+    decluttering_templates: {
+      cam: { card: { type: 'camera', images: ['a'], menu: { enabled: true, style: 'hover' } } },
+      lean: { extends: 'cam', card: { images: null, menu: { style: null } } },
+    },
+  }).lean.card,
+  { type: 'camera', menu: { enabled: true } },
+);
+
 check('the extends key is gone once it has been honoured', 'extends' in collectTemplates(FAMILY).dim_tile, false);
 
 check('a parent nobody defines leaves the child as written, extends still on it', collectTemplates(FAMILY).orphan, {
@@ -1113,6 +1125,36 @@ check(
     return original.views[0].cards.length;
   })(),
   0,
+);
+
+/* -------------------------------------------- a __proto__ key never reparents an object */
+
+const protoOverride = applyOverride({ a: 1 }, JSON.parse('{"card":{"__proto__":{"polluted":1}}}'), 'card');
+check(
+  'an override written with a __proto__ key leaves the result a plain object',
+  [Object.getPrototypeOf(protoOverride) === Object.prototype, protoOverride.polluted, {}.polluted],
+  [true, undefined, undefined],
+);
+
+const protoLl = {
+  decluttering_templates: JSON.parse(
+    '{"p":{"card":{"type":"tile"}},"c":{"extends":"p","card":{"__proto__":{"polluted":2}}}}',
+  ),
+};
+const protoChild = collectTemplates(protoLl).c.card;
+check(
+  'an extends child written with a __proto__ key leaves the merged card a plain object',
+  [Object.getPrototypeOf(protoChild) === Object.prototype, protoChild.polluted],
+  [true, undefined],
+);
+
+check(
+  'a template looked up by an inherited name is not found',
+  [
+    findTemplate({ decluttering_templates: { a: { card: {} } } }, 'constructor'),
+    findTemplate({ decluttering_templates: {} }, 'toString'),
+  ],
+  [null, null],
 );
 
 // The borrowing checks are asynchronous and call report() when they settle, so anything

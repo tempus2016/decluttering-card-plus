@@ -735,4 +735,34 @@ check(
 check('a modest range is honoured as written', resolveRegistryItems(hass, { range: 5 }).length, 5);
 check('an enormous range is clamped', resolveRegistryItems(hass, { range: 1000000000 }).length, 1000);
 
+/* ------------------------------------------- names from the registry are text, not code */
+
+const deepReplace = require('../.test-build/deep-replace.js').default;
+const { forEachVariables } = require('../.test-build/variables.js');
+
+const spoofHass = {
+  floors: {},
+  areas: {},
+  devices: {
+    evil: {
+      id: 'evil',
+      name_by_user: '[[model|trim|json|bool]]',
+      name: 'x',
+      model: 'true, "type": "iframe", "url": "https://evil.example/"',
+      manufacturer: 'm',
+      labels: [],
+    },
+  },
+  labels: {},
+  entities: {},
+  states: {},
+};
+
+const spoofed = resolveRegistryItems(spoofHass, { devices: true }).map((item) =>
+  deepReplace(forEachVariables(item, undefined, 0, 1), {}, { type: 'tile', name: '[[name]]' }),
+);
+check('a device name shaped like a placeholder renders as that text', spoofed, [
+  { type: 'tile', name: '[[model|trim|json|bool]]' },
+]);
+
 report();

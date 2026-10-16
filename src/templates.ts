@@ -292,15 +292,13 @@ export function groupCard(group: unknown): { type: string; cards: unknown } {
 
 const TEMPLATE_CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group'] as const;
 
-/** Child over parent: mappings merge key by key, lists and scalars are the child's. */
+/*
+ * Child over parent: mappings merge key by key, lists and scalars are the child's, and a
+ * null takes the parent's key away - the same rules a card's own `card:` block follows, so
+ * `images: null` means one thing wherever it is written (#193).
+ */
 function deepMergeConfig(parent: any, child: any): any {
-  if (parent === undefined) return child;
-  if (child === undefined) return parent;
-  const mergeable = (value: any): boolean => value !== null && typeof value === 'object' && !Array.isArray(value);
-  if (!mergeable(parent) || !mergeable(child)) return child;
-  const out: any = { ...parent };
-  for (const [key, value] of Object.entries(child)) out[key] = deepMergeConfig(parent[key], value);
-  return out;
+  return child === undefined ? parent : mergeOver(parent, child);
 }
 
 /** Parent order kept, a child declaration of the same name replacing in place, new ones after. */
@@ -336,7 +334,8 @@ function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): Template
  * extend each other terminates by merging whichever the walk reached first as it stood.
  */
 function resolveExtends(templates: Record<string, TemplateConfig>): Record<string, TemplateConfig> {
-  const out = { ...templates };
+  // No prototype: a template named `__proto__` is then an entry here, not a new parent.
+  const out: Record<string, TemplateConfig> = Object.assign(Object.create(null), templates);
   const walking = new Set<string>();
   const resolve = (name: string): TemplateConfig => {
     const template = out[name];
@@ -361,11 +360,14 @@ function resolveExtends(templates: Record<string, TemplateConfig>): Record<strin
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
-/** `extends:`'s rules, plus a null taking the key away rather than setting it to null. */
+/** Child over parent, a mapping merging key by key and a null taking the key away. */
 function mergeOver(base: unknown, over: unknown): unknown {
   if (!isMapping(over)) return over;
   const out: Record<string, unknown> = isMapping(base) ? { ...base } : {};
   for (const [key, value] of Object.entries(over)) {
+    // Assigning `out.__proto__` would reparent the result rather than set a key; a card has
+    // no use for that key, so it is dropped.
+    if (key === '__proto__') continue;
     if (value === null) delete out[key];
     else out[key] = mergeOver(out[key], value);
   }
@@ -542,7 +544,7 @@ export function collectTemplates(
   const shared = collectDefaults(ll);
   if (!here.length && !shared.length) return templates;
 
-  const out: Record<string, TemplateConfig> = {};
+  const out: Record<string, TemplateConfig> = Object.create(null);
   for (const [name, template] of Object.entries(templates)) out[name] = withDefaults(template, here, shared);
   return out;
 }

@@ -182,6 +182,11 @@
   "share.community_needs_cards": "Benötigt diese benutzerdefinierten Karten, die bei der Installation nicht hinzugefügt werden: {types}",
   "share.community_needs_templates": "Verwendet diese Vorlagen, die sie nicht mitbringt und die dieses Dashboard nicht hat: {names}",
   "share.community_install_as": "Als {name} installieren",
+  "share.community_risks": "Vor der Installation beachten – diese Vorlage:",
+  "share.community_risk_actions": "ruft {list} auf, wenn etwas darauf gedrückt wird",
+  "share.community_risk_urls": "erreicht Adressen außerhalb von Home Assistant: {list}",
+  "share.community_risk_embeds": "bettet eine Webseite ein",
+  "share.community_risk_scripts": "enthält JavaScript- oder Jinja-Vorlagen, die mit deiner Anmeldung ausgeführt werden",
 
   "tools.health_header": "Zustand des Dashboards",
 

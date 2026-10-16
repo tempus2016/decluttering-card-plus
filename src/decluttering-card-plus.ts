@@ -18,7 +18,7 @@ import {
   LovelaceThingConfig,
   LovelaceThingType,
 } from './types';
-import deepReplace from './deep-replace';
+import deepReplace, { cssSafe } from './deep-replace';
 import { buildExport, validateImport, freeName } from './share';
 import { suggestVariables } from './suggest';
 import { LIBRARY, libraryEntry, libraryNeeds } from './library';
@@ -28,6 +28,7 @@ import {
   CommunityError,
   CommunityList,
   communityNeeds,
+  communityRisks,
   fetchCommunity,
   postBody,
 } from './community';
@@ -709,6 +710,8 @@ abstract class DeclutteringElement extends LitElement {
     templateName?: string,
     trace?: BuildTrace,
   ): string {
+    // A name Home Assistant supplies is written into a declaration's value and kept there:
+    // cssSafe takes out what would let it end the declaration and start its own.
     let styles = '';
     if (templateConfig.style) {
       styles += deepReplace(
@@ -721,10 +724,22 @@ abstract class DeclutteringElement extends LitElement {
         undefined,
         0,
         trace,
+        cssSafe,
       );
     }
     if (cardStyle) {
-      styles += deepReplace(variables, templateConfig, cardStyle, templateName, this._hass, false, undefined, 0, trace);
+      styles += deepReplace(
+        variables,
+        templateConfig,
+        cardStyle,
+        templateName,
+        this._hass,
+        false,
+        undefined,
+        0,
+        trace,
+        cssSafe,
+      );
     }
     return styles;
   }
@@ -1554,6 +1569,10 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       ha-expansion-panel {
         margin-top: 16px;
       }
+      .risks {
+        margin: 4px 0 0;
+        padding-left: 18px;
+      }
       .result {
         padding: 0 8px 8px;
       }
@@ -2349,6 +2368,12 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   @state() private _communityLoading = false;
   @state() private _communityError?: string;
   @state() private _communitySelected?: number;
+  // Every template this dashboard can see, borrowed ones included, so a post cannot install
+  // a template under a name that silently takes over one borrowed from another dashboard.
+  @state() private _communityKnown: string[] = [];
+  // When Install was first pressed: the second press has to be a second decision, not the
+  // other half of a double-click.
+  private _installArmedAt = 0;
   @state() private _postCopyState: '' | 'done' | 'failed' = '';
   @state() private _remoteUsages?: { name: string; list: { urlPath: string; total: number }[] };
   @state() private _borrowed?: { ll: unknown; names?: string[] };
@@ -3169,13 +3194,15 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       `;
     }
 
-    const existing = Object.keys(collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()));
+    const existing = this._communityExisting();
     const entry = list.entries.find((each) => each.id === this._communitySelected);
     const key = entry ? `community:${entry.id}` : '';
     const armed = !!entry && this._installPending === key;
     const installAs = entry && existing.includes(entry.name) ? freeName(entry.name, existing) : undefined;
     const needs = entry ? communityNeeds(entry, existing) : undefined;
     const brings = entry ? Object.keys(entry.includes).filter((each) => !existing.includes(each)) : [];
+    const risks = entry ? communityRisks(entry) : undefined;
+    const risky = !!risks && (risks.actions.length > 0 || risks.urls.length > 0 || risks.embeds || risks.scripts);
 
     return html`
       <div class="library">
@@ -3208,7 +3235,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
           entry && needs
             ? html`
                 <p class="hint">
-                  ${entry.template.description ?? ''}
+                  ${typeof entry.template.description === 'string' ? entry.template.description : ''}
                   <a href=${entry.url} target="_blank" rel="noopener noreferrer"
                     >${localize('share.community_open', undefined, this.hass)}</a
                   >
@@ -3234,7 +3261,34 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                       </ha-alert>`
                     : html``
                 }
-                <ha-expansion-panel outlined>
+                ${
+                  risky && risks
+                    ? html`<ha-alert
+                        alert-type="warning"
+                        .title=${localize('share.community_risks', undefined, this.hass)}
+                      >
+                        <ul class="risks">
+                          ${
+                            risks.actions.length
+                              ? html`<li>
+                                  ${localize('share.community_risk_actions', { list: risks.actions.join(', ') }, this.hass)}
+                                </li>`
+                              : html``
+                          }
+                          ${
+                            risks.urls.length
+                              ? html`<li>
+                                  ${localize('share.community_risk_urls', { list: risks.urls.join(', ') }, this.hass)}
+                                </li>`
+                              : html``
+                          }
+                          ${risks.embeds ? html`<li>${localize('share.community_risk_embeds', undefined, this.hass)}</li>` : html``}
+                          ${risks.scripts ? html`<li>${localize('share.community_risk_scripts', undefined, this.hass)}</li>` : html``}
+                        </ul>
+                      </ha-alert>`
+                    : html``
+                }
+                <ha-expansion-panel outlined expanded>
                   <span slot="header">${localize('share.library_preview', undefined, this.hass)}</span>
                   ${keyed(
                     entry.id,
@@ -3293,6 +3347,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     this._communityError = undefined;
     try {
       this._community = await fetchCommunity({ refresh });
+      void this._loadCommunityKnown();
     } catch (err) {
       const error = err as CommunityError;
       if (error.cached) this._community = error.cached;
@@ -3305,6 +3360,24 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         : localize('share.community_failed', { message: error.message }, this.hass);
     } finally {
       this._communityLoading = false;
+    }
+  }
+
+  /** This dashboard's templates and the ones it borrows, by name. */
+  private _communityExisting(): string[] {
+    const local = Object.keys(collectTemplates(getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig()));
+    return [...new Set([...local, ...this._communityKnown])];
+  }
+
+  private async _loadCommunityKnown(): Promise<void> {
+    try {
+      const all = await collectAllTemplates(
+        this.hass,
+        getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig(),
+      );
+      this._communityKnown = Object.keys(all);
+    } catch {
+      // A dashboard that cannot be read only loses the clash check against what it lends.
     }
   }
 
@@ -3325,11 +3398,13 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     const key = `community:${entry.id}`;
     if (this._installPending !== key) {
       this._installPending = key;
+      this._installArmedAt = Date.now();
       return;
     }
+    if (Date.now() - this._installArmedAt < 500) return;
 
     const panel = getLovelacePanel();
-    const existing = Object.keys(collectTemplates(panel?.config ?? this.lovelace ?? getLovelaceConfig()));
+    const existing = this._communityExisting();
     const name = existing.includes(entry.name) ? freeName(entry.name, existing) : entry.name;
     const wanted: [string, Record<string, unknown>][] = [
       ...Object.entries(entry.includes).filter(([each]) => !existing.includes(each)),

@@ -3,6 +3,7 @@
  * Run with `npm test`, which transpiles the source into .test-build first.
  */
 const deepReplace = require('../.test-build/deep-replace.js').default;
+const { cssSafe } = require('../.test-build/deep-replace.js');
 
 const { check, report } = require('./harness');
 
@@ -1064,6 +1065,166 @@ check(
   'an exponential variable chain is stopped rather than expanded',
   JSON.stringify(deepReplace(bomb, {}, { content: '[[v0]]' })).length < 3_000_000,
   true,
+);
+
+/* ------------------------------------------- a key looked up by another variable (#192) */
+
+const LOOKUP = {
+  default: [
+    { colours: { error: 'red', good: 'green' } },
+    { modes: { live: { provider: 'go2rtc', link: 'http://cam/[[name]]' }, image: { provider: 'image' } } },
+  ],
+};
+
+check(
+  'a placeholder inside a placeholder picks a key out of a mapping',
+  deepReplace([{ level: 'error' }], LOOKUP, { color: '[[colours.[[level]]]]' }),
+  { color: 'red' },
+);
+
+check(
+  'a key the mapping does not have falls to default:',
+  deepReplace([{ level: 'meh' }], LOOKUP, { color: '[[colours.[[level]]|default:grey]]' }),
+  { color: 'grey' },
+);
+
+check(
+  'a key the mapping does not have drops an optional option',
+  deepReplace([{ level: 'meh' }], LOOKUP, { type: 'tile', color: '[[colours.[[level]]?]]' }),
+  { type: 'tile' },
+);
+
+check(
+  'a key the mapping has keeps an optional option',
+  deepReplace([{ level: 'good' }], LOOKUP, { color: '[[colours.[[level]]?]]' }),
+  { color: 'green' },
+);
+
+check(
+  'a looked-up mapping goes in whole, its own placeholders filled',
+  deepReplace([{ mode: 'live', name: 'porch' }], LOOKUP, { camera: '[[modes.[[mode]]]]' }),
+  { camera: { provider: 'go2rtc', link: 'http://cam/porch' } },
+);
+
+/* ------------------------------------------ text from Home Assistant stays text (security) */
+
+const INJECTION = 'true, "type": "iframe", "url": "https://evil.example/"';
+
+check(
+  'a chain ending in bool that went through an unknown step is refused, not pasted raw',
+  deepReplace([{ name: INJECTION }], {}, { type: 'tile', show: '[[name|trim|json|bool]]' }),
+  { type: 'tile', show: '[[name|trim|json|bool]]' },
+);
+
+check(
+  'json first then bool is still the answer to whether there is anything there',
+  deepReplace([{ name: INJECTION }], {}, { type: 'tile', show: '[[name|json|bool]]' }),
+  { type: 'tile', show: true },
+);
+
+check(
+  'a fallback chain ending in bool only ever yields true or false',
+  deepReplace([], {}, { type: 'tile', show: '[[nope|default:' + INJECTION + '|bool]]' }),
+  { type: 'tile', show: true },
+);
+
+const LOCK_HASS = {
+  states: {
+    'lock.front': { state: 'locked', attributes: { friendly_name: '[[zz?]]' } },
+    'sensor.spoof': { state: 'on', attributes: { friendly_name: 'x', spoof: '[[model|trim|json|bool]]' } },
+  },
+};
+
+check(
+  'a friendly_name shaped like an optional placeholder is text, and takes nothing with it',
+  deepReplace(
+    [{ lock: 'lock.front' }],
+    {},
+    {
+      tap_action: {
+        action: 'perform-action',
+        perform_action: 'lock.unlock',
+        confirmation: { text: '[[lock|friendly_name]]' },
+      },
+    },
+    undefined,
+    LOCK_HASS,
+  ),
+  { tap_action: { action: 'perform-action', perform_action: 'lock.unlock', confirmation: { text: '[[zz?]]' } } },
+);
+
+check(
+  'an attribute shaped like a placeholder is never substituted again',
+  deepReplace(
+    [{ e: 'sensor.spoof' }, { model: INJECTION }],
+    {},
+    { type: 'tile', name: '[[e|attr:spoof]]' },
+    undefined,
+    LOCK_HASS,
+  ),
+  { type: 'tile', name: '[[model|trim|json|bool]]' },
+);
+
+check(
+  'an attribute carrying a proxy token is not handed out',
+  deepReplace(
+    [{ e: 'media_player.tv' }],
+    {},
+    { image: '[[e|attr:entity_picture_local]]', other: '[[e|attr:media_image_url]]' },
+    undefined,
+    {
+      states: {
+        'media_player.tv': {
+          state: 'on',
+          attributes: {
+            entity_picture_local: '/api/media_player_proxy/media_player.tv?token=abc',
+            media_image_url: 'https://cdn.example/x.jpg?token=abc',
+          },
+        },
+      },
+    },
+  ),
+  { image: '[[e|attr:entity_picture_local]]', other: '[[e|attr:media_image_url]]' },
+);
+
+check(
+  'an inherited name used as a chain step is not a transform and does not throw',
+  deepReplace([], {}, { x: '[[nope|default:a|__proto__]]', y: '[[nope|default:a|__defineGetter__]]' }),
+  { x: '[[nope|default:a|__proto__]]', y: '[[nope|default:a|__defineGetter__]]' },
+);
+
+/* ------------------------------------------------------- the ceiling holds per replacement */
+
+const FAN = 200;
+const fanOut = (name) => Array(FAN).fill(`[[${name}]]`).join('');
+const fanned = deepReplace(
+  [{ v1: fanOut('v2') }, { v2: fanOut('v3') }, { v3: fanOut('v4') }],
+  {},
+  { content: '[[v1]]' },
+);
+check(
+  'a value holding many placeholders cannot multiply the text past about the ceiling',
+  JSON.stringify(fanned).length < 2_100_000,
+  true,
+);
+
+/* ------------------------------------------------------------------ styles shielded */
+
+check(
+  'a shield is applied to what Home Assistant gives, not to what the author wrote',
+  deepReplace(
+    [{ e: 'light.x' }, { colour: 'red; }' }],
+    {},
+    'color: [[e|friendly_name]]; --mine: [[colour]];',
+    undefined,
+    { states: { 'light.x': { state: 'on', attributes: { friendly_name: 'blue; background: url(https://evil/)' } } } },
+    false,
+    undefined,
+    0,
+    undefined,
+    cssSafe,
+  ),
+  'color: blue background: url(https://evil/); --mine: red; };',
 );
 
 report();

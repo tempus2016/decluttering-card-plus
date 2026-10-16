@@ -182,6 +182,11 @@
   "share.community_needs_cards": "Heeft deze aangepaste kaarten nodig, die de installatie niet toevoegt: {types}",
   "share.community_needs_templates": "Gebruikt deze sjablonen, die hij niet meebrengt en die dit dashboard niet heeft: {names}",
   "share.community_install_as": "Installeren als {name}",
+  "share.community_risks": "Let op voordat je installeert – dit sjabloon:",
+  "share.community_risk_actions": "roept {list} aan wanneer er iets op wordt ingedrukt",
+  "share.community_risk_urls": "bereikt adressen buiten Home Assistant: {list}",
+  "share.community_risk_embeds": "sluit een webpagina in",
+  "share.community_risk_scripts": "bevat JavaScript of Jinja-sjablonen, die met jouw aanmelding worden uitgevoerd",
 
   "tools.health_header": "Gezondheid van het dashboard",
 

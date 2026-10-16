@@ -182,6 +182,11 @@
   "share.community_needs_cards": "Nécessite ces cartes personnalisées, que l'installation n'ajoute pas : {types}",
   "share.community_needs_templates": "Utilise ces modèles, qu'il n'apporte pas et que ce tableau de bord n'a pas : {names}",
   "share.community_install_as": "Installer sous le nom {name}",
+  "share.community_risks": "Avant d'installer, notez que ce modèle :",
+  "share.community_risk_actions": "appelle {list} quand on appuie sur un de ses éléments",
+  "share.community_risk_urls": "atteint des adresses hors de Home Assistant : {list}",
+  "share.community_risk_embeds": "intègre une page web",
+  "share.community_risk_scripts": "contient du JavaScript ou des modèles Jinja, exécutés avec votre session",
 
   "tools.health_header": "État du tableau de bord",
 
