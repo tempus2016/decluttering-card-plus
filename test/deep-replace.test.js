@@ -452,6 +452,19 @@ check('a refused transform warns once, not twice', warnings.length, 1);
 check('and it is the transform message, not this one', /transform/.test(warnings[0]), true);
 
 warnings.length = 0;
+check(
+  'json later in the chain is left as written',
+  deepReplace([{ o: { foo: 'bar' } }], {}, { a: '[[o|json|replace:foo:item2|json]]' }),
+  { a: '[[o|json|replace:foo:item2|json]]' },
+);
+check('and says json has to come first', /json/.test(warnings[0]) && /first/.test(warnings[0]), true);
+check('not that Home Assistant had nothing', /Home Assistant/.test(warnings[0]), false);
+
+warnings.length = 0;
+deepReplace([{ name: 'Hall' }], {}, { a: '[[name|upper|json]]' });
+check('a scalar with json after a transform says the same', /first/.test(warnings[0]), true);
+
+warnings.length = 0;
 deepReplace([{ room: 'Hall' }], {}, { a: '[[room]]', b: '[[missing]]' });
 check('an unset variable is still caught alongside one that resolved', warnings.length, 1);
 check('naming only the unset one', /\[\[missing\]\]/.test(warnings[0]) && !/\[\[room\]\]/.test(warnings[0]), true);

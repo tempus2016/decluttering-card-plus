@@ -28,9 +28,10 @@ import {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // What a refusal says, and which way it happened: a transform was handed something it
-// cannot shape, Home Assistant had nothing to give, or an `if:` did not hold. The reason
+// cannot shape, Home Assistant had nothing to give, an `if:` did not hold, or `json` was
+// written somewhere other than first. The reason
 // carries the difference so the wording never has to - the wording is translated.
-type RefusalReason = 'shape' | 'missing' | 'closed';
+type RefusalReason = 'shape' | 'missing' | 'closed' | 'json';
 
 interface Refusal {
   text: string;
@@ -247,6 +248,11 @@ function substitutePass(
       }
       if (!transform) return whole ? asWholeValue(value, match) : asPartOfString(value);
       const chain = transform;
+      // `json` reads the variable's own value, so anywhere but first it has nothing to
+      // work on - and without this it would be blamed on Home Assistant.
+      if (chain.split('|').lastIndexOf(JSON_STEP) > 0) {
+        return refuse(match, written as string, localize('warn.json_not_first'), 'json');
+      }
       if (!transformable(chain)) return refuse(match, written as string);
       return shaped(
         match,
@@ -496,6 +502,7 @@ function deepReplace(
         reasons.has('shape') ? localize('warn.refused_transform') : '',
         reasons.has('missing') ? localize('warn.refused_resolver') : '',
         reasons.has('closed') ? localize('warn.refused_condition') : '',
+        reasons.has('json') ? localize('warn.refused_json') : '',
       ]
         .filter(Boolean)
         .join(' ');
