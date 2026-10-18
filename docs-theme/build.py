@@ -31,6 +31,15 @@ WIKI_LINK = re.compile(r"\]\(([A-Za-z0-9][A-Za-z0-9_-]*)(#[^)]*)?\)")
 HEADING = re.compile(r"^#\s+(.+?)\s*$", re.M)
 IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", re.M)
 
+# Markdown carries raw HTML through to the page, and the layout's meta CSP is what keeps an
+# unwanted page from doing much. These are the tags that would get around it or that the CSP
+# cannot reach: a <meta> can refresh to another site or declare a looser policy of its own,
+# a <base> redirects every relative link, a <form> is a phishing page, and <iframe>,
+# <object> and <embed> pull in content from wherever. None of them has a use in a page of
+# documentation, so they come out wholesale - opening and closing tags, any case, attributes
+# across lines - and the text between them stays as text.
+RAW_TAG = re.compile(r"</?\s*(?:meta|form|iframe|object|embed|base)\b[^>]*>", re.I)
+
 
 def front_matter(fields):
     """YAML is a superset of JSON for scalars, so json.dumps quotes these safely."""
@@ -44,6 +53,14 @@ def rewrite_links(text):
     text = WIKI_LINK.sub(lambda m: "]({}.html{})".format(m.group(1), m.group(2) or ""), text)
     # Home.md is published as index.md, so nothing should still point at Home.html.
     return text.replace("](Home.html)", "](index.html)")
+
+
+def strip_raw_tags(text, name):
+    """Drop the raw HTML tags a page must not carry (see RAW_TAG), and say which."""
+    found = RAW_TAG.findall(text)
+    if found:
+        print("dropped", len(found), "raw tag(s) from", name + ":", " ".join(sorted(set(found))))
+    return RAW_TAG.sub("", text)
 
 
 def headline_html(tagline):
@@ -133,7 +150,7 @@ def main(root):
         if not name.endswith(".md"):
             continue
         path = os.path.join(root, name)
-        text = rewrite_links(open(path, encoding="utf-8").read())
+        text = rewrite_links(strip_raw_tags(open(path, encoding="utf-8").read(), name))
 
         # The sidebar becomes the navigation on every page rather than a page of its own.
         # Copied after the link rewrite, so its links point at .html too.

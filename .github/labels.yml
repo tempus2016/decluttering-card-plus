@@ -82,3 +82,14 @@
 - name: recipe
   color: c2e0c6
   description: A template somebody shared, or a dashboard shape to work out
+
+# Where a request has got to. One at a time: planned, then in progress, then implemented
+- name: planned
+  color: c5def5
+  description: Agreed and coming in a future update
+- name: in progress
+  color: fbca04
+  description: Being worked on now
+- name: implemented
+  color: 0e8a16
+  description: Out in a published release

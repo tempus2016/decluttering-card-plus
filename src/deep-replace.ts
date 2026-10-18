@@ -4,12 +4,13 @@ import { BuildTrace } from './trace';
 import {
   answersUnset,
   applyTransform,
-  BOOL_STEP,
+  CONSUMER_TYPES,
   ESCAPE,
   gateOpen,
   hasCondition,
   JSON_STEP,
   resolveFallback,
+  takesStructure,
   variableValues,
   withoutOptional,
   isOptional,
@@ -17,21 +18,28 @@ import {
   OPTIONAL_SUFFIX,
   hasEscape,
   isFallback,
+  isJsonNumber,
   PLACEHOLDER,
   resolveVariables,
+  STATE_STEP,
+  stateScope,
   TRANSFORM_SUFFIX,
+  unlistedState,
   unescapePlaceholders,
   withoutConditions,
   yieldsBoolean,
+  yieldsList,
+  yieldsNumber,
 } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // What a refusal says, and which way it happened: a transform was handed something it
-// cannot shape, Home Assistant had nothing to give, an `if:` did not hold, or `json` was
-// written somewhere other than first. The reason
-// carries the difference so the wording never has to - the wording is translated.
-type RefusalReason = 'shape' | 'missing' | 'closed' | 'json';
+// cannot shape, Home Assistant had nothing to give, an `if:` did not hold, `json` was
+// written somewhere other than first, or `state` was asked of an entity the card does not
+// rebuild on. The reason carries the difference so the wording never has to - the wording
+// is translated.
+type RefusalReason = 'shape' | 'missing' | 'closed' | 'json' | 'unlisted';
 
 interface Refusal {
   text: string;
@@ -99,18 +107,53 @@ function asPartOfString(value: any): string {
 // A shaped whole value is a JSON string, unless its chain ends in `bool` - then it is the
 // bare true or false, which is the only way a card's on/off option can be given one. Only
 // exactly those two words go in bare: this is text being spliced into JSON, and anything
-// else would be read as structure.
+// else would be read as structure. A chain ending in arithmetic is the same with a number:
+// it goes in bare only when what came out is written exactly as JSON writes a number.
 function asShapedWholeValue(text: string, chain: string): string {
-  return yieldsBoolean(chain) && (text === 'true' || text === 'false') ? text : JSON.stringify(text);
+  if (yieldsBoolean(chain) && (text === 'true' || text === 'false')) return text;
+  // A list is only ever the JSON applyTransform wrote for it, read back to be sure.
+  if (yieldsList(chain)) return isJsonList(text) ? text : JSON.stringify(text);
+  if (yieldsNumber(chain) && isJsonNumber(text)) return text;
+  return JSON.stringify(text);
+}
+
+function isJsonList(text: string): boolean {
+  if (!text.startsWith('[')) return false;
+  try {
+    return Array.isArray(JSON.parse(text));
+  } catch {
+    return false;
+  }
 }
 
 /*
  * What a style does to text Home Assistant gives it. A name is written into a declaration's
  * value, and these are the characters that would let it end that declaration and start
- * another, or escape its way to one.
+ * another, escape its way to one, open a `url(` that sends the rest of the value somewhere,
+ * or comment the rest of the sheet out. The brackets go too: this runs after the text had
+ * its `[[` escaped, and a name of `[{[x]}]` losing its braces here would otherwise come out
+ * the other side as a placeholder (review 2026-10-18). Nothing a colour, a size or a name
+ * needs is among them.
  */
 export function cssSafe(text: string): string {
-  return text.replace(/[{};\\@]/g, '');
+  return text.replace(/[{}()[\];\\@"'/]/g, '');
+}
+
+/*
+ * Every escape written out, except inside a card that will substitute again: what is handed
+ * to a nested decluttering card - its `variables:` - is read as template code by that card,
+ * and an escape unwrapped here would be live there. A friendly name of `[[zz?]]` passed down
+ * as a label would delete the key it lands in, one card further in (review 2026-10-18). The
+ * nested card unwraps what reaches it when its own build is done.
+ */
+function unescapeOutsideConsumers(node: any): any {
+  if (typeof node === 'string') return unescapePlaceholders(node);
+  if (Array.isArray(node)) return node.map(unescapeOutsideConsumers);
+  if (!node || typeof node !== 'object') return node;
+  if (CONSUMER_TYPES.includes(node.type)) return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) out[unescapePlaceholders(key)] = unescapeOutsideConsumers(value);
+  return out;
 }
 
 /** How to describe a value that a transform cannot shape, in a sentence about it. */
@@ -145,6 +188,7 @@ function substitutePass(
   limit?: number,
   trace?: BuildTrace,
   shield?: (text: string) => string,
+  settle: (name: string) => unknown = (name) => values[name],
 ): string {
   let json = jsonConfig;
   for (const variable of variableArray) {
@@ -171,12 +215,12 @@ function substitutePass(
     // A transform shapes text, so it only applies to a scalar: slugging or uppercasing a
     // mapping's JSON garbles its keys, so the placeholder is left visible instead - the
     // same treatment an unrecognised transform gets.
-    // Every transform but two shapes text and refuses anything else. `json` wants the
-    // mapping itself and `bool` asks whether there is anything in it, so a chain starting
-    // with either is allowed through.
+    // Every transform but a few shapes text and refuses anything else. `json` wants the
+    // mapping itself, `bool` asks whether there is anything in it, and the list steps read
+    // a list as one - so a chain starting with any of those is allowed through.
     const isScalar = value === null || typeof value !== 'object';
     const transformable = (transform?: string): boolean =>
-      isScalar || [JSON_STEP, BOOL_STEP].includes((transform ?? '').split('|')[0]);
+      isScalar || takesStructure((transform ?? '').split('|')[0], value);
     // A placeholder left visible is the deliberate signal that something is wrong, but on
     // its own it does not say what - so each refusal is noted, to be reported once at the
     // end rather than on every pass over the same text.
@@ -192,7 +236,22 @@ function substitutePass(
      * refusing a mapping does.
      */
     const shaped = (match: string, transform: string, wrap: (text: string) => string, written = transform): string => {
-      const text = applyTransform(transform, value, hass, values, read, shield);
+      /*
+       * Asked first, before a `default:` further along can paper over it: a state the card
+       * does not rebuild on would be right once and then never change, which is worse than
+       * the brackets staying until the entity is listed.
+       */
+      /*
+       * A value built from other placeholders - `light.[[room|slug]]` - is shaped as it will
+       * end up, not as written: a resolver asked about the text with the brackets still in
+       * it finds no such entity, and `exists` says no.
+       */
+      const input = typeof value === 'string' && PLACEHOLDER.test(value) ? settle(Object.keys(variable)[0]) : value;
+      const unlisted = unlistedState(transform, input, hass, values, read);
+      if (unlisted !== undefined) {
+        return refuse(match, written, localize('warn.state_unlisted', { entity: unlisted }), 'unlisted');
+      }
+      const text = applyTransform(transform, input, hass, values, read, shield);
       if (text !== undefined) return wrap(text);
       // A gap that an `or:` could not fill is still just a gap - nothing gives it a value -
       // so it is left to be reported as unset rather than blamed on Home Assistant.
@@ -385,6 +444,12 @@ function fallbackPass(
   // left for the pruning pass to take out - `[[name|default:?]]` drops the key, as
   // `[[name?]]` would (discussion #155).
   const standIn = (inside: string): string | undefined => {
+    // A state the card does not rebuild on keeps its brackets here too, a `default:` or
+    // not. Unset, the name is the entity - `[[sensor.x|state|default:off]]`.
+    const [name, ...steps] = withoutOptional(inside).split('|');
+    if (steps.includes(STATE_STEP) && unlistedState(steps.join('|'), values[name] ?? name, hass, values, read)) {
+      return undefined;
+    }
     const text = resolveFallback(inside, values, hass, read, shield);
     return text === '' && isOptional(inside) ? undefined : text;
   };
@@ -446,15 +511,41 @@ function deepReplace(
   content: any,
   templateName?: string,
   hass?: any,
-  quiet?: boolean,
+  // true says nothing in the console. A set says each thing once: what has been said is
+  // kept in it, so a card building again - on every change of what it rebuilds on - does
+  // not repeat itself.
+  quiet?: boolean | Set<string>,
   onUnresolved?: (names: string[]) => void,
   depth = 0,
   trace?: BuildTrace,
   // What to do to text Home Assistant supplies before it goes in; a style passes cssSafe.
   shield?: (text: string) => string,
+  // Leave every escape in place: the output is itself going to be substituted, as the
+  // variables handed down to a nested card are.
+  keepEscapes = false,
 ): any {
   if (content === undefined) return content;
+  // What the console is told is also noted on the trace, for `debug: report` (#207) -
+  // once per build, so a card building again still has the warning in its report even
+  // when the set it keeps has heard it before.
+  const say = (message: string): void => {
+    if (quiet === true) return;
+    trace?.warnings.push(message);
+    if (quiet instanceof Set) {
+      if (quiet.has(message)) return;
+      quiet.add(message);
+    }
+    console.warn(message);
+  };
   const variableArray = resolveVariables(variables, templateConfig);
+  /*
+   * An entity the card rebuilds on can be written straight into a placeholder -
+   * `[[input_select.layout|state]]` - with no variable to carry it. It stands for itself,
+   * after everything the card and template set, so a variable of the same name still wins.
+   */
+  for (const entity of stateScope(hass)) {
+    if (!variableArray.some((entry) => Object.keys(entry)[0] === entity)) variableArray.push({ [entity]: entity });
+  }
   const values = variableValues(variableArray);
   let jsonConfig = JSON.stringify(content);
 
@@ -470,30 +561,46 @@ function deepReplace(
     settled.set(name, value);
     return value;
   };
+  /*
+   * What a transform reads: the same, but with every escape kept, so that text Home
+   * Assistant supplied is still wearing its bang when a step shapes it and cannot turn
+   * into a placeholder on the next pass. Quiet, because the card says what is wrong
+   * about the outer placeholders itself.
+   */
+  const shapedInputs = new Map<string, unknown>();
+  const settle = (name: string): unknown => {
+    if (shapedInputs.has(name)) return shapedInputs.get(name);
+    const raw = values[name];
+    const value =
+      typeof raw === 'string' && PLACEHOLDER.test(raw) && depth < MAX_CONDITION_DEPTH
+        ? deepReplace(variableArray, {}, raw, templateName, hass, true, undefined, depth + 1, undefined, shield, true)
+        : raw;
+    shapedInputs.set(name, value);
+    return value;
+  };
   // Each placeholder a transform refused, and what its value turned out to be.
   const refused = new Map<string, Refusal>();
-
   if (variableArray.length) {
     const limit = outputLimit(jsonConfig.length);
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
       const before = jsonConfig;
-      jsonConfig = substitutePass(jsonConfig, variableArray, refused, read, values, hass, limit, trace, shield);
+      jsonConfig = substitutePass(jsonConfig, variableArray, refused, read, values, hass, limit, trace, shield, settle);
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
       // A chain that keeps growing has been stopped mid-expansion; carrying on would only
       // grow it further, so give up here and let the placeholders left standing be reported.
       if (jsonConfig.length > limit) {
-        if (!quiet) console.warn(localize('warn.gave_up', { passes }));
+        say(localize('warn.gave_up', { passes }));
         break;
       }
     }
-    if (!quiet && passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
-      console.warn(localize('warn.gave_up', { passes: MAX_PASSES }));
+    if (passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
+      say(localize('warn.gave_up', { passes: MAX_PASSES }));
     }
 
-    if (!quiet && refused.size) {
+    if (refused.size) {
       const each = [...refused].map(([placeholder, refusal]) => `[[${placeholder}]] (${refusal.text})`);
       // The ways a chain gives up read differently, so say whichever apply rather than a
       // sentence that only half fits.
@@ -503,10 +610,11 @@ function deepReplace(
         reasons.has('missing') ? localize('warn.refused_resolver') : '',
         reasons.has('closed') ? localize('warn.refused_condition') : '',
         reasons.has('json') ? localize('warn.refused_json') : '',
+        reasons.has('unlisted') ? localize('warn.refused_unlisted') : '',
       ]
         .filter(Boolean)
         .join(' ');
-      console.warn(localize('warn.refused', { which: each.join(', '), why }));
+      say(localize('warn.refused', { which: each.join(', '), why }));
     }
   }
 
@@ -529,12 +637,23 @@ function deepReplace(
    * from a variable nobody set. This is the only place that still knows the difference.
    */
   if (onUnresolved && unresolved.length) onUnresolved(unresolved);
-  if (!quiet && unresolved.length) {
-    const which = unresolved.map((name) => `[[${name}]]`).join(', ');
+  /*
+   * `[[sensor.x|state]]` with nothing called sensor.x is an entity the card does not
+   * rebuild on, rather than a variable somebody forgot - so it says that instead.
+   */
+  const asksState = (inside: string): boolean => withoutOptional(inside).split('|').slice(1).includes(STATE_STEP);
+  const unlistedNames = unresolved.filter(asksState);
+  if (unlistedNames.length) {
+    const which = unlistedNames.map((name) => `[[${name}]]`).join(', ');
+    say(localize('warn.state_unlisted_unset', { which }));
+  }
+  const unset = unresolved.filter((inside) => !asksState(inside));
+  if (unset.length) {
+    const which = unset.map((name) => `[[${name}]]`).join(', ');
     const whose = templateName
       ? localize('warn.unresolved_template', { name: templateName })
       : localize('warn.unresolved_this');
-    console.warn(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${unresolved[0]}` }));
+    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${unset[0]}` }));
   }
 
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be
@@ -556,8 +675,8 @@ function deepReplace(
   if (nothingToDo) return content;
 
   const pruned = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig), trace?.dropped) : JSON.parse(jsonConfig);
-  if (!hasEscape(jsonConfig)) return pruned;
-  return JSON.parse(unescapePlaceholders(JSON.stringify(pruned)));
+  if (!hasEscape(jsonConfig) || keepEscapes) return pruned;
+  return unescapeOutsideConsumers(pruned);
 }
 
 export default deepReplace;

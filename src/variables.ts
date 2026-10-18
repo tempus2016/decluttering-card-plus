@@ -1,5 +1,6 @@
 import { TemplateConfig, VariablesConfig } from './types';
 import { labelName } from './labels';
+import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -12,6 +13,8 @@ export interface VariableDeclaration {
   /** A Home Assistant selector, in the same shape ha-form takes. */
   selector?: any;
   default?: any;
+  /** `default:` spelled plural, read the same; `default:` wins when both are written. */
+  defaults?: any;
   /** Whether the template is unusable without it. Warns; it never blocks a save. */
   required?: boolean;
   /** A regular expression the value must match. Warns; it never blocks a save. */
@@ -20,6 +23,19 @@ export interface VariableDeclaration {
   allowed?: unknown[];
   /** Declarations sharing a group fold into one collapsible section of the editor. */
   group?: string;
+  /** What kind of value it takes - see VARIABLE_TYPES - which picks its editor control. */
+  type?: string;
+  /** `type: entity`: the domains it may come from, one or a list. */
+  domain?: string | string[];
+  /** `type: entity`: the device class it must have, one or a list. */
+  device_class?: string | string[];
+  /** `type: number`: the range, the step between values, and the unit shown beside it. */
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  /** `type: text`: a box with room for more than one line. */
+  multiline?: boolean;
 }
 
 /**
@@ -54,6 +70,151 @@ export function groupDeclarations(
   return buckets.filter((each) => each.declarations.length > 0);
 }
 
+/*
+ * A declaration can say what kind of value it takes, which is shorter to write than the
+ * Home Assistant selector it stands for and reads as what it means: `type: entity` with a
+ * `domain:`, `type: number` with a range. Colours are Home Assistant's own named colours
+ * (`ui_color`) - `red`, `amber`, `primary` - which is what a tile's `color:` takes.
+ */
+export const VARIABLE_TYPES = ['entity', 'number', 'boolean', 'icon', 'color', 'text', 'select'];
+
+// What has already been said about a type nobody knows, so the editor does not repeat it on
+// every keystroke - it re-renders on every state change Home Assistant sends.
+const unknownTypesSaid = new Set<string>();
+
+/** The things a declaration narrows an entity by, with only the ones it wrote. */
+function entityFilter(declaration: VariableDeclaration): Record<string, unknown> | undefined {
+  const filter: Record<string, unknown> = {};
+  if (declaration.domain !== undefined) filter.domain = declaration.domain;
+  if (declaration.device_class !== undefined) filter.device_class = declaration.device_class;
+  return Object.keys(filter).length ? filter : undefined;
+}
+
+/*
+ * A variable that can only take a handful of values is offered them, rather than a text
+ * box that warns afterwards.
+ */
+function allowedSelector(declaration: VariableDeclaration): unknown {
+  if (!Array.isArray(declaration.allowed) || !declaration.allowed.length) return undefined;
+  const options = declaration.allowed.map((each) => ({ value: String(each), label: String(each) }));
+  return { select: { mode: 'dropdown', options } };
+}
+
+/** The selector a declaration's `type:` stands for, or undefined when it has none to offer. */
+function typeSelector(declaration: VariableDeclaration): unknown {
+  const { type } = declaration;
+  if (type === undefined) return undefined;
+  switch (type) {
+    case 'entity': {
+      const filter = entityFilter(declaration);
+      return { entity: filter ? { filter } : {} };
+    }
+    case 'number': {
+      const number: Record<string, unknown> = {};
+      // A slider needs both ends; without them a box takes any number.
+      number.mode = typeof declaration.min === 'number' && typeof declaration.max === 'number' ? 'slider' : 'box';
+      for (const key of ['min', 'max', 'step'] as const) {
+        if (typeof declaration[key] === 'number') number[key] = declaration[key];
+      }
+      if (typeof declaration.unit === 'string') number.unit_of_measurement = declaration.unit;
+      return { number };
+    }
+    case 'boolean':
+      return { boolean: {} };
+    case 'icon':
+      return { icon: {} };
+    case 'color':
+      return { ui_color: {} };
+    case 'text':
+      return { text: declaration.multiline === true ? { multiline: true } : {} };
+    case 'select':
+      // Only a list of values makes a dropdown; without one it is the text box it would have been.
+      return allowedSelector(declaration);
+  }
+  const said = `${declaration.name}\u0000${String(type)}`;
+  if (!unknownTypesSaid.has(said)) {
+    unknownTypesSaid.add(said);
+    console.warn(
+      localize('warn.unknown_type', { name: declaration.name, type: String(type), types: VARIABLE_TYPES.join(', ') }),
+    );
+  }
+  return undefined;
+}
+
+/**
+ * The control a declared variable gets in the card editor. An explicit selector still wins
+ * - the template author may want something else entirely - then what `type:` stands for,
+ * then a dropdown of the `allowed:` values, then a text box.
+ */
+export function declarationSelector(declaration: VariableDeclaration): unknown {
+  return declaration.selector ?? typeSelector(declaration) ?? allowedSelector(declaration) ?? { text: {} };
+}
+
+// The words `bool` reads, either way. A typed boolean holding anything else is a mistake.
+const BOOLEAN_WORDS = new Set(['true', 'false', 'yes', 'no', 'on', 'off', '1', '0']);
+
+const ICON_SHAPE = /^[a-z0-9_-]+:[a-z0-9_-]+$/i;
+
+/** A value or a list of them, as a list. */
+function asList(value: string | string[] | undefined): string[] {
+  if (value === undefined) return [];
+  return (Array.isArray(value) ? value : [value]).map((each) => String(each));
+}
+
+/**
+ * What a value was expected to be, in words, when it does not fit its declaration's type -
+ * undefined when it fits, or when there is nothing to check. A device class can only be
+ * read off an entity Home Assistant knows, so without one it is not judged.
+ */
+function typeMismatch(declaration: VariableDeclaration, value: unknown, hass?: any): string | undefined {
+  switch (declaration.type) {
+    case 'entity': {
+      const text = String(value);
+      const shape = ENTITY_ID_SHAPE.exec(text);
+      const domains = asList(declaration.domain);
+      if (!shape) {
+        return domains.length
+          ? localize('type.entity_in', { domains: domains.join(', ') }, hass)
+          : localize('type.entity', undefined, hass);
+      }
+      if (domains.length && !domains.includes(shape[1])) {
+        return localize('type.entity_in', { domains: domains.join(', ') }, hass);
+      }
+      const classes = asList(declaration.device_class);
+      const found = hass?.states?.[text]?.attributes?.device_class;
+      if (classes.length && hass?.states?.[text] && !classes.includes(String(found))) {
+        return localize('type.entity_class', { device_class: classes.join(', ') }, hass);
+      }
+      return undefined;
+    }
+    case 'number': {
+      const number = typeof value === 'number' ? value : String(value).trim() === '' ? NaN : Number(value);
+      const { min, max } = declaration;
+      const hasMin = typeof min === 'number';
+      const hasMax = typeof max === 'number';
+      const expected =
+        hasMin && hasMax
+          ? localize('type.number_range', { min, max }, hass)
+          : hasMin
+            ? localize('type.number_min', { min }, hass)
+            : hasMax
+              ? localize('type.number_max', { max }, hass)
+              : localize('type.number', undefined, hass);
+      if (!Number.isFinite(number)) return expected;
+      if ((hasMin && number < (min as number)) || (hasMax && number > (max as number))) return expected;
+      return undefined;
+    }
+    case 'boolean':
+      if (typeof value === 'boolean') return undefined;
+      return BOOLEAN_WORDS.has(String(value).trim().toLowerCase())
+        ? undefined
+        : localize('type.boolean', undefined, hass);
+    case 'icon':
+      return ICON_SHAPE.test(String(value)) ? undefined : localize('type.icon', undefined, hass);
+  }
+  return undefined;
+}
+
 const PLACEHOLDER_SOURCE = '\\[\\[([^[\\]]+)\\]\\]';
 
 /*
@@ -63,7 +224,12 @@ const PLACEHOLDER_SOURCE = '\\[\\[([^[\\]]+)\\]\\]';
  */
 export const ESCAPE = '!';
 
-const ESCAPED_SOURCE = `\\[\\[${ESCAPE}([^[\\]]+)\\]\\]`;
+/*
+ * The escape is the opening brackets with the bang after them, closed or not. It used to
+ * need its `]]` as well, which left a lone `[[` from one place free to meet a `?]]` from
+ * another and read as a placeholder between them (review 2026-10-18).
+ */
+const ESCAPED_SOURCE = `\\[\\[${ESCAPE}`;
 
 /** Whether anything in this text is an escaped placeholder waiting to be unwrapped. */
 export function hasEscape(text: string): boolean {
@@ -72,8 +238,13 @@ export function hasEscape(text: string): boolean {
 
 /** Every `[[!name]]` written out as the `[[name]]` it stands for. */
 export function unescapePlaceholders(text: string): string {
-  return text.replace(new RegExp(ESCAPED_SOURCE, 'g'), '[[$1]]');
+  return text.replace(new RegExp(ESCAPED_SOURCE, 'g'), '[[');
 }
+
+// The cards that consume a template, as opposed to the ones that define it. Here rather than
+// with the template code because substitution has to know them: what is handed to one of
+// these is going to be substituted again, by it.
+export const CONSUMER_TYPES = ['custom:decluttering-card-plus', 'custom:decluttering-card'];
 
 /*
  * Text that came from Home Assistant rather than from the template: a friendly name, an
@@ -81,12 +252,14 @@ export function unescapePlaceholders(text: string): string {
  * so anything in it shaped like a placeholder is escaped here, once, where it comes in.
  * Without this a device named `[[model|json|bool]]` by whatever registered it - MQTT
  * discovery will take any name - is read as template code on the next pass and rewrites
- * the card for everyone who views the dashboard. A text with no `[[...]]` in it is returned
- * as it was, so the common case costs one regex test.
+ * the card for everyone who views the dashboard. Every `[[` is escaped, not only the ones
+ * with a `]]` after them: a device named `[[zz` beside a model named `?]]` would otherwise
+ * form one placeholder once both are written in (review 2026-10-18). A text with no `[[` in
+ * it is returned as it was, so the common case costs one regex test.
  */
 export function asHaText<T>(value: T): T {
   if (typeof value === 'string') {
-    return value.replace(new RegExp(PLACEHOLDER_SOURCE, 'g'), `[[${ESCAPE}$1]]`) as unknown as T;
+    return value.replace(/\[\[/g, `[[${ESCAPE}`) as unknown as T;
   }
   if (Array.isArray(value)) return value.map(asHaText) as unknown as T;
   if (value && typeof value === 'object') {
@@ -182,17 +355,265 @@ export function truthy(value: unknown): boolean {
   return !FALSE_WORDS.has(String(value).trim().toLowerCase());
 }
 
-/** Whether a chain ends in `bool`, so a whole value should become a real true or false. */
+/*
+ * Two more yes-or-no steps (#210). `exists` asks whether Home Assistant knows the entity
+ * the value names - `[[motion|exists]]` - so a template can leave out a sensor some rooms
+ * do not have. `contains:text` asks whether the value has that text in it, or, for a list,
+ * whether one of its items is exactly that: `[[entity|labels|split|contains:Outdoor]]`.
+ * Like `bool`, both have an answer for a variable nothing sets, which is no.
+ */
+export const EXISTS_STEP = 'exists';
+const CONTAINS_STEP = 'contains';
+
+/** Whether a step answers yes or no. */
+function isYesNoStep(step: string): boolean {
+  return step === BOOL_STEP || step === EXISTS_STEP || stepName(step) === CONTAINS_STEP;
+}
+
+/** Whether a chain ends in a yes or a no, so a whole value should become a real true or false. */
 export function yieldsBoolean(chain: string | undefined): boolean {
-  return !!chain && chain.split('|').pop() === BOOL_STEP;
+  return !!chain && isYesNoStep(chain.split('|').pop() as string);
 }
 
 /** Whether a step has an answer for a variable nothing sets. */
 export function answersUnset(step: string): boolean {
-  return isFallback(step) || step === BOOL_STEP;
+  // `count` has an answer too: nothing is none of anything.
+  return isFallback(step) || isYesNoStep(step) || step === COUNT_STEP;
 }
 
-const TRANSFORM_NAMES = [...Object.keys(TRANSFORMS), JSON_STEP, BOOL_STEP].join('|');
+/** Whether Home Assistant knows this entity, or undefined when there is no Home Assistant to ask. */
+function entityExists(entityId: string, hass: any): boolean | undefined {
+  if (!hass?.states) return undefined;
+  const id = entityId.trim();
+  return (
+    Object.prototype.hasOwnProperty.call(hass.states, id) ||
+    (!!hass.entities && Object.prototype.hasOwnProperty.call(hass.entities, id))
+  );
+}
+
+/*
+ * Arithmetic: `[[index|sub:1|mul:12|add:4]]%` places the nth picture-elements
+ * icon without a helper entity or a Jinja template for each. The number comes after the
+ * colon and is written as one; `round` rounds to a whole number, `round:2` to two places,
+ * and `pad:3` writes a whole number zero-padded to three digits. A value that is not a
+ * number is left exactly as it was - a visible clue rather than a silent zero - and the
+ * console says why, once.
+ */
+const ARITHMETIC: Record<string, (value: number, by: number) => number | undefined> = {
+  add: (value, by) => value + by,
+  sub: (value, by) => value - by,
+  mul: (value, by) => value * by,
+  // Nothing divides by zero; the value is left as it was, the same as for a bad argument.
+  div: (value, by) => (by === 0 ? undefined : value / by),
+  mod: (value, by) => (by === 0 ? undefined : value % by),
+};
+
+const ROUND_STEP = 'round';
+const PAD_STEP = 'pad';
+
+// Arithmetic steps that can also be written bare, with no argument.
+const NUMBER_BARE_STEPS = [ROUND_STEP];
+
+// Steps that take an argument after a colon and are worked out here rather than in PARAM_TRANSFORMS.
+const NUMBER_PARAM_STEPS = [...Object.keys(ARITHMETIC), ROUND_STEP, PAD_STEP];
+
+/*
+ * Lists. `join` writes a list as text, `split` makes one out of text, `first`,
+ * `last` and `count` read one. A list variable is read as itself; text is read as a
+ * comma-separated list - which is what `[[entity|labels]]` gives - so `|first` and `|count`
+ * work on either. A step that shapes text, put after `split`, shapes each item:
+ * `[[rooms|split|slug|join:,]]`.
+ */
+const JOIN_STEP = 'join';
+const SPLIT_STEP = 'split';
+const FIRST_STEP = 'first';
+const LAST_STEP = 'last';
+const COUNT_STEP = 'count';
+
+const LIST_BARE_STEPS = [JOIN_STEP, SPLIT_STEP, FIRST_STEP, LAST_STEP, COUNT_STEP];
+
+// The two that also take an argument: the separator.
+const LIST_PARAM_STEPS = [JOIN_STEP, SPLIT_STEP];
+
+const DEFAULT_JOIN = ', ';
+const DEFAULT_SPLIT = ',';
+
+/** Whether a step reads or makes a list, written bare or with its separator. */
+function isListStep(step: string): boolean {
+  const colon = step.indexOf(':');
+  return colon === -1 ? LIST_BARE_STEPS.includes(step) : LIST_PARAM_STEPS.includes(step.slice(0, colon));
+}
+
+/** Text read as a list: split on the separator, each item trimmed, the empty ones left out. */
+function splitText(text: string, separator: string): string[] {
+  return text
+    .split(separator || DEFAULT_SPLIT)
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+}
+
+/** One item of a list as text - a mapping as its JSON, a gap as nothing. */
+function itemText(item: unknown): string {
+  if (item === undefined || item === null) return '';
+  return typeof item === 'object' ? JSON.stringify(item) : String(item);
+}
+
+/** Whether a chain starting with this step takes a mapping or a list whole, rather than as text. */
+export function takesStructure(step: string, value: unknown): boolean {
+  if (step === JSON_STEP || step === BOOL_STEP) return true;
+  if (stepName(step) === CONTAINS_STEP) return Array.isArray(value);
+  // A mapping has a size, and nothing else a list step reads.
+  return Array.isArray(value) ? isListStep(step) : step === COUNT_STEP;
+}
+
+// The steps whose answer is a number, so a whole value they end goes in as a real one.
+const NUMBER_RESULTS = new Set([...Object.keys(ARITHMETIC), ROUND_STEP, COUNT_STEP, 'find']);
+
+// How a number is written, generously: what people type, and what a sensor reports.
+const NUMBER_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?\s*$/i;
+
+// How a number is written in JSON, which is all that may go into the card's config bare.
+const JSON_NUMBER = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][-+]?\d+)?$/;
+
+/** The number a piece of text writes, or undefined when it writes something else. */
+function asNumber(text: string): number | undefined {
+  if (!NUMBER_TEXT.test(text)) return undefined;
+  const value = Number(text);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+/*
+ * A sum written out the way a person would: 0.1 + 0.2 is 0.3, not 0.30000000000000004 -
+ * fifteen significant digits is past anything a dashboard positions or shows - and minus
+ * zero is zero.
+ */
+function numberText(value: number): string {
+  const tidy = Number(value.toPrecision(15));
+  return String(Object.is(tidy, -0) ? 0 : tidy);
+}
+
+// Each complaint once per page: a dashboard of copies would otherwise say it once a copy.
+const warnedAbout = new Set<string>();
+
+function warnOnce(key: string, step: string, value: string, hass?: any): void {
+  const id = `${key}|${step}|${value}`;
+  if (warnedAbout.has(id)) return;
+  warnedAbout.add(id);
+  console.warn(localize(key, { step, value }, hass));
+}
+
+/** Rounded to so many places, written with exactly that many - `round:2` of 2.5 is 2.50. */
+function rounded(value: number, places: number): string {
+  if (!places) return numberText(Math.round(value));
+  // Shifted by the exponent rather than multiplied, so 1.005 rounds to 1.01 as written.
+  const shifted = Math.round(Number(`${value}e${places}`));
+  const back = Number(`${shifted}e-${places}`);
+  return (Number.isFinite(back) ? back : value).toFixed(places);
+}
+
+/**
+ * One arithmetic step applied, or undefined when the step is not one. A value or argument
+ * it cannot use leaves the value exactly as it was, and says so in the console.
+ */
+function numberStep(step: string, text: string, hass?: any): string | undefined {
+  const colon = step.indexOf(':');
+  const name = colon === -1 ? step : step.slice(0, colon);
+  if (!NUMBER_PARAM_STEPS.includes(name) || (colon === -1 && !NUMBER_BARE_STEPS.includes(name))) return undefined;
+  const arg = colon === -1 ? undefined : step.slice(colon + 1);
+
+  if (name === PAD_STEP) {
+    const width = Number(arg);
+    if (!Number.isInteger(width) || width < 1 || width > 64) {
+      warnOnce('warn.bad_number_argument', step, text, hass);
+      return text;
+    }
+    const whole = text.trim();
+    if (!/^[-+]?\d+$/.test(whole)) {
+      warnOnce('warn.not_a_whole_number', step, text, hass);
+      return text;
+    }
+    const sign = whole.startsWith('-') ? '-' : '';
+    const digits = whole.replace(/^[-+]/, '');
+    return sign + digits.padStart(width - sign.length, '0');
+  }
+
+  const value = asNumber(text);
+  if (value === undefined) {
+    warnOnce('warn.not_a_number', step, text, hass);
+    return text;
+  }
+
+  if (name === ROUND_STEP) {
+    const places = arg === undefined ? 0 : Number(arg);
+    if (!Number.isInteger(places) || places < 0 || places > 15) {
+      warnOnce('warn.bad_number_argument', step, text, hass);
+      return text;
+    }
+    return rounded(value, places);
+  }
+
+  const by = arg === undefined ? undefined : asNumber(arg);
+  const result = by === undefined ? undefined : ARITHMETIC[name](value, by);
+  if (result === undefined || !Number.isFinite(result)) {
+    warnOnce('warn.bad_number_argument', step, text, hass);
+    return text;
+  }
+  return numberText(result);
+}
+
+/** Whether a step is one of the arithmetic ones, written bare or with its argument. */
+function isNumberStep(step: string): boolean {
+  const colon = step.indexOf(':');
+  return colon === -1 ? NUMBER_BARE_STEPS.includes(step) : NUMBER_PARAM_STEPS.includes(step.slice(0, colon));
+}
+
+/** The name a step goes by, without its argument. */
+function stepName(step: string): string {
+  const colon = step.indexOf(':');
+  return colon === -1 ? step : step.slice(0, colon);
+}
+
+/*
+ * Whether a chain ends in a number, so a whole value it shapes goes in as a real one - the
+ * way `bool` puts a real true or false there - rather than as text a card reading a number
+ * would trip over. The last step that does something to the value decides: a `default:`
+ * after it only stands in when there was nothing, and the text it gives is checked anyway.
+ */
+export function yieldsNumber(chain: string | undefined): boolean {
+  if (!chain) return false;
+  const doing = chain.split('|').filter((step) => !isFallback(step) && !isCondition(step));
+  const last = doing[doing.length - 1];
+  return last !== undefined && NUMBER_RESULTS.has(stepName(last));
+}
+
+/*
+ * Whether a chain ends in a list - `split`, and anything after it that shapes each item -
+ * so a whole value it shapes goes in as a real list rather than its text.
+ */
+export function yieldsList(chain: string | undefined): boolean {
+  if (!chain) return false;
+  let list = false;
+  for (const step of chain.split('|')) {
+    if (isFallback(step) || isCondition(step)) continue;
+    if (stepName(step) === SPLIT_STEP) list = true;
+    else if (isListStep(step) || isYesNoStep(step) || step === JSON_STEP) list = false;
+  }
+  return list;
+}
+
+/** Whether a shaped value can go into the card's JSON as a bare number. */
+export function isJsonNumber(text: string): boolean {
+  return JSON_NUMBER.test(text);
+}
+
+const TRANSFORM_NAMES = [
+  ...Object.keys(TRANSFORMS),
+  JSON_STEP,
+  BOOL_STEP,
+  EXISTS_STEP,
+  ...NUMBER_BARE_STEPS,
+  ...LIST_BARE_STEPS,
+].join('|');
 
 /*
  * Some of what a template wants is not in the card's config at all - it is in Home
@@ -201,11 +622,15 @@ const TRANSFORM_NAMES = [...Object.keys(TRANSFORMS), JSON_STEP, BOOL_STEP].join(
  * it is the same "give me this value in a different shape" the transforms already are,
  * with the shape coming from the registry.
  *
- * Deliberately absent: the entity's state. Substitution builds the card's config once,
- * so resolving state here would rebuild the whole card on every state change. What is
- * here comes from the registry and changes about as often as the dashboard does.
+ * The entity's state is the one exception, and a narrow one. Substitution builds the card's
+ * config once, so resolving state for any entity would mean rebuilding the whole card on
+ * every state change. `state` only answers for an entity the card lists in `rebuild_on:` -
+ * the card watches exactly those and builds again when one of them changes - and for any
+ * other entity it has nothing to give. Everything else here comes from the registry and
+ * changes about as often as the dashboard does.
  */
 export const RESOLVERS: Record<string, (entityId: string, hass: any) => string | undefined> = {
+  state: (entityId, hass) => (stateAllowed(hass, entityId) ? hass?.states?.[entityId]?.state : undefined),
   friendly_name: (entityId, hass) => {
     const entity = hass?.entities?.[entityId];
     return hass?.states?.[entityId]?.attributes?.friendly_name ?? entity?.name ?? entity?.original_name;
@@ -245,9 +670,100 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
     if (!ids.length) return undefined;
     return ids.map((id) => labelName(hass, id)).join(', ');
   },
+  /*
+   * The icon the entity shows: the one set on it in the registry, else the one its state
+   * carries. An entity with neither shows its domain's icon, which is not something to
+   * write in - so it gives the empty string, and `|default:mdi:help` can stand in. One
+   * Home Assistant does not know at all gives nothing, like every resolver here.
+   */
+  icon: (entityId, hass) => {
+    const entity = hass?.entities?.[entityId];
+    const state = hass?.states?.[entityId];
+    if (!entity && !state) return undefined;
+    return entity?.icon || state?.attributes?.icon || '';
+  },
+  // What the entity's device says about itself.
+  manufacturer: (entityId, hass) => deviceOf(entityId, hass)?.manufacturer,
+  model: (entityId, hass) => deviceOf(entityId, hass)?.model,
+  // An area or floor with no icon chosen is still there, so it gives the empty string
+  // rather than leaving the placeholder - the same as a repeat over areas does.
+  area_icon: (entityId, hass) => {
+    const area = areaOf(entityId, hass);
+    return area ? (area.icon ?? '') : undefined;
+  },
+  floor_icon: (entityId, hass) => {
+    const floorId = areaOf(entityId, hass)?.floor_id;
+    const floor = floorId ? hass?.floors?.[floorId] : undefined;
+    return floor ? (floor.icon ?? '') : undefined;
+  },
+  /*
+   * Home Assistant's own words for something, in the language the dashboard is shown in -
+   * how its interface names an integration. A value with no dot is a domain and reads as
+   * that integration's title, `component.<domain>.title`, as HA's own domainToName does; a
+   * value with a dot is a whole translation key, `ui.card.weather.attributes.humidity`.
+   * Translations not loaded, or a key nobody translates, give the value back as written -
+   * never nothing - and as the card is built once, it is the language at build time.
+   */
+  translate: (value, hass) => {
+    const key = value.includes('.') ? value : `component.${value}.title`;
+    try {
+      const said = typeof hass?.localize === 'function' ? hass.localize(key) : undefined;
+      return typeof said === 'string' && said && said !== key ? said : value;
+    } catch {
+      return value;
+    }
+  },
+  // On the state, where Home Assistant reports it - the registry's own copy only if not.
+  device_class: (entityId, hass) => {
+    const entity = hass?.entities?.[entityId];
+    return hass?.states?.[entityId]?.attributes?.device_class ?? entity?.device_class ?? entity?.original_device_class;
+  },
 };
 
+/** The device an entity belongs to, if the registry says. */
+function deviceOf(entityId: string, hass: any): any {
+  return hass?.devices?.[hass?.entities?.[entityId]?.device_id];
+}
+
+/** The entity's area, or its device's when it has none of its own - how `|area` finds it. */
+function areaOf(entityId: string, hass: any): any {
+  const entity = hass?.entities?.[entityId];
+  const areaId = entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
+  return areaId ? hass?.areas?.[areaId] : undefined;
+}
+
 const ENTITY_ID_SHAPE = /^([a-z0-9_]+)\.([a-z0-9_]+)$/i;
+
+/** The resolver that reads an entity's state, which only works for what a card rebuilds on. */
+export const STATE_STEP = 'state';
+
+/*
+ * Which entities a build may read the state of: the card's `rebuild_on:` list, carried on
+ * the hass the build is handed rather than threaded through every call in between. A
+ * symbol, so nothing in YAML or in Home Assistant can set it, and a hass that never had it
+ * set allows nothing at all.
+ */
+const STATE_SCOPE = Symbol('decluttering rebuild_on');
+
+/** hass for one card's build, allowed to read the state of these entities and no others. */
+export function withStateScope(hass: any, entities: string[]): any {
+  if (!hass || !entities.length) return hass;
+  // Read-through rather than copied: hass is large and replaced on every state change.
+  const scoped = Object.create(hass);
+  scoped[STATE_SCOPE] = entities;
+  return scoped;
+}
+
+/** The entities a build may read the state of, which also stand as placeholders for themselves. */
+export function stateScope(hass: any): string[] {
+  const scope = hass?.[STATE_SCOPE];
+  return Array.isArray(scope) ? scope : [];
+}
+
+/** Whether this build may read the state of this entity. */
+export function stateAllowed(hass: any, entityId: string): boolean {
+  return stateScope(hass).includes(entityId);
+}
 
 /*
  * A value can stand in for another when there is nothing to show. `default:` supplies the
@@ -275,7 +791,9 @@ export function orTarget(step: string): string | undefined {
 /*
  * `if:` keeps a value only while another variable says so (discussion #150). Written
  * `if:name` it asks whether that variable is a yes, read the way `bool` reads one;
- * written `if:name=text` it asks whether the variable is exactly that text. A condition
+ * written `if:name=text` it asks whether the variable is exactly that text. Either can be
+ * turned round (#210): `if:!name` holds while the variable is a no or unset, and
+ * `if:name!=text` while it is anything but that text - an unset one included. A condition
  * that does not hold makes the value a gap, read exactly as though nothing had set it -
  * so `[[element|if:entity?]]` drops out of its list when the card names no entity, and a
  * `default:` after it still gets its turn. It gates the value rather than reshaping it,
@@ -283,7 +801,18 @@ export function orTarget(step: string): string | undefined {
  */
 const IF_PREFIX = 'if:';
 
-const IF_STEP = `${IF_PREFIX}[A-Za-z0-9_.-]+(?:=[^|\\]]*)?`;
+const IF_STEP = `${IF_PREFIX}!?[A-Za-z0-9_.-]+(?:!?=[^|\\]]*)?`;
+
+/** An `if:` step taken apart: the variable it reads, the text it compares with, and whether it is turned round. */
+function parseCondition(step: string): { name: string; text?: string; negated: boolean } {
+  let body = step.slice(IF_PREFIX.length);
+  const not = body.startsWith('!');
+  if (not) body = body.slice(1);
+  const equals = body.indexOf('=');
+  if (equals === -1) return { name: body, negated: not };
+  const unequal = body[equals - 1] === '!';
+  return { name: body.slice(0, unequal ? equals - 1 : equals), text: body.slice(equals + 1), negated: not !== unequal };
+}
 
 /** Whether a step is a condition rather than something done to the value. */
 export function isCondition(step: string): boolean {
@@ -292,22 +821,18 @@ export function isCondition(step: string): boolean {
 
 /** The variable an `if:` step reads, for counting it as used. */
 export function conditionTarget(step: string): string | undefined {
-  if (!isCondition(step)) return undefined;
-  const body = step.slice(IF_PREFIX.length);
-  const equals = body.indexOf('=');
-  return equals === -1 ? body : body.slice(0, equals);
+  return isCondition(step) ? parseCondition(step).name : undefined;
 }
 
 /** Whether one `if:` step holds, given a way to read a variable's value. */
 export function conditionHolds(step: string, read: (name: string) => unknown): boolean {
-  const body = step.slice(IF_PREFIX.length);
-  const equals = body.indexOf('=');
-  if (equals === -1) return truthy(read(body));
-  const value = read(body.slice(0, equals));
+  const { name, text, negated } = parseCondition(step);
+  const value = read(name);
+  if (text === undefined) return truthy(value) !== negated;
   // Compared as text, as a dropdown and YAML both hand it over - but a mapping or a list
   // has no text to compare, and an unset variable equals nothing.
-  if (value === undefined || value === null || typeof value === 'object') return false;
-  return String(value) === body.slice(equals + 1);
+  const same = value !== undefined && value !== null && typeof value !== 'object' && String(value) === text;
+  return same !== negated;
 }
 
 /** Whether a chain carries any condition at all. */
@@ -345,7 +870,7 @@ const SENSITIVE_ATTRIBUTES = new Set(['access_token', 'entity_picture', 'entity_
 
 // Other attributes carry a token in their url - a media player's proxied artwork does - so
 // a value that looks like one is refused whatever the attribute is called.
-const CARRIES_TOKEN = /[?&]token=/i;
+export const CARRIES_TOKEN = /[?&]token=/i;
 
 const RESOLVER_NAMES = `${Object.keys(RESOLVERS)
   .sort((a, b) => b.length - a.length)
@@ -419,11 +944,18 @@ export const PARAM_TRANSFORMS: Record<string, (value: string, arg: string) => st
     }
     return fallback;
   },
+  // Where the text starts in the value, counting from 0, and -1 when it is not in it (#210).
+  find: (value, arg) => String(value.indexOf(arg)),
 };
 
-const PARAM_PREFIXES = Object.keys(PARAM_TRANSFORMS);
+const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP];
 
-const PARAM_STEP = `(?:${PARAM_PREFIXES.join('|')}):[^|\\]]*`;
+/*
+ * An arithmetic argument stops short of an opening bracket as well, so `add:[[offset]]`
+ * waits for `[[offset]]` to be substituted and then reads the number it became, rather than
+ * swallowing half of it as an argument that is not one.
+ */
+const PARAM_STEP = `(?:(?:${PARAM_PREFIXES.join('|')}):[^|\\]]*|(?:${NUMBER_PARAM_STEPS.join('|')}):[^|\\][]*)`;
 
 /** The parameterised transform a step asks for, or undefined when it is not one. */
 function paramTransform(
@@ -451,9 +983,9 @@ const TRANSFORM_TAIL = new RegExp(`(?:\\|${CHAIN_STEP})+$`);
 
 /**
  * The value a placeholder asks for, in the shape it asks for it, with each transform of
- * the chain applied in the order it was written. Only a scalar reaches here with a
- * transform: substitution leaves a transformed mapping or list visible rather than
- * garbling its JSON through a text transform.
+ * the chain applied in the order it was written. Only a scalar reaches here with a text
+ * transform first: substitution leaves a transformed mapping or list visible rather than
+ * garbling its JSON through one - a list only comes through whole to a list step.
  */
 export function applyTransform(
   transform: string | undefined,
@@ -481,11 +1013,63 @@ export function applyTransform(
    */
   let empty = value === undefined || value === null || value === '';
 
+  /*
+   * The list a `split` made, or the list the steps after it have been shaping item by item.
+   * Undefined while the value is text, which is nearly always.
+   */
+  let list: unknown[] | undefined;
+
+  // Whether a `split` has been passed: a stand-in supplied after one is read as the list
+  // text would have been, so the chain still ends in a list it built itself.
+  let splitBefore = false;
+
+  // One step that shapes text, applied to one piece of it.
+  const reshape = (name: string, input: string): string | undefined => {
+    if (isResolver(name)) {
+      // A resolver reads the value as an entity id, so it has to run before anything has
+      // reshaped it - `[[entity|friendly_name|slug]]` resolves, then slugs.
+      const found = resolve(name, input, hass);
+      return found !== undefined && shield ? shield(found) : found;
+    }
+    const numeric = numberStep(name, input, hass);
+    if (numeric !== undefined) return numeric;
+    const parameterised = paramTransform(name);
+    if (parameterised) return parameterised.fn(input, parameterised.arg);
+    return TRANSFORMS[name](input);
+  };
+
   for (const [index, name] of steps.slice(takesJson ? 1 : 0).entries()) {
+    // First in the chain, a step reads the value itself rather than the text of it.
+    const firstHand = index === 0 && !takesJson ? value : undefined;
+
     if (name === BOOL_STEP) {
       // First in the chain it reads the value itself, so an empty list is a no rather
       // than the text "[]"; further along it reads what the steps before it made.
-      text = String(truthy(index === 0 && !takesJson ? value : text));
+      text = String(truthy(list ?? (index === 0 && !takesJson ? value : text)));
+      list = undefined;
+      empty = false;
+      continue;
+    }
+
+    if (name === EXISTS_STEP) {
+      // Nothing set names no entity, so it is a no - and with no Home Assistant to ask
+      // there is no answer at all, which leaves the placeholder visible.
+      const id = index === 0 && !takesJson ? value : text;
+      const known = id === undefined || id === null || id === '' ? false : entityExists(String(id), hass);
+      text = known === undefined ? undefined : String(known);
+      list = undefined;
+      empty = text === undefined;
+      continue;
+    }
+
+    if (stepName(name) === CONTAINS_STEP) {
+      const wanted = name.slice(CONTAINS_STEP.length + 1);
+      const items = list ?? (Array.isArray(firstHand) ? firstHand : undefined);
+      const found = items
+        ? items.some((item) => itemText(item) === wanted)
+        : text !== undefined && !empty && text.includes(wanted);
+      text = String(found);
+      list = undefined;
       empty = false;
       continue;
     }
@@ -493,6 +1077,7 @@ export function applyTransform(
     if (isCondition(name)) {
       if (!conditionHolds(name, read)) {
         text = undefined;
+        list = undefined;
         empty = true;
       }
       continue;
@@ -505,40 +1090,125 @@ export function applyTransform(
         // A mapping cannot stand in as text; `[[a|or:b]]` supplies words, not structure.
         const usable = fallback !== undefined && fallback !== null && typeof fallback !== 'object';
         text = usable ? String(fallback) : undefined;
+        list = undefined;
         empty = text === undefined || text === '';
+        /*
+         * After a `split`, the stand-in is split the same way, so `[[rows|split|default:a,b]]`
+         * is the list a and b. It also keeps a whole value honest: a chain ending in a list
+         * goes into the card bare, and a stand-in that merely looked like JSON - a friendly
+         * name of `[{"type":"iframe",...}]` reaching `or:name` - would otherwise be spliced
+         * in as the structure it spelt (review 2026-10-18).
+         */
+        if (splitBefore && text !== undefined) {
+          list = splitText(text, DEFAULT_SPLIT);
+          text = undefined;
+          empty = list.length === 0;
+        }
       }
+      continue;
+    }
+
+    if (isListStep(name)) {
+      const colon = name.indexOf(':');
+      const step = colon === -1 ? name : name.slice(0, colon);
+      const arg = colon === -1 ? undefined : name.slice(colon + 1);
+      // What the step reads as a list: one already made, a list variable, or text split up -
+      // where a null or an empty string is an empty list, not the word "null".
+      const separator = step === SPLIT_STEP ? (arg ?? DEFAULT_SPLIT) : DEFAULT_SPLIT;
+      // Noted whether or not there is anything to split yet: a stand-in further along is
+      // what fills the gap, and it is read as a list because this step came first.
+      if (step === SPLIT_STEP) splitBefore = true;
+      const items =
+        list ??
+        (Array.isArray(firstHand)
+          ? firstHand
+          : text === undefined
+            ? undefined
+            : empty
+              ? []
+              : splitText(text, separator));
+
+      if (step === COUNT_STEP) {
+        // Nothing at all is none of anything, and a mapping counts its keys.
+        const mapping = !list && !!firstHand && typeof firstHand === 'object' && !Array.isArray(firstHand);
+        text = String(mapping ? Object.keys(firstHand as object).length : (items?.length ?? 0));
+        list = undefined;
+        empty = false;
+        continue;
+      }
+      // Nothing to work on - left for a `default:` further along, as below.
+      if (items === undefined) continue;
+      if (step === SPLIT_STEP) {
+        list = items;
+        text = undefined;
+        empty = items.length === 0;
+        continue;
+      }
+      if (step === JOIN_STEP) text = items.map(itemText).join(arg ?? DEFAULT_JOIN);
+      else if (!items.length) text = '';
+      else text = itemText(step === FIRST_STEP ? items[0] : items[items.length - 1]);
+      list = undefined;
+      empty = text === '';
       continue;
     }
 
     // Nothing to work on. Left rather than abandoned, so a `default:` further along the
     // chain still gets its turn.
-    if (text === undefined) continue;
+    if (text === undefined && list === undefined) continue;
 
-    if (isResolver(name)) {
-      // A resolver reads the value as an entity id, so it has to run before anything has
-      // reshaped it - `[[entity|friendly_name|slug]]` resolves, then slugs.
-      text = resolve(name, text, hass);
-      if (text !== undefined && shield) text = shield(text);
-      empty = text === undefined || text === '';
-      continue;
-    }
-
-    const parameterised = paramTransform(name);
-    if (parameterised) {
-      text = parameterised.fn(text, parameterised.arg);
-      empty = text === undefined || text === '';
-      continue;
-    }
-
-    const fn = TRANSFORMS[name];
     // The grammar only ever matches known names, but the fallback pass reads any chain. An
     // unknown step has no answer: handing the raw value back would let a chain ending in
     // `bool` paste that value into the card's JSON unquoted.
-    if (!Object.prototype.hasOwnProperty.call(TRANSFORMS, name) || !fn) return undefined;
-    text = fn(text);
-    empty = text === '';
+    const known =
+      isResolver(name) ||
+      isNumberStep(name) ||
+      !!paramTransform(name) ||
+      (Object.prototype.hasOwnProperty.call(TRANSFORMS, name) && !!TRANSFORMS[name]);
+    if (!known) return undefined;
+
+    if (list !== undefined) {
+      // After a `split`, a step that shapes text shapes every item; one with no answer for
+      // an item has none for the list, as it would have none for a single value.
+      const shaped = list.map((item) => reshape(name, itemText(item)));
+      if (shaped.some((item) => item === undefined)) {
+        list = undefined;
+        text = undefined;
+        empty = true;
+      } else {
+        list = shaped;
+        empty = shaped.length === 0;
+      }
+      continue;
+    }
+
+    text = reshape(name, text as string);
+    empty = text === undefined || text === '';
   }
+  // A list still standing at the end goes out as its JSON: a whole value takes it as a real
+  // list, and inside a longer string it is written out the way a list variable would be.
+  if (list !== undefined) return JSON.stringify(list);
   return text;
+}
+
+/**
+ * The entity a chain asks the state of when the build may not read it, or undefined when
+ * it may - or when the chain asks for no state at all. A `state` that is not allowed would
+ * otherwise read as Home Assistant having nothing to give, when the fix is on the card.
+ */
+export function unlistedState(
+  chain: string | undefined,
+  value: unknown,
+  hass?: any,
+  values?: Record<string, any>,
+  read?: (name: string) => unknown,
+): string | undefined {
+  const steps = chain ? chain.split('|') : [];
+  const at = steps.indexOf(STATE_STEP);
+  if (at === -1) return undefined;
+  // Whatever the steps before it make of the value is the entity it is asked of.
+  const entity = applyTransform(steps.slice(0, at).join('|') || undefined, value, hass, values, read);
+  if (entity === undefined) return undefined;
+  return stateAllowed(hass, entity) ? undefined : entity;
 }
 
 /*
@@ -676,9 +1346,55 @@ export function getDeclarations(template: TemplateConfig | undefined): VariableD
     const name = entry.name;
     if (typeof name !== 'string' || !name.trim() || seen.has(name)) continue;
     seen.add(name);
-    declarations.push(entry);
+    declarations.push(withSingularDefault(entry));
   }
   return declarations;
+}
+
+/*
+ * `defaults:` is what people keep writing - the dashboard's own key is the plural
+ * `decluttering_defaults` - and until it was read as well it was silently ignored
+ * (discussion #175). Both spellings mean the same thing everywhere, with no warning for
+ * either; written both ways, `default:` wins a name the two share.
+ */
+export const DEFAULTS_ALIAS = 'defaults';
+
+/*
+ * A declaration's default is one value, so there is nothing to merge: `default:` wins when
+ * both are written, and `defaults:` alone is read as it. A declaration that only wrote the
+ * singular is handed back as it was, so nothing that compares declarations sees a change.
+ */
+function withSingularDefault(entry: VariableDeclaration): VariableDeclaration {
+  if (!Object.prototype.hasOwnProperty.call(entry, DEFAULTS_ALIAS)) return entry;
+  const { [DEFAULTS_ALIAS]: alias, ...rest } = entry as VariableDeclaration & { defaults?: unknown };
+  return 'default' in rest ? rest : { ...rest, default: alias };
+}
+
+/** A variables list as written, one entry per name, without the dotted names a mapping adds. */
+function writtenEntries(variables: unknown): VariablesConfig[] {
+  const entries: VariablesConfig[] = [];
+  const add = (entry: unknown): void => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+    for (const [name, value] of Object.entries(entry)) entries.push({ [name]: value });
+  };
+  if (Array.isArray(variables)) variables.forEach(add);
+  else add(variables);
+  return entries;
+}
+
+/**
+ * A template's `default:` list with its `defaults:` list folded in underneath, so a name
+ * written in both takes the singular's value - whole, a mapping included, so `[[room]]` and
+ * `[[room.light]]` never come from different lists. A template with no `defaults:` gets its
+ * own `default:` back exactly as written. Everything that reads a template's defaults reads
+ * them through here.
+ */
+export function templateDefaults(template: TemplateConfig | undefined): any {
+  const alias = (template as any)?.[DEFAULTS_ALIAS];
+  if (alias === undefined || alias === null) return template?.default;
+  const own = writtenEntries(template?.default);
+  const named = new Set(own.map((entry) => Object.keys(entry)[0]));
+  return [...own, ...writtenEntries(alias).filter((entry) => !named.has(Object.keys(entry)[0]))];
 }
 
 /**
@@ -688,9 +1404,32 @@ export function getDeclarations(template: TemplateConfig | undefined): VariableD
  */
 export const VIEW_VALUES = Symbol('decluttering view values');
 
-/** The `default:` values, in whichever shape they were written. */
+/*
+ * `decluttering_let:` on the dashboard, a view or a section (discussion #162): values worked
+ * out per card exactly as a template's `let:` is - from that card's own variables, placeholders
+ * and all - and, like it, beyond a card's reach. They ride on the template copy under a symbol,
+ * as the view's values do, one layer per place they were written, nearest first, so the trace
+ * can say which.
+ */
+export const OUTER_LET = Symbol('decluttering outer let');
+
+/** Where a `decluttering_let:` value was written, as the trace names it. */
+export type LetSource = 'section_let' | 'view_let' | 'dashboard_let';
+
+export interface LetLayer {
+  from: LetSource;
+  values: VariablesConfig[];
+}
+
+/** The `decluttering_let:` layers a template copy carries, nearest first. */
+export function outerLet(template: TemplateConfig | undefined): LetLayer[] {
+  const layers = (template as any)?.[OUTER_LET];
+  return Array.isArray(layers) ? layers : [];
+}
+
+/** The `default:` values - and `defaults:`, the same thing spelled plural - in whichever shape they were written. */
 function defaultList(template: TemplateConfig | undefined): VariablesConfig[] {
-  return normaliseVariables(template?.default);
+  return normaliseVariables(templateDefaults(template));
 }
 
 /**
@@ -707,6 +1446,9 @@ export function resolveVariables(
   // what an instance passes - a card overriding a derived value would break the template
   // from the outside, invisibly.
   combined.push(...normaliseVariables(template?.let));
+  // Then the section's, the view's and the dashboard's, in that order: the template's own
+  // `let:` knows the template best, and the nearer a value was written the more it means.
+  for (const layer of outerLet(template)) combined.push(...normaliseVariables(layer.values));
   combined.push(...normaliseVariables(variables));
   // The view is closer to the card than the template is: a room page that says
   // `room: kitchen` means every card on it, whatever the template would have picked.
@@ -735,7 +1477,8 @@ export const INHERITED_KEY = 'decluttering_inherited_variables';
 /*
  * What a card hands down to a nested card that asks for its variables (#161): what it was
  * given, what its view sets, and what its own template defaults to. Not `let:` - those are
- * the template's own internals - and not the dashboard's shared values, which the nested
+ * the template's own internals, and a `decluttering_let:` is worked out again by the nested
+ * card wherever it sits - and not the dashboard's shared values, which the nested
  * card already reads for itself and which would otherwise beat its own template's defaults.
  * Dotted copies of mappings are left out too; the nested card works those out again.
  */
@@ -751,7 +1494,7 @@ export function inheritableVariables(
   }
   // Checked with `in`: a template with no `default:` of its own keeps an undefined here, and
   // falling back on that would hand down the shared values after all.
-  const own = template && OWN_DEFAULTS in template ? (template as any)[OWN_DEFAULTS] : template?.default;
+  const own = template && OWN_DEFAULTS in template ? (template as any)[OWN_DEFAULTS] : templateDefaults(template);
   combined.push(...ownVariables(own));
   return firstDefinitionWins(combined);
 }
@@ -829,21 +1572,80 @@ function reachable(template: TemplateConfig | undefined, values: Record<string, 
   return used;
 }
 
+/*
+ * The names whose every placeholder has an answer for nothing set: an optional one, which
+ * just goes, or one with a step that stands in - `default:`, `bool`, `count`, or an `or:`
+ * whose other name has a value. The running card builds those without a word, so the
+ * editor and the health panel must not call them missing either.
+ */
+function answeredNames(template: TemplateConfig | undefined, values: Record<string, any>, used: string[]): Set<string> {
+  const answered = new Map<string, boolean>();
+  const scan = (value: unknown): void => {
+    const json = JSON.stringify(value);
+    if (typeof json !== 'string') return;
+    const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
+    for (let match = pattern.exec(json); match !== null; match = pattern.exec(json)) {
+      if (match[1].startsWith(ESCAPE)) continue;
+      const inside = withoutOptional(match[1]);
+      const name = inside.replace(TRANSFORM_TAIL, '');
+      const answers =
+        isOptional(match[1]) ||
+        inside
+          .split('|')
+          .slice(1)
+          .some((step) => {
+            const other = orTarget(step);
+            return other !== undefined ? other in values : answersUnset(step);
+          });
+      answered.set(name, (answered.get(name) ?? true) && answers);
+    }
+  };
+  scan(contentOf(template));
+  for (const name of used) if (name in values) scan(values[name]);
+  return new Set([...answered].filter(([, answers]) => answers).map(([name]) => name));
+}
+
+/*
+ * Whether any placeholder in the template has a step that answers to this - in its content,
+ * and in the values that feed it: `let:`, `default:`, declarations, and the `decluttering_let`
+ * of the view, section and dashboard, since a resolver in any of those ends up in the card.
+ */
+function usesStep(template: TemplateConfig | undefined, wanted: (step: string) => boolean): boolean {
+  const json = JSON.stringify([template, outerLet(template).map((layer) => layer.values)]);
+  if (typeof json !== 'string') return false;
+  const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
+  let match = pattern.exec(json);
+  while (match !== null) {
+    if (!match[1].startsWith(ESCAPE) && withoutOptional(match[1]).split('|').slice(1).some(wanted)) return true;
+    match = pattern.exec(json);
+  }
+  /*
+   * The grammar only matches a placeholder with no brackets inside, so a step on the outer
+   * one of `[[light|area|default:[[room]]]]` is not seen above. Any |step in the text will
+   * do here: a false yes only costs a build when the registry arrives.
+   */
+  const unescaped = json.replace(new RegExp(`\\[\\[\\${ESCAPE}[^[\\]]*\\]\\]`, 'g'), '');
+  const steps = /\|([a-z_]+)(?=[|\]:])/g;
+  for (let step = steps.exec(unescaped); step !== null; step = steps.exec(unescaped)) if (wanted(step[1])) return true;
+  return false;
+}
+
 /**
  * Whether anything in the template asks Home Assistant for a value. Worth knowing because
  * those answers come from the registry, which can arrive after the card has first
  * rendered - a template that uses one has to be built again when it does.
  */
 export function usesResolver(template: TemplateConfig | undefined): boolean {
-  const json = JSON.stringify(contentOf(template));
-  if (typeof json !== 'string') return false;
-  const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
-  let match = pattern.exec(json);
-  while (match !== null) {
-    if (!match[1].startsWith(ESCAPE) && withoutOptional(match[1]).split('|').slice(1).some(isResolver)) return true;
-    match = pattern.exec(json);
-  }
-  return false;
+  // `exists` asks Home Assistant too, so it is built again once there is a Home Assistant to ask.
+  return usesStep(template, (step) => isResolver(step) || step === EXISTS_STEP);
+}
+
+/**
+ * Whether the template asks for a translation, whose answer changes when Home Assistant
+ * loads more of them or the language changes - not when the registry does.
+ */
+export function usesTranslate(template: TemplateConfig | undefined): boolean {
+  return usesStep(template, (step) => step === 'translate');
 }
 
 /**
@@ -859,7 +1661,8 @@ export function hasRequiredVariables(
   const required = getDeclarations(template).filter((declaration) => declaration.required === true);
   if (!required.length) return true;
 
-  const values = { ...variableValues(shared), ...variableValues(item as VariablesConfig) };
+  // No prototype: a variable called `constructor` is not set just because every object has one.
+  const values = Object.assign(Object.create(null), variableValues(shared), variableValues(item as VariablesConfig));
   return required.every((declaration) => {
     const value = values[declaration.name];
     // The same reading of empty substitution uses: a zero and a false are values.
@@ -877,12 +1680,25 @@ export function hasRequiredVariables(
 export function validateDeclared(
   variables: VariablesConfig[] | VariablesConfig | undefined,
   template: TemplateConfig | undefined,
+  hass?: any,
 ): { name: string; expected: string }[] {
   const values = variableValues(resolveVariables(variables, template));
   const bad: { name: string; expected: string }[] = [];
   for (const declaration of getDeclarations(template)) {
     const value = values[declaration.name];
     if (value === undefined || value === null || value === '') continue;
+    /*
+     * A declared type is checked first, and a value that fails it is reported once rather
+     * than again against allowed: or pattern:. A value still holding a placeholder is
+     * worked out later - `[[room]]_light` is an entity id only once room is in - so it is
+     * not judged here.
+     */
+    const placeholder = typeof value === 'string' && PLACEHOLDER.test(value);
+    const mismatch = placeholder ? undefined : typeMismatch(declaration, value, hass);
+    if (mismatch !== undefined) {
+      bad.push({ name: declaration.name, expected: mismatch });
+      continue;
+    }
     if (Array.isArray(declaration.allowed)) {
       // Compared as text: a dropdown hands back strings, and `allowed: [1, 2]` still means 1 and 2.
       if (!declaration.allowed.some((each) => String(each) === String(value))) {
@@ -986,7 +1802,8 @@ export function diagnoseInstance(
     if (name !== undefined && !reached(name) && !unused.includes(name)) unused.push(name);
   }
 
-  const missing = used.filter((name) => !(name in values));
+  const answered = answeredNames(template, values, used);
+  const missing = used.filter((name) => !(name in values) && !answered.has(name));
   // Which of the missing ones the template says it cannot do without, so an editor can
   // say so more loudly than it says the rest.
   const insisted = new Set(
@@ -1109,3 +1926,36 @@ export function forEachNames(items: unknown): string[] {
   }
   return [...names];
 }
+
+/*
+ * Every step a placeholder chain can hold, by name, for the template editor's lint - which
+ * has to tell `[[room|slgu]]` from a step it has simply never heard of. Built from the
+ * registries above, so a transform or a resolver added to TRANSFORMS, RESOLVERS or
+ * PARAM_TRANSFORMS is known here without being listed a second time. A step handled
+ * anywhere else - special-cased the way `json` and `bool` are - has to be added by hand,
+ * here, or the lint will call it unknown.
+ */
+export const KNOWN_STEPS: string[] = [
+  ...new Set([
+    ...Object.keys(TRANSFORMS),
+    JSON_STEP,
+    BOOL_STEP,
+    EXISTS_STEP,
+    STATE_STEP,
+    ...NUMBER_BARE_STEPS,
+    ...LIST_BARE_STEPS,
+    ...Object.keys(RESOLVERS),
+  ]),
+];
+
+/** The steps written as a name, a colon and an argument - `default:Unnamed`, `if:other=on`. */
+export const KNOWN_PARAM_STEPS: string[] = [
+  ...Object.keys(PARAM_TRANSFORMS),
+  ...NUMBER_PARAM_STEPS,
+  ...LIST_PARAM_STEPS,
+  CONTAINS_STEP,
+  ATTRIBUTE_PREFIX.slice(0, -1),
+  OR_PREFIX.slice(0, -1),
+  DEFAULT_PREFIX.slice(0, -1),
+  IF_PREFIX.slice(0, -1),
+];

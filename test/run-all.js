@@ -18,6 +18,17 @@ const SUITES = [
   'localize',
   'trace',
   'community',
+  'examples',
+  'on-error',
+  'rebuild',
+  'diff',
+  'lint',
+  'unread',
+  'undo',
+  'rename-variable',
+  'similar',
+  'search',
+  'report',
 ];
 
 // Each suite calls report(), which exits the process. Patching it here lets them run one
@@ -31,6 +42,18 @@ process.exit = (code) => {
 
 for (const suite of SUITES) {
   require(path.join(__dirname, `${suite}.test.js`));
+}
+
+/*
+ * These settle on promises of their own, so they cannot share the process with the
+ * patched exit above. Each runs as a child instead - c8 follows child processes, so what
+ * they reach still counts - and a failure in one fails the run like any other.
+ */
+const ASYNC_SUITES = ['labels', 'categories', 'template-source'];
+const { spawnSync } = require('child_process');
+for (const suite of ASYNC_SUITES) {
+  const run = spawnSync(process.execPath, [path.join(__dirname, `${suite}.test.js`)], { stdio: 'inherit' });
+  if (run.status) failures += 1;
 }
 
 // The borrowing checks in templates.test.js settle asynchronously.

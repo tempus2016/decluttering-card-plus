@@ -1,8 +1,9 @@
 <h1 align="center">Decluttering Card Plus</h1>
 
 <p align="center">
-  <strong>Write a card once, use it everywhere.</strong><br>
-  A maintained Lovelace card for reusable card templates with variables, for Home Assistant.
+  <strong>Card templates for Home Assistant dashboards. Write a card once, use it everywhere.</strong><br>
+  Reusable cards, badges, rows and whole views, with variables, repeats over what Home Assistant
+  knows, and visual editors. The name comes from the original decluttering-card it continues.
 </p>
 
 <p align="center">
@@ -109,20 +110,29 @@ Templates][wiki-defining].
   read from Home Assistant (`[[entity|friendly_name]]`, its domain, object id, labels, area,
   floor or device), values a template works out for itself with `let:`, stand-ins for what
   nothing sets (`[[name|default:Unnamed]]`), values that only appear when another is set
-  (`[[name|if:other]]`), real yes/no values for options that switch on and off
-  (`[[name|bool]]`), optional placeholders, dashboard-wide
+  (`[[name|if:other]]`, or while it is not: `if:!other`, `if:mode!=off`), real yes/no
+  values for options that switch on and off (`[[name|bool]]`, `[[motion|exists]]`,
+  `[[name|contains:door]]`), optional placeholders, dashboard-wide
   fallbacks, and values a whole view, or one section of it, sets for every card in it. A
   declaration can say what a good value looks like (`pattern:`, `allowed:`), fold into a
   section of the editor (`group:`), or take a whole card. Declarations used by many
   templates can be written once in the dashboard's `decluttering_variables:` *(v1.13.0+)*;
   a template takes one up with `- name: colour`, and anything it writes beside the name
-  wins.
+  wins. *(v2.0.0+)* Sums and lists in a placeholder (`[[watts|div:1000|round:1]]`,
+  `[[rooms|split|slug|join:,]]`, `count`, `first`, `last`), an entity's icon, device class,
+  manufacturer and model, Home Assistant's own words in the viewer's language
+  (`[[domain|translate]]`), `decluttering_let:` for a whole dashboard, view or section, and
+  declarations that just say `type: entity` or `type: number` and get the right control.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
   area, device, floor or label Home Assistant knows about, narrowed by domain, area, floor,
   label, device class or integration, with anything you name excluded, sorted, limited, and a card of your own to
   show when nothing matches. The order can run backwards, break ties on a second key, or
   follow a state attribute; `offset` splits one long list across two cards, `require` drops a
   copy that came out empty, and `overrides` gives one copy its own variables.
+  *(v2.0.0+)* Also by unit, state class or Home Assistant category, once per view of the
+  dashboard (a navigation bar that keeps up), or over whatever list a Jinja template works
+  out. `lazy: true` builds a long repeat's copies only as they scroll near. Diagnostic and
+  config entities are left out unless `entity_category:` asks for them.
 - **Grouping** — a copy per area that knows what is in it, so one card becomes a tile per
   room, each listing that room's lights — or `group_by:` a domain, floor or label.
 
@@ -154,6 +164,8 @@ Templates][wiki-defining].
   above gets `area_id` without being told. A generated view is edited as YAML, from the
   view's pencil and then the menu. A card already repeating in a section can be turned
   into this from its editor: **Give each copy its own section** rewrites the view for you.
+  Written on the dashboard instead *(v2.0.0+)*, the same strategy writes out a whole view
+  per item.
 
 - **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
   every other dashboard, or from all of them at once with `'*'`. A dashboard at the path
@@ -173,12 +185,22 @@ Templates][wiki-defining].
 - **Templates built on templates** — `extends:` lets a family of templates differ by a line,
   merging the way a card's own `card:` block does, `null` included, and `category:` groups a big collection in the picker. A card nested inside a template
   can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
+  *(v2.0.0+)* `extends:` takes a list of parents, a template can be marked `deprecated:`
+  with a note on what to use instead, carry `examples:` the health panel builds and the
+  editors offer, and a card can pick its template by its entity's domain with
+  `template_by_domain:`.
+- **A card of your choosing when one cannot be built** *(v2.0.0+)* — `on_error:` on a card
+  or its template shows that instead of the red error card, or `hide` shows nothing.
+- **Following a few entities** *(v2.0.0+)* — cards build once, but one that lists entities in
+  `rebuild_on:` builds again when they change, and `[[layout|state]]` reads their state.
 - **A set of cards as one card** *(v1.14.0+)* — a `group:` template puts several cards on a
   view from one decluttering card, each laid out in the section as if it were written there.
   In a view's badges the same template is a set of badges *(v1.15.0+)*.
 - **One-off tweaks without a new template** *(v1.12.0+)* — a card's own `card:` block is laid over what
   its template builds, so a single card can change an icon or an action and nothing else.
-  Mappings merge key by key, lists replace, and `null` drops a key the template sets.
+  Mappings merge key by key, lists replace, and `null` drops a key the template sets. To change
+  a list rather than replace it *(v2.0.0+)*, write `__append__`, `__prepend__`, `__update__` or `__remove__`
+  under it, by index; `extends:` understands them too.
 - **[Visibility][wiki-visibility]** conditions inside a template, including leaving out a copy
   that has nothing to show.
 - **[Styling][wiki-styling]** with a `style` option and CSS custom properties, a `gap`
@@ -192,13 +214,21 @@ Templates][wiki-defining].
   starter library does, with the templates it carries. GitHub is only asked when you press
   Load, and every template is shown in full before you install it, since nobody checks what
   is posted. Copy as a post writes yours out ready to paste into a new discussion.
+  Installed ones can be checked for updates *(v2.0.0+)*, and an install says which custom
+  cards it needs that you do not have.
 - **[Visual editors][wiki-editors]** for both the template and the instance — see what a card
   actually builds, see what uses a template before you change it (on this dashboard and on
   every other one), see what one real card becomes under the edit in hand, rename a template
   and have its uses follow, and [export a template][wiki-sharing] to give to someone else,
-  with the templates it calls bundled in.
+  with the templates it calls bundled in. *(v2.0.0+)* Rename a variable in the template and
+  every card passing it, find copy-pasted cards and make them one template, search every
+  dashboard for the cards passing a value, see an edit's effect as a line diff, and undo
+  the last of these rewrites. The template editor points out placeholders that will not
+  work, with the step a typo was meant to be.
 - **A health panel** — cards pointing at a template that is not there, cards leaving a
   variable unset, templates nothing uses: the console warnings gathered into one place.
+  *(v2.0.0+)* Also variables a card passes that its template never reads, examples that
+  fail, deprecated templates still in use, and the slowest builds on the page.
 - **Turning cards into templates and back** — declutter a card already on the dashboard into
   a template and swap the original for it, or eject a card so it becomes exactly what the
   template built and stops depending on it.
@@ -471,6 +501,21 @@ not shown yet, or in error - is left as written and listed underneath, after a f
 `debug: true` and `debug: yaml` log too *(v1.14.0+)*, on top of showing what was built on
 the card. Nothing inside a card showing its debug view is built, so those log only the one
 level.
+
+`debug: report` *(v2.0.0+)* is for asking someone else. The card looks as it should, logs
+the same as `debug: console`, and has a panel underneath holding all of that as one
+Markdown text, with **Copy** and **Download** buttons, ready to paste into an issue or a
+forum post. It starts with the versions of the card, Home Assistant and your browser, then
+each template as written, then every build with its variables, placeholders, warnings and
+result, the cards inside it included. If `strict:` refuses the card, the reason comes first.
+Put it on the outermost card: a card inside it is in its report already.
+
+Passwords, tokens, IP addresses, email addresses and hosts that could be recognised are
+replaced before the text is shown: the value of any variable named like a secret wherever it
+turns up, secret-looking keys in the configs, credentials and hosts in URLs, and the common
+token formats. It cannot know every shape a secret takes, and entity ids, names and
+everything else are left as they are, because they are usually what the problem is about,
+so read it through before you post it.
 
 `strict: true` turns the usual warnings into a card that refuses. Nothing normally stops a
 card rendering — a template can be edited after the cards that use it — but somebody

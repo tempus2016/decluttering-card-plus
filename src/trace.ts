@@ -1,6 +1,15 @@
 import { TemplateConfig, VariablesConfig } from './types';
 import { localize } from './localize';
-import { getDeclarations, INHERIT_FLAG, INHERITED_KEY, OWN_DEFAULTS, ownVariables, VIEW_VALUES } from './variables';
+import {
+  getDeclarations,
+  INHERIT_FLAG,
+  INHERITED_KEY,
+  OWN_DEFAULTS,
+  outerLet,
+  ownVariables,
+  templateDefaults,
+  VIEW_VALUES,
+} from './variables';
 import { CONSUMER_TYPES } from './templates';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -19,10 +28,12 @@ export interface BuildTrace {
   placeholders: Map<string, unknown>;
   /** Where an empty option took something out of the built config, and why. */
   dropped: string[];
+  /** What substitution warned about in the console while building it. */
+  warnings: string[];
 }
 
 export function newTrace(): BuildTrace {
-  return { placeholders: new Map(), dropped: [] };
+  return { placeholders: new Map(), dropped: [], warnings: [] };
 }
 
 /** The key a card uses to tell the cards inside it to log as well. */
@@ -75,7 +86,8 @@ export function traceRoot(config: any): TraceRoot | undefined {
  * built on the card, and the log says how - and is still there if the view itself is not.
  */
 export function wantsTrace(config: any): boolean {
-  if (config?.debug === 'console' || config?.debug === true || config?.debug === 'yaml') return true;
+  if (config?.debug === 'console' || config?.debug === true || config?.debug === 'yaml' || config?.debug === 'report')
+    return true;
   return config?.debug === undefined && config?.[TRACE_KEY] === true;
 }
 
@@ -146,6 +158,17 @@ interface Expansion {
   waiting: Map<string, TracePath>;
   timer?: ReturnType<typeof setTimeout>;
   hass?: any;
+  // Every build's own entry, the outermost card's first, for `debug: report` (#207).
+  reports: TraceReport[];
+  done?: (result: ExpansionResult) => void;
+}
+
+/** What an outermost card is told once the cards inside it have built, or stopped building. */
+export interface ExpansionResult {
+  reports: TraceReport[];
+  /** The whole card with the cards inside it built; absent when it has none. */
+  full?: unknown;
+  neverBuilt: string[];
 }
 
 const expansions = new Map<string, Expansion>();
@@ -190,30 +213,45 @@ function finish(id: string): void {
   const { hass } = expansion;
   console.groupCollapsed(localize('trace.in_full', { label: expansion.label }, hass));
   console.log(localize('trace.result', undefined, hass), expansion.config);
-  if (expansion.waiting.size) {
-    console.log(localize('trace.never_built', undefined, hass), [...expansion.waiting.values()].map(formatPath));
-  }
+  const neverBuilt = [...expansion.waiting.values()].map(formatPath);
+  if (neverBuilt.length) console.log(localize('trace.never_built', undefined, hass), neverBuilt);
   console.groupEnd();
+  expansion.done?.({ reports: expansion.reports, full: expansion.config, neverBuilt });
 }
 
 /** The outermost logging card has built: wait for the cards inside it, if it has any. */
-export function startExpansion(id: string, label: string, config: unknown, nested: TracePath[], hass?: any): void {
-  if (!nested.length) return;
+export function startExpansion(
+  id: string,
+  label: string,
+  config: unknown,
+  nested: TracePath[],
+  hass?: any,
+  report?: TraceReport,
+  done?: (result: ExpansionResult) => void,
+): void {
+  const reports = report ? [report] : [];
+  if (!nested.length) {
+    done?.({ reports, neverBuilt: [] });
+    return;
+  }
   expansions.set(id, {
     label,
     config: JSON.parse(JSON.stringify(config ?? null)),
     waiting: new Map(nested.map((path) => [pathKey(path), path])),
     hass,
+    reports,
+    done,
   });
   settle(id);
 }
 
 /** A nested card has built: put what it built in its place, and wait for the cards inside it too. */
-export function reportExpansion(root: TraceRoot, config: unknown, nested: TracePath[]): void {
+export function reportExpansion(root: TraceRoot, config: unknown, nested: TracePath[], report?: TraceReport): void {
   const expansion = expansions.get(root.id);
   const key = pathKey(root.path);
   if (!expansion || !expansion.waiting.has(key)) return;
   expansion.waiting.delete(key);
+  if (report) expansion.reports.push(report);
   expansion.config = setAt(expansion.config, root.path, JSON.parse(JSON.stringify(config ?? null)));
   for (const path of nested) {
     const full = [...root.path, ...path];
@@ -261,6 +299,7 @@ export function variableRows(
   };
   const t = template as any;
   add(ownVariables(t?.let), () => 'let');
+  for (const layer of outerLet(template)) add(ownVariables(layer.values), () => layer.from);
   add(ownVariables(variables), (name) =>
     handedDown.includes(name) ? 'handed_down' : repeated.includes(name) ? 'repeat' : 'card',
   );
@@ -275,7 +314,7 @@ export function variableRows(
   // remembers which were its own - anything else came from the dashboard.
   const own =
     t && OWN_DEFAULTS in t ? new Set(ownVariables(t[OWN_DEFAULTS]).map((entry) => Object.keys(entry)[0])) : undefined;
-  add(ownVariables(t?.default), (name) => (own && !own.has(name) ? 'dashboard' : 'default'));
+  add(ownVariables(templateDefaults(t)), (name) => (own && !own.has(name) ? 'dashboard' : 'default'));
   return rows;
 }
 
@@ -296,6 +335,8 @@ export interface TraceReport {
   at?: string;
   ms: number;
   sections: TraceSection[];
+  /** The template it was built from, as written, for `debug: report`. */
+  template?: { name: string; config: unknown };
 }
 
 // A table cell holds text: a mapping or a list goes in as its JSON, which is how it was written.
@@ -357,4 +398,101 @@ export function logTrace(report: TraceReport, hass?: any): void {
     if (section.label) console.groupEnd();
   }
   console.groupEnd();
+}
+
+/*
+ * Build timings for the health panel. `debug: console` says how long one card took when
+ * somebody asks; this keeps a note of every card built on the page, always, so the slow
+ * ones can be found without knowing where to look first. One performance.now() either side
+ * of the build and a slot in a fixed-size list - cheap enough to leave on - and nothing is
+ * kept past the page: it describes this session, not the dashboard.
+ */
+export interface BuildTiming {
+  /** The template the card was built from. */
+  template: string;
+  /** The card's own `name:`, as written, when it has one. */
+  name?: string;
+  /** How many copies the build made: one, or the size of a repeat. */
+  copies: number;
+  ms: number;
+}
+
+/** How many builds are remembered before the oldest make way. */
+export const TIMINGS_KEPT = 500;
+
+/** A list that keeps the most recent `size` entries and drops the oldest, without ever growing. */
+export class BuildLog {
+  private _entries: BuildTiming[] = [];
+  private _next = 0;
+
+  constructor(private readonly size = TIMINGS_KEPT) {}
+
+  add(entry: BuildTiming): void {
+    if (this._entries.length < this.size) this._entries.push(entry);
+    else this._entries[this._next] = entry;
+    this._next = (this._next + 1) % this.size;
+  }
+
+  entries(): BuildTiming[] {
+    return [...this._entries];
+  }
+
+  clear(): void {
+    this._entries = [];
+    this._next = 0;
+  }
+}
+
+/** Every build on this page, for the health panel. */
+export const BUILD_LOG = new BuildLog();
+
+export interface TemplateTiming {
+  template: string;
+  total: number;
+  max: number;
+  builds: number;
+}
+
+export interface RepeatSize {
+  template: string;
+  name?: string;
+  copies: number;
+}
+
+/**
+ * What the health panel shows: the templates that took longest altogether and in a single
+ * build - one heavy template used once and a light one used a hundred times are both worth
+ * seeing, and they are different lists - and the biggest repeats, by copies.
+ */
+export function slowestBuilds(
+  entries: BuildTiming[],
+  top = 10,
+): { byTotal: TemplateTiming[]; byMax: TemplateTiming[]; repeats: RepeatSize[] } {
+  const byTemplate = new Map<string, TemplateTiming>();
+  const repeats = new Map<string, RepeatSize>();
+  for (const entry of entries) {
+    const timing = byTemplate.get(entry.template) ?? { template: entry.template, total: 0, max: 0, builds: 0 };
+    timing.total += entry.ms;
+    timing.max = Math.max(timing.max, entry.ms);
+    timing.builds += 1;
+    byTemplate.set(entry.template, timing);
+    // A repeat that built again is the same repeat; it is listed once, at its largest.
+    if (entry.copies > 1) {
+      const key = JSON.stringify([entry.template, entry.name ?? null]);
+      const known = repeats.get(key);
+      if (!known || known.copies < entry.copies) {
+        repeats.set(key, {
+          template: entry.template,
+          ...(entry.name ? { name: entry.name } : {}),
+          copies: entry.copies,
+        });
+      }
+    }
+  }
+  const all = [...byTemplate.values()];
+  return {
+    byTotal: [...all].sort((a, b) => b.total - a.total).slice(0, top),
+    byMax: [...all].sort((a, b) => b.max - a.max).slice(0, top),
+    repeats: [...repeats.values()].sort((a, b) => b.copies - a.copies).slice(0, top),
+  };
 }

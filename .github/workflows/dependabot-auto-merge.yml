@@ -6,11 +6,14 @@ name: Dependabot auto-merge
 # checks: without required checks, `gh pr merge --auto` merges the moment the PR opens,
 # before CI has run. See SECURITY.md.
 #
-# The release tooling is the exception to "development dependencies are chores": the
-# release job runs semantic-release, rollup and terser with a token that can write to the
-# repository and publish the asset every install downloads. A bump to any of those waits for
-# a person, whatever its version step. dependabot.yml groups them separately so the rest
-# still merge on their own.
+# The exception to "development dependencies are chores" is anything the release job runs
+# while it holds a token that can write to the repository and publish the asset every
+# install downloads. That is not only semantic-release and its plugins: its prepare step
+# runs `npm run build`, so eslint, typescript-eslint, prettier, TypeScript, rollup and every
+# rollup plugin execute in the same process as the token, and any of them could rewrite
+# dist/ before it is committed and attached. A bump to any of those waits for a person,
+# whatever its version step. dependabot.yml groups them as release-tooling so the rest -
+# tooling only the test jobs run - still merges on its own.
 on: pull_request_target
 
 permissions:
@@ -34,13 +37,24 @@ jobs:
         # Only patch and minor bumps of development dependencies merge unattended. A runtime
         # dependency ends up in the bundle every install loads, and a major bump can change
         # behaviour - both want a person to look, whatever the version step.
+        #
+        # The name checks are substring matches over a comma-separated list, so each one
+        # covers a family: 'rollup' also catches rollup-plugin-* and @rollup/*, 'eslint'
+        # catches eslint-*, typescript-eslint and @typescript-eslint/*, 'typescript' the
+        # compiler, 'conventional-changelog' the notes preset. They must keep matching the
+        # release-tooling patterns in dependabot.yml.
         if: >-
           steps.meta.outputs.dependency-type == 'direct:development' &&
           (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
            steps.meta.outputs.update-type == 'version-update:semver-minor') &&
           !contains(steps.meta.outputs.dependency-names, 'semantic-release') &&
+          !contains(steps.meta.outputs.dependency-names, 'conventional-changelog') &&
           !contains(steps.meta.outputs.dependency-names, 'rollup') &&
-          !contains(steps.meta.outputs.dependency-names, 'terser')
+          !contains(steps.meta.outputs.dependency-names, 'terser') &&
+          !contains(steps.meta.outputs.dependency-names, 'typescript') &&
+          !contains(steps.meta.outputs.dependency-names, 'tslib') &&
+          !contains(steps.meta.outputs.dependency-names, 'eslint') &&
+          !contains(steps.meta.outputs.dependency-names, 'prettier')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

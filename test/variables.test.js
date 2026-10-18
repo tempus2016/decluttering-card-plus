@@ -35,6 +35,14 @@ const {
   validateDeclared,
   groupDeclarations,
   isCardDeclaration,
+  templateDefaults,
+  OUTER_LET,
+  yieldsNumber,
+  yieldsList,
+  takesStructure,
+  usesTranslate,
+  declarationSelector,
+  VARIABLE_TYPES,
 } = require('../.test-build/variables.js');
 
 const { check, report } = require('./harness');
@@ -227,6 +235,27 @@ check(
   'a placeholder with a declared default is not missing',
   diagnoseInstance(undefined, { variables: [{ name: 'entity', default: 'sun.sun' }], card: { entity: '[[entity]]' } }),
   { missing: [], unused: [], required: [] },
+);
+
+check(
+  'a placeholder with an answer for nothing set is not missing, as the running card does not warn about it either',
+  diagnoseInstance(undefined, {
+    card: {
+      a: '[[counted|count]]',
+      b: '[[switched|bool]]',
+      c: '[[given|default:x]]',
+      d: '[[maybe?]]',
+      e: '[[chained|upper|count]]',
+      f: '[[fallback|or:also_unset]]',
+      g: '[[twice|count]] and [[twice]]',
+    },
+  }).missing,
+  ['fallback', 'also_unset', 'twice'],
+);
+check(
+  'an or: answers when the name it falls back to has a value',
+  diagnoseInstance([{ there: 1 }], { card: { a: '[[fallback|or:there]]' } }).missing,
+  [],
 );
 
 check(
@@ -773,6 +802,22 @@ check(
 check('one using only transforms does not', usesResolver({ card: { name: '[[room|slug]]' } }), false);
 check('nor does one using no placeholders', usesResolver({ card: { name: 'Hall' } }), false);
 check('an escaped placeholder does not count', usesResolver({ card: { name: '[[!entity|friendly_name]]' } }), false);
+check(
+  'a resolver in a let: value counts',
+  usesResolver({ let: { has: '[[motion|exists]]' }, card: { name: '[[motion|if:has]]' } }),
+  true,
+);
+check(
+  'so does one in a default:',
+  usesResolver({ default: [{ label: '[[entity|friendly_name]]' }], card: { name: '[[label]]' } }),
+  true,
+);
+check(
+  'and one on the outside of a nested placeholder',
+  usesResolver({ card: { name: '[[light|area|default:[[room]]]]' } }),
+  true,
+);
+check('exists counts as asking Home Assistant', usesResolver({ card: { show: '[[motion|exists]]' } }), true);
 
 check(
   'a resolver tail is stripped when counting which variables are used',
@@ -790,6 +835,14 @@ check(
   true,
 );
 check('one leaving it out is not', hasRequiredVariables(needsEntity, { name: 'Hall' }), false);
+check(
+  'a required variable named like something every object has is still unset until set',
+  [
+    hasRequiredVariables({ variables: [{ name: 'constructor', required: true }] }, { name: 'Hall' }),
+    hasRequiredVariables({ variables: [{ name: 'constructor', required: true }] }, { constructor: 'x' }),
+  ],
+  [false, true],
+);
 check('nor is one leaving it empty', hasRequiredVariables(needsEntity, { entity: '' }), false);
 check('nor null', hasRequiredVariables(needsEntity, { entity: null }), false);
 check('a template requiring nothing wants every item', hasRequiredVariables(needsNothing, {}), true);
@@ -1053,6 +1106,375 @@ check('a plain pattern is still checked', validateDeclared([{ c: 'A' }], RISKY),
 check(
   'a value longer than anything a pattern is for is left unchecked',
   validateDeclared([{ c: 'a'.repeat(2000) + '!' }], RISKY),
+  [],
+);
+
+/* ------------------------------------------- defaults: as well as default: (#175) */
+
+check(
+  'defaults: is read the same as default:',
+  variableValues(resolveVariables(undefined, { defaults: { colour: 'amber' } })),
+  { colour: 'amber' },
+);
+
+check(
+  'default: and defaults: merge, default: winning a name both set',
+  variableValues(
+    resolveVariables(undefined, { default: [{ colour: 'red' }], defaults: { colour: 'amber', size: 'small' } }),
+  ),
+  { colour: 'red', size: 'small' },
+);
+
+check(
+  'a card value still beats defaults:',
+  variableValues(resolveVariables([{ colour: 'blue' }], { defaults: [{ colour: 'amber' }] })).colour,
+  'blue',
+);
+
+check(
+  'a mapping in default: wins whole, so its keys never come from defaults:',
+  variableValues(
+    resolveVariables(undefined, { default: { room: { light: 'a' } }, defaults: { room: { light: 'b', fan: 'c' } } }),
+  )['room.fan'],
+  undefined,
+);
+
+check(
+  'a template with no defaults: keeps its default: exactly as written',
+  (() => {
+    const written = [{ a: 1 }];
+    return templateDefaults({ default: written }) === written;
+  })(),
+  true,
+);
+
+check(
+  'a declaration may say defaults: as well',
+  variableValues(resolveVariables(undefined, { variables: [{ name: 'room', defaults: 'hall' }] })).room,
+  'hall',
+);
+
+check(
+  'a declaration that says both takes default:',
+  getDeclarations({ variables: [{ name: 'room', default: 'kitchen', defaults: 'hall' }] }),
+  [{ name: 'room', default: 'kitchen' }],
+);
+
+check(
+  'defaults: counts for the template editor checks too',
+  diagnoseTemplate({
+    card: { name: '[[room]]' },
+    variables: [{ name: 'room', required: true }],
+    defaults: { room: 'hall' },
+  }),
+  { unused: [], duplicated: ['room'], contradictory: ['room'] },
+);
+
+check(
+  'a variable only defaults: sets is not missing',
+  diagnoseInstance(undefined, { card: { name: '[[room]]' }, defaults: { room: 'hall' } }).missing,
+  [],
+);
+
+check('defaults: is handed down like default:', inheritableVariables(undefined, { defaults: { room: 'hall' } }), [
+  { room: 'hall' },
+]);
+
+check(
+  'a decluttering_let is not handed down, any more than a let: is',
+  inheritableVariables([{ room: 'Hall' }], { [OUTER_LET]: [{ from: 'view_let', values: [{ slug: 'x' }] }] }),
+  [{ room: 'Hall' }],
+);
+
+/* -------------------------------------------------------- arithmetic */
+
+check('add is a step of its own', applyTransform('add:2', 3), '5');
+check('arithmetic chains left to right', applyTransform('sub:1|mul:12|add:4', '3'), '28');
+check('round with no places is a whole number', applyTransform('round', '2.5'), '3');
+check(
+  'a chain ending in arithmetic yields a number; one carrying on after it does not',
+  [
+    yieldsNumber('add:1'),
+    yieldsNumber('round:2'),
+    yieldsNumber('add:1|default:0'),
+    yieldsNumber('add:1|slug'),
+    yieldsNumber('pad:3'),
+  ],
+  [true, true, true, false, false],
+);
+check('an unknown word after round is still not a step', applyTransform('roundish', '2'), undefined);
+
+/* ------------------------------------------------------------- lists */
+
+check(
+  'a chain ends in a list after split and the steps that shape each item',
+  [
+    yieldsList('split'),
+    yieldsList('split:;|slug'),
+    yieldsList('split|join'),
+    yieldsList('split|count'),
+    yieldsList('join'),
+  ],
+  [true, true, false, false, false],
+);
+check(
+  'the list steps take a list whole; a mapping only to count it',
+  [
+    takesStructure('join', []),
+    takesStructure('first', []),
+    takesStructure('upper', []),
+    takesStructure('count', {}),
+    takesStructure('join', {}),
+  ],
+  [true, true, false, true, false],
+);
+check('count of nothing at all is 0', resolveFallback('nothing|count', {}), '0');
+check('join of a list variable', applyTransform('join:+', ['a', 'b']), 'a+b');
+
+/* ------------------------------------------------- more registry resolvers */
+
+const registryHass = {
+  states: {
+    'light.lamp': { attributes: { icon: 'mdi:lamp', device_class: undefined } },
+    'binary_sensor.door': { attributes: { device_class: 'door' } },
+    'sensor.bare': { attributes: {} },
+  },
+  entities: {
+    'light.lamp': { device_id: 'd1', icon: 'mdi:ceiling-light' },
+    'binary_sensor.door': { device_id: 'd2', area_id: 'hall' },
+    'sensor.bare': { original_device_class: 'temperature' },
+    'sensor.unplaced': {},
+  },
+  devices: {
+    d1: { manufacturer: 'IKEA', model: 'TRADFRI bulb', area_id: 'kitchen' },
+    d2: { manufacturer: 'Aqara' },
+  },
+  areas: {
+    kitchen: { area_id: 'kitchen', name: 'Kitchen', icon: 'mdi:stove', floor_id: 'ground' },
+    hall: { area_id: 'hall', name: 'Hall', floor_id: 'upper' },
+  },
+  floors: { ground: { floor_id: 'ground', name: 'Ground', icon: 'mdi:home-floor-0' }, upper: { floor_id: 'upper' } },
+};
+const ask = (chain, entity) => applyTransform(chain, entity, registryHass);
+
+check(
+  'icon: the registry override first, then the state, then nothing',
+  [ask('icon', 'light.lamp'), ask('icon', 'binary_sensor.door'), ask('icon|default:mdi:help', 'sensor.unplaced')],
+  ['mdi:ceiling-light', '', 'mdi:help'],
+);
+check('icon of an entity Home Assistant does not know is no answer', ask('icon', 'light.nope'), undefined);
+check(
+  "manufacturer and model are the entity's device's",
+  [ask('manufacturer', 'light.lamp'), ask('model', 'light.lamp'), ask('model', 'binary_sensor.door')],
+  ['IKEA', 'TRADFRI bulb', undefined],
+);
+check(
+  "area_icon follows the entity's area, or its device's, as area does",
+  [ask('area_icon', 'light.lamp'), ask('area_icon', 'binary_sensor.door'), ask('area_icon', 'sensor.unplaced')],
+  ['mdi:stove', '', undefined],
+);
+check(
+  'floor_icon goes through the area to its floor',
+  [ask('floor_icon', 'light.lamp'), ask('floor_icon', 'binary_sensor.door'), ask('floor_icon', 'sensor.unplaced')],
+  ['mdi:home-floor-0', '', undefined],
+);
+check(
+  'device_class from the state, else the registry',
+  [ask('device_class', 'binary_sensor.door'), ask('device_class', 'sensor.bare'), ask('device_class', 'light.lamp')],
+  ['door', 'temperature', undefined],
+);
+check(
+  'the new resolvers are resolvers, so the card builds again when the registry arrives',
+  [isResolver('icon'), isResolver('area_icon'), usesResolver({ card: { icon: '[[entity|icon]]' } })],
+  [true, true, true],
+);
+check(
+  'what Home Assistant gives is escaped like any other answer',
+  applyTransform('model', 'light.x', {
+    entities: { 'light.x': { device_id: 'd' } },
+    devices: { d: { model: '[[evil]]' } },
+  }),
+  '[[!evil]]',
+);
+
+/* ---------------------------------------------------------- translate */
+
+const said = {
+  'component.hue.title': 'Philips Hue',
+  'ui.card.weather.attributes.humidity': 'Luftfeuchtigkeit',
+};
+// Home Assistant's own localize gives the empty string for a key it has nothing for.
+const speaking = { localize: (key) => said[key] ?? '' };
+
+check('a domain reads as its integration title', applyTransform('translate', 'hue', speaking), 'Philips Hue');
+check(
+  'a value with a dot is a whole translation key',
+  applyTransform('translate', 'ui.card.weather.attributes.humidity', speaking),
+  'Luftfeuchtigkeit',
+);
+check(
+  'nothing translated gives the value back, never nothing',
+  [
+    applyTransform('translate', 'zwave_js', speaking),
+    applyTransform('translate', 'light.kitchen', speaking),
+    applyTransform('translate', 'hue', undefined),
+    applyTransform('translate', 'hue', { localize: (key) => key }),
+    applyTransform('translate', 'hue', {
+      localize: () => {
+        throw new Error('not ready');
+      },
+    }),
+  ],
+  ['zwave_js', 'light.kitchen', 'hue', 'hue', 'hue'],
+);
+check(
+  'a domain resolved from an entity id, then translated',
+  applyTransform('domain|translate', 'hue.bridge', speaking),
+  'Philips Hue',
+);
+check(
+  'translate counts as asking Home Assistant, and is told apart',
+  [
+    usesResolver({ card: { name: '[[d|translate]]' } }),
+    usesTranslate({ card: { name: '[[d|translate]]' } }),
+    usesTranslate({ card: { name: '[[d|friendly_name]]' } }),
+  ],
+  [true, true, false],
+);
+
+/* ------------------------------------------------------------ typed declarations */
+
+check('a typed entity gets an entity picker', declarationSelector({ name: 'e', type: 'entity' }), { entity: {} });
+check(
+  'narrowed by domain and device class',
+  declarationSelector({ name: 'e', type: 'entity', domain: ['light', 'switch'], device_class: 'outlet' }),
+  { entity: { filter: { domain: ['light', 'switch'], device_class: 'outlet' } } },
+);
+check(
+  'a number with both ends is a slider, with its step and unit',
+  declarationSelector({ name: 'n', type: 'number', min: 0, max: 100, step: 5, unit: '%' }),
+  { number: { mode: 'slider', min: 0, max: 100, step: 5, unit_of_measurement: '%' } },
+);
+check('a number without both ends is a box', declarationSelector({ name: 'n', type: 'number', min: 1 }), {
+  number: { mode: 'box', min: 1 },
+});
+check(
+  'boolean, icon, color and text map to their selectors',
+  ['boolean', 'icon', 'color', 'text'].map((type) => declarationSelector({ name: 'x', type })),
+  [{ boolean: {} }, { icon: {} }, { ui_color: {} }, { text: {} }],
+);
+check('multiline text', declarationSelector({ name: 't', type: 'text', multiline: true }), {
+  text: { multiline: true },
+});
+check('select offers the allowed values', declarationSelector({ name: 's', type: 'select', allowed: ['a', 1] }), {
+  select: {
+    mode: 'dropdown',
+    options: [
+      { value: 'a', label: 'a' },
+      { value: '1', label: '1' },
+    ],
+  },
+});
+check('select with nothing allowed falls back to text', declarationSelector({ name: 's', type: 'select' }), {
+  text: {},
+});
+check(
+  'an explicit selector still wins over the type',
+  declarationSelector({ name: 'e', type: 'entity', selector: { text: {} } }),
+  { text: {} },
+);
+check('allowed without a type is still a dropdown', declarationSelector({ name: 's', allowed: ['x'] }).select.options, [
+  { value: 'x', label: 'x' },
+]);
+check('no type, no selector: text', declarationSelector({ name: 'p' }), { text: {} });
+check('the types offered', VARIABLE_TYPES, ['entity', 'number', 'boolean', 'icon', 'color', 'text', 'select']);
+
+{
+  const said = [];
+  const original = console.warn;
+  console.warn = (text) => said.push(text);
+  const first = declarationSelector({ name: 'when', type: 'date', allowed: ['x'] });
+  declarationSelector({ name: 'when', type: 'date' });
+  declarationSelector({ name: 'other', type: 'date' });
+  console.warn = original;
+  check('an unknown type falls back to what would be inferred', first.select.options.length, 1);
+  check('and is mentioned once per variable and type, not on every render', said.length, 2);
+  check(
+    'naming the variable and the types there are',
+    said[0].includes('when') && said[0].includes('entity, number'),
+    true,
+  );
+}
+
+const TYPED = {
+  card: {},
+  variables: [
+    { name: 'light', type: 'entity', domain: 'light' },
+    { name: 'any', type: 'entity' },
+    { name: 'plug', type: 'entity', device_class: 'outlet' },
+    { name: 'level', type: 'number', min: 0, max: 100 },
+    { name: 'count', type: 'number' },
+    { name: 'on', type: 'boolean' },
+    { name: 'icon', type: 'icon' },
+    { name: 'colour', type: 'color' },
+  ],
+};
+const typedHass = { states: { 'switch.plug': { attributes: { device_class: 'switch' } } } };
+
+check(
+  'a value that does not fit its type is reported like a pattern mismatch',
+  validateDeclared(
+    [
+      { light: 'switch.kettle' },
+      { any: 'not an entity' },
+      { plug: 'switch.plug' },
+      { level: 120 },
+      { count: 'lots' },
+      { on: 'maybe' },
+      { icon: 'lightbulb' },
+      { colour: 'anything goes' },
+    ],
+    TYPED,
+    typedHass,
+  ).map((each) => each.name),
+  ['light', 'any', 'plug', 'level', 'count', 'on', 'icon'],
+);
+check(
+  'what it expected, in words',
+  validateDeclared([{ light: 'switch.kettle' }, { level: 120 }], TYPED).map((each) => each.expected),
+  ['an entity in light', 'a number from 0 to 100'],
+);
+check(
+  'values that fit pass, a boolean read the way bool reads one',
+  validateDeclared(
+    [
+      { light: 'light.hall' },
+      { level: '40' },
+      { count: 0 },
+      { on: 'off' },
+      { icon: 'mdi:lightbulb' },
+      { plug: 'switch.unknown' },
+    ],
+    TYPED,
+    typedHass,
+  ),
+  [],
+);
+check(
+  'yes, no, true, false, on, off, 1 and 0 are all booleans; a real boolean too',
+  ['yes', 'No', 'TRUE', 'false', 'on', 'off', '1', '0', 1, true, false].every(
+    (on) => validateDeclared([{ on }], TYPED).length === 0,
+  ),
+  true,
+);
+check(
+  'a value still holding a placeholder is not judged: it is worked out later',
+  validateDeclared([{ light: '[[room]]_light' }, { level: '[[x]]' }], TYPED),
+  [],
+);
+check(
+  'device class is only checked against an entity Home Assistant knows',
+  validateDeclared([{ plug: 'switch.plug' }], TYPED),
   [],
 );
 

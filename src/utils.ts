@@ -31,6 +31,19 @@ export function getLovelaceConfig(): LovelaceConfig | null {
 }
 
 /**
+ * The url path of the dashboard on screen - `lovelace` for the default one, which has no
+ * path of its own in Home Assistant's eyes. Read from the dashboard where it says, and
+ * otherwise from the address bar, which always starts with it.
+ */
+export function getDashboardPath(): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ll: any = getLovelace() || getLovelaceCast();
+  if (typeof ll?.urlPath === 'string' && ll.urlPath) return ll.urlPath;
+  if (typeof window === 'undefined') return 'lovelace';
+  return window.location.pathname.split('/').filter(Boolean)[0] || 'lovelace';
+}
+
+/**
  * The dashboard itself rather than its configuration, which is the only thing that can
  * save a change back. Null when there is nothing to save through - a cast session, or a
  * dashboard written in YAML, which cannot be edited from the interface at all.

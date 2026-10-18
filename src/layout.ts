@@ -41,3 +41,35 @@ export function gridSize(options: GridOptions | undefined): { columns: number | 
     rows: typeof rows === 'string' ? rows : clamp(rows, options?.min_rows, options?.max_rows),
   };
 }
+
+/*
+ * `lazy: true` on a repeat: the first few copies are built at once and the rest wait until
+ * they are about to scroll into view. A sweep of the house can be hundreds of copies, and
+ * each one is a real card Home Assistant has to create, most of them far below the fold.
+ */
+
+/** How many copies a lazy repeat builds at once, unless it says otherwise. */
+export const LAZY_EAGER = 6;
+
+/** How much room a waiting copy keeps when there is no built copy to measure. */
+export const LAZY_MIN_HEIGHT = 56;
+
+/** How far ahead of the screen a waiting copy starts to build, so it is ready as it arrives. */
+export const LAZY_MARGIN = '300px';
+
+/**
+ * How many of a repeat's copies are built straight away: all of them, unless the card asks
+ * to be lazy and nothing needs to see the whole thing - a preview in the editor, or debug,
+ * which is there to show what was built. A count that is not a usable number is the default.
+ */
+export function eagerCopies(total: number, lazy: unknown, eager: unknown, buildAll = false): number {
+  if (lazy !== true || buildAll) return total;
+  const asked = Number(eager);
+  const first = eager !== undefined && eager !== null && eager !== '' && Number.isFinite(asked) ? asked : LAZY_EAGER;
+  return Math.min(total, Math.max(0, Math.floor(first)));
+}
+
+/** The room a waiting copy keeps: what a built copy measured, else the default. */
+export function placeholderHeight(measured: number | undefined): number {
+  return typeof measured === 'number' && Number.isFinite(measured) && measured > 0 ? measured : LAZY_MIN_HEIGHT;
+}

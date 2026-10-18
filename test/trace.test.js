@@ -155,6 +155,33 @@ check(
 }
 
 check(
+  'a decluttering_let value says which level wrote it',
+  variableRows(
+    [{ room: 'Hall' }],
+    require('../.test-build/templates.js').collectTemplates(
+      {
+        decluttering_let: { a: 'dashboard', b: 'dashboard', c: 'dashboard' },
+        decluttering_templates: { tile: { card: {}, let: { a: 'template' } } },
+        views: [{ decluttering_let: { b: 'view' }, sections: [{ decluttering_let: { room: 'section' } }] }],
+      },
+      0,
+      undefined,
+      0,
+    ).tile,
+  ).map((row) => `${row.variable}:${row.from}`),
+  ['a:let', 'room:section_let', 'b:view_let', 'c:dashboard_let'],
+);
+
+check(
+  'a defaults: value is listed as a default',
+  variableRows(undefined, { default: [{ a: 1 }], defaults: { a: 2, b: 3 } }),
+  [
+    { variable: 'a', value: 1, from: 'default' },
+    { variable: 'b', value: 3, from: 'default' },
+  ],
+);
+
+check(
   'handed-down names are the inherited ones the card did not set itself',
   handedDownNames({
     inherit_variables: true,
@@ -329,6 +356,66 @@ check('the card itself is a dot', formatPath([]), '.');
   check('a card with nothing of ours inside it logs nothing more', logged.length, 0);
 
   Object.assign(console, saved);
+}
+
+/* ------------------------------------------------------------- build timings */
+
+{
+  const { BuildLog, slowestBuilds, TIMINGS_KEPT, BUILD_LOG } = require('../.test-build/trace.js');
+
+  const log = new BuildLog(3);
+  for (let i = 1; i <= 5; i += 1) log.add({ template: `t${i}`, copies: 1, ms: i });
+  check(
+    'the log keeps the most recent builds and drops the oldest',
+    log
+      .entries()
+      .map((entry) => entry.template)
+      .sort(),
+    ['t3', 't4', 't5'],
+  );
+
+  check('it never grows past its size', log.entries().length, 3);
+
+  log.clear();
+  check('and can be emptied', log.entries(), []);
+
+  check('the page keeps the last 500 builds', [TIMINGS_KEPT, BUILD_LOG.entries().length], [500, 0]);
+
+  const builds = [
+    { template: 'tile', copies: 1, ms: 2 },
+    { template: 'tile', copies: 1, ms: 3 },
+    { template: 'tile', copies: 1, ms: 4 },
+    { template: 'heavy', copies: 1, ms: 7 },
+    { template: 'rooms', name: 'Upstairs', copies: 12, ms: 1 },
+    { template: 'rooms', name: 'Upstairs', copies: 30, ms: 2 },
+    { template: 'rooms', copies: 20, ms: 1.5 },
+  ];
+  const slowest = slowestBuilds(builds);
+
+  check('templates by total time, with their slowest build and how many there were', slowest.byTotal, [
+    { template: 'tile', total: 9, max: 4, builds: 3 },
+    { template: 'heavy', total: 7, max: 7, builds: 1 },
+    { template: 'rooms', total: 4.5, max: 2, builds: 3 },
+  ]);
+
+  check(
+    'and by their slowest single build, which is a different list',
+    slowest.byMax.map((each) => each.template),
+    ['heavy', 'tile', 'rooms'],
+  );
+
+  check('the biggest repeats, each once at its largest, told apart by name', slowest.repeats, [
+    { template: 'rooms', name: 'Upstairs', copies: 30 },
+    { template: 'rooms', copies: 20 },
+  ]);
+
+  check(
+    'only the top ones are kept',
+    slowestBuilds(builds, 1).byTotal.map((each) => each.template),
+    ['tile'],
+  );
+
+  check('nothing built is nothing to show', slowestBuilds([]), { byTotal: [], byMax: [], repeats: [] });
 }
 
 report();

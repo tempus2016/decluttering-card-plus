@@ -1,6 +1,7 @@
 import deepReplace from './deep-replace';
-import { forEachItems, forEachVariables, normaliseVariables } from './variables';
-import { isRegistrySource, resolveRegistryItems } from './registry';
+import { forEachItems, forEachVariables, normaliseVariables, POSITION_NAMES } from './variables';
+import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
+import { sourceTemplate, TemplateRender } from './template-source';
 import { CONSUMER_TYPES } from './templates';
 import { VariablesConfig } from './types';
 
@@ -40,10 +41,10 @@ export function isRepeatEntry(entry: any): boolean {
 }
 
 /** The items an entry repeats over - a list written out, or what Home Assistant knows. */
-function entryItems(entry: any, hass: any): unknown[] {
+function entryItems(entry: any, hass: any, context?: SourceContext): unknown[] {
   const written = forEachItems(entry.for_each);
   if (written) return written;
-  return isRegistrySource(entry.for_each_from) ? resolveRegistryItems(hass, entry.for_each_from) : [];
+  return isRegistrySource(entry.for_each_from) ? resolveRegistryItems(hass, entry.for_each_from, context) : [];
 }
 
 /*
@@ -68,12 +69,18 @@ function handDown(node: any, values: VariablesConfig[]): any {
  * itself when it repeats nothing, one copy per item when it does, and its `empty:` when a
  * repeat matches nothing at all.
  */
-export function expandEntry(entry: any, kind: 'section' | 'badge', shared: unknown, hass?: any): any[] {
+export function expandEntry(
+  entry: any,
+  kind: 'section' | 'badge',
+  shared: unknown,
+  hass?: any,
+  context?: SourceContext,
+): any[] {
   if (!isRepeatEntry(entry)) return [entry];
   const content = entry[kind];
   if (content === undefined) return [];
 
-  const items = entryItems(entry, hass);
+  const items = entryItems(entry, hass, context);
   if (!items.length) return entry.empty === undefined ? [] : [entry.empty];
 
   const common = [...normaliseVariables(entry.variables), ...normaliseVariables(shared)];
@@ -84,7 +91,7 @@ export function expandEntry(entry: any, kind: 'section' | 'badge', shared: unkno
 }
 
 /** The view a strategy config describes, with every repeat written out. */
-export function generateView(config: any, hass?: any): any {
+export function generateView(config: any, hass?: any, context?: SourceContext): any {
   const view: any = {};
   for (const [key, value] of Object.entries(config ?? {})) {
     if (!OWN_KEYS.includes(key)) view[key] = value;
@@ -92,7 +99,9 @@ export function generateView(config: any, hass?: any): any {
 
   const expand = (list: unknown, kind: 'section' | 'badge'): any[] =>
     ([] as any[]).concat(
-      ...(Array.isArray(list) ? list : []).map((entry: any) => expandEntry(entry, kind, config?.variables, hass)),
+      ...(Array.isArray(list) ? list : []).map((entry: any) =>
+        expandEntry(entry, kind, config?.variables, hass, context),
+      ),
     );
 
   if (config?.badges !== undefined) view.badges = expand(config.badges, 'badge');
@@ -104,9 +113,181 @@ export function generateView(config: any, hass?: any): any {
   return view;
 }
 
+/**
+ * Every `for_each_from: { template: }` among the strategy's sections and badges, rendered
+ * once each - the same Jinja twice is asked about once - keyed by the template's text.
+ */
+export async function renderStrategyTemplates(
+  config: any,
+  render: (template: string) => Promise<TemplateRender>,
+): Promise<Record<string, TemplateRender>> {
+  const rendered: Record<string, TemplateRender> = {};
+  const entries: any[] = ([] as any[]).concat(
+    ...[config?.sections, config?.badges].map((list) => (Array.isArray(list) ? list : [])),
+  );
+  for (const entry of entries) {
+    const template = sourceTemplate(entry?.for_each_from);
+    if (template === undefined || Object.prototype.hasOwnProperty.call(rendered, template)) continue;
+    rendered[template] = await render(template);
+  }
+  return rendered;
+}
+
 /** Whether a repeat in the strategy reads labels, which have to be fetched before it runs. */
 export function wantsLabels(config: any): boolean {
   return /label/i.test(JSON.stringify([config?.sections, config?.badges]));
+}
+
+/*
+ * The same idea one level up: a whole dashboard that writes itself out, a view per item.
+ * A dashboard of rooms is the same view over and over with a different area in it, and
+ * the view strategy above can only ever be one of those views.
+ *
+ *   strategy:
+ *     type: custom:decluttering-card-plus
+ *     decluttering_templates: { ... }
+ *     views:
+ *       - title: Home
+ *         cards: [...]
+ *       - for_each_from: { areas: true }
+ *         view:
+ *           title: '[[area]]'
+ *           path: '[[area_id]]'
+ *           sections: [...]
+ *
+ * Home Assistant only ever sees the dashboard this writes, so the cards in it look for
+ * their templates there - which is why the template keys are copied to its root rather
+ * than kept in the strategy, where nothing would read them.
+ */
+
+/** The dashboard strategy's own keys - everything else it says goes to the dashboard's root. */
+const DASHBOARD_OWN_KEYS = ['type', 'variables', 'views'];
+
+/** The custom type both strategies answer to, and the one a nested view strategy is recognised by. */
+export const STRATEGY_TYPE = 'custom:decluttering-card-plus';
+
+// What a repeat entry holds for each copy, which the copy's own item fills - not the view around it.
+const REPEAT_CONTENT_KEYS = ['section', 'badge', 'empty'];
+
+/*
+ * A view's path is a piece of its address, so what a placeholder fills in - an area called
+ * "Living Room" - is made fit for one. A path of only digits would be read by Home
+ * Assistant as a view's position rather than its name, so it is given a word in front.
+ */
+export function slugPath(path: unknown): string | undefined {
+  if (path === undefined || path === null) return undefined;
+  const slug = String(path)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (!slug) return undefined;
+  return /^\d+$/.test(slug) ? `view-${slug}` : slug;
+}
+
+/** `path`, or the first `path-2`, `path-3`... nothing in `taken` has yet. Taken as it is handed out. */
+export function uniquePath(path: string, taken: Set<string>): string {
+  let unique = path;
+  for (let counter = 2; taken.has(unique); counter += 1) unique = `${path}-${counter}`;
+  taken.add(unique);
+  return unique;
+}
+
+/*
+ * A view strategy inside a repeated view runs after this one, over items of its own. The
+ * view's values reach it two ways. What it repeats over is filled in here, so a view per
+ * area can repeat over that area's lights - `area: '[[area_id]]'`. What it repeats is not:
+ * that belongs to the inner items, and filling it here would let the area's `name` beat
+ * the light's. The view's values go in as the inner strategy's shared values instead,
+ * which an inner item still beats - minus the position, which is the inner repeat's own.
+ */
+function fillNestedStrategy(strategy: any, values: VariablesConfig[], hass: any): any {
+  const held = new Map<string, Record<string, unknown>>();
+  const skeleton: any = { ...strategy };
+  for (const key of ['sections', 'badges']) {
+    if (!Array.isArray(strategy[key])) continue;
+    skeleton[key] = strategy[key].map((entry: any, index: number) => {
+      if (!isRepeatEntry(entry)) return entry;
+      const kept: Record<string, unknown> = {};
+      const rest: any = {};
+      for (const [name, value] of Object.entries(entry)) {
+        if (REPEAT_CONTENT_KEYS.includes(name)) kept[name] = value;
+        else rest[name] = value;
+      }
+      held.set(`${key}:${index}`, kept);
+      return rest;
+    });
+  }
+  const filled = deepReplace(values, {}, skeleton, undefined, hass);
+  for (const key of ['sections', 'badges']) {
+    if (!Array.isArray(filled[key])) continue;
+    filled[key] = filled[key].map((entry: any, index: number) => ({ ...entry, ...held.get(`${key}:${index}`) }));
+  }
+  const positionless = values.filter((entry) => !POSITION_NAMES.includes(Object.keys(entry)[0]));
+  filled.variables = [...normaliseVariables(filled.variables), ...positionless];
+  return filled;
+}
+
+/** One view of a repeat, filled in with its item's values. */
+function fillView(content: any, values: VariablesConfig[], hass: any): any {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return content;
+  const { strategy, ...rest } = content;
+  const view = handDown(deepReplace(values, {}, rest, undefined, hass), values);
+  if (strategy === undefined) return view;
+  // Somebody else's strategy is filled in like any other part of the view, and left to run.
+  view.strategy =
+    strategy?.type === STRATEGY_TYPE
+      ? fillNestedStrategy(strategy, values, hass)
+      : deepReplace(values, {}, strategy, undefined, hass);
+  return view;
+}
+
+/** One entry of a dashboard's `views:`, as the views it stands for - the way expandEntry does sections. */
+export function expandView(entry: any, shared: unknown, hass?: any, context?: SourceContext): any[] {
+  if (!isRepeatEntry(entry)) return [entry];
+  if (entry.view === undefined) return [];
+
+  const items = entryItems(entry, hass, context);
+  if (!items.length) return entry.empty === undefined ? [] : [entry.empty];
+
+  const common = [...normaliseVariables(entry.variables), ...normaliseVariables(shared)];
+  return items.map((item, index) => fillView(entry.view, forEachVariables(item, common, index, items.length), hass));
+}
+
+/** The dashboard a dashboard strategy config describes, with every repeated view written out. */
+export function generateDashboard(config: any, hass?: any, context?: SourceContext): any {
+  const dashboard: any = {};
+  for (const [key, value] of Object.entries(config ?? {})) {
+    if (!DASHBOARD_OWN_KEYS.includes(key)) dashboard[key] = value;
+  }
+
+  const entries: any[] = Array.isArray(config?.views) ? config.views : [];
+  // A path written out by hand is the user's and is kept as written; a generated one makes
+  // way for it, wherever in the list either sits.
+  const taken = new Set<string>();
+  for (const entry of entries) {
+    if (!isRepeatEntry(entry) && typeof entry?.path === 'string' && entry.path) taken.add(entry.path);
+  }
+
+  const pathed = (view: any): any => {
+    if (!view || typeof view !== 'object' || view.path === undefined) return view;
+    const out = { ...view };
+    const slug = slugPath(view.path);
+    if (slug) out.path = uniquePath(slug, taken);
+    else delete out.path;
+    return out;
+  };
+  dashboard.views = ([] as any[]).concat(
+    ...entries.map((entry) =>
+      isRepeatEntry(entry) ? expandView(entry, config?.variables, hass, context).map(pathed) : [entry],
+    ),
+  );
+  return dashboard;
+}
+
+/** Whether a repeated view reads labels, which have to be fetched before the dashboard is written. */
+export function dashboardWantsLabels(config: any): boolean {
+  return /label/i.test(JSON.stringify(config?.views ?? null));
 }
 
 /** The card options that shape a repeat inside one card, and mean nothing once each copy has a section. */

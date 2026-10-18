@@ -1,5 +1,6 @@
-import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE } from './templates';
+import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE, parentsOf, templatesNamedBy } from './templates';
 import { localize } from './localize';
+import { DEFAULTS_ALIAS, templateDefaults } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -39,8 +40,13 @@ export function scanDependencies(config: any): Dependencies {
     const type = node.type;
     if (typeof type !== 'string') return;
     if (type.startsWith('custom:') && !OWN_TYPES.includes(type)) customTypes.add(type);
-    if (CONSUMER_TYPES.includes(type) && typeof node.template === 'string') templateRefs.add(node.template);
+    // A card choosing by domain uses every template it names.
+    for (const name of templatesNamedBy(node)) templateRefs.add(name);
   });
+
+  // The templates this one is built on travel the same way as the ones it uses: without
+  // them it is half a template.
+  for (const parent of parentsOf(config)) templateRefs.add(parent);
 
   return {
     customTypes: [...customTypes].sort(),
@@ -56,12 +62,21 @@ export function buildExport(
   config: any,
   templates?: Record<string, any>,
 ): { payload: Record<string, any>; notes: string[] } {
+  /*
+   * `defaults:` goes out folded into `default:`, the spelling every version of this card
+   * reads - whoever imports it may be running one from before the plural was understood.
+   */
+  const source =
+    config && typeof config === 'object' && config[DEFAULTS_ALIAS] !== undefined
+      ? { ...config, default: templateDefaults(config) }
+      : config;
   const payload: Record<string, any> = {};
   for (const key of EXPORT_KEY_ORDER) {
-    if (config?.[key] !== undefined) payload[key] = config[key];
+    if (source?.[key] !== undefined) payload[key] = source[key];
   }
-  for (const key of Object.keys(config ?? {})) {
-    if (!(key in payload)) payload[key] = config[key];
+  // Where this copy was installed from is bookkeeping for this dashboard, not part of the template.
+  for (const key of Object.keys(source ?? {})) {
+    if (!(key in payload) && key !== DEFAULTS_ALIAS && key !== 'source') payload[key] = source[key];
   }
 
   const { customTypes, templateRefs } = scanDependencies(config);
@@ -83,7 +98,7 @@ export function buildExport(
         missing.push(name);
         continue;
       }
-      includes[name] = found;
+      includes[name] = withoutSource(found);
       queue.push(...scanDependencies(found).templateRefs);
     }
     if (Object.keys(includes).length) payload.includes = includes;
@@ -98,6 +113,32 @@ export function buildExport(
   }
 
   return { payload, notes };
+}
+
+/*
+ * A template installed from the shared list carries where it came from under `source:`,
+ * and Check for updates believes that stamp: it names the post whose next edit will be
+ * offered as a replacement. So the stamp stays with the install it was written for. It
+ * does not go out in an export, and it does not come in with a paste - a paste is somebody
+ * handing over text, not the card installing from a post, and a stamp typed into that text
+ * would point updates at whatever post its author chose. Only an install writes `source:`.
+ */
+export function withoutSource(template: any): any {
+  if (!template || typeof template !== 'object' || Array.isArray(template)) return template;
+  const rest = { ...template };
+  delete rest.source;
+  return rest;
+}
+
+/** A pasted template with any `source:` stamp taken off it and off each template it carries. */
+export function withoutSources(parsed: any): any {
+  const out = withoutSource(parsed);
+  if (out?.includes && typeof out.includes === 'object' && !Array.isArray(out.includes)) {
+    const includes: Record<string, any> = {};
+    for (const [name, template] of Object.entries(out.includes)) includes[name] = withoutSource(template);
+    out.includes = includes;
+  }
+  return out;
 }
 
 /** The first spelling of `name` that nothing in `taken` already answers to. */
@@ -130,4 +171,22 @@ export function validateImport(parsed: any): { ok: boolean; errors: string[] } {
   }
 
   return { ok: errors.length === 0, errors };
+}
+
+/*
+ * The custom cards a template is built from that this browser does not have. A template
+ * installs either way - it may be the first step of setting one of them up - but a card
+ * using it shows an error until then, so it is said before anything is installed rather
+ * than discovered afterwards. `isDefined` is asked about the element's tag, which is the
+ * type without its `custom:`.
+ */
+export function missingCustomCards(templates: unknown[], isDefined: (tag: string) => boolean): string[] {
+  const missing = new Set<string>();
+  for (const template of templates) {
+    for (const type of scanDependencies(template).customTypes) {
+      const tag = type.slice('custom:'.length);
+      if (tag && !isDefined(tag)) missing.add(tag);
+    }
+  }
+  return [...missing].sort();
 }

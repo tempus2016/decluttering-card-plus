@@ -3,6 +3,7 @@
  * copies a template is repeated over. Run with `npm test`.
  */
 const {
+  globMatches,
   isRegistrySource,
   resolveRegistryItems,
   registryKey,
@@ -99,7 +100,92 @@ check('a label on the device counts as a label on its entities', ids(resolveRegi
 
 check('a label matches by its name too', ids(resolveRegistryItems(hass, { label: 'Night light' })), ['light.bedside']);
 
-check('a hidden entity is left out', ids(resolveRegistryItems(hass, { entities: 'light.secret' })), []);
+check('a hidden entity is left out of a sweep', ids(resolveRegistryItems(hass, { entities: 'light.*' })), [
+  'light.bedside',
+  'light.kitchen_ceiling',
+]);
+
+check('a hidden entity named outright is kept', ids(resolveRegistryItems(hass, { entities: 'light.secret' })), [
+  'light.secret',
+]);
+
+check(
+  'named outright means without a star, whatever the case it was written in',
+  ids(resolveRegistryItems(hass, { entities: ['Light.Secret', 'light.secr*'] })),
+  ['light.secret'],
+);
+
+check(
+  'include_hidden brings hidden entities back into a sweep',
+  ids(resolveRegistryItems(hass, { domain: 'light', include_hidden: true })),
+  ['light.bedside', 'light.kitchen_ceiling', 'light.secret'],
+);
+
+/* ---------------------------------------------- diagnostic and config entities */
+
+// A plug with the extras integrations hang off a device: a diagnostic sensor and a config switch.
+const plugHass = {
+  floors: {},
+  areas: {},
+  devices: {},
+  entities: {
+    'switch.plug': { entity_id: 'switch.plug' },
+    'sensor.plug_rssi': { entity_id: 'sensor.plug_rssi', entity_category: 'diagnostic' },
+    'switch.plug_led': { entity_id: 'switch.plug_led', entity_category: 'config' },
+    'button.plug_identify': { entity_id: 'button.plug_identify', entity_category: 'config', hidden: true },
+  },
+  states: {},
+};
+const plugIds = (source) => ids(resolveRegistryItems(plugHass, { ...source, sort: 'entity' }));
+
+check('diagnostic and config entities are left out by default', plugIds({ entities: '*plug*' }), ['switch.plug']);
+
+check(
+  'entity_category: diagnostic also keeps diagnostic ones',
+  plugIds({ entities: '*', entity_category: 'diagnostic' }),
+  ['sensor.plug_rssi', 'switch.plug'],
+);
+
+check(
+  'a list of categories keeps each of them',
+  plugIds({ entities: '*', entity_category: ['diagnostic', 'config'] }),
+  ['sensor.plug_rssi', 'switch.plug', 'switch.plug_led'],
+);
+
+check('entity_category: all keeps every category', plugIds({ entities: '*', entity_category: 'all' }), [
+  'sensor.plug_rssi',
+  'switch.plug',
+  'switch.plug_led',
+]);
+
+check(
+  'a hidden config entity needs both opt-ins',
+  [
+    plugIds({ entities: '*', entity_category: 'all' }).includes('button.plug_identify'),
+    plugIds({ entities: '*', entity_category: 'all', include_hidden: true }).includes('button.plug_identify'),
+  ],
+  [false, true],
+);
+
+check('a diagnostic entity named outright is kept', plugIds({ entities: ['switch.plug', 'sensor.plug_rssi'] }), [
+  'sensor.plug_rssi',
+  'switch.plug',
+]);
+
+check(
+  'the same applies to what a device gathers',
+  resolveRegistryItems(
+    {
+      ...plugHass,
+      devices: { plug: { id: 'plug', name: 'Plug', labels: [] } },
+      entities: Object.fromEntries(
+        Object.entries(plugHass.entities).map(([id, entity]) => [id, { ...entity, device_id: 'plug' }]),
+      ),
+    },
+    { devices: true, with: { entities: '*' } },
+  ).map((device) => device.entities),
+  [['switch.plug']],
+);
 
 check(
   'a list of patterns is the union of them',
@@ -128,6 +214,171 @@ check(
   'an entity in no area still produces a copy, with the area left empty',
   resolveRegistryItems({ entities: { 'light.loose': { entity_id: 'light.loose' } }, states: {} }, { domain: 'light' }),
   [{ entity: 'light.loose', name: 'light.loose', domain: 'light', area: '', area_id: '', total: 1 }],
+);
+
+/* ------------------------------------------------------------ unit and state_class */
+
+// Energy meters in two units and a power sensor, the case a unit filter is for.
+const meterHass = {
+  floors: {},
+  areas: {},
+  devices: {},
+  entities: {
+    'sensor.grid_import': { entity_id: 'sensor.grid_import' },
+    'sensor.solar_wh': { entity_id: 'sensor.solar_wh' },
+    'sensor.house_power': { entity_id: 'sensor.house_power' },
+    'sensor.mega': { entity_id: 'sensor.mega' },
+    'sensor.no_state': { entity_id: 'sensor.no_state' },
+  },
+  states: {
+    'sensor.grid_import': { attributes: { unit_of_measurement: 'kWh', state_class: 'total_increasing' } },
+    'sensor.solar_wh': { attributes: { unit_of_measurement: 'Wh', state_class: 'total' } },
+    'sensor.house_power': { attributes: { unit_of_measurement: 'mW', state_class: 'measurement' } },
+    'sensor.mega': { attributes: { unit_of_measurement: 'MW', state_class: 'measurement' } },
+  },
+};
+const meterIds = (source) => ids(resolveRegistryItems(meterHass, { ...source, sort: 'entity' }));
+
+check('unit narrows to one unit', meterIds({ unit: 'kWh' }), ['sensor.grid_import']);
+
+check('a list of units is either of them', meterIds({ unit: ['kWh', 'Wh'] }), [
+  'sensor.grid_import',
+  'sensor.solar_wh',
+]);
+
+check('a unit is matched exactly, so mW is not MW', meterIds({ unit: 'mW' }), ['sensor.house_power']);
+
+check('unit on its own is a source', isRegistrySource({ unit: 'kWh' }), true);
+
+check('state_class narrows the same way', meterIds({ state_class: 'measurement' }), [
+  'sensor.house_power',
+  'sensor.mega',
+]);
+
+check('a list of state classes is either of them', meterIds({ state_class: ['total', 'total_increasing'] }), [
+  'sensor.grid_import',
+  'sensor.solar_wh',
+]);
+
+check('both together narrow by both', meterIds({ unit: ['kWh', 'Wh'], state_class: 'total_increasing' }), [
+  'sensor.grid_import',
+]);
+
+check('an entity with no state matches neither', meterIds({ entities: 'sensor.no_state', unit: 'kWh' }), []);
+
+check('exclude takes a unit too', meterIds({ domain: 'sensor', exclude: { unit: ['mW', 'MW'] } }), [
+  'sensor.grid_import',
+  'sensor.no_state',
+  'sensor.solar_wh',
+]);
+
+check('registryNames still names an entity copy', registryNames({ unit: 'kWh' }).includes('entity'), true);
+
+/* ------------------------------------------------------------------- views */
+
+// A dashboard's views as its configuration lists them: one without a path, one subview.
+const dashboard = {
+  dashboard: 'dashboard-home',
+  views: [
+    { title: 'Home', path: 'home', icon: 'mdi:home' },
+    { title: 'Lights', path: 'lights' },
+    { path: 'energy', icon: 'mdi:lightning-bolt' },
+    { title: 'Untitled and unpathed' },
+    { title: 'Boiler details', path: 'boiler', subview: true },
+  ],
+};
+const viewPaths = (source, context = dashboard) => resolveRegistryItems({}, source, context).map((item) => item.path);
+
+check("views: true is one copy per view, in the dashboard's order, subviews left out", viewPaths({ views: true }), [
+  'home',
+  'lights',
+  'energy',
+  '3',
+]);
+
+check(
+  'each copy has what a navigation button needs',
+  resolveRegistryItems({}, { views: true }, dashboard).slice(0, 3),
+  [
+    { name: 'Home', path: 'home', navigation_path: '/dashboard-home/home', icon: 'mdi:home', view_index: 0, total: 4 },
+    { name: 'Lights', path: 'lights', navigation_path: '/dashboard-home/lights', icon: '', view_index: 1, total: 4 },
+    {
+      name: 'energy',
+      path: 'energy',
+      navigation_path: '/dashboard-home/energy',
+      icon: 'mdi:lightning-bolt',
+      view_index: 2,
+      total: 4,
+    },
+  ],
+);
+
+check(
+  'a view with no path is reached by its position',
+  resolveRegistryItems({}, { views: 'Untitled*' }, dashboard).map((item) => item.navigation_path),
+  ['/dashboard-home/3'],
+);
+
+check('subviews: true keeps subviews', viewPaths({ views: true, subviews: true }), [
+  'home',
+  'lights',
+  'energy',
+  '3',
+  'boiler',
+]);
+
+check('patterns narrow by title or path', viewPaths({ views: ['Home', 'energy'] }), ['home', 'energy']);
+
+check('exclude leaves views out by title or path', viewPaths({ views: true, exclude: ['Lights', '3'] }), [
+  'home',
+  'energy',
+]);
+
+check('sort orders views only when asked', viewPaths({ views: true, sort: 'name' }), ['energy', 'home', 'lights', '3']);
+
+check('limit, offset and reverse work as elsewhere', viewPaths({ views: true, offset: 1, limit: 2, reverse: true }), [
+  'energy',
+  'lights',
+]);
+
+check(
+  'overrides match a view by path or title',
+  resolveRegistryItems(
+    {},
+    { views: true, overrides: { Lights: { icon: 'mdi:lamp' }, home: { name: 'Start' } } },
+    dashboard,
+  )
+    .slice(0, 2)
+    .map((item) => [item.name, item.icon]),
+  [
+    ['Start', 'mdi:home'],
+    ['Lights', 'mdi:lamp'],
+  ],
+);
+
+check('require drops views missing a value', viewPaths({ views: true, require: 'icon' }), ['home', 'energy']);
+
+check(
+  'the default dashboard is lovelace',
+  resolveRegistryItems({}, { views: 'home' }, { views: dashboard.views }).map((item) => item.navigation_path),
+  ['/lovelace/home'],
+);
+
+check('no dashboard to read is no copies', resolveRegistryItems({}, { views: true }), []);
+
+check('a views source names its variables', registryNames({ views: true }), [
+  'name',
+  'path',
+  'navigation_path',
+  'icon',
+  'view_index',
+  'total',
+]);
+
+check(
+  'a view title shaped like a placeholder renders as that text',
+  resolveRegistryItems({}, { views: true }, { views: [{ title: '[[x]]', path: 'p' }] })[0].name.startsWith('[[x]]'),
+  false,
 );
 
 /* ------------------------------------------------------------------- require */
@@ -764,5 +1015,68 @@ const spoofed = resolveRegistryItems(spoofHass, { devices: true }).map((item) =>
 check('a device name shaped like a placeholder renders as that text', spoofed, [
   { type: 'tile', name: '[[model|trim|json|bool]]' },
 ]);
+
+{
+  // sun.sun has a state but no registry entry - no unique id - so it is not in hass.entities.
+  const NO_ENTRY = {
+    entities: { 'light.kitchen': { entity_id: 'light.kitchen' } },
+    states: {
+      'light.kitchen': { state: 'on', attributes: { friendly_name: 'Kitchen' } },
+      'sun.sun': { state: 'above_horizon', attributes: { friendly_name: 'Sun' } },
+    },
+    devices: {},
+    areas: {},
+    floors: {},
+  };
+  const named = (source) => resolveRegistryItems(NO_ENTRY, source).map((item) => item.entity);
+  check('an id named outright is kept even with no registry entry', named({ entities: ['light.kitchen', 'sun.sun'] }), [
+    'light.kitchen',
+    'sun.sun',
+  ]);
+  check('the other filters still apply to it', named({ entities: ['light.kitchen', 'sun.sun'], domain: 'light' }), [
+    'light.kitchen',
+  ]);
+  check('one with no state either is not', named({ entities: ['sun.sun', 'nothing.here'] }), ['sun.sun']);
+  check('and a pattern still only sweeps the registry', named({ entities: 'sun.*' }), []);
+}
+
+// Review 2026-10-18. Folding adjacent stars was not enough: `*a*a*a*z` still backtracks
+// polynomially against a run of a's. The matcher is linear now, so this returns at once.
+const slowStart = Date.now();
+check(
+  'a pattern of alternating wildcards returns rather than hanging',
+  globMatches('a'.repeat(200), '*a*a*a*a*a*a*a*a*a*a*z'),
+  false,
+);
+check('and does so in linear time', Date.now() - slowStart < 100, true);
+check(
+  'the walk matches what it should',
+  [
+    globMatches('light.hall', 'light.*'),
+    globMatches('light.hall', '*'),
+    globMatches('light.hall', '*.hall'),
+    globMatches('light.hall', 'l*t.h*l'),
+    globMatches('light.hall', 'light.hall'),
+    globMatches('light.hall', 'LIGHT.HALL'),
+    globMatches('light.hall', '***'),
+    globMatches('', '*'),
+    globMatches('', ''),
+    globMatches('light.hall', 'light.hal'),
+    globMatches('light.hall', 'ight.*'),
+    globMatches('light.hall', '*x*'),
+    globMatches('light.hall', ''),
+  ],
+  [true, true, true, true, true, true, true, true, true, false, false, false, false],
+);
+check(
+  'the linear matcher still matches as the regexp did: anchored, case-blind, any run of stars',
+  resolveRegistryItems(hass, { entities: ['L*T.B*E', 'light.**_ceiling'] }).map((item) => item.entity),
+  ['light.bedside', 'light.kitchen_ceiling'],
+);
+check(
+  'a star in the middle does not match across nothing when the ends are wrong',
+  resolveRegistryItems(hass, { entities: 'ight.*' }),
+  [],
+);
 
 report();

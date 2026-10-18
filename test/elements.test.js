@@ -48,4 +48,23 @@ const offenders = files
 
 check('no mwc-* element anywhere in src', offenders, []);
 
+/*
+ * Home Assistant 2026.7 stopped registering ha-textfield too, and drew its inputs with
+ * ha-input, so every name field in the editors vanished. The card still runs on Home
+ * Assistants that only have ha-textfield, so the one helper that picks between them at
+ * runtime (textField) is the only place either tag may be written.
+ */
+const tagCount = (tag) =>
+  files.reduce((sum, name) => {
+    const text = fs.readFileSync(path.join(SRC, name), 'utf8');
+    return sum + (text.match(new RegExp(`<${tag}[\\s>]`, 'g')) || []).length;
+  }, 0);
+check('ha-textfield is drawn in one place only, the helper', tagCount('ha-textfield'), 1);
+check('ha-input is drawn in one place only, the helper', tagCount('ha-input'), 1);
+check(
+  'that place picks whichever of the two the page has',
+  /function textField[\s\S]*?isDefinedHere\('ha-input'\)[\s\S]*?<ha-input[\s\S]*?<ha-textfield/.test(card),
+  true,
+);
+
 report();
