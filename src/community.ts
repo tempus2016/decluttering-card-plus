@@ -11,7 +11,9 @@
  */
 
 import { load } from 'js-yaml';
+import deepReplace from './deep-replace';
 import { scanDependencies, validateImport } from './share';
+import { TemplateConfig } from './types';
 
 export const COMMUNITY_REPO = 'tempus2016/decluttering-card-plus';
 // Posts are matched on the slug, which GitHub derives from the category's name.
@@ -29,9 +31,15 @@ const MAX_PAGES = 10;
 // list - so a post gets a bounded amount of work, however it is written. A body longer than
 // this is not a template, and a parsed value with more pieces than this has been pumped up
 // by aliases: a few hundred bytes of `&a1 [*a0,*a0,...]` otherwise unfold into hundreds of
-// megabytes the moment they are copied, and take the tab with them.
+// megabytes the moment they are copied, and take the tab with them. Text counts towards the
+// size as well as structure, a unit for every few characters, because the same trick works
+// with one long string shared between a handful of lists - few pieces, but each a mouthful.
+// And the parser is told how many aliases to accept before any of that: a template shares a
+// few action blocks at most, a bomb needs dozens.
 const MAX_BODY_LENGTH = 65_536;
 const MAX_NODES = 20_000;
+const CHARS_PER_NODE = 16;
+const MAX_ALIASES = 50;
 
 export interface CommunityEntry {
   /** The discussion's number, which is how an entry is told apart from the others. */
@@ -89,13 +97,21 @@ export function extractYaml(body: string): string | undefined {
   return chosen?.text;
 }
 
-/** Whether a parsed value is of a size a template could be, counting what aliases share. */
+/**
+ * Whether a parsed value is of a size a template could be, counting what aliases share:
+ * every piece once for being there, and text - keys included - once more for every
+ * CHARS_PER_NODE characters, so what the copy will produce is bounded whatever shape it has.
+ */
 function withinBudget(value: unknown): boolean {
   let left = MAX_NODES;
+  const charge = (length: number): boolean => (left -= 1 + Math.ceil(length / CHARS_PER_NODE)) >= 0;
   const walk = (node: unknown): boolean => {
-    if ((left -= 1) < 0) return false;
+    if (typeof node === 'string') return charge(node.length);
+    if (!charge(0)) return false;
     if (Array.isArray(node)) return node.every(walk);
-    if (node && typeof node === 'object') return Object.values(node).every(walk);
+    if (node && typeof node === 'object') {
+      return Object.entries(node).every(([key, child]) => charge(key.length) && walk(child));
+    }
     return true;
   };
   return walk(value);
@@ -133,7 +149,8 @@ export function parseDiscussion(discussion: any): CommunityEntry | undefined {
 
   let parsed: any;
   try {
-    const loaded = load(text);
+    // Too many aliases is a parse error, which lands in the catch below like any other.
+    const loaded = load(text, { maxAliases: MAX_ALIASES });
     // Sized before it is copied: the copy is what unfolds every alias.
     if (!withinBudget(loaded)) return undefined;
     // A round trip through JSON leaves plain objects, lists and values only, which is all a
@@ -167,7 +184,7 @@ export function parseDiscussion(discussion: any): CommunityEntry | undefined {
 }
 
 export interface CommunityRisks {
-  /** Services the template calls when something on it is pressed. */
+  /** Services the template calls when something on it is pressed, and presses that work a lock, a cover, an alarm or a script. */
   actions: string[];
   /** Addresses outside Home Assistant that it reaches. */
   urls: string[];
@@ -175,39 +192,124 @@ export interface CommunityRisks {
   embeds: boolean;
   /** Whether it carries JavaScript or Jinja that runs with the viewer's login. */
   scripts: boolean;
+  /** Whether what a press does, or what kind of card it is, is spelt by a variable - which the post cannot show. */
+  placeholders: boolean;
+}
+
+// Pressing something on an entity in one of these domains does more than switch a light,
+// so an action that works the entity - a toggle, above all - is worth a sentence. On a light,
+// a switch or a fan it is what the card is for.
+const SENSITIVE_DOMAINS = ['lock', 'alarm_control_panel', 'cover', 'script', 'button', 'input_button'];
+// Actions that only show something or go somewhere, fine on anything.
+const HARMLESS_ACTIONS = ['more-info', 'navigate', 'none', 'assist'];
+// The values that decide what a press does and what a card is. A placeholder in one of them
+// is a risk in itself: whoever reads the post cannot tell what it will become.
+const DECIDING_KEYS = ['action', 'perform_action', 'service', 'type'];
+
+// An address with a scheme in any case, or without one but with a dotted host - which is
+// what tells `//evil.example/x` from the `//` that opens a comment. Up to the first template
+// marker: what is after `{{` is not part of it.
+const URL_PATTERN = /https?:\/\/[^\s"'<>)\]{}]+|\/\/[\w-]+(?:\.[\w-]+)+(?::\d+)?(?:[/?#][^\s"'<>)\]{}]*)?/gi;
+// A style fetches too, through url() and @import.
+const CSS_FETCHES = [/url\(\s*['"]?([^'")\s{}]+)/gi, /@import\s+(?:url\(\s*)?['"]?([^'")\s;{}]+)/gi];
+// What a style can fetch without leaving Home Assistant: its own files, an anchor, inline data.
+const LOCAL_FETCH = /^(?:\/(?!\/)|#|data:)/i;
+// JavaScript the way button-card, config-template-card and Jinja carry it.
+const SCRIPT_MARKERS = /\[\[\[|\{\{|\{%|\$\{/;
+
+const sensitive = (entity: unknown): entity is string =>
+  typeof entity === 'string' && SENSITIVE_DOMAINS.includes(entity.split('.')[0]);
+
+/*
+ * The thing a template defines with the template's own defaults in place - its `default:`
+ * list and what its declarations default to - and nothing from Home Assistant, which this
+ * scan does not have. Nothing when substitution cannot run on it: the raw text is scanned
+ * either way.
+ */
+function withOwnDefaults(template: Record<string, any>): unknown {
+  const key = THING_KEYS.find((each) => template[each] !== undefined);
+  if (!key) return undefined;
+  try {
+    return deepReplace(undefined, template as TemplateConfig, template[key], undefined, undefined, true);
+  } catch {
+    return undefined;
+  }
 }
 
 /*
  * What installing a post would let it do, read off its config: nobody has checked the post,
  * so the card says what it found and lets the person decide. A false alarm costs a sentence;
  * a lock opened by a tile labelled "Lights" costs rather more.
+ *
+ * Read twice: as written, and with the template's own defaults substituted. A post can
+ * write `action: '[[a]]'` and keep `a: perform-action` in its defaults, and only the second
+ * reading sees the service call - while the first is what notices the placeholder.
  */
 export function communityRisks(entry: Pick<CommunityEntry, 'template' | 'includes'>): CommunityRisks {
   const actions = new Set<string>();
   const urls = new Set<string>();
   let embeds = false;
   let scripts = false;
-  const walk = (node: unknown): void => {
+  let placeholders = false;
+
+  const scanText = (text: string): void => {
+    for (const url of text.match(URL_PATTERN) ?? []) urls.add(url);
+    for (const pattern of CSS_FETCHES) {
+      pattern.lastIndex = 0;
+      let found = pattern.exec(text);
+      while (found) {
+        if (!LOCAL_FETCH.test(found[1])) urls.add(found[1]);
+        found = pattern.exec(text);
+      }
+    }
+    if (SCRIPT_MARKERS.test(text)) scripts = true;
+  };
+
+  // An action, with the entity the card it sits on is about, which is what a toggle works.
+  const noteAction = (node: Record<string, any>, entity: string | undefined): void => {
+    const action = node.action;
+    if (action === 'perform-action' || action === 'call-service') {
+      const service = node.perform_action ?? node.service;
+      // A placeholder here is reported as one, not as a service nobody can name.
+      if (typeof service !== 'string') actions.add('?');
+      else if (!service.includes('[[')) actions.add(service);
+      return;
+    }
+    if (action === 'fire-dom-event') {
+      actions.add('fire-dom-event');
+      return;
+    }
+    if (action === 'url') {
+      urls.add(typeof node.url_path === 'string' ? node.url_path : '?');
+      return;
+    }
+    if (HARMLESS_ACTIONS.includes(action) || action.includes('[[')) return;
+    const aimed = ([] as unknown[]).concat(node.target?.entity_id ?? node.entity_id ?? node.entity ?? entity ?? []);
+    for (const target of aimed) if (sensitive(target)) actions.add(`${action} ${target}`);
+  };
+
+  const walk = (node: unknown, entity: string | undefined): void => {
     if (typeof node === 'string') {
-      // The address up to its first template marker: what is after `{{` is not part of it.
-      for (const url of node.match(/https?:\/\/[^\s"'<>)\]{}]+/g) ?? []) urls.add(url);
-      if (node.includes('[[[') || node.includes('{{') || node.includes('{%')) scripts = true;
+      scanText(node);
       return;
     }
     if (Array.isArray(node)) {
-      node.forEach(walk);
+      node.forEach((each) => walk(each, entity));
       return;
     }
     if (!isMapping(node)) return;
-    if (node.action === 'perform-action' || node.action === 'call-service') {
-      const service = node.perform_action ?? node.service;
-      actions.add(typeof service === 'string' ? service : '?');
-    }
+    const own = typeof node.entity === 'string' ? node.entity : entity;
+    if (Object.keys(node).some((key) => key.includes('[['))) placeholders = true;
+    if (DECIDING_KEYS.some((key) => typeof node[key] === 'string' && node[key].includes('[['))) placeholders = true;
+    if (typeof node.action === 'string') noteAction(node, own);
     if (node.type === 'iframe' || node.type === 'webpage') embeds = true;
-    Object.values(node).forEach(walk);
+    Object.values(node).forEach((each) => walk(each, own));
   };
-  walk([entry.template, ...Object.values(entry.includes)]);
-  return { actions: [...actions].sort(), urls: [...urls].sort(), embeds, scripts };
+
+  const templates = [entry.template, ...Object.values(entry.includes)];
+  walk(templates, undefined);
+  for (const template of templates) walk(withOwnDefaults(template), undefined);
+  return { actions: [...actions].sort(), urls: [...urls].sort(), embeds, scripts, placeholders };
 }
 
 /** The posts in the shared-templates category, best received first, then newest. */
@@ -332,4 +434,87 @@ export async function fetchCommunity(
     // A full or blocked storage only costs the next visit a fetch.
   }
   return list;
+}
+
+/** Where an installed shared template came from, stamped on it as `source:`. */
+export interface CommunitySource {
+  /** The discussion it was posted in. */
+  discussion: number;
+  /** When that post was last edited, as GitHub said at the time - what a later check compares against. */
+  updated: string;
+  /** Its name in the post, which is not always the name it was installed under. */
+  name: string;
+  /** Who had posted it. A later version by anybody else is not the same template, and is not offered. */
+  author: string;
+}
+
+/** The stamp for one template out of a post: the post itself, or one of the templates it carries. */
+export function communitySource(
+  entry: Pick<CommunityEntry, 'id' | 'updated' | 'author'>,
+  name: string,
+): CommunitySource {
+  return { discussion: entry.id, updated: entry.updated, name, author: entry.author };
+}
+
+/** A template out of a post, ready to install: whatever `source:` it was posted with replaced by where it came from. */
+export function stampedTemplate(template: Record<string, any>, source: unknown): Record<string, any> {
+  return { ...template, source };
+}
+
+/** The template a stamp points at in a post as it is now, or nothing if the post no longer carries it. */
+function postTemplate(entry: CommunityEntry, name: string | undefined): Record<string, any> | undefined {
+  if (name === undefined || name === entry.name) return entry.template;
+  return Object.prototype.hasOwnProperty.call(entry.includes, name) ? entry.includes[name] : undefined;
+}
+
+export interface SharedUpdate {
+  /** The name it is installed under here. */
+  name: string;
+  /**
+   * `update` when the post has been edited since, `current` when not, `gone` when the post or
+   * the template in it is no longer there, and `unverified` when the post is there but is not
+   * by whoever the stamp says posted what was installed.
+   */
+  status: 'update' | 'current' | 'gone' | 'unverified';
+  /** The post, when it is still listed. */
+  entry?: CommunityEntry;
+  /** The template as the post has it now, stamped and ready to replace the installed one. */
+  latest?: Record<string, any>;
+}
+
+/**
+ * Which installed shared templates have a newer version, read against a freshly fetched
+ * list. The post's own edit time is what is compared - not the content, which the person
+ * may have changed since installing - so an update is offered exactly when the author has
+ * changed something, and never because somebody tweaked their own copy.
+ *
+ * The stamp is only believed as far as it can be checked. It names a post and who posted
+ * it; a post by anybody else under that number - or a stamp that never said who, which no
+ * install writes - is reported, not offered, whatever its edit time says. Updating replaces
+ * the template wherever it is defined and saves the dashboard, and that is only ever done
+ * towards the account the template was taken from in the first place.
+ */
+export function sharedUpdates(
+  installed: { name: string; source: { discussion: number; updated?: string; name?: string; author?: string } }[],
+  list: CommunityList,
+): SharedUpdate[] {
+  return installed.map(({ name, source }) => {
+    const entry = list.entries.find((each) => each.id === source.discussion);
+    const nameInPost = typeof source.name === 'string' ? source.name : undefined;
+    const template = entry ? postTemplate(entry, nameInPost) : undefined;
+    if (!entry || !template) return { name, status: 'gone' as const, ...(entry ? { entry } : {}) };
+    if (typeof source.author !== 'string' || !source.author || source.author !== entry.author) {
+      return { name, status: 'unverified' as const, entry };
+    }
+    const was = Date.parse(source.updated ?? '');
+    const now = Date.parse(entry.updated);
+    // A stamp without a readable time cannot be compared, so a post with any time at all is newer than it.
+    const newer = Number.isFinite(was) ? Number.isFinite(now) && now > was : Number.isFinite(now);
+    return {
+      name,
+      status: newer ? ('update' as const) : ('current' as const),
+      entry,
+      latest: stampedTemplate(template, communitySource(entry, nameInPost ?? entry.name)),
+    };
+  });
 }

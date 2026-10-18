@@ -58,4 +58,12 @@ check(
   true,
 );
 
+{
+  const { librarySource } = require('../.test-build/library.js');
+  check('a library install is stamped with its entry and the card version', librarySource('room_summary', '1.16.0'), {
+    library: 'room_summary',
+    version: '1.16.0',
+  });
+}
+
 report();

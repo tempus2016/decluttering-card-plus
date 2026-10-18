@@ -1237,7 +1237,446 @@ check(
     undefined,
     cssSafe,
   ),
-  'color: blue background: url(https://evil/); --mine: red; };',
+  // The shield takes the `(`, `)` and `/` as well now, so a name cannot open a url().
+  'color: blue background: urlhttps:evil; --mine: red; };',
 );
+
+check(
+  'a stand-in after a split is split too, and never spliced in as structure it only spelt',
+  deepReplace(
+    [{ name: '[{"type":"iframe","url":"https://evil.example/"}]' }],
+    {},
+    { a: '[[rows|split|or:name]]', b: '[[rows|split|default:a, b]]', c: '[[rows|split|or:name|count]]' },
+  ),
+  { a: ['[{"type":"iframe"', '"url":"https://evil.example/"}]'], b: ['a', 'b'], c: 2 },
+);
+
+/* ------------------------------------- Home Assistant text cannot become a placeholder */
+
+// Review 2026-10-18. The escape has to hold whatever is done to the text afterwards and
+// whatever it sits next to - a name only has to end up forming `[[` to be read as code.
+const hostile = {
+  states: {
+    'light.x': { attributes: { friendly_name: 'url(https://evil.example/[{[tracker|attr:latitude]}])' } },
+    'device_tracker.t': { attributes: { latitude: 57.1234 } },
+    'lock.d': { attributes: { friendly_name: '[[zz?]]' } },
+  },
+  entities: { 'lock.d': { device_id: 'dev2', area_id: 'a1' } },
+  devices: { dev2: { name: '[[zz' } },
+  areas: { a1: { name: '?]]' } },
+};
+check(
+  'a shield cannot uncover a placeholder: the braces go and the brackets go with them',
+  deepReplace(
+    [{ entity: 'light.x' }, { tracker: 'device_tracker.t' }],
+    {},
+    { s: 'background: [[entity|friendly_name]]' },
+    undefined,
+    hostile,
+    true,
+    undefined,
+    0,
+    undefined,
+    cssSafe,
+  ).s.includes('57.1234'),
+  false,
+);
+check(
+  'two Home Assistant strings side by side do not form a placeholder',
+  deepReplace(
+    [{ entity: 'lock.d' }],
+    {},
+    { confirmation: '[[entity|device]][[entity|area]]', name: 'x' },
+    undefined,
+    hostile,
+    true,
+  ),
+  { confirmation: '[[zz?]]', name: 'x' },
+);
+const outerBuilt = deepReplace(
+  [{ entity: 'lock.d' }],
+  {},
+  {
+    type: 'vertical-stack',
+    cards: [
+      { type: 'custom:decluttering-card-plus', template: 'inner', variables: [{ label: '[[entity|friendly_name]]' }] },
+      { type: 'markdown', content: '[[entity|friendly_name]]' },
+    ],
+  },
+  undefined,
+  hostile,
+  true,
+);
+check(
+  'a nested card is handed the text still escaped, while the rest is written out',
+  outerBuilt.cards.map((card) => card.variables?.[0].label ?? card.content),
+  ['[[!zz?]]', '[[zz?]]'],
+);
+check(
+  'so the nested card reads it as text too, and keeps the key it lands in',
+  deepReplace(
+    outerBuilt.cards[0].variables,
+    {},
+    { tap_action: { action: 'toggle', confirmation: '[[label]]' } },
+    undefined,
+    hostile,
+    true,
+  ),
+  { tap_action: { action: 'toggle', confirmation: '[[zz?]]' } },
+);
+check(
+  'a build asked to keep its escapes keeps every one, for values handed down to another card',
+  deepReplace(
+    [{ entity: 'lock.d' }],
+    {},
+    [{ label: '[[entity|friendly_name]]' }],
+    undefined,
+    hostile,
+    true,
+    undefined,
+    0,
+    undefined,
+    undefined,
+    true,
+  ),
+  [{ label: '[[!zz?]]' }],
+);
+
+/* ------------------------------------------------------------ arithmetic */
+
+{
+  const caught = [];
+  const saved = console.warn;
+  console.warn = (m) => caught.push(m);
+
+  check(
+    'a chain of sums places a picture element, a percentage inside a string',
+    deepReplace([{ index: 3 }], {}, { style: { left: '[[index|sub:1|mul:12|add:4]]%' } }),
+    { style: { left: '28%' } },
+  );
+
+  check(
+    'arithmetic as the whole value is a real number',
+    deepReplace([{ index: 3 }], {}, { columns: '[[index|mul:2]]' }),
+    { columns: 6 },
+  );
+
+  check(
+    'div and mod, decimals and negatives',
+    deepReplace([{ w: 7 }], {}, { a: '[[w|div:2]]', b: '[[w|mod:3]]', c: '[[w|sub:10]]', d: '[[w|mul:-0.5]]' }),
+    { a: 3.5, b: 1, c: -3, d: -3.5 },
+  );
+
+  check('a sum comes out the way a person would write it', deepReplace([{ x: 0.1 }], {}, { v: '[[x|add:0.2]]' }), {
+    v: 0.3,
+  });
+
+  check(
+    'round to a whole number, and to places',
+    deepReplace([{ t: '21.456' }], {}, { a: '[[t|round]]', b: '[[t|round:2]]', c: '[[t|round:1]] °C' }),
+    { a: 21, b: 21.46, c: '21.5 °C' },
+  );
+
+  check('round:2 inside a string keeps its trailing zero', deepReplace([{ t: 2.5 }], {}, { v: 'Now [[t|round:2]]' }), {
+    v: 'Now 2.50',
+  });
+
+  check('round reads 1.005 as written', deepReplace([{ t: 1.005 }], {}, { v: '[[t|round:2]]' }), { v: 1.01 });
+
+  check(
+    'pad zero-pads a whole number and stays text',
+    deepReplace([{ n: 7 }, { m: -7 }], {}, { a: '[[n|pad:3]]', b: 'zone_[[n|pad:2]]', c: '[[m|pad:3]]' }),
+    { a: '007', b: 'zone_07', c: '-07' },
+  );
+
+  check('pad leaves a number already wider than asked alone', deepReplace([{ n: 1234 }], {}, { a: '[[n|pad:3]]' }), {
+    a: '1234',
+  });
+
+  check('nothing was complained about along the way', caught, []);
+
+  check(
+    'a value that is not a number is left as it was',
+    deepReplace([{ name: 'Hall' }], {}, { a: '[[name|add:1]]', b: 'x[[name|round]]' }),
+    { a: 'Hall', b: 'xHall' },
+  );
+
+  check('and the console says so, once per step and value', caught.length, 2);
+
+  caught.length = 0;
+  deepReplace([{ name: 'Hall' }], {}, { a: '[[name|add:1]]' });
+  check('the same complaint is not repeated', caught, []);
+
+  check(
+    'pad on a decimal, and a bad argument, leave the value as it was',
+    deepReplace([{ n: 2.5 }], {}, { a: '[[n|pad:3]]', b: '[[n|div:0]]', c: '[[n|add:lots]]', d: '[[n|round:99]]' }),
+    { a: '2.5', b: 2.5, c: 2.5, d: 2.5 },
+  );
+
+  check('each of those says why', caught.length, 4);
+
+  check(
+    'an argument can come from another variable once that is substituted',
+    deepReplace([{ index: 3 }, { offset: 10 }], {}, { v: '[[index|add:[[offset]]]]' }),
+    { v: 13 },
+  );
+
+  check(
+    'a default after arithmetic still stands in, and is checked before going in bare',
+    deepReplace([], {}, { a: '[[gone|add:1|default:0]]', b: '[[gone|add:1|default:none]]' }),
+    { a: 0, b: 'none' },
+  );
+
+  check(
+    'a chain that carries on after the sum gives text',
+    deepReplace([{ n: 3 }], {}, { v: '[[n|add:1|prefix:#]]' }),
+    { v: '#4' },
+  );
+
+  console.warn = saved;
+}
+
+/* ------------------------------------------------------------------ lists */
+
+{
+  const caught = [];
+  const saved = console.warn;
+  console.warn = (m) => caught.push(m);
+  const rooms = [{ rooms: ['Kitchen', 'Hall', 'Back Porch'] }];
+
+  check(
+    'join writes a list as text, ", " unless told otherwise',
+    deepReplace(rooms, {}, { a: '[[rooms|join]]', b: 'In: [[rooms|join: / ]]', c: '[[rooms|join:]]' }),
+    { a: 'Kitchen, Hall, Back Porch', b: 'In: Kitchen / Hall / Back Porch', c: 'KitchenHallBack Porch' },
+  );
+
+  check(
+    'first, last and count read a list',
+    deepReplace(rooms, {}, { first: '[[rooms|first]]', last: '[[rooms|last|upper]]', count: '[[rooms|count]]' }),
+    { first: 'Kitchen', last: 'BACK PORCH', count: 3 },
+  );
+
+  check('count inside a string is its text', deepReplace(rooms, {}, { name: '[[rooms|count]] rooms' }), {
+    name: '3 rooms',
+  });
+
+  check(
+    'split as the whole value makes a real list, items trimmed and empties dropped',
+    deepReplace([{ ids: 'light.a, light.b,,light.c ' }], {}, { entities: '[[ids|split]]' }),
+    { entities: ['light.a', 'light.b', 'light.c'] },
+  );
+
+  check('split takes a separator of its own', deepReplace([{ ids: 'a;b; c' }], {}, { entities: '[[ids|split:;]]' }), {
+    entities: ['a', 'b', 'c'],
+  });
+
+  check(
+    'a step after split shapes each item, and join puts them back together',
+    deepReplace([{ names: 'Living Room, Hall' }], {}, { a: '[[names|split|slug]]', b: '[[names|split|slug|join:,]]' }),
+    { a: ['living_room', 'hall'], b: 'living_room,hall' },
+  );
+
+  check(
+    'a comma string is a list to first, last and count',
+    deepReplace([{ t: 'a, b, c' }], {}, { f: '[[t|first]]', l: '[[t|last]]', n: '[[t|count]]' }),
+    { f: 'a', l: 'c', n: 3 },
+  );
+
+  check(
+    'a plain word counts as one, an empty string and a null as none',
+    deepReplace(
+      [{ w: 'kitchen' }, { e: '' }, { z: null }],
+      {},
+      { w: '[[w|count]]', e: '[[e|count]]', z: '[[z|count]]' },
+    ),
+    { w: 1, e: 0, z: 0 },
+  );
+
+  check(
+    'count of a variable nothing sets is 0, not an unset placeholder',
+    deepReplace([], {}, { n: '[[nobody|count]]' }),
+    { n: 0 },
+  );
+
+  check('a mapping counts its keys', deepReplace([{ m: { a: 1, b: 2 } }], {}, { n: '[[m|count]]' }), { n: 2 });
+
+  check('split of a list leaves it a list', deepReplace([{ l: [1, 2] }], {}, { v: '[[l|split]]' }), { v: [1, 2] });
+
+  check(
+    'an item that is a mapping comes out as its JSON',
+    deepReplace([{ l: [{ a: 1 }] }], {}, { v: 'x [[l|first]]' }),
+    { v: 'x {"a":1}' },
+  );
+
+  check(
+    'an empty list joins to nothing, so a default after it stands in',
+    deepReplace([{ l: [] }], {}, { a: '[[l|join|default:none]]', b: '[[l|first|default:none]]', n: '[[l|count]]' }),
+    { a: 'none', b: 'none', n: 0 },
+  );
+
+  check(
+    'split inside a longer string writes the list out as JSON',
+    deepReplace([{ t: 'a,b' }], {}, { v: 'list: [[t|split]]' }),
+    { v: 'list: ["a","b"]' },
+  );
+
+  check(
+    'labels from the registry are a list to first and count',
+    deepReplace(
+      [{ e: 'light.x' }],
+      {},
+      { f: '[[e|labels|first]]', n: '[[e|labels|count]]', l: '[[e|labels|split]]' },
+      undefined,
+      { entities: { 'light.x': { labels: ['a', 'b'] } }, labels: { a: { name: 'Upstairs' }, b: { name: 'Lights' } } },
+    ),
+    { f: 'Upstairs', n: 2, l: ['Upstairs', 'Lights'] },
+  );
+
+  check(
+    'a text transform straight onto a list is still refused, as before',
+    deepReplace([{ l: ['a'] }], {}, { v: '[[l|upper]]' }),
+    { v: '[[l|upper]]' },
+  );
+
+  check(
+    'join on a mapping is refused, it has no order to join',
+    deepReplace([{ m: { a: 1 } }], {}, { v: '[[m|join]]' }),
+    { v: '[[m|join]]' },
+  );
+
+  console.warn = saved;
+}
+
+check(
+  'translate in a card: an integration name and a full key, the unknown left as written',
+  deepReplace(
+    [{ integration: 'hue' }, { other: 'nothing_here' }],
+    {},
+    { title: '[[integration|translate]]', sub: 'via [[other|translate]]' },
+    undefined,
+    { localize: (key) => (key === 'component.hue.title' ? 'Philips Hue' : '') },
+  ),
+  { title: 'Philips Hue', sub: 'via nothing_here' },
+);
+
+// #210: if: turned round, exists, contains: and find:.
+const known = { states: { 'binary_sensor.hall_motion': { state: 'off', attributes: {} } }, entities: {} };
+check(
+  'if:!name holds while the variable is a no or unset',
+  [
+    deepReplace([{ show: false }, { v: 'x' }], {}, { a: '[[v|if:!show?]]' }),
+    deepReplace([{ v: 'x' }], {}, { a: '[[v|if:!show?]]' }),
+    deepReplace([{ show: true }, { v: 'x' }], {}, { a: '[[v|if:!show?]]' }),
+  ],
+  [{ a: 'x' }, { a: 'x' }, {}],
+);
+check(
+  'if:name!=text holds for anything but that text, an unset variable included',
+  [
+    deepReplace([{ mode: 'auto' }, { v: 'x' }], {}, { a: '[[v|if:mode!=off?]]' }),
+    deepReplace([{ v: 'x' }], {}, { a: '[[v|if:mode!=off?]]' }),
+    deepReplace([{ mode: 'off' }, { v: 'x' }], {}, { a: '[[v|if:mode!=off?]]' }),
+  ],
+  [{ a: 'x' }, { a: 'x' }, {}],
+);
+check(
+  'exists puts a real true or false in for an entity Home Assistant does or does not know',
+  [
+    deepReplace([{ m: 'binary_sensor.hall_motion' }], {}, { a: '[[m|exists]]' }, undefined, known),
+    deepReplace([{ m: 'binary_sensor.attic_motion' }], {}, { a: '[[m|exists]]' }, undefined, known),
+    deepReplace([], {}, { a: '[[m|exists]]' }, undefined, known),
+  ],
+  [{ a: true }, { a: false }, { a: false }],
+);
+check(
+  'exists through a let variable gates another value with if:',
+  deepReplace(
+    [{ m: 'binary_sensor.attic_motion' }],
+    { let: { has_motion: '[[m|exists]]' } },
+    { a: '[[m|if:has_motion?]]', b: '[[m|if:!has_motion?]]' },
+    undefined,
+    known,
+  ),
+  { b: 'binary_sensor.attic_motion' },
+);
+check(
+  'contains: finds text in text, and a whole item in a list',
+  deepReplace(
+    [{ name: 'Outdoor Lights' }, { tags: ['Outdoor', 'Garden'] }, { labels: 'Outdoors, Garden' }],
+    {},
+    {
+      a: '[[name|contains:door]]',
+      b: '[[tags|contains:Garden]]',
+      c: '[[labels|split|contains:Outdoor]]',
+      d: '[[missing|contains:x]]',
+    },
+  ),
+  { a: true, b: true, c: false, d: false },
+);
+check(
+  'find: gives where the text starts as a number, -1 when it is not there',
+  deepReplace([{ id: 'camera_1_car' }], {}, { a: '[[id|find:car]]', b: '[[id|find:dog]]', c: 'at [[id|find:_]]' }),
+  { a: 9, b: -1, c: 'at 6' },
+);
+
+/* ------------------------------------- a value built from other placeholders */
+
+{
+  const hass = {
+    states: {
+      'light.hallway': { state: 'on', attributes: { friendly_name: 'Hallway light' } },
+      'binary_sensor.hallway_motion': { state: 'off', attributes: {} },
+    },
+    entities: {},
+  };
+  check(
+    'a resolver reads a let: value as it ends up, not with its brackets in',
+    deepReplace(
+      [{ room: 'Hallway' }],
+      { let: { light: 'light.[[room|slug]]' } },
+      { title: '[[light|friendly_name]]' },
+      'x',
+      hass,
+      true,
+    ),
+    { title: 'Hallway light' },
+  );
+  check(
+    'and a default: value',
+    deepReplace(
+      [{ room: 'hallway' }],
+      { default: [{ light: 'light.[[room]]' }] },
+      { title: '[[light|friendly_name]]' },
+      'x',
+      hass,
+      true,
+    ),
+    { title: 'Hallway light' },
+  );
+  check(
+    'exists asks about the entity a let: value builds',
+    deepReplace(
+      [{ room: 'hallway' }],
+      { let: { m: 'binary_sensor.[[room]]_motion', has: '[[m|exists]]', none: '[[room|exists]]' } },
+      { has: '[[has]]', none: '[[none]]' },
+      'x',
+      hass,
+      true,
+    ),
+    { has: true, none: false },
+  );
+  check(
+    'text from Home Assistant inside such a value stays text',
+    deepReplace(
+      [{ room: '[[!secret]]' }, { secret: 'leaked' }],
+      { let: { label: 'Room [[room]]' } },
+      { a: '[[label|upper]]' },
+      'x',
+      hass,
+      true,
+    ),
+    { a: 'ROOM [[SECRET]]' },
+  );
+}
 
 report();

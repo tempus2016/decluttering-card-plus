@@ -9,7 +9,7 @@ directory on top and hands the result to Jekyll.
 
 | | |
 | --- | --- |
-| `build.py` | Reshapes a wiki clone into a Jekyll source: rewrites `[Page](Page)` links to `.html`, gives each page front matter so it gets a `<title>` of its own, turns `Home.md` into `index.md` with the hero in its front matter, and makes `_Sidebar.md` an include. |
+| `build.py` | Reshapes a wiki clone into a Jekyll source: rewrites `[Page](Page)` links to `.html`, gives each page front matter so it gets a `<title>` of its own, turns `Home.md` into `index.md` with the hero in its front matter, makes `_Sidebar.md` an include, and strips the raw HTML tags a page must not carry (`meta`, `form`, `iframe`, `object`, `embed`, `base`). |
 | `_layouts/wiki.html` | The page: bar, navigation, content, "on this page". |
 | `_layouts/home.html` | The same, with the hero on top. |
 | `assets/css/docs.css` | All of it. Custom properties at the top, dark scheme underneath them. |

@@ -120,3 +120,8 @@ export function libraryNeeds(entry: LibraryEntry, existing: string[]): string[] 
   walk(entry.template);
   return [...needed].filter((name) => !existing.includes(name));
 }
+
+/** What a template installed from the library is stamped with: which entry, from which version of the card. */
+export function librarySource(name: string, version: string): { library: string; version: string } {
+  return { library: name, version };
+}

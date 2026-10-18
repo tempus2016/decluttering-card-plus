@@ -176,6 +176,46 @@ check(
 );
 check('and is left out quickly', Date.now() - bombAt < 1500, true);
 
+// One long string, aliased ten times into a list, that list ten times into another, and so
+// on: under thirty kilobytes of post that would be hundreds of megabytes once copied.
+function longAliasBomb() {
+  const lines = [`s: &s "${'x'.repeat(25000)}"`];
+  let last = 's';
+  for (let i = 1; i <= 3; i += 1) {
+    lines.push(`l${i}: &l${i} [${Array(10).fill(`*${last}`).join(',')}]`);
+    last = `l${i}`;
+  }
+  lines.push(`l4: [${Array(15).fill(`*${last}`).join(',')}]`);
+  return lines.join('\n') + '\ntemplate: t\ncard: {type: markdown}\n';
+}
+const longBombAt = Date.now();
+check(
+  'a post whose aliases share one long string is left out',
+  parseDiscussion(post(907, '```yaml\n' + longAliasBomb() + '```')),
+  undefined,
+);
+check('and quickly', Date.now() - longBombAt < 500, true);
+check(
+  'a template that aliases a few of its own pieces still loads',
+  parseDiscussion(
+    post(
+      908,
+      '```yaml\ntemplate: t\ncard:\n  type: tile\n  tap_action: &a {action: more-info}\n  hold_action: *a\n  double_tap_action: *a\n  icon_tap_action: *a\n```',
+    ),
+  ).template.card.hold_action,
+  { action: 'more-info' },
+);
+check(
+  'a post with more aliases than a template has pieces to share is left out',
+  parseDiscussion(
+    post(
+      909,
+      '```yaml\na: &a 1\nb: [' + Array(100).fill('*a').join(',') + ']\ntemplate: t\ncard: {type: markdown}\n```',
+    ),
+  ),
+  undefined,
+);
+
 check(
   'a post longer than any template is left out before it is read',
   parseDiscussion(post(901, '```yaml\n' + TILE + '```\n' + '-'.repeat(70000))),
@@ -239,13 +279,158 @@ check('what a post would do once installed is spelt out', communityRisks(risky),
   urls: ['https://evil.example/', 'https://evil.example/c?d='],
   embeds: true,
   scripts: true,
+  placeholders: false,
 });
-check('a harmless post has nothing to say', communityRisks(parseDiscussion(post(906, '```yaml\n' + TILE + '```'))), {
-  actions: [],
-  urls: [],
-  embeds: false,
-  scripts: false,
-});
+const nothing = { actions: [], urls: [], embeds: false, scripts: false, placeholders: false };
+check(
+  'a harmless post has nothing to say',
+  communityRisks(parseDiscussion(post(906, '```yaml\n' + TILE + '```'))),
+  nothing,
+);
+
+// The risks of a template posted as the given YAML lines (the name and `card:` supplied).
+function risksOf(lines, name = 'r') {
+  return communityRisks(parseDiscussion(post(910, ['```yaml', `template: ${name}`, ...lines, '```'].join('\n'))));
+}
+
+/* --- what a post can hide from the scan --- */
+
+check(
+  "an action spelt by a variable is read with the template's own default in place",
+  risksOf([
+    'default: [{a: perform-action}]',
+    'card:',
+    '  type: tile',
+    '  entity: light.x',
+    '  tap_action: {action: "[[a]]", perform_action: lock.unlock}',
+  ]),
+  { actions: ['lock.unlock'], urls: [], embeds: false, scripts: false, placeholders: true },
+);
+check(
+  "and with a declared variable's default too",
+  risksOf([
+    'variables: [{name: svc, default: lock.unlock}]',
+    'card:',
+    '  type: tile',
+    '  entity: light.x',
+    '  tap_action: {action: perform-action, perform_action: "[[svc]]"}',
+  ]).actions,
+  ['lock.unlock'],
+);
+check(
+  'a placeholder as a mapping key is a risk in itself',
+  risksOf(['card:', '  type: tile', '  entity: light.x', '  tap_action: {"[[k]]": perform-action}']).placeholders,
+  true,
+);
+check(
+  'a card type spelt by a variable is read with its default, and flagged for being a variable',
+  (() => {
+    const risks = risksOf(['default: [{t: iframe}]', 'card:', '  type: "[[t]]"', '  url: /local/x.html']);
+    return [risks.embeds, risks.placeholders];
+  })(),
+  [true, true],
+);
+check(
+  'a placeholder in a service name is a risk in itself',
+  risksOf(['card:', '  type: tile', '  tap_action: {action: perform-action, perform_action: "[[svc]]"}']).placeholders,
+  true,
+);
+check(
+  'a placeholder anywhere else is the ordinary way to write a template',
+  risksOf(['variables: [entity, name]', 'card:', '  type: tile', '  entity: "[[entity]]"', '  name: "[[name]]"']),
+  nothing,
+);
+
+check(
+  'a toggle on a lock, a cover, an alarm, a script or a button is spelt out',
+  risksOf([
+    'card:',
+    '  type: vertical-stack',
+    '  cards:',
+    '    - {type: tile, entity: lock.front, tap_action: {action: toggle}}',
+    '    - {type: tile, entity: cover.garage, hold_action: {action: toggle}}',
+    '    - {type: tile, entity: alarm_control_panel.home, double_tap_action: {action: toggle}}',
+    '    - {type: button, entity: script.open_all, tap_action: {action: toggle}}',
+    '    - {type: button, entity: input_button.panic, tap_action: {action: toggle}}',
+  ]).actions,
+  [
+    'toggle alarm_control_panel.home',
+    'toggle cover.garage',
+    'toggle input_button.panic',
+    'toggle lock.front',
+    'toggle script.open_all',
+  ],
+);
+check(
+  'a toggle on a light, a switch, a fan or a boolean is what a tile is for',
+  risksOf([
+    'card:',
+    '  type: vertical-stack',
+    '  cards:',
+    '    - {type: tile, entity: light.x, tap_action: {action: toggle}}',
+    '    - {type: tile, entity: switch.x, tap_action: {action: toggle}}',
+    '    - {type: tile, entity: fan.x, hold_action: {action: toggle}}',
+    '    - {type: tile, entity: input_boolean.x, tap_action: {action: toggle}}',
+  ]),
+  nothing,
+);
+check(
+  'more-info and navigate on a lock are fine',
+  risksOf([
+    'card:',
+    '  type: tile',
+    '  entity: lock.front',
+    '  tap_action: {action: more-info}',
+    '  hold_action: {action: navigate, navigation_path: /lovelace/locks}',
+  ]),
+  nothing,
+);
+check(
+  'a toggle aimed at a lock through its target is seen too',
+  risksOf(['card:', '  type: button', '  tap_action: {action: toggle, target: {entity_id: lock.front}}']).actions,
+  ['toggle lock.front'],
+);
+check(
+  'a DOM event and a url action are spelt out',
+  risksOf([
+    'card:',
+    '  type: button',
+    '  entity: light.x',
+    '  tap_action: {action: fire-dom-event, browser_mod: {service: lock.unlock}}',
+    '  hold_action: {action: url, url_path: "javascript:alert(1)"}',
+  ]),
+  { actions: ['fire-dom-event'], urls: ['javascript:alert(1)'], embeds: false, scripts: false, placeholders: false },
+);
+
+check(
+  'an address without a scheme, or shouted, is still an address',
+  risksOf(['card:', '  type: markdown', '  content: "![](//evil.example/c?d=1) and HTTPS://EVIL.EXAMPLE/"']).urls,
+  ['//evil.example/c?d=1', 'HTTPS://EVIL.EXAMPLE/'],
+);
+check(
+  'a style that fetches something is an address too',
+  risksOf([
+    'card:',
+    '  type: custom:button-card',
+    '  styles: {card: ["background: url(\'//evil.example/p.png\')", "@import \'https://evil.example/s.css\'"]}',
+  ]).urls,
+  ['//evil.example/p.png', 'https://evil.example/s.css'],
+);
+check(
+  'a style drawing on a local image is not',
+  risksOf(['card:', '  type: custom:button-card', '  styles: {card: ["background: url(/local/p.png)"]}']).urls,
+  [],
+);
+check(
+  'a config-template-card expression is script',
+  risksOf([
+    'card:',
+    '  type: custom:config-template-card',
+    '  entities: [light.x]',
+    '  card: {type: tile, entity: "${states[\'light.x\'].entity_id}"}',
+  ]).scripts,
+  true,
+);
 
 /* --- fetchCommunity --- */
 
@@ -350,6 +535,139 @@ function respond(status, body, headers = {}) {
     readBack.entries.map((each) => [each.id, each.url]),
     [[1, 'https://github.com/tempus2016/decluttering-card-plus/discussions/1']],
   );
+
+  /* ------------------------------------------------------------- updates for installed templates */
+
+  {
+    const { communitySource, stampedTemplate, sharedUpdates } = require('../.test-build/community.js');
+
+    const post = {
+      id: 7,
+      title: 'Tile',
+      author: 'someone',
+      url: 'https://github.com/x',
+      name: 'tile_light',
+      template: { card: { type: 'tile', v: 2 } },
+      includes: { helper: { card: { type: 'markdown' } } },
+      reactions: 0,
+      updated: '2026-03-01T10:00:00Z',
+    };
+    const list = { entries: [post], fetched: 0 };
+
+    check(
+      'a post stamps what it installs with itself, when it was edited, the name in the post, and who posted it',
+      communitySource(post, 'helper'),
+      {
+        discussion: 7,
+        updated: '2026-03-01T10:00:00Z',
+        name: 'helper',
+        author: 'someone',
+      },
+    );
+
+    check(
+      'a stamp replaces whatever source the post was written with',
+      stampedTemplate({ card: {}, source: { discussion: 1 } }, { discussion: 7 }),
+      { card: {}, source: { discussion: 7 } },
+    );
+
+    const by = 'someone';
+    const updates = sharedUpdates(
+      [
+        {
+          name: 'tile_light',
+          source: { discussion: 7, updated: '2026-01-01T00:00:00Z', name: 'tile_light', author: by },
+        },
+        {
+          name: 'tile_light_2',
+          source: { discussion: 7, updated: '2026-03-01T10:00:00Z', name: 'tile_light', author: by },
+        },
+        { name: 'helper', source: { discussion: 7, updated: '2026-01-01T00:00:00Z', name: 'helper', author: by } },
+        {
+          name: 'dropped',
+          source: { discussion: 7, updated: '2026-01-01T00:00:00Z', name: 'not_any_more', author: by },
+        },
+        { name: 'deleted', source: { discussion: 99, updated: '2026-01-01T00:00:00Z', author: by } },
+        { name: 'unstamped_time', source: { discussion: 7, author: by } },
+      ],
+      list,
+    );
+
+    check(
+      'a post edited since the install is an update; one not edited is current; one gone says so',
+      updates.map((each) => [each.name, each.status]),
+      [
+        ['tile_light', 'update'],
+        ['tile_light_2', 'current'],
+        ['helper', 'update'],
+        ['dropped', 'gone'],
+        ['deleted', 'gone'],
+        ['unstamped_time', 'update'],
+      ],
+    );
+
+    check('an update carries the template as the post has it now, stamped afresh', updates[0].latest, {
+      card: { type: 'tile', v: 2 },
+      source: { discussion: 7, updated: '2026-03-01T10:00:00Z', name: 'tile_light', author: 'someone' },
+    });
+
+    check('a template the post carries is found by its name in the post', updates[2].latest.card, { type: 'markdown' });
+
+    check('an update carries who posted it, for the next check', updates[0].latest.source.author, 'someone');
+
+    /*
+     * The stamp names a post and who posted it. A stamp that was typed or pasted rather than
+     * written by an install - no author, or the wrong one - cannot be trusted to point at the
+     * template it says, and the post's edit time says nothing about that.
+     */
+    const doubted = sharedUpdates(
+      [
+        {
+          name: 'other_account',
+          source: { discussion: 7, updated: '2026-01-01T00:00:00Z', name: 'tile_light', author: 'else' },
+        },
+        { name: 'no_author', source: { discussion: 7, updated: '2026-01-01T00:00:00Z', name: 'tile_light' } },
+        {
+          name: 'blank_author',
+          source: { discussion: 7, updated: '2026-01-01T00:00:00Z', name: 'tile_light', author: '' },
+        },
+        {
+          name: 'wrong_author_but_current',
+          source: { discussion: 7, updated: '2026-03-01T10:00:00Z', author: 'else' },
+        },
+      ],
+      list,
+    );
+
+    check(
+      'a post by anybody but the stamped author is never an update, however it is dated',
+      doubted.map((each) => [each.name, each.status, 'latest' in each]),
+      [
+        ['other_account', 'unverified', false],
+        ['no_author', 'unverified', false],
+        ['blank_author', 'unverified', false],
+        ['wrong_author_but_current', 'unverified', false],
+      ],
+    );
+
+    check(
+      'but the post is still named, so the person can go and look',
+      doubted.map((each) => each.entry && each.entry.id),
+      [7, 7, 7, 7],
+    );
+
+    check(
+      'a post that is gone is gone before it is doubted',
+      sharedUpdates([{ name: 'x', source: { discussion: 99, author: 'else' } }], list)[0].status,
+      'gone',
+    );
+
+    check(
+      'a post no longer listed has nothing to offer',
+      [updates[4].entry, updates[4].latest],
+      [undefined, undefined],
+    );
+  }
 
   report();
 })();

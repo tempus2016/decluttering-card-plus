@@ -1,15 +1,24 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
 import {
+  LetLayer,
+  OUTER_LET,
   OWN_DEFAULTS,
   VIEW_VALUES,
   VariableDeclaration,
+  CONSUMER_TYPES,
   diagnoseInstance,
   forEachNames,
   getDeclarations,
   normaliseVariables,
+  templateDefaults,
+  PLACEHOLDER,
+  resolveVariables,
+  variableValues,
 } from './variables';
+import deepReplace from './deep-replace';
 import { isRegistrySource, registryNames } from './registry';
+import { rebuildOnEntities } from './rebuild';
 import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -31,6 +40,13 @@ const DEFAULTS_KEY = 'decluttering_defaults';
  * when there is no such dashboard, looking for it costs one quiet request per page.
  */
 export const LIBRARY_DASHBOARD = 'decluttering-templates';
+
+/*
+ * Values worked out per card the way a template's `let:` is, written once for a dashboard,
+ * a view or a section rather than in every template (discussion #162). Written wherever
+ * decluttering_defaults can be; unlike those, a card cannot override them.
+ */
+const LET_KEY = 'decluttering_let';
 
 // Variable declarations every template on the dashboard can take up by name, so a
 // selector, label and default written once serve every template that uses the variable.
@@ -80,6 +96,14 @@ export function checkDashboard(
   unusedTemplates: string[];
 } {
   const templates = collectTemplates(ll);
+  // A view's or a section's decluttering_defaults and decluttering_let give names values
+  // too, so a card is checked against the templates as its own place sees them.
+  const placed = new Map<string, Record<string, TemplateConfig>>();
+  const templatesAt = (view: number, section?: number): Record<string, TemplateConfig> => {
+    const key = `${view}/${section ?? ''}`;
+    if (!placed.has(key)) placed.set(key, collectTemplates(ll, view, undefined, section));
+    return placed.get(key) as Record<string, TemplateConfig>;
+  };
   // A template borrowed from another dashboard is not missing, however local this sweep
   // is - the card using it renders. Borrowed names are never "unused" here either: they
   // are somebody else's templates, and the only ones this dashboard answers for are its own.
@@ -90,21 +114,33 @@ export function checkDashboard(
 
   // The names a repeat supplies to each copy, whether the repeat is a card's or a section's.
   const suppliedBy = (repeat: any): string[] => [
+    // An entity a card rebuilds on stands for itself in a placeholder.
+    ...rebuildOnEntities(repeat.rebuild_on),
     ...forEachNames(repeat.for_each),
     ...registryNames(repeat.for_each_from),
     ...(isRegistrySource(repeat.for_each_from) ? ['index', 'index0', 'count', 'first', 'last', 'total'] : []),
   ];
 
   // `handed` is what an enclosing repeat in the view strategy gives every card inside it.
-  const walk = (node: any, handed: string[] = []): void => {
+  const walk = (node: any, handed: string[], here: Record<string, TemplateConfig>): void => {
     if (!node) return;
     if (Array.isArray(node)) {
-      for (const item of node) walk(item, handed);
+      for (const item of node) walk(item, handed, here);
       return;
     }
     if (typeof node !== 'object') return;
+    // A card choosing its template by domain uses each one it names, so each is looked for.
+    // Its variables are shared by copies built from different templates, so they are not
+    // held up against any one of them - what one template leaves unset another may not use.
+    const byDomain = byDomainOf(node) !== undefined && CONSUMER_TYPES.includes(node.type);
+    if (byDomain) {
+      for (const name of templatesNamedBy(node)) {
+        if (!templates[name] && !elsewhere.has(name)) missing.set(name, (missing.get(name) ?? 0) + 1);
+      }
+      return;
+    }
     if (CONSUMER_TYPES.includes(node.type) && typeof node.template === 'string') {
-      const template = templates[node.template];
+      const template = here[node.template];
       if (!template) {
         if (!elsewhere.has(node.template)) missing.set(node.template, (missing.get(node.template) ?? 0) + 1);
       } else {
@@ -124,9 +160,9 @@ export function checkDashboard(
     const inside = repeats
       ? [...handed, ...suppliedBy(node), ...normaliseVariables(node.variables).map((v) => Object.keys(v)[0])]
       : handed;
-    for (const value of Object.values(node)) walk(value, inside);
+    for (const value of Object.values(node)) walk(value, inside, here);
   };
-  walk((ll as any)?.views);
+  forEachPlace(ll, (node, view, section) => walk(node, [], templatesAt(view, section)));
 
   return {
     missingTemplates: [...missing.entries()].sort().map(([template, count]) => {
@@ -144,8 +180,7 @@ export function checkDashboard(
 function extendedNames(ll: LovelaceConfig | null | undefined): Set<string> {
   const parents = new Set<string>();
   for (const template of Object.values(collectRawTemplates(ll))) {
-    const parent = (template as any)?.extends;
-    if (typeof parent === 'string') parents.add(parent);
+    for (const parent of parentsOf(template)) parents.add(parent);
   }
   return parents;
 }
@@ -246,7 +281,7 @@ export function firstUsage(ll: LovelaceConfig | null | undefined, template: stri
       return;
     }
     if (typeof node !== 'object') return;
-    if (CONSUMER_TYPES.includes(node.type) && node.template === template) {
+    if (templatesNamedBy(node).includes(template)) {
       found = node;
       return;
     }
@@ -269,6 +304,175 @@ export function templatePickerLabel(name: string, template: TemplateConfig | und
   const category = (template as any)?.category;
   const described = template?.description ? `${name} — ${template.description}` : name;
   return typeof category === 'string' && category ? `${category} · ${described}` : described;
+}
+
+/* ------------------------------------------------------- template_by_domain */
+
+export const BY_DOMAIN_KEY = 'template_by_domain';
+
+// The entry a domain with none of its own falls back on.
+const BY_DOMAIN_DEFAULT = 'default';
+
+/**
+ * A card's `template_by_domain:` mapping, with only the entries that name a template. A
+ * list or a string is not a mapping of domains, and the card is read as though it had none.
+ */
+export function byDomainOf(config: unknown): Record<string, string> | undefined {
+  const written = (config as any)?.[BY_DOMAIN_KEY];
+  if (!isMapping(written)) return undefined;
+  const out: Record<string, string> = Object.create(null);
+  for (const [domain, name] of Object.entries(written)) if (typeof name === 'string' && name) out[domain] = name;
+  // Created without a prototype so a domain called `constructor` is only ever an entry; copied
+  // to a plain object on the way out so it compares and prints like any other mapping.
+  return { ...out };
+}
+
+/**
+ * Every template one of our cards names: its `template:` and each one in its
+ * `template_by_domain:`, once each. Anything else names nothing - a template card carries
+ * the same key, but it defines that template rather than using it.
+ */
+export function templatesNamedBy(node: any): string[] {
+  if (!node || typeof node !== 'object' || !CONSUMER_TYPES.includes(node.type)) return [];
+  const names = typeof node.template === 'string' && node.template ? [node.template] : [];
+  for (const name of Object.values(byDomainOf(node) ?? {})) if (!names.includes(name)) names.push(name);
+  return names;
+}
+
+const DOMAIN_OF = /^([a-z0-9_]+)\./i;
+
+/*
+ * `template_by_domain:` lets one card - one repeat over a room's entities, say - give each
+ * copy the template made for what it shows: a light gets the light tile, a cover the cover
+ * tile, anything else the `default:` entry, or the card's own `template:` when there is no
+ * `default:`. The domain is read off the copy's `entity` variable as it will end up, so a
+ * default or a value built from the others (`light.[[room]]`) counts; those are read
+ * against the template the card falls back on, the only one known before choosing.
+ *
+ * Nothing to fall back on is the usual missing-template error, naming the domain, and a
+ * name that is not a template is the usual one naming that.
+ *
+ * When the entity that picked came from the fallback template rather than the card - its
+ * default, say - the template picked knows nothing of it and `[[entity]]` stayed in
+ * brackets. So that entity comes back as `entity`, for the card to build with under its
+ * own variables (withPickedEntity): the card's values still win, as they always do.
+ */
+export function pickTemplate(
+  config: { template?: unknown; template_by_domain?: unknown },
+  variables: VariablesConfig[] | undefined,
+  lookup: (name: string) => TemplateConfig | null | undefined,
+  hass?: any,
+  available: string[] = [],
+): { name: string; template: TemplateConfig; entity?: string } {
+  const byDomain = byDomainOf(config) ?? {};
+  const own = typeof config.template === 'string' && config.template ? config.template : undefined;
+  const fallback = Object.prototype.hasOwnProperty.call(byDomain, BY_DOMAIN_DEFAULT)
+    ? byDomain[BY_DOMAIN_DEFAULT]
+    : own;
+  const fallbackTemplate = fallback ? (lookup(fallback) ?? undefined) : undefined;
+
+  let entity = variableValues(resolveVariables(variables, fallbackTemplate)).entity;
+  if (typeof entity === 'string' && PLACEHOLDER.test(entity)) {
+    entity = deepReplace(variables, fallbackTemplate ?? {}, entity, fallback, hass, true);
+  }
+  const domain = typeof entity === 'string' ? DOMAIN_OF.exec(entity)?.[1] : undefined;
+  const name =
+    domain !== undefined && domain !== BY_DOMAIN_DEFAULT && Object.prototype.hasOwnProperty.call(byDomain, domain)
+      ? byDomain[domain]
+      : fallback;
+  if (!name) {
+    throw new Error(localize('error.no_template_for_domain', { domain: domain ?? localize('error.no_entity') }, hass));
+  }
+  const template = lookup(name);
+  if (!template) {
+    throw new Error(localize('error.template_missing', { template: name }, hass) + didYouMean(name, available));
+  }
+  const passed = normaliseVariables(variables).some((entry) => Object.keys(entry)[0] === 'entity');
+  return !passed && typeof entity === 'string' ? { name, template, entity } : { name, template };
+}
+
+/** A card's variables with the entity its template was picked by underneath, when there is one. */
+export function withPickedEntity(
+  variables: VariablesConfig[] | VariablesConfig | undefined,
+  entity: string | undefined,
+): VariablesConfig[] | VariablesConfig | undefined {
+  return entity === undefined ? variables : [...normaliseVariables(variables), { entity }];
+}
+
+/* --------------------------------------------------------------- deprecated */
+
+/**
+ * What a template says about being retired: undefined when it is not, an empty text for
+ * `deprecated: true`, and the message for `deprecated: "Use room_tile_v2"`. Nothing about
+ * how a card using it renders changes - it is a note to whoever maintains the dashboard.
+ */
+export function deprecationOf(template: unknown): string | undefined {
+  const said = (template as any)?.deprecated;
+  if (said === true) return '';
+  return typeof said === 'string' ? said.trim() : undefined;
+}
+
+/*
+ * The template picker: every template, labelled as templatePickerLabel labels it, with the
+ * deprecated ones marked and put last so a new card is not started on one. Sorted here
+ * rather than by the select, which would mix them back in alphabetically.
+ */
+export function templatePickerOptions(
+  templates: Record<string, TemplateConfig>,
+  hass?: any,
+): { value: string; label: string }[] {
+  const options = Object.entries(templates).map(([name, template]) => {
+    const retired = deprecationOf(template) !== undefined;
+    const label = templatePickerLabel(name, template);
+    return {
+      value: name,
+      label: retired ? label + localize('editor.deprecated_suffix', undefined, hass) : label,
+      retired,
+    };
+  });
+  options.sort((a, b) => Number(a.retired) - Number(b.retired) || a.label.localeCompare(b.label));
+  return options.map(({ value, label }) => ({ value, label }));
+}
+
+/**
+ * The deprecated templates something on the dashboard still uses, with where - each view
+ * and how many cards in it, and the templates that use or extend it - and the message.
+ * A deprecated template nothing uses is already as good as gone, and is left out.
+ */
+export function deprecatedInUse(
+  ll: LovelaceConfig | null | undefined,
+): { template: string; message: string; views: { title: string; count: number }[]; templates: string[] }[] {
+  const found: { template: string; message: string; views: { title: string; count: number }[]; templates: string[] }[] =
+    [];
+  const templates = collectTemplates(ll);
+  for (const name of Object.keys(templates).sort()) {
+    const message = deprecationOf(templates[name]);
+    if (message === undefined) continue;
+    const usages = collectUsages(ll, name);
+    if (!usages.views.length && !usages.templates.length) continue;
+    found.push({
+      template: name,
+      message,
+      views: usages.views.map((view) => ({ title: view.title, count: view.count })),
+      templates: usages.templates,
+    });
+  }
+  return found;
+}
+
+// Said once per template for the life of the page: ten cards using it are one thing to fix.
+const deprecationsSaid = new Set<string>();
+
+/** Mentions in the console that a card is built from a deprecated template, once per template. */
+export function warnIfDeprecated(name: string | undefined, template: TemplateConfig | undefined, hass?: any): void {
+  const message = deprecationOf(template);
+  if (message === undefined || !name || deprecationsSaid.has(name)) return;
+  deprecationsSaid.add(name);
+  console.warn(
+    message
+      ? localize('warn.deprecated_because', { template: name, message }, hass)
+      : localize('warn.deprecated', { template: name }, hass),
+  );
 }
 
 /* -------------------------------------------------------------------- group */
@@ -297,9 +501,10 @@ export function groupCard(group: unknown): { type: string; cards: unknown; grid_
 const TEMPLATE_CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group'] as const;
 
 /*
- * Child over parent: mappings merge key by key, lists and scalars are the child's, and a
- * null takes the parent's key away - the same rules a card's own `card:` block follows, so
- * `images: null` means one thing wherever it is written (#193).
+ * Child over parent: mappings merge key by key, lists and scalars are the child's unless it
+ * writes list edits (`__append__` and co, #209), and a null takes the parent's key away -
+ * the same rules a card's own `card:` block follows, so `images: null` means one thing
+ * wherever it is written (#193).
  */
 function deepMergeConfig(parent: any, child: any): any {
   return child === undefined ? parent : mergeOver(parent, child);
@@ -323,8 +528,10 @@ function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): Template
   }
   const variables = mergeDeclarations((parent as any).variables, (child as any).variables);
   if (variables.length) merged.variables = variables;
-  // The child comes first in both lists, which is what makes its values win downstream.
-  const defaults = [...normaliseVariables(child.default), ...normaliseVariables(parent.default)];
+  // The child comes first in both lists, which is what makes its values win downstream. Either
+  // may have spelled it `defaults:`; the folded list is written back under the one name.
+  const defaults = [...normaliseVariables(templateDefaults(child)), ...normaliseVariables(templateDefaults(parent))];
+  delete merged.defaults;
   if (defaults.length) merged.default = defaults;
   const lets = [...normaliseVariables(child.let), ...normaliseVariables(parent.let)];
   if (lets.length) merged.let = lets;
@@ -332,10 +539,36 @@ function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): Template
 }
 
 /*
+ * What a template says about itself rather than what it builds: that it is on its way out,
+ * and the values it is shown working with. Both are about the template that wrote them, so
+ * a child does not take them from its parent - a template built on a deprecated one is new,
+ * not deprecated, and a parent's examples were never checked against the child's content.
+ */
+const NOT_INHERITED = ['deprecated', 'examples'];
+
+/**
+ * The templates one names in `extends:`, as a list - one name, or several written as a
+ * list (`extends: [base, with_actions]`). Anything that is not a name is not a parent.
+ */
+export function parentsOf(template: unknown): string[] {
+  const written = (template as any)?.extends;
+  if (typeof written === 'string') return written ? [written] : [];
+  if (!Array.isArray(written)) return [];
+  return written.filter((name): name is string => typeof name === 'string' && name.length > 0);
+}
+
+/*
  * `extends:` folds a parent template underneath a child, so a family of templates can
- * differ by one line. A parent nobody defines leaves the child as written, extends key
- * and all, so a later pass over more dashboards can still honour it - and a pair that
- * extend each other terminates by merging whichever the walk reached first as it stood.
+ * differ by one line. Several parents fold left to right before the child goes on top, so
+ * `extends: [base, with_actions]` is base, then with_actions over it, then the child over
+ * both: each one later in the list has the last word over the ones before it, the way each
+ * level of a single chain does. Every parent resolves its own `extends` first.
+ *
+ * A parent nobody defines leaves the child as written, extends key and all, so a later pass
+ * over more dashboards can still honour it. With a list that is all or nothing: folding the
+ * parents that are here and the missing one later would put it on top of parents written
+ * after it. A set that extend each other terminates by merging whichever the walk reached
+ * first as it stood; extendsLoops is what says so.
  */
 function resolveExtends(templates: Record<string, TemplateConfig>): Record<string, TemplateConfig> {
   // No prototype: a template named `__proto__` is then an entry here, not a new parent.
@@ -343,15 +576,17 @@ function resolveExtends(templates: Record<string, TemplateConfig>): Record<strin
   const walking = new Set<string>();
   const resolve = (name: string): TemplateConfig => {
     const template = out[name];
-    const parentName = (template as any)?.extends;
-    if (typeof parentName !== 'string' || walking.has(name)) return template;
+    const parentNames = parentsOf(template);
+    if (!parentNames.length || walking.has(name)) return template;
+    if (parentNames.some((parent) => out[parent] === undefined)) return template;
     walking.add(name);
-    const parent = out[parentName] !== undefined ? resolve(parentName) : undefined;
+    const parents = parentNames.map((parent) => resolve(parent));
     walking.delete(name);
-    if (parent === undefined) return template;
+    const base = parents.slice(1).reduce((under, over) => mergeTemplates(under, over), parents[0]);
     const child: any = { ...(template as any) };
     delete child.extends;
-    const merged = mergeTemplates(parent, child);
+    const merged: any = mergeTemplates(base, child);
+    for (const key of NOT_INHERITED) if (!Object.prototype.hasOwnProperty.call(child, key)) delete merged[key];
     out[name] = merged;
     return merged;
   };
@@ -359,14 +594,97 @@ function resolveExtends(templates: Record<string, TemplateConfig>): Record<strin
   return out;
 }
 
+/**
+ * Every loop in a dashboard's `extends:`, through any parent of a list, each named once
+ * from where it is first met. resolveExtends already stops going round one; this is what
+ * lets the health panel say there is one, rather than leaving a template quietly built from
+ * whichever half of the loop was reached first.
+ */
+export function extendsLoops(ll: LovelaceConfig | null | undefined): string[][] {
+  const templates = collectRawTemplates(ll);
+  const loops: string[][] = [];
+  const seen = new Set<string>();
+  const done = new Set<string>();
+  const walk = (name: string, path: string[]): void => {
+    const at = path.indexOf(name);
+    if (at !== -1) {
+      const loop = [...path.slice(at), name];
+      const key = [...loop.slice(0, -1)].sort().join('\u0000');
+      if (!seen.has(key)) {
+        seen.add(key);
+        loops.push(loop);
+      }
+      return;
+    }
+    if (done.has(name) || templates[name] === undefined) return;
+    for (const parent of parentsOf(templates[name])) walk(parent, [...path, name]);
+    done.add(name);
+  };
+  for (const name of Object.keys(templates)) walk(name, []);
+  return loops;
+}
+
 /* ---------------------------------------------------------------- overrides */
 
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
+const LIST_EDITS = ['__append__', '__prepend__', '__update__', '__remove__'];
+
+/** A mapping written where a list is: every key one of the list edits. */
+function isListEdit(base: unknown, over: Record<string, unknown>): boolean {
+  const keys = Object.keys(over);
+  return (
+    (base === undefined || Array.isArray(base)) && keys.length > 0 && keys.every((key) => LIST_EDITS.includes(key))
+  );
+}
+
+/** A list index as written, negative counting from the end; anything else is no index. */
+function listIndex(written: unknown, length: number): number | undefined {
+  const index = typeof written === 'string' && /^-?\d+$/.test(written.trim()) ? Number(written) : written;
+  if (typeof index !== 'number' || !Number.isInteger(index)) return undefined;
+  return index < 0 ? (length + index >= 0 ? length + index : undefined) : index;
+}
+
+const asList = (value: unknown): unknown[] =>
+  value === undefined || value === null ? [] : Array.isArray(value) ? value : [value];
+
+/*
+ * Edits to a list rather than a new one (#209). Every index means a place in the list as the
+ * template had it, so the edits do not move each other: `__update__` merges into an item the
+ * way the rest of an override does (null removes it, an index past the end adds it there),
+ * `__remove__` takes items out, and `__prepend__` / `__append__` go on either end.
+ */
+function editList(base: unknown, edits: Record<string, unknown>): unknown[] {
+  const original = Array.isArray(base) ? base : [];
+  const items: unknown[] = [...original];
+  const removed = new Set<number>();
+  const added: unknown[] = [];
+  const update = isMapping(edits.__update__) ? edits.__update__ : {};
+  for (const [written, value] of Object.entries(update)) {
+    const index = listIndex(written, original.length);
+    if (index === undefined) continue;
+    if (index >= original.length) {
+      if (value !== null) added.push(mergeOver(undefined, value));
+    } else if (value === null) removed.add(index);
+    else items[index] = mergeOver(items[index], value);
+  }
+  for (const written of asList(edits.__remove__)) {
+    const index = listIndex(written, original.length);
+    if (index !== undefined) removed.add(index);
+  }
+  return [
+    ...asList(edits.__prepend__),
+    ...items.filter((_, index) => !removed.has(index)),
+    ...added,
+    ...asList(edits.__append__),
+  ];
+}
+
 /** Child over parent, a mapping merging key by key and a null taking the key away. */
 function mergeOver(base: unknown, over: unknown): unknown {
   if (!isMapping(over)) return over;
+  if (isListEdit(base, over)) return editList(base, over);
   const out: Record<string, unknown> = isMapping(base) ? { ...base } : {};
   for (const [key, value] of Object.entries(over)) {
     // Assigning `out.__proto__` would reparent the result rather than set a key; a card has
@@ -427,7 +745,64 @@ export function hasSectionDefaults(
 ): boolean {
   if (!place) return false;
   const section = (ll as any)?.views?.[place.view]?.sections?.[place.section];
-  return normaliseVariables(section?.[DEFAULTS_KEY]).length > 0;
+  return normaliseVariables(section?.[DEFAULTS_KEY]).length > 0 || normaliseVariables(section?.[LET_KEY]).length > 0;
+}
+
+/**
+ * Every value a card in one view and section is given from outside it: the
+ * decluttering_let and decluttering_defaults of its section, its view and the dashboard.
+ * For the health panel, which only needs to know what they are and what they read.
+ */
+export function placeValues(
+  ll: LovelaceConfig | null | undefined,
+  view: number | undefined,
+  section?: number,
+): { lets: VariablesConfig[]; defaults: VariablesConfig[] } {
+  return {
+    lets: ([] as VariablesConfig[]).concat(
+      ...[...placeLet(ll, view, section), ...dashboardLet(ll)].map((layer) => layer.values),
+    ),
+    defaults: [...collectViewDefaults(ll, view, section), ...collectDefaults(ll)],
+  };
+}
+
+/**
+ * Calls `visit` with every part of each view - a sections view's sections one at a time,
+ * with their place - so a sweep can see each card where it sits.
+ */
+export function forEachPlace(
+  ll: LovelaceConfig | null | undefined,
+  visit: (node: unknown, view: number, section?: number) => void,
+): void {
+  ((ll as any)?.views ?? []).forEach((viewConfig: any, view: number) => {
+    if (!viewConfig || typeof viewConfig !== 'object') return;
+    for (const [key, value] of Object.entries(viewConfig)) {
+      if (key === 'sections' && Array.isArray(value)) value.forEach((each, section) => visit(each, view, section));
+      else visit(value, view);
+    }
+  });
+}
+
+/** The `decluttering_let:` a whole dashboard writes. */
+function dashboardLet(ll: LovelaceConfig | null | undefined): LetLayer[] {
+  const values = normaliseVariables((ll as any)?.[LET_KEY]);
+  return values.length ? [{ from: 'dashboard_let', values }] : [];
+}
+
+/**
+ * The `decluttering_let:` layers that reach a card in one view and section, nearest first:
+ * the section's, then the view's - read from inside the strategy when the view is written
+ * out by it, as its decluttering_defaults are.
+ */
+function placeLet(ll: LovelaceConfig | null | undefined, view: number | undefined, section?: number): LetLayer[] {
+  if (view === undefined) return [];
+  const viewConfig = (ll as any)?.views?.[view];
+  const layers: LetLayer[] = [];
+  const inSection = section === undefined ? [] : normaliseVariables(viewConfig?.sections?.[section]?.[LET_KEY]);
+  if (inSection.length) layers.push({ from: 'section_let', values: inSection });
+  const inView = normaliseVariables(viewConfig?.[LET_KEY] ?? viewConfig?.strategy?.[LET_KEY]);
+  if (inView.length) layers.push({ from: 'view_let', values: inView });
+  return layers;
 }
 
 /**
@@ -457,19 +832,28 @@ export function viewIndexFromPath(ll: LovelaceConfig | null | undefined, segment
  * which is handed out to whoever asks for it, and quietly growing a `default:` list on it
  * would be a change to the dashboard that nobody made.
  */
-function withDefaults(template: TemplateConfig, view: VariablesConfig[], shared: VariablesConfig[]): TemplateConfig {
-  if (!view.length && !shared.length) return template;
+function withDefaults(
+  template: TemplateConfig,
+  view: VariablesConfig[],
+  shared: VariablesConfig[],
+  lets: LetLayer[] = [],
+): TemplateConfig {
+  if (!view.length && !shared.length && !lets.length) return template;
   const copy: any = { ...template };
+  if (lets.length) copy[OUTER_LET] = lets;
   if (shared.length) {
-    copy.default = [...normaliseVariables(template.default), ...shared];
-    copy[OWN_DEFAULTS] = template.default;
+    // `defaults:` folded into `default:` here, so the copy carries one list rather than two.
+    const own = templateDefaults(template);
+    copy.default = [...normaliseVariables(own), ...shared];
+    copy[OWN_DEFAULTS] = own;
+    delete copy.defaults;
   }
   if (view.length) copy[VIEW_VALUES] = view;
   return copy;
 }
 
 /** Every template a single dashboard configuration defines, by name, as written. */
-function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
+export function collectRawTemplates(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
   // No prototype, so a template declared with the name `__proto__` becomes an own entry here
   // rather than reparenting this map with whatever the dashboard put under that key.
   const templates: Record<string, TemplateConfig> = Object.create(null);
@@ -546,10 +930,11 @@ export function collectTemplates(
   const templates = resolveExtends(withShared(withOwn(collectRawTemplates(ll), own), collectSharedDeclarations(ll)));
   const here = collectViewDefaults(ll, view, section);
   const shared = collectDefaults(ll);
-  if (!here.length && !shared.length) return templates;
+  const lets = [...placeLet(ll, view, section), ...dashboardLet(ll)];
+  if (!here.length && !shared.length && !lets.length) return templates;
 
   const out: Record<string, TemplateConfig> = Object.create(null);
-  for (const [name, template] of Object.entries(templates)) out[name] = withDefaults(template, here, shared);
+  for (const [name, template] of Object.entries(templates)) out[name] = withDefaults(template, here, shared, lets);
   return out;
 }
 
@@ -569,7 +954,7 @@ export function expandSources(sources: string[], available: string[]): string[] 
 let dashboardListCache: Promise<string[]> | null = null;
 
 /** Every dashboard's url path, for expanding `'*'`. The default dashboard is 'lovelace'. */
-function fetchDashboardPaths(hass: HomeAssistant): Promise<string[]> {
+export function fetchDashboardPaths(hass: HomeAssistant): Promise<string[]> {
   dashboardListCache ??= (hass as any)
     .callWS({ type: 'lovelace/dashboards/list' })
     .then((list: any[]) =>
@@ -655,6 +1040,9 @@ function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<Lov
   const request = (hass as any).callWS({ type: 'lovelace/config', url_path }).catch((err: any) => {
     // The library is looked for on every page, and most installs will never have one.
     if (urlPath === LIBRARY_DASHBOARD) return null;
+    // The original dashboard has nothing saved until somebody takes control of it, which
+    // is how most installs start out: it has no templates, and that is all.
+    if (err?.code === 'config_not_found') return null;
     console.warn(`decluttering-card-plus: could not read the dashboard "${urlPath}":`, err?.message ?? err);
     return null;
   }) as Promise<LovelaceConfig | null>;
@@ -684,6 +1072,7 @@ export async function collectAllTemplates(
   const viewValues = collectViewDefaults(ll, view, section);
   const here = collectDefaults(ll);
   const declaredHere = collectSharedDeclarations(ll);
+  const letsHere = [...placeLet(ll, view, section), ...dashboardLet(ll)];
   const borrowed: Record<string, TemplateConfig> = {};
   for (const config of configs) {
     /*
@@ -694,10 +1083,12 @@ export async function collectAllTemplates(
      * folded the lender's in already, ahead of ours.
      */
     const shared = [...here, ...collectDefaults(config)];
-    // Shared declarations travel the same way, this dashboard's ahead of the lender's.
+    // Shared declarations travel the same way, this dashboard's ahead of the lender's - and
+    // so does a decluttering_let, the lender's still reaching its own templates underneath.
     const declarations = [...declaredHere, ...collectSharedDeclarations(config)];
+    const lets = [...letsHere, ...dashboardLet(config)];
     for (const [name, template] of Object.entries(collectRawTemplates(config))) {
-      borrowed[name] = withDefaults(withSharedDeclarations(template, declarations), viewValues, shared);
+      borrowed[name] = withDefaults(withSharedDeclarations(template, declarations), viewValues, shared, lets);
     }
   }
   return resolveExtends({ ...borrowed, ...local });
@@ -724,8 +1115,10 @@ export async function findTemplateAnywhere(
   return (await collectAllTemplates(hass, ll, view, undefined, section))[template] ?? null;
 }
 
-// The cards that consume a template, as opposed to the ones that define it.
-export const CONSUMER_TYPES = ['custom:decluttering-card-plus', 'custom:decluttering-card'];
+// The cards that consume a template, as opposed to the ones that define it. Defined with
+// the substitution code, which needs them too; re-exported here for everything that reads
+// a dashboard.
+export { CONSUMER_TYPES };
 
 export interface TemplateUsages {
   /** Each view that uses the template, and how many times. The index is the view's
@@ -743,7 +1136,7 @@ function countUses(node: any, template: string): number {
   // using it, and its content belongs to the definition - so neither is a use.
   if (isTemplateCardType(node.type)) return 0;
 
-  let uses = CONSUMER_TYPES.includes(node.type) && node.template === template ? 1 : 0;
+  let uses = templatesNamedBy(node).includes(template) ? 1 : 0;
   for (const value of Object.values(node)) uses += countUses(value, template);
   return uses;
 }
@@ -775,6 +1168,12 @@ export function collectUsages(ll: LovelaceConfig | null | undefined, template: s
   for (const [name, definition] of Object.entries(collectTemplates(ll))) {
     if (name === template) continue;
     if (countUses(Object.values(definition), template)) usages.templates.push(name);
+  }
+  // A template built on this one depends on it as surely as one that uses it, whichever
+  // place in its `extends:` list it has. Read as written, since resolving takes the key away.
+  for (const [name, definition] of Object.entries(collectRawTemplates(ll))) {
+    if (name === template || usages.templates.includes(name)) continue;
+    if (parentsOf(definition).includes(template)) usages.templates.push(name);
   }
   return usages;
 }
@@ -816,6 +1215,15 @@ export function findTemplateLocation(ll: LovelaceConfig | null | undefined, temp
   return null;
 }
 
+/** A template's `extends:` with one parent's name changed, written back in the shape it had. */
+function renameParent(definition: any, from: string, to: string): void {
+  if (!definition || typeof definition !== 'object') return;
+  if (definition.extends === from) definition.extends = to;
+  else if (Array.isArray(definition.extends)) {
+    definition.extends = definition.extends.map((name: unknown) => (name === from ? to : name));
+  }
+}
+
 /**
  * The dashboard with a template renamed: its definition, every card using it, and any use
  * inside another template. Renaming is the one edit that cannot be done in the template
@@ -835,10 +1243,21 @@ export function renameTemplate(ll: any, from: string, to: string): any {
     // same key, and both have to move. A bare string elsewhere is somebody's content.
     const names = isTemplateCardType(node.type) || CONSUMER_TYPES.includes(node.type);
     if (names && node.template === from) out.template = to;
+    // A template card built on the renamed one follows it too, or it loses its parent.
+    if (isTemplateCardType(node.type)) renameParent(out, from, to);
+    // So does a card choosing its template by domain, in whichever entries name it.
+    const byDomain = CONSUMER_TYPES.includes(node.type) ? out[BY_DOMAIN_KEY] : undefined;
+    if (isMapping(byDomain)) {
+      for (const [domain, name] of Object.entries(byDomain)) if (name === from) byDomain[domain] = to;
+    }
     return out;
   };
 
   const renamed = rewrite(ll);
+  const root = renamed?.decluttering_templates;
+  if (root && typeof root === 'object') {
+    for (const definition of Object.values(root)) renameParent(definition, from, to);
+  }
 
   // The root key holds templates by name, so there the name is the key itself. Rebuilt in
   // order, so renaming does not shuffle the rest of the list.
@@ -961,4 +1380,57 @@ export function addCardToView(ll: any, viewIndex: number, card: any): any {
       index === viewIndex ? { ...view, cards: [...(view.cards ?? []), card] } : view,
     ),
   };
+}
+
+/*
+ * A template installed from the shared-templates list carries where it came from under
+ * `source:` - the discussion it was posted in and when that post was last edited - so the
+ * Share tab can offer to check for a newer version. Only templates defined here count, as
+ * written: a template that `extends:` an installed one is somebody's own, even though its
+ * parent's `source:` would be folded into it when it is resolved.
+ */
+export function installedFromShared(
+  ll: LovelaceConfig | null | undefined,
+): { name: string; source: { discussion: number; updated?: string; name?: string }; template: TemplateConfig }[] {
+  const raw = collectRawTemplates(ll);
+  return Object.keys(raw)
+    .sort()
+    .filter((name) => typeof (raw[name] as any)?.source?.discussion === 'number')
+    .map((name) => ({ name, source: (raw[name] as any).source, template: raw[name] }));
+}
+
+/**
+ * The dashboard with one template's definition swapped for another, wherever it is defined -
+ * the root `decluttering_templates` key, a template card, or both - and nothing else touched:
+ * the cards using it still name it, and are left exactly as they were. A template card keeps
+ * its own type, and leads with its type and name as any template card does.
+ *
+ * Nothing is mutated; the caller gets a new configuration to save.
+ */
+export function replaceTemplate(ll: any, name: string, template: Record<string, any>): any {
+  const rewrite = (node: any): any => {
+    if (Array.isArray(node)) return node.map(rewrite);
+    if (!node || typeof node !== 'object') return node;
+    if (isTemplateCardType(node.type)) {
+      if (node.template !== name) return node;
+      const content: Record<string, any> = { ...template };
+      delete content.type;
+      delete content.template;
+      return { type: node.type, template: name, ...content };
+    }
+    const out: any = {};
+    for (const [key, value] of Object.entries(node)) out[key] = rewrite(value);
+    return out;
+  };
+
+  const out: any = { ...ll };
+  if (Array.isArray(ll?.views)) out.views = rewrite(ll.views);
+  const declared = ll?.decluttering_templates;
+  if (declared && typeof declared === 'object' && Object.prototype.hasOwnProperty.call(declared, name)) {
+    // Rebuilt in order, so updating one does not move it to the end of the list.
+    const rebuilt: Record<string, any> = {};
+    for (const [each, definition] of Object.entries(declared)) rebuilt[each] = each === name ? template : definition;
+    out.decluttering_templates = rebuilt;
+  }
+  return out;
 }

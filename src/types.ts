@@ -23,8 +23,8 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   /** How much of a sections grid the card asks for, overriding what the template says. */
   grid_options?: unknown;
   /** Renders what the card builds instead of the card itself, for working out why - `yaml` to show it as YAML,
-   *  `console` to render the card as normal and log how it was built. */
-  debug?: boolean | 'yaml' | 'console';
+   *  `console` to render the card as normal and log how it was built, `report` to log it and show it as text to copy. */
+  debug?: boolean | 'yaml' | 'console' | 'report';
   /** Turns what is normally a warning into a card that refuses to render. */
   strict?: boolean;
   /** What `debug: console` calls this card, placeholders and all. Beats the template's. */
@@ -33,6 +33,16 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   inherit_variables?: boolean;
   /** Whether this card keeps a box of its own in the layout, or gets out of the way. */
   fit?: 'box' | 'contents';
+  /** What to show instead of an error when the card cannot be built: a config of the template's kind, or `hide`. */
+  on_error?: 'hide' | Record<string, unknown>;
+  /** A template per entity domain, chosen copy by copy from the `entity` variable; `default:` for the rest. */
+  template_by_domain?: Record<string, string>;
+  /** Builds the copies of a repeat past the first few only as they near the screen. */
+  lazy?: boolean;
+  /** How many copies a lazy repeat builds straight away. Six unless it says. */
+  lazy_eager?: number;
+  /** Entities whose state changes rebuild the card - and the only ones `|state` can read. */
+  rebuild_on?: string | string[];
 }
 
 export interface DeclutteringTemplateConfig extends LovelaceCardConfig, TemplateConfig {
@@ -52,13 +62,22 @@ export interface TemplateConfig {
   category?: string;
   /** Lists the template as a card of its own in Home Assistant's add-card dialog; a string names the entry. */
   publish?: boolean | string;
+  /** Says the template is on its way out - `true`, or a message saying what to use instead. Not inherited. */
+  deprecated?: boolean | string;
+  /** Sets of variables the template is shown working with: checked by the health panel, offered by the editors. */
+  examples?: unknown;
+  /** What a card using this template shows instead of an error, unless the card says otherwise. */
+  on_error?: 'hide' | Record<string, unknown>;
   /** Which entities Home Assistant's add-card dialog offers this template for. */
   suggest_for?: unknown;
-  /** The template this one builds on: its content underneath, this one's last word on top. */
-  extends?: string;
+  /** The template this one builds on: its content underneath, this one's last word on top.
+   *  A list builds on several, left to right, each later one over the ones before. */
+  extends?: string | string[];
   /** The variables the template takes, described so its editor can offer real controls. */
   variables?: VariableDeclaration[];
   default?: VariablesConfig[];
+  /** `default:` spelled plural, read the same - the two are merged, `default:` winning a name both set. */
+  defaults?: VariablesConfig[] | Record<string, unknown>;
   /**
    * Values the template computes for itself from the others - `room_slug: '[[room|slug]]'`
    * written once instead of the chain repeated everywhere. Template internals: an instance

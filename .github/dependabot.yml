@@ -27,28 +27,52 @@ updates:
     cooldown:
       default-days: 7
     groups:
-      # What the release job runs with a token that can write to the repository and publish
-      # the asset. Kept apart so a person looks at these, while the rest merge on their own
-      # (see workflows/dependabot-auto-merge.yml).
+      # Everything the release job executes while it holds a token that can write to the
+      # repository and publish the asset. That is more than semantic-release itself: its
+      # prepare step runs `npm run build`, which is `eslint .` and then `rollup -c`, so the
+      # linter, typescript-eslint, prettier, TypeScript and every rollup plugin the config
+      # imports all run in the token-holding process, and the notes preset loads inside
+      # semantic-release. Any of them could rewrite dist/ or reach the token, so a bump to
+      # any of them waits for a person (workflows/dependabot-auto-merge.yml excludes the
+      # same names). What is left to merge on its own is tooling only the test jobs run.
       release-tooling:
         dependency-type: 'development'
         patterns:
           - 'semantic-release'
           - '@semantic-release/*'
+          - 'conventional-changelog-*'
           - 'rollup'
+          - 'rollup-plugin-*'
           - '@rollup/*'
           - 'terser'
+          - 'typescript'
+          - 'typescript-eslint'
+          - '@typescript-eslint/*'
+          - 'tslib'
+          - 'eslint'
+          - 'eslint-*'
+          - 'prettier'
         update-types:
           - minor
           - patch
+      # Today that is c8 and ts-lit-plugin.
       build-tooling:
         dependency-type: 'development'
         exclude-patterns:
           - 'semantic-release'
           - '@semantic-release/*'
+          - 'conventional-changelog-*'
           - 'rollup'
+          - 'rollup-plugin-*'
           - '@rollup/*'
           - 'terser'
+          - 'typescript'
+          - 'typescript-eslint'
+          - '@typescript-eslint/*'
+          - 'tslib'
+          - 'eslint'
+          - 'eslint-*'
+          - 'prettier'
         update-types:
           - minor
           - patch

@@ -256,8 +256,128 @@ check(
 
 /* --- freeName --- */
 
+check(
+  'every parent in an extends list rides along, and a missing one is named',
+  (() => {
+    const out = buildExport(
+      { template: 'room', extends: ['base', 'with_actions', 'gone'], card: {} },
+      { base: { card: { type: 'tile' } }, with_actions: { card: { tap_action: {} } } },
+    );
+    return [Object.keys(out.payload.includes), out.notes.length];
+  })(),
+  [['base', 'with_actions'], 1],
+);
+
+check('a single extends is a dependency too', scanDependencies({ extends: 'base', card: {} }).templateRefs, ['base']);
+
 check('a free name is its own copy name', freeName('tile', ['other']), 'tile');
 check('a taken name counts up from two', freeName('tile', ['tile']), 'tile_2');
 check('and keeps counting past taken copies', freeName('tile', ['tile', 'tile_2']), 'tile_3');
+
+/* --- defaults: travels as default:, which every version reads --- */
+
+check(
+  'an export folds defaults: into default:',
+  buildExport({
+    type: 'custom:decluttering-template-plus',
+    template: 't',
+    card: { type: 'tile' },
+    default: [{ colour: 'red' }],
+    defaults: { colour: 'amber', size: 'small' },
+  }).payload,
+  {
+    type: 'custom:decluttering-template-plus',
+    template: 't',
+    default: [{ colour: 'red' }, { size: 'small' }],
+    card: { type: 'tile' },
+  },
+);
+
+/* ------------------------------------------------------------- custom cards that are not installed */
+
+{
+  const { missingCustomCards } = require('../.test-build/share.js');
+  const installed = new Set(['mushroom-template-card']);
+  const isDefined = (tag) => installed.has(tag);
+  check(
+    'custom cards this browser lacks are named by their element, once each, in order',
+    missingCustomCards(
+      [
+        { card: { type: 'custom:button-card', cards: [{ type: 'custom:mushroom-template-card' }] } },
+        { card: { type: 'vertical-stack', cards: [{ type: 'custom:button-card' }, { type: 'custom:apex-charts' }] } },
+      ],
+      isDefined,
+    ),
+    ['apex-charts', 'button-card'],
+  );
+
+  check(
+    'this card and Home Assistant own cards never count',
+    missingCustomCards(
+      [{ card: { type: 'tile', cards: [{ type: 'custom:decluttering-card-plus', template: 'x' }] } }],
+      () => false,
+    ),
+    [],
+  );
+}
+
+/* ------------------------------------------------------------- the source: stamp stays with the install */
+
+{
+  const { withoutSource, withoutSources } = require('../.test-build/share.js');
+
+  check(
+    'an export leaves the source: stamp behind',
+    buildExport({ template: 't', card: {}, source: { discussion: 7, updated: '2026-01-01', author: 'a' } }).payload,
+    { template: 't', card: {} },
+  );
+
+  check(
+    'and so do the templates it bundles',
+    buildExport(
+      { template: 't', card: { type: 'custom:decluttering-card-plus', template: 'inner' } },
+      {
+        inner: { card: { type: 'tile' }, source: { discussion: 7 } },
+      },
+    ).payload.includes,
+    { inner: { card: { type: 'tile' } } },
+  );
+
+  check(
+    'a pasted stamp comes off the template and off every include',
+    withoutSources({
+      template: 't',
+      card: {},
+      source: { discussion: 4242, updated: '2000-01-01' },
+      includes: {
+        a: { card: {}, source: { discussion: 4242 } },
+        b: { card: {} },
+      },
+    }),
+    { template: 't', card: {}, includes: { a: { card: {} }, b: { card: {} } } },
+  );
+
+  check(
+    'a paste without a stamp is left exactly as it was',
+    withoutSources({ template: 't', card: {}, includes: { a: { card: {} } } }),
+    { template: 't', card: {}, includes: { a: { card: {} } } },
+  );
+
+  check(
+    'something that is not a template passes through',
+    [withoutSource(null), withoutSource('x'), withoutSources(undefined)],
+    [null, 'x', undefined],
+  );
+
+  check(
+    'the pasted value itself is not changed',
+    (() => {
+      const pasted = { template: 't', card: {}, source: { discussion: 1 }, includes: { a: { card: {}, source: {} } } };
+      withoutSources(pasted);
+      return [pasted.source, pasted.includes.a.source];
+    })(),
+    [{ discussion: 1 }, {}],
+  );
+}
 
 report();

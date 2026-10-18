@@ -36,6 +36,16 @@ const {
   misplacedOverrides,
   groupCard,
   GROUP_CARD_TYPE,
+  parentsOf,
+  extendsLoops,
+  deprecationOf,
+  deprecatedInUse,
+  templatePickerOptions,
+  warnIfDeprecated,
+  byDomainOf,
+  templatesNamedBy,
+  pickTemplate,
+  withPickedEntity,
 } = require('../.test-build/templates.js');
 
 const { check, report } = require('./harness');
@@ -214,6 +224,151 @@ check(
     hasSectionDefaults(null, { view: 0, section: 0 }),
   ],
   [true, false, false, false, false],
+);
+
+/* ------------------------------------------------- decluttering_let (#162) */
+
+const letDashboard = {
+  decluttering_let: { place: 'dashboard', slug: '[[room|slug]]', only_dashboard: 'd' },
+  decluttering_templates: {
+    tile: { card: { name: '[[slug]] [[place]]' }, default: [{ room: 'Living Room' }] },
+    own_let: { card: {}, let: { place: 'template' } },
+  },
+  views: [
+    {
+      decluttering_let: { place: 'view', only_view: 'v' },
+      sections: [{ decluttering_let: { place: 'section' } }, {}],
+    },
+    { strategy: { type: 'custom:decluttering-card-plus', decluttering_let: { place: 'strategy view' } } },
+  ],
+};
+
+const letValues = (template, view, section, cardVariables) =>
+  variableValues(resolveVariables(cardVariables, collectTemplates(letDashboard, view, undefined, section)[template]));
+
+check(
+  'a dashboard decluttering_let is worked out per card, from its own variables',
+  require('../.test-build/deep-replace.js').default(
+    [{ room: 'Back Hall' }],
+    collectTemplates(letDashboard).tile,
+    collectTemplates(letDashboard).tile.card,
+  ),
+  { name: 'back_hall dashboard' },
+);
+
+check(
+  'a card cannot override a decluttering_let',
+  letValues('tile', undefined, undefined, [{ place: 'card' }]).place,
+  'dashboard',
+);
+
+check('a view decluttering_let beats the dashboard one', letValues('tile', 0).place, 'view');
+
+check('a section decluttering_let beats its view', letValues('tile', 0, 0).place, 'section');
+
+check('a section without one leaves the view in charge', letValues('tile', 0, 1).place, 'view');
+
+check(
+  'names only an outer level sets still come through',
+  [letValues('tile', 0, 0).only_view, letValues('tile', 0, 0).only_dashboard],
+  ['v', 'd'],
+);
+
+check("a template's own let: beats every decluttering_let", letValues('own_let', 0, 0).place, 'template');
+
+check(
+  'a view the strategy writes out takes its decluttering_let from inside the strategy',
+  letValues('tile', 1).place,
+  'strategy view',
+);
+
+check(
+  'a section with only a decluttering_let still counts as placing its cards',
+  hasSectionDefaults(letDashboard, { view: 0, section: 0 }),
+  true,
+);
+
+check(
+  'decluttering_let is never written into the template where an export would see it',
+  Object.keys(collectTemplates(letDashboard, 0, undefined, 0).tile).sort(),
+  ['card', 'default'],
+);
+
+check(
+  'the health check counts a decluttering_let as setting the variable',
+  checkDashboard({
+    decluttering_let: { room: 'hall' },
+    decluttering_templates: { tile: { card: { name: '[[room]]' } } },
+    views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'tile' }] }],
+  }).unsetVariables,
+  [],
+);
+
+/* ---------------------------------------------------------- defaults: (#175) */
+
+check(
+  'defaults: sits on top of the dashboard values, like default:',
+  variableValues(
+    resolveVariables(
+      undefined,
+      collectTemplates({
+        decluttering_defaults: { colour: 'amber', size: 'small' },
+        decluttering_templates: { tile: { card: {}, defaults: { colour: 'white' } } },
+      }).tile,
+    ),
+  ),
+  { colour: 'white', size: 'small' },
+);
+
+check(
+  'a dashboard-values copy carries one folded default: list and no defaults:',
+  (() => {
+    const tile = collectTemplates({
+      decluttering_defaults: { size: 'small' },
+      decluttering_templates: { tile: { card: {}, default: [{ a: 1 }], defaults: { b: 2 } } },
+    }).tile;
+    return [tile.default, tile.defaults];
+  })(),
+  [[{ a: 1 }, { b: 2 }, { size: 'small' }], undefined],
+);
+
+check(
+  'extends folds defaults: from both the child and the parent',
+  variableValues(
+    resolveVariables(
+      undefined,
+      collectTemplates({
+        decluttering_templates: {
+          base: { card: {}, defaults: { room: 'lounge', colour: 'white' } },
+          child: { extends: 'base', defaults: { room: 'kitchen' } },
+        },
+      }).child,
+    ),
+  ),
+  { room: 'kitchen', colour: 'white' },
+);
+
+check(
+  'the health check reads defaults: before calling a variable unset',
+  checkDashboard({
+    decluttering_templates: { tile: { card: { name: '[[room]]' }, defaults: { room: 'hall' } } },
+    views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'tile' }] }],
+  }).unsetVariables,
+  [],
+);
+
+check(
+  'decluttering_variables can say defaults: too',
+  variableValues(
+    resolveVariables(
+      undefined,
+      collectTemplates({
+        decluttering_variables: [{ name: 'room', defaults: 'hall' }],
+        decluttering_templates: { tile: { card: {}, variables: [{ name: 'room' }] } },
+      }).tile,
+    ),
+  ).room,
+  'hall',
 );
 
 /* ------------------------------------------------ a template card's own preview */
@@ -609,6 +764,49 @@ check(
   builtTile,
 );
 check('override: the original is not touched', builtTile.icon, 'mdi:lightbulb');
+
+/* list edits (#209) */
+const listed = { type: 'entities', entities: ['a', 'b', 'c'] };
+const edit = (entities) => applyOverride(listed, { card: { entities } }, 'card').entities;
+check('list edit: __append__ adds to the end', edit({ __append__: ['x', 'y'] }), ['a', 'b', 'c', 'x', 'y']);
+check('list edit: __prepend__ adds to the start', edit({ __prepend__: ['x'] }), ['x', 'a', 'b', 'c']);
+check('list edit: a single value appends as one item', edit({ __append__: 'x' }), ['a', 'b', 'c', 'x']);
+check('list edit: __update__ replaces a scalar item', edit({ __update__: { 1: 'x' } }), ['a', 'x', 'c']);
+check('list edit: __update__ with null removes the item', edit({ __update__: { 1: null } }), ['a', 'c']);
+check('list edit: __update__ past the end adds it', edit({ __update__: { 5: 'z' } }), ['a', 'b', 'c', 'z']);
+check('list edit: a negative index counts from the end', edit({ __update__: { '-1': 'z' } }), ['a', 'b', 'z']);
+check('list edit: __remove__ takes indexes out', edit({ __remove__: [0, 1] }), ['c']);
+check('list edit: __remove__ a single index', edit({ __remove__: 2 }), ['a', 'b']);
+check('list edit: indexes nobody can read are ignored', edit({ __remove__: ['x', 1.5, -9] }), ['a', 'b', 'c']);
+check(
+  'list edit: combined, every index meaning the list as the template had it',
+  edit({ __append__: ['x'], __update__: { 0: 'y' }, __remove__: [1] }),
+  ['y', 'c', 'x'],
+);
+check(
+  'list edit: __update__ merges into a mapping item',
+  applyOverride(
+    { type: 'entities', entities: [{ entity: 'light.a', name: 'A' }, { entity: 'light.b' }] },
+    { card: { entities: { __update__: { 0: { name: 'Lamp', icon: 'mdi:lamp' } } } } },
+    'card',
+  ).entities,
+  [{ entity: 'light.a', name: 'Lamp', icon: 'mdi:lamp' }, { entity: 'light.b' }],
+);
+check(
+  'list edit: nothing there yet starts from an empty list',
+  applyOverride({ type: 'x' }, { card: { features: { __append__: [{ type: 'toggle' }] } } }, 'card').features,
+  [{ type: 'toggle' }],
+);
+check(
+  'list edit: over a mapping the keys are ordinary keys',
+  applyOverride({ type: 'x', data: { a: 1 } }, { card: { data: { __append__: 2 } } }, 'card').data,
+  { a: 1, __append__: 2 },
+);
+check('list edit: a mapping with other keys besides is an ordinary mapping', edit({ __append__: ['x'], other: 1 }), {
+  __append__: ['x'],
+  other: 1,
+});
+check('list edit: the template list is not touched', listed.entities, ['a', 'b', 'c']);
 check('misplaced: a card: block on a badge template', misplacedOverrides({ card: {}, badge: {} }, 'badge'), ['card']);
 check('misplaced: the matching block is fine', misplacedOverrides({ card: {} }, 'card'), []);
 check('misplaced: unknown kind says nothing', misplacedOverrides({ card: {} }, undefined), []);
@@ -670,6 +868,17 @@ check(
   { type: 'camera', menu: { enabled: true } },
 );
 
+check(
+  'a child can edit the parent list instead of replacing it (#209)',
+  collectTemplates({
+    decluttering_templates: {
+      cam: { card: { type: 'camera', images: ['a', 'b'] } },
+      more: { extends: 'cam', card: { images: { __append__: ['c'], __remove__: [0] } } },
+    },
+  }).more.card,
+  { type: 'camera', images: ['b', 'c'] },
+);
+
 check('the extends key is gone once it has been honoured', 'extends' in collectTemplates(FAMILY).dim_tile, false);
 
 check('a parent nobody defines leaves the child as written, extends still on it', collectTemplates(FAMILY).orphan, {
@@ -685,6 +894,408 @@ check(
     }),
   ).length,
   2,
+);
+
+/* ---------------------------------------------------------- extends from several */
+
+const MIXINS = {
+  decluttering_templates: {
+    base: {
+      variables: [{ name: 'entity' }, { name: 'icon', default: 'mdi:a' }],
+      default: [{ colour: 'blue' }, { size: 1 }],
+      card: { type: 'tile', entity: '[[entity]]', icon: '[[icon]]', tap_action: { action: 'toggle' } },
+    },
+    with_actions: {
+      variables: [{ name: 'icon', default: 'mdi:b' }, { name: 'target' }],
+      default: [{ colour: 'red' }],
+      card: { tap_action: { action: 'navigate', navigation_path: '[[target]]' }, hold_action: { action: 'more-info' } },
+    },
+    room: {
+      extends: ['base', 'with_actions'],
+      default: [{ size: 3 }],
+      card: { name: 'Room' },
+    },
+    single: { extends: ['base'], card: { name: 'One' } },
+    nested_mixin: { extends: 'with_actions', card: { hold_action: null } },
+    deep: { extends: ['base', 'nested_mixin'], card: { name: 'Deep' } },
+    half_known: { extends: ['base', 'nowhere'], card: { name: 'Half' } },
+  },
+};
+const mixed = collectTemplates(MIXINS);
+
+check('several parents fold left to right, the later one winning, the child over both', mixed.room.card, {
+  type: 'tile',
+  entity: '[[entity]]',
+  icon: '[[icon]]',
+  tap_action: { action: 'navigate', navigation_path: '[[target]]' },
+  hold_action: { action: 'more-info' },
+  name: 'Room',
+});
+
+check('declarations from several parents merge by name, a later parent replacing in place', mixed.room.variables, [
+  { name: 'entity' },
+  { name: 'icon', default: 'mdi:b' },
+  { name: 'target' },
+]);
+
+check('defaults: the child first, then the later parent, then the earlier one', mixed.room.default, [
+  { size: 3 },
+  { colour: 'red' },
+  { colour: 'blue' },
+  { size: 1 },
+]);
+
+check('a list of one parent is the same as the name on its own', mixed.single.card.name, 'One');
+check('the extends list is gone once it has been honoured', 'extends' in mixed.room, false);
+
+check('each parent resolves its own extends first, a null in it still taking a key away', mixed.deep.card, {
+  type: 'tile',
+  entity: '[[entity]]',
+  icon: '[[icon]]',
+  tap_action: { action: 'navigate', navigation_path: '[[target]]' },
+  name: 'Deep',
+});
+
+check('a list naming a parent nobody defines leaves the child as written', mixed.half_known, {
+  extends: ['base', 'nowhere'],
+  card: { name: 'Half' },
+});
+
+check(
+  'a loop through the second parent of a list does not hang',
+  Object.keys(
+    collectTemplates({
+      decluttering_templates: {
+        a: { extends: ['c', 'b'], card: { x: 1 } },
+        b: { extends: ['a'], card: { y: 2 } },
+        c: { card: { z: 3 } },
+      },
+    }),
+  ).length,
+  3,
+);
+
+check(
+  'templateParents reads a name, a list, and anything else',
+  [
+    parentsOf({ extends: 'a' }),
+    parentsOf({ extends: ['a', 3, 'b'] }),
+    parentsOf({ extends: null }),
+    parentsOf(undefined),
+  ],
+  [['a'], ['a', 'b'], [], []],
+);
+
+check(
+  'extendsLoops names a loop through any parent, once',
+  extendsLoops({
+    decluttering_templates: {
+      a: { extends: ['c', 'b'], card: {} },
+      b: { extends: 'a', card: {} },
+      c: { card: {} },
+      d: { extends: 'd', card: {} },
+    },
+  }),
+  [
+    ['a', 'b', 'a'],
+    ['d', 'd'],
+  ],
+);
+
+check('no loop, nothing to report', extendsLoops(MIXINS), []);
+
+check(
+  'every parent in a list counts as used',
+  checkDashboard({
+    decluttering_templates: MIXINS.decluttering_templates,
+    views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'room' }] }],
+  }).unusedTemplates,
+  ['deep', 'half_known', 'single'],
+);
+
+{
+  // A view's and a section's decluttering_let and decluttering_defaults give names values
+  // the health panel must count, each only where it reaches.
+  const PLACED = {
+    decluttering_templates: { let_t: { card: { type: 'markdown', content: '[[vlet]] [[slet]] [[sdef]]' } } },
+    views: [
+      {
+        type: 'sections',
+        decluttering_let: [{ vlet: 'V' }],
+        sections: [
+          {
+            decluttering_let: [{ slet: 'S' }],
+            decluttering_defaults: [{ sdef: 'D' }],
+            cards: [{ type: 'custom:decluttering-card-plus', template: 'let_t' }],
+          },
+          { cards: [{ type: 'custom:decluttering-card-plus', template: 'let_t' }] },
+        ],
+      },
+      { cards: [{ type: 'custom:decluttering-card-plus', template: 'let_t' }] },
+    ],
+  };
+  check(
+    "names given by the card's view and section are not unset; elsewhere they are",
+    checkDashboard(PLACED).unsetVariables,
+    [{ template: 'let_t', names: ['sdef', 'slet', 'vlet'], count: 2 }],
+  );
+}
+
+check(
+  'where-used lists the templates that extend this one, whichever place in the list it has',
+  collectUsages(MIXINS, 'with_actions').templates,
+  ['room', 'nested_mixin'],
+);
+
+check(
+  'a rename follows an extends written as a name or in a list',
+  (() => {
+    const out = renameTemplate(
+      {
+        decluttering_templates: { base: { card: {} }, a: { extends: 'base' }, b: { extends: ['x', 'base'] } },
+        views: [{ cards: [{ type: 'custom:decluttering-template-plus', template: 'c', extends: ['base'] }] }],
+      },
+      'base',
+      'root',
+    );
+    return [
+      Object.keys(out.decluttering_templates),
+      out.decluttering_templates.a.extends,
+      out.decluttering_templates.b.extends,
+      out.views[0].cards[0].extends,
+    ];
+  })(),
+  [['root', 'a', 'b'], 'root', ['x', 'root'], ['root']],
+);
+
+/* ---------------------------------------------------------------- deprecated */
+
+check(
+  'deprecated: true, a message, and nothing at all',
+  [
+    deprecationOf({ deprecated: true }),
+    deprecationOf({ deprecated: 'Use room_tile_v2' }),
+    deprecationOf({}),
+    deprecationOf({ deprecated: false }),
+  ],
+  ['', 'Use room_tile_v2', undefined, undefined],
+);
+
+check('an empty or blank message is still deprecated, with nothing to add', deprecationOf({ deprecated: '  ' }), '');
+
+const RETIRING = {
+  decluttering_templates: {
+    old_tile: { deprecated: 'Use room_tile_v2', card: { type: 'tile' } },
+    older: { deprecated: true, card: { type: 'tile' } },
+    unused_old: { deprecated: true, card: { type: 'tile' } },
+    built_on_old: { extends: 'old_tile', card: { name: 'x' } },
+    fresh: { card: { type: 'tile' } },
+  },
+  views: [
+    {
+      title: 'Rooms',
+      cards: [
+        { type: 'custom:decluttering-card-plus', template: 'old_tile' },
+        { type: 'custom:decluttering-card-plus', template: 'old_tile' },
+        { type: 'custom:decluttering-card-plus', template: 'built_on_old' },
+      ],
+    },
+    { path: 'hall', cards: [{ type: 'custom:decluttering-card-plus', template: 'older' }] },
+  ],
+};
+
+check(
+  'a template built on a deprecated one is not itself deprecated',
+  deprecationOf(collectTemplates(RETIRING).built_on_old),
+  undefined,
+);
+check(
+  'but one that says so for itself is',
+  deprecationOf(
+    collectTemplates({ decluttering_templates: { a: { card: {} }, b: { extends: 'a', deprecated: true } } }).b,
+  ),
+  '',
+);
+
+check('deprecated templates still in use, with where and why', deprecatedInUse(RETIRING), [
+  {
+    template: 'old_tile',
+    message: 'Use room_tile_v2',
+    views: [{ title: 'Rooms', count: 2 }],
+    templates: ['built_on_old'],
+  },
+  { template: 'older', message: '', views: [{ title: 'hall', count: 1 }], templates: [] },
+]);
+
+check('the picker marks deprecated templates and puts them last', templatePickerOptions(collectTemplates(RETIRING)), [
+  { value: 'built_on_old', label: 'built_on_old' },
+  { value: 'fresh', label: 'fresh' },
+  { value: 'old_tile', label: 'old_tile (deprecated)' },
+  { value: 'older', label: 'older (deprecated)' },
+  { value: 'unused_old', label: 'unused_old (deprecated)' },
+]);
+
+{
+  const said = [];
+  const original = console.warn;
+  console.warn = (text) => said.push(text);
+  warnIfDeprecated('old_tile', { deprecated: 'Use room_tile_v2' });
+  warnIfDeprecated('old_tile', { deprecated: 'Use room_tile_v2' });
+  warnIfDeprecated('older', { deprecated: true });
+  warnIfDeprecated('fresh', { card: {} });
+  console.warn = original;
+  check('a deprecated template is mentioned once per page, with its message', said, [
+    'decluttering-card-plus: the template "old_tile" is deprecated: Use room_tile_v2',
+    'decluttering-card-plus: the template "older" is deprecated. Cards using it still work, but it may be removed.',
+  ]);
+}
+
+/* ------------------------------------------------------------ template_by_domain */
+
+const BY_DOMAIN = {
+  type: 'custom:decluttering-card-plus',
+  template_by_domain: { light: 'light_tile', cover: 'cover_tile', default: 'generic_tile', bad: 3 },
+};
+const DOMAIN_TEMPLATES = {
+  light_tile: { card: { type: 'tile', entity: '[[entity]]', name: 'light' } },
+  cover_tile: { card: { type: 'tile', entity: '[[entity]]', name: 'cover' } },
+  generic_tile: { default: [{ entity: 'sensor.default' }], card: { type: 'entity', entity: '[[entity]]' } },
+  plain: { card: { type: 'button' } },
+  room: { default: [{ room: 'hall' }], card: { type: 'tile', entity: '[[entity]]' } },
+};
+const lookup = (name) => DOMAIN_TEMPLATES[name];
+{
+  // The fallback template's default picks; the picked template must be built with it.
+  const config = { template: 'c_dflt_ent', template_by_domain: { light: 'c_room_light' } };
+  const templates = {
+    c_dflt_ent: { default: [{ entity: 'light.bedroom' }], card: { type: 'markdown', content: 'DFLT [[entity]]' } },
+    c_room_light: { card: { type: 'markdown', content: 'ROOM-LIGHT [[entity]]' } },
+  };
+  const pick = pickTemplate(config, [{ other: 1 }], (name) => templates[name]);
+  check(
+    'an entity from the fallback default comes back with the pick',
+    [pick.name, pick.entity],
+    ['c_room_light', 'light.bedroom'],
+  );
+  const build = require('../.test-build/deep-replace.js').default;
+  check(
+    'and the picked template is built with it',
+    build(withPickedEntity([{ other: 1 }], pick.entity), pick.template, pick.template.card).content,
+    'ROOM-LIGHT light.bedroom',
+  );
+  check(
+    "a card's own entity is not handed back - it is already there, and wins",
+    pickTemplate(config, [{ entity: 'light.kitchen' }], (name) => templates[name]).entity,
+    undefined,
+  );
+  check('nothing picked by, nothing added', withPickedEntity([{ a: 1 }], undefined), [{ a: 1 }]);
+}
+
+const picked = (config, variables) => {
+  try {
+    return pickTemplate(config, variables, lookup, undefined, Object.keys(DOMAIN_TEMPLATES)).name;
+  } catch (err) {
+    return `error: ${err.message}`;
+  }
+};
+
+check(
+  'by domain: only the names, and only as a mapping',
+  [byDomainOf(BY_DOMAIN), byDomainOf({ template_by_domain: ['a'] }), byDomainOf({})],
+  [{ light: 'light_tile', cover: 'cover_tile', default: 'generic_tile' }, undefined, undefined],
+);
+
+check('every template a card names, by domain and plain', templatesNamedBy({ ...BY_DOMAIN, template: 'plain' }), [
+  'plain',
+  'light_tile',
+  'cover_tile',
+  'generic_tile',
+]);
+check('a card that is not ours names nothing', templatesNamedBy({ type: 'tile', template: 'x' }), []);
+
+check(
+  'the entity picks the template by its domain',
+  [picked(BY_DOMAIN, [{ entity: 'light.a' }]), picked(BY_DOMAIN, [{ entity: 'cover.b' }])],
+  ['light_tile', 'cover_tile'],
+);
+check('a domain with no entry takes default:', picked(BY_DOMAIN, [{ entity: 'switch.c' }]), 'generic_tile');
+check(
+  'with no default:, template: is the default',
+  picked({ template: 'plain', template_by_domain: { light: 'light_tile' } }, [{ entity: 'switch.c' }]),
+  'plain',
+);
+check(
+  'default: beats template: when both are written',
+  picked({ template: 'plain', template_by_domain: { default: 'generic_tile' } }, [{ entity: 'switch.c' }]),
+  'generic_tile',
+);
+check("the entity can come from the default template's defaults", picked(BY_DOMAIN, []), 'generic_tile');
+check(
+  'an entity built from other variables is worked out first',
+  picked({ template: 'room', template_by_domain: { light: 'light_tile' } }, [{ entity: 'light.[[room]]' }]),
+  'light_tile',
+);
+check(
+  'a domain with no entry and nothing to fall back on names the domain',
+  picked({ template_by_domain: { light: 'light_tile' } }, [{ entity: 'switch.c' }]),
+  'error: No template for the domain "switch" in template_by_domain, and no default: or template: to fall back on.',
+);
+check(
+  'no entity at all says so the same way',
+  picked({ template_by_domain: { light: 'light_tile' } }, []),
+  'error: No template for the domain "(no entity)" in template_by_domain, and no default: or template: to fall back on.',
+);
+check(
+  'a name that does not exist is the usual missing-template error, with its near miss',
+  picked({ template_by_domain: { light: 'light_tlie' } }, [{ entity: 'light.a' }]).startsWith(
+    'error: The template "light_tlie" doesn\'t exist',
+  ) && picked({ template_by_domain: { light: 'light_tlie' } }, [{ entity: 'light.a' }]).includes('light_tile'),
+  true,
+);
+check(
+  'a domain lookup only reads names set on the mapping',
+  picked({ template_by_domain: { default: 'plain' } }, [{ entity: 'constructor.x' }]),
+  'plain',
+);
+
+const DOMAIN_DASH = {
+  decluttering_templates: DOMAIN_TEMPLATES,
+  views: [
+    {
+      title: 'Mixed',
+      cards: [
+        {
+          type: 'custom:decluttering-card-plus',
+          template_by_domain: { light: 'light_tile', fan: 'fan_tile', default: 'generic_tile' },
+          for_each: [{ entity: 'light.a' }],
+        },
+      ],
+    },
+  ],
+};
+check(
+  'a by-domain card counts as a use of every template it names',
+  [
+    totalUsages(DOMAIN_DASH, 'light_tile'),
+    totalUsages(DOMAIN_DASH, 'generic_tile'),
+    totalUsages(DOMAIN_DASH, 'cover_tile'),
+  ],
+  [1, 1, 0],
+);
+check(
+  'a name it gives that does not exist is reported missing',
+  checkDashboard(DOMAIN_DASH).missingTemplates.map((m) => m.template),
+  ['fan_tile'],
+);
+check(
+  'it is the first usage of each of them for the impact preview',
+  firstUsage(DOMAIN_DASH, 'light_tile') !== null,
+  true,
+);
+check(
+  'a rename follows into template_by_domain',
+  renameTemplate(DOMAIN_DASH, 'light_tile', 'lamp_tile').views[0].cards[0].template_by_domain,
+  { light: 'lamp_tile', fan: 'fan_tile', default: 'generic_tile' },
 );
 
 /* ---------------------------------------------------------------- picker labels */
@@ -1034,9 +1645,15 @@ check(
 // Borrowing: the borrower's shared values come first, the lender's stay underneath.
 const lender = {
   decluttering_defaults: { colour: 'green', shape: 'lender-shape' },
+  decluttering_let: { lent: 'lender-let', clash: 'lender' },
   decluttering_templates: { shared_badge: { default: [{ own: 'template-own' }], card: { type: 'markdown' } } },
 };
-const borrower = { decluttering_defaults: { colour: 'amber' }, decluttering_templates_from: ['lend'], views: [] };
+const borrower = {
+  decluttering_defaults: { colour: 'amber' },
+  decluttering_let: { clash: 'borrower' },
+  decluttering_templates_from: ['lend'],
+  views: [],
+};
 
 /* ------------------------------------------------------------- did you mean */
 
@@ -1221,6 +1838,12 @@ collectAllTemplates(hass, borrower).then((all) => {
     { shape: 'lender-shape' },
   ]);
 
+  check(
+    "a borrowed template gets this dashboard's decluttering_let first, then the lender's",
+    variableValues(resolveVariables([{ clash: 'card' }], badge)),
+    { clash: 'borrower', lent: 'lender-let', own: 'template-own', colour: 'amber', shape: 'lender-shape' },
+  );
+
   /* ---------------------------------------------------------------- health */
 
   const UNHEALTHY = {
@@ -1374,6 +1997,121 @@ collectAllTemplates(hass, borrower).then((all) => {
       [{ template: 'room', names: ['gone'], count: 1 }],
     );
 
-    report();
+    /* ------------------------------------------------------------- installed shared templates */
+
+    {
+      const { installedFromShared, replaceTemplate } = require('../.test-build/templates.js');
+      const stamp = { discussion: 7, updated: '2026-01-01T00:00:00Z', name: 'tile_light' };
+      const ll = {
+        decluttering_templates: {
+          first: { card: { type: 'a' } },
+          tile_light: { source: stamp, card: { type: 'tile' } },
+          third: { card: { type: 'c' } },
+          from_library: { source: { library: 'room_summary', version: '1.15.2' }, card: { type: 'x' } },
+          mine: { extends: 'tile_light', card: { name: 'mine' } },
+        },
+        views: [
+          {
+            cards: [
+              { type: 'custom:decluttering-template-plus', template: 'posted', source: { discussion: 9 }, card: {} },
+              { type: 'custom:decluttering-card-plus', template: 'tile_light' },
+              {
+                type: 'vertical-stack',
+                cards: [
+                  {
+                    type: 'custom:decluttering-template',
+                    template: 'tile_light',
+                    source: stamp,
+                    card: { type: 'old' },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      };
+
+      check(
+        'the templates installed from a post are listed, wherever they are defined, by name',
+        installedFromShared(ll).map((each) => [each.name, each.source.discussion]),
+        [
+          ['posted', 9],
+          ['tile_light', 7],
+        ],
+      );
+
+      check(
+        'a template built on an installed one is not itself installed',
+        installedFromShared(ll).some((each) => each.name === 'mine'),
+        false,
+      );
+
+      check('a dashboard with nothing installed lists nothing', installedFromShared({ views: [] }), []);
+
+      const latest = { source: { ...stamp, updated: '2026-02-01T00:00:00Z' }, card: { type: 'tile', new: true } };
+      const replaced = replaceTemplate(ll, 'tile_light', latest);
+
+      check(
+        'the root definition is replaced in its place in the list',
+        [Object.keys(replaced.decluttering_templates), replaced.decluttering_templates.tile_light],
+        [['first', 'tile_light', 'third', 'from_library', 'mine'], latest],
+      );
+
+      check(
+        'a template card of the same name is replaced too, keeping its own type and leading with it',
+        replaced.views[0].cards[2].cards[0],
+        { type: 'custom:decluttering-template', template: 'tile_light', ...latest },
+      );
+
+      check('the cards using it are left exactly as they were', replaced.views[0].cards[1], {
+        type: 'custom:decluttering-card-plus',
+        template: 'tile_light',
+      });
+
+      check('other templates are untouched', replaced.views[0].cards[0], ll.views[0].cards[0]);
+
+      check('the original is not mutated', ll.decluttering_templates.tile_light.source.updated, '2026-01-01T00:00:00Z');
+
+      check(
+        'a template defined only on a card leaves the root alone',
+        replaceTemplate({ views: [] }, 'x', { card: {} }).decluttering_templates,
+        undefined,
+      );
+    }
+
+    /*
+     * The original dashboard, on an instance that never took control of it, has nothing
+     * saved: Home Assistant answers config_not_found. That is normal and says nothing;
+     * anything else failing still does.
+     */
+    const said = [];
+    const original = console.warn;
+    console.warn = (...args) => said.push(args.join(' '));
+    const refusing = {
+      callWS: ({ url_path }) =>
+        url_path === null
+          ? Promise.reject({ code: 'config_not_found', message: 'No config found.' })
+          : url_path === 'broken'
+            ? Promise.reject({ code: 'unknown_error', message: 'boom' })
+            : Promise.resolve({}),
+    };
+    Promise.all([
+      collectAllTemplates(refusing, { decluttering_templates_from: 'lovelace', views: [] }),
+      collectAllTemplates(refusing, { decluttering_templates_from: 'broken', views: [] }),
+    ]).then(([fromDefault]) => {
+      console.warn = original;
+      check(
+        'an original dashboard with nothing saved lends nothing - only the library is there',
+        Object.keys(fromDefault).sort(),
+        ['library_only', 'shared_badge'],
+      );
+      check(
+        'and is not warned about, while a dashboard that failed to read still is',
+        said.map((line) => line.replace(/:.*$/, '')),
+        ['decluttering-card-plus'],
+      );
+      check('the one warned about is the broken one', /"broken"/.test(said[0] ?? ''), true);
+      report();
+    });
   });
 });

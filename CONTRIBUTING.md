@@ -70,6 +70,8 @@ than as a string literal, or it can never be translated.
   config once. Anything that reads live state — a `|state` resolver, filtering a repeat by
   what is currently on — would rebuild the whole card several times a second. It is a
   deliberate limit, not an oversight; [auto-entities][ae] is the right tool for that.
+  The one way in is `rebuild_on:`, where a card names the few entities it rebuilds for, and
+  `|state` reads only those. Keep it that way: opt-in, named entities, never everything.
 - **Something that stops a card saving.** A template can be edited after the cards that use
   it, so a card that looks wrong now may be right in a moment. Warn, never block. `strict:
   true` is how somebody opts into the opposite.

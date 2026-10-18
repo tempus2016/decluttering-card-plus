@@ -63,5 +63,7 @@ module.exports = {
       )
     : plugins,
   preset: 'conventionalcommits',
-  branches: [{ name: 'main' }, { name: 'dev', channel: 'beta', prerelease: true }],
+  // Only main releases. A prerelease channel would need a branch of its own under the
+  // ruleset, and .github/workflows/release.yml would have to admit it as well.
+  branches: [{ name: 'main' }],
 };

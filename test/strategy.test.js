@@ -9,6 +9,11 @@ const {
   wantsLabels,
   findRepeatingCard,
   sectionPerCopy,
+  slugPath,
+  uniquePath,
+  expandView,
+  generateDashboard,
+  dashboardWantsLabels,
 } = require('../.test-build/strategy.js');
 
 const { check, report } = require('./harness');
@@ -288,6 +293,198 @@ check(
   'what the conversion writes generates the same sections the card would have repeated over',
   generateView(converted.views[1].strategy, hass).sections.map((each) => each.cards[0].variables?.[1]),
   [undefined, undefined, { area_id: 'bedroom' }, { area_id: 'kitchen' }],
+);
+
+check(
+  'a views repeat reads the dashboard it is handed',
+  generateView(
+    {
+      badges: [
+        { for_each_from: { views: true }, badge: { type: 'entity', name: '[[name]]', tap: '[[navigation_path]]' } },
+      ],
+    },
+    hass,
+    { views: [{ title: 'Home', path: 'home' }], dashboard: 'lovelace' },
+  ).badges,
+  [{ type: 'entity', name: 'Home', tap: '/lovelace/home' }],
+);
+
+/* ------------------------------------------------------------- the dashboard strategy */
+
+check('a path is made fit for an address', slugPath('Living Room / Upstairs'), 'living-room-upstairs');
+
+check('an area id is already fit and stays as it is', slugPath('living_room'), 'living_room');
+
+check('a path of digits gets a word in front, or it reads as a position', slugPath(12), 'view-12');
+
+check('a path with nothing usable in it is no path', [slugPath('***'), slugPath(undefined)], [undefined, undefined]);
+
+{
+  const taken = new Set(['kitchen']);
+  check(
+    'a taken path gets the first free number',
+    [uniquePath('kitchen', taken), uniquePath('kitchen', taken)],
+    ['kitchen-2', 'kitchen-3'],
+  );
+}
+
+check('an ordinary view passes through untouched', expandView({ title: 'Home', cards: [{ type: 'x' }] }), [
+  { title: 'Home', cards: [{ type: 'x' }] },
+]);
+
+check(
+  'a repeated view is written out per area, placeholders filled',
+  expandView(
+    { for_each_from: { areas: true }, view: { title: '[[area]]', path: '[[area_id]]', icon: 'mdi:sofa' } },
+    [],
+    hass,
+  ),
+  [
+    { title: 'Bedroom', path: 'bedroom', icon: 'mdi:sofa' },
+    { title: 'Kitchen', path: 'kitchen', icon: 'mdi:sofa' },
+  ],
+);
+
+check(
+  'a templated card in a repeated view is handed the view values',
+  expandView(
+    {
+      for_each: [{ room: 'hall' }],
+      view: { sections: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'room' }] }] },
+    },
+    [],
+  )[0].sections[0].cards[0].variables[0],
+  { room: 'hall' },
+);
+
+check(
+  'a repeat over nothing gives its empty: view',
+  expandView({ for_each: [], view: { title: 'x' }, empty: { title: 'Nothing yet' } }),
+  [{ title: 'Nothing yet' }],
+);
+
+check('a repeat with no view to repeat gives nothing', expandView({ for_each: [{ a: 1 }] }), []);
+
+{
+  const nested = expandView(
+    {
+      for_each: [{ area_id: 'kitchen', name: 'Kitchen' }],
+      view: {
+        title: '[[name]]',
+        strategy: {
+          type: 'custom:decluttering-card-plus',
+          sections: [
+            {
+              for_each_from: { entities: 'light.*', area: '[[area_id]]' },
+              section: { type: 'grid', title: '[[name]]' },
+            },
+          ],
+        },
+      },
+    },
+    [],
+  )[0];
+
+  check('a nested view strategy has what it repeats over filled in', nested.strategy.sections[0].for_each_from, {
+    entities: 'light.*',
+    area: 'kitchen',
+  });
+
+  check('but not what it repeats, which belongs to its own items', nested.strategy.sections[0].section, {
+    type: 'grid',
+    title: '[[name]]',
+  });
+
+  check(
+    'the view values reach it as shared values, without the outer position',
+    nested.strategy.variables.map((entry) => Object.keys(entry)[0]),
+    ['area_id', 'name'],
+  );
+
+  check('and the view itself is filled in', nested.title, 'Kitchen');
+}
+
+check(
+  'somebody else strategy in a repeated view is filled in like the rest',
+  expandView({ for_each: [{ a: 'x' }], view: { strategy: { type: 'custom:other', area: '[[a]]' } } })[0].strategy,
+  { type: 'custom:other', area: 'x' },
+);
+
+{
+  const generated = generateDashboard(
+    {
+      type: 'custom:decluttering-card-plus',
+      variables: [{ theme: 'dark' }],
+      decluttering_templates: { room: { card: { type: 'markdown' } } },
+      decluttering_defaults: [{ size: 1 }],
+      decluttering_variables: [{ name: 'size' }],
+      decluttering_templates_from: ['other'],
+      title: 'House',
+      views: [
+        { title: 'Home', path: 'bedroom' },
+        { for_each_from: { areas: true }, view: { title: '[[area]] [[theme]]', path: '[[area]]' } },
+        { for_each: [{ n: 'Kitchen' }, { n: 'Kitchen' }], view: { title: '[[n]]', path: '[[n]]' } },
+        { for_each: [{ n: '***' }], view: { title: 'no path', path: '[[n]]' } },
+        { strategy: { type: 'custom:decluttering-card-plus', sections: [] } },
+      ],
+    },
+    hass,
+  );
+
+  check(
+    'the template keys go to the dashboard root, where the cards look for them',
+    [
+      generated.decluttering_templates,
+      generated.decluttering_defaults,
+      generated.decluttering_variables,
+      generated.decluttering_templates_from,
+      generated.title,
+    ],
+    [{ room: { card: { type: 'markdown' } } }, [{ size: 1 }], [{ name: 'size' }], ['other'], 'House'],
+  );
+
+  check(
+    'the strategy own keys do not leak into the dashboard',
+    [generated.type, generated.variables],
+    [undefined, undefined],
+  );
+
+  check(
+    'views come out in order, every path unique, a written path kept as written',
+    generated.views.map((view) => view.path),
+    ['bedroom', 'bedroom-2', 'kitchen', 'kitchen-2', 'kitchen-3', undefined, undefined],
+  );
+
+  check('the strategy values reach every repeat', generated.views[1].title, 'Bedroom dark');
+
+  check('a path that slugs to nothing is left out, so the view goes by position', 'path' in generated.views[5], false);
+
+  check('a view with its own view strategy passes through for Home Assistant to run', generated.views[6], {
+    strategy: { type: 'custom:decluttering-card-plus', sections: [] },
+  });
+}
+
+check('a dashboard with no views asked for has none', generateDashboard({ type: 'x' }).views, []);
+
+check(
+  'labels are wanted when a repeated view names them',
+  dashboardWantsLabels({ views: [{ for_each_from: { labels: true } }] }),
+  true,
+);
+
+check('and not otherwise', dashboardWantsLabels({ views: [{ title: 'x' }] }), false);
+
+check(
+  'a dashboard repeat reads a rendered Jinja list like a section repeat does',
+  generateDashboard(
+    { views: [{ for_each_from: { template: '{{ x }}' }, view: { title: '[[item]]', path: '[[item]]' } }] },
+    { states: {}, entities: {} },
+    { rendered: { '{{ x }}': { result: ['Upstairs', 'Downstairs'] } } },
+  ).views,
+  [
+    { title: 'Upstairs', path: 'upstairs' },
+    { title: 'Downstairs', path: 'downstairs' },
+  ],
 );
 
 report();

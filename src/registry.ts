@@ -7,8 +7,10 @@
  * kitchen" and grow by itself.
  */
 
+import { categoriesOf, categoryRegistry, EntityCategory } from './categories';
 import { labelRegistry } from './labels';
-import { asHaText } from './variables';
+import { asHaText, CARRIES_TOKEN } from './variables';
+import { sourceTemplate, TemplateRender, templateList } from './template-source';
 
 /** What to repeat over. `areas` and `entities` choose the kind of copy; the rest narrow. */
 export interface RegistrySource {
@@ -20,6 +22,12 @@ export interface RegistrySource {
   floors?: boolean | string | string[];
   /** Repeat over labels, by id or name pattern. */
   labels?: boolean | string | string[];
+  /** Repeat over the views of the dashboard the card is on, by title or path pattern. */
+  views?: boolean | string | string[];
+  /** For a views source: subviews too, which are left out otherwise. */
+  subviews?: boolean;
+  /** Repeat over the list a Jinja template renders to, rendered once when the card is built. */
+  template?: string;
   /** Repeat over entities, matching these entity id patterns. Defaults to all of them. */
   entities?: boolean | string | string[];
   /** Narrows to entities of these domains. */
@@ -34,6 +42,16 @@ export interface RegistrySource {
   device_class?: string | string[];
   /** Narrows to entities provided by these integrations. */
   integration?: string | string[];
+  /** Narrows to entities measured in these units, as their state reports them (`kWh`). */
+  unit?: string | string[];
+  /** Narrows to entities with these state classes (`measurement`, `total_increasing`). */
+  state_class?: string | string[];
+  /** Narrows to entities filed under these categories, by category id or by name. */
+  category?: string | string[];
+  /** Keeps entities Home Assistant hides, which a repeat otherwise leaves out. */
+  include_hidden?: boolean;
+  /** Also keeps entities in these categories (`diagnostic`, `config`), or `all` of them. */
+  entity_category?: boolean | string | string[];
   /** What to leave out. Patterns for entity ids, or a mapping of the same filters. */
   exclude?: string | string[] | RegistrySource;
   /** What to order the copies by, `-key` for descending, a list for tiebreaks. */
@@ -67,6 +85,8 @@ const SOURCE_KEYS = [
   'devices',
   'floors',
   'labels',
+  'views',
+  'template',
   'entities',
   'domain',
   'area',
@@ -74,9 +94,25 @@ const SOURCE_KEYS = [
   'label',
   'device_class',
   'integration',
+  'unit',
+  'state_class',
+  'category',
   'exclude',
   'range',
 ];
+
+/**
+ * What a source may need beyond hass: the dashboard it is on, for `views:`. The card
+ * reads it from the page; tests and the view strategy hand it over themselves.
+ */
+export interface SourceContext {
+  /** The views of the dashboard the card is on, as its configuration lists them. */
+  views?: any[];
+  /** That dashboard's url path - `lovelace` for the default one. */
+  dashboard?: string;
+  /** What each `template:` rendered to, keyed by the template's text. Absent until it has. */
+  rendered?: Record<string, TemplateRender>;
+}
 
 /** Whether a `for_each_from:` value is a description of what to repeat over. */
 export function isRegistrySource(value: any): boolean {
@@ -93,34 +129,46 @@ function asList(value: boolean | string | string[] | undefined): string[] | unde
   return list.length ? list : undefined;
 }
 
-// Each pattern is compiled once and kept: the same handful of patterns is tested against
-// every entity in the registry, and rebuilding the regexp per entity was most of the work.
-const patternCache = new Map<string, RegExp>();
-
-/** The anchored, case-insensitive regexp one `*` pattern compiles to. */
-function patternRegExp(pattern: string): RegExp {
-  const cached = patternCache.get(pattern);
-  if (cached) return cached;
-  // Runs of `*` are collapsed to one. Left as written they compile to `.*.*.*`, which backs
-  // off exponentially against a subject that never matches - a pattern like `**********z`
-  // freezes the tab for the better part of a minute on a single entity id. `.*` repeated is
-  // no more expressive than a single `.*`, so nothing is lost by folding them together.
-  const source = pattern
-    .toLowerCase()
-    .replace(/\*+/g, '*')
-    .split('*')
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('.*');
-  const compiled = new RegExp(`^${source}$`);
-  patternCache.set(pattern, compiled);
-  return compiled;
+/*
+ * Whether one `*` pattern matches a text in full, without regard to case. Not a regexp: a
+ * pattern turned into `.*a.*a.*a.*z` backs off polynomially against a run of a's, and a
+ * shared template can supply both the pattern (an `overrides:` key) and, through a Jinja
+ * source, the text (review 2026-10-18). This is the usual two-pointer walk instead - each
+ * star remembers where it was, and a mismatch after one goes back to let it take one more
+ * character - which is linear in the text for any pattern.
+ */
+export function globMatches(text: string, pattern: string): boolean {
+  const subject = text.toLowerCase();
+  const glob = pattern.toLowerCase();
+  let s = 0;
+  let g = 0;
+  let star = -1;
+  let mark = 0;
+  while (s < subject.length) {
+    if (g < glob.length && glob[g] === '*') {
+      star = g;
+      g += 1;
+      mark = s;
+    } else if (g < glob.length && glob[g] === subject[s]) {
+      g += 1;
+      s += 1;
+    } else if (star !== -1) {
+      g = star + 1;
+      mark += 1;
+      s = mark;
+    } else {
+      return false;
+    }
+  }
+  while (g < glob.length && glob[g] === '*') g += 1;
+  return g === glob.length;
 }
 
 /** One pattern with `*` standing for anything, anchored, matched without regard to case. */
 function matches(value: string | undefined | null, patterns: string[]): boolean {
   if (value === undefined || value === null) return false;
-  const text = String(value).toLowerCase();
-  return patterns.some((pattern) => patternRegExp(pattern).test(text));
+  const text = String(value);
+  return patterns.some((pattern) => globMatches(text, pattern));
 }
 
 /** Matches when any spelling of a thing matches any pattern. No patterns narrows nothing. */
@@ -182,7 +230,12 @@ const SORTS: Record<string, (item: Record<string, any>) => string> = {
  * `total` goes on every copy before the limit is applied, so a template can say "8 of 23"
  * rather than "8 of 8".
  */
-function ordered(items: Record<string, any>[], source: RegistrySource, hass?: any): Record<string, any>[] {
+function ordered(
+  items: Record<string, any>[],
+  source: RegistrySource,
+  hass?: any,
+  keepOrder = false,
+): Record<string, any>[] {
   /*
    * `overrides:` gives particular copies different variables - a special icon for one
    * light - without the exclude-and-rewrite dance. Applied before anything else looks at
@@ -195,7 +248,7 @@ function ordered(items: Record<string, any>[], source: RegistrySource, hass?: an
       let merged = item;
       for (const [pattern, extra] of Object.entries(overrides)) {
         if (!extra || typeof extra !== 'object' || Array.isArray(extra)) continue;
-        if (matches(item.entity ?? item.area_id, [pattern])) merged = { ...merged, ...extra };
+        if (matchesAny(overrideKeys(item), [pattern])) merged = { ...merged, ...extra };
       }
       return merged;
     });
@@ -249,9 +302,12 @@ function ordered(items: Record<string, any>[], source: RegistrySource, hass?: an
         return descending ? -compared : compared;
       };
     });
+  // A list somebody already put in order - the dashboard's views - keeps it until asked.
   const sorted =
     asked === undefined
-      ? [...items].sort(byName)
+      ? keepOrder
+        ? [...items]
+        : [...items].sort(byName)
       : comparators.length
         ? [...items].sort((a, b) => {
             for (const compare of comparators) {
@@ -271,6 +327,19 @@ function ordered(items: Record<string, any>[], source: RegistrySource, hass?: an
   const from = Number.isFinite(offset) && offset > 0 ? Math.floor(offset) : 0;
   const limit = Number(source.limit);
   return Number.isFinite(limit) && limit >= 0 ? withTotal.slice(from, from + limit) : withTotal.slice(from);
+}
+
+/*
+ * What an `overrides:` key is matched against: the entity or area as it always was, for a
+ * view - which has neither - its path or its title, and for a template's plain values the
+ * value itself.
+ */
+function overrideKeys(item: Record<string, any>): (string | undefined)[] {
+  const id = item.entity ?? item.area_id;
+  if (id !== undefined) return [id];
+  if (item.path !== undefined) return [item.path, item.name];
+  if (Object.prototype.hasOwnProperty.call(item, 'item')) return [String(item.item)];
+  return [];
 }
 
 /** Whether one area answers to a set of filters. */
@@ -429,6 +498,40 @@ function labelItems(hass: any, source: RegistrySource): Record<string, any>[] {
   return items;
 }
 
+/*
+ * A copy per view of the dashboard the card is on, in the order the dashboard has them -
+ * the makings of a navigation bar that stays true when a view is added or renamed. The
+ * views are read from the dashboard's configuration as the page has it, so a view a
+ * strategy writes out is whatever that configuration says it is.
+ *
+ * Subviews are left out unless asked for: they are reached from a card, not from a bar.
+ * `views:` patterns and `exclude:` patterns match a view's title or its path.
+ */
+function viewItems(source: RegistrySource, context: SourceContext | undefined): Record<string, any>[] {
+  const views = Array.isArray(context?.views) ? context.views : [];
+  const dashboard = context?.dashboard || 'lovelace';
+  const drop = asList(excluded(source.exclude)?.entities);
+  const items: Record<string, any>[] = [];
+
+  views.forEach((view: any, index: number) => {
+    if (!view || typeof view !== 'object') return;
+    if (view.subview && source.subviews !== true) return;
+    // A view with no path is reached by its position, which is what Home Assistant does too.
+    const path = typeof view.path === 'string' && view.path ? view.path : String(index);
+    const name = typeof view.title === 'string' && view.title ? view.title : path;
+    if (!matchesAny([name, path], asList(source.views))) return;
+    if (drop && matchesAny([name, path], drop)) return;
+    items.push({
+      name,
+      path,
+      navigation_path: `/${dashboard}/${path}`,
+      icon: typeof view.icon === 'string' ? view.icon : '',
+      view_index: index,
+    });
+  });
+  return items;
+}
+
 /** The device class an entity reports, which is on its state rather than its registry entry. */
 function deviceClassOf(hass: any, entityId: string, entity: any): string | undefined {
   return hass?.states?.[entityId]?.attributes?.device_class ?? entity?.device_class;
@@ -448,12 +551,35 @@ function entityMatches(hass: any, entityId: string, entity: any, source: Registr
   const integrations = asList(source.integration);
   if (integrations && !matchesAny([entity?.platform], integrations)) return false;
 
+  /*
+   * The unit and state class are on the state rather than in the registry, read once
+   * while the copies are worked out - neither changes while an entity lives, so they need
+   * no watching. A unit is compared exactly, case and all: `mW` and `MW` are a milliwatt
+   * and a megawatt, and an energy dashboard that mixed them would be worse than useless.
+   */
+  const attributes = hass?.states?.[entityId]?.attributes;
+  const units = asList(source.unit);
+  if (units && !units.includes(String(attributes?.unit_of_measurement ?? ''))) return false;
+  const stateClasses = asList(source.state_class);
+  if (stateClasses && !matches(attributes?.state_class, stateClasses)) return false;
+
   const area = areaOf(hass, entity);
   const areas = asList(source.area);
   if (areas && !matchesAny([area?.area_id, area?.name], areas)) return false;
   if (!floorMatches(hass, area, asList(source.floor))) return false;
   if (!labelMatches(hass, labelsOf(hass, entity), asList(source.label))) return false;
+  const categories = asList(source.category);
+  if (categories && !categoryMatching(entityId, categories)) return false;
   return true;
+}
+
+/*
+ * The category an entity is filed under that answers to these patterns, by id or by
+ * name. An automation is filed per list it appears in - its own scope - so any scope
+ * counts.
+ */
+function categoryMatching(entityId: string, patterns: string[]): EntityCategory | undefined {
+  return categoriesOf(entityId).find((category) => matchesAny([category.id, category.name], patterns));
 }
 
 /**
@@ -479,29 +605,147 @@ export function entityPasses(hass: any, entityId: string, source: RegistrySource
   return !(drop && entityMatches(hass, entityId, entity, drop));
 }
 
+/*
+ * The entity ids a source names outright - `entities: [light.hall, sensor.battery]`,
+ * written without a `*`. Those are never dropped for being hidden or diagnostic: somebody
+ * typed the id, so they want that entity, whatever Home Assistant thinks of showing it.
+ */
+function namedOutright(source: RegistrySource): Set<string> {
+  const named = new Set<string>();
+  // `entities: true` comes back as `*`, which names nothing.
+  for (const each of asList(source.entities) ?? []) if (!each.includes('*')) named.add(each.toLowerCase());
+  return named;
+}
+
+/** Whether a source has asked for entities in this category (`diagnostic`, `config`). */
+function categoryWanted(source: RegistrySource, category: string): boolean {
+  const asked = source.entity_category;
+  if (asked === true) return true;
+  const list = asList(asked === false ? undefined : asked);
+  if (!list) return false;
+  return list.some((each) => each.toLowerCase() === 'all' || each.toLowerCase() === category.toLowerCase());
+}
+
+/*
+ * Home Assistant's own automatic dashboards leave out what it hides and what is only there
+ * for diagnosis or configuration - a signal-strength sensor, an identify button, a
+ * firmware switch - and a repeat built from the registry now does the same, because a
+ * tile per light that also carries every light's "identify" button is not what anybody
+ * means by "every light". `include_hidden:` and `entity_category:` bring them back.
+ */
+function shownByDefault(entity: any, source: RegistrySource): boolean {
+  if (entity?.hidden && source.include_hidden !== true) return false;
+  const category = entity?.entity_category;
+  if (typeof category === 'string' && category && !categoryWanted(source, category)) return false;
+  return true;
+}
+
 function entityItems(hass: any, source: RegistrySource): Record<string, any>[] {
   const drop = excluded(source.exclude);
+  const named = namedOutright(source);
   const items: Record<string, any>[] = [];
 
   for (const [entityId, entity] of Object.entries(hass?.entities ?? {}) as [string, any][]) {
-    // Something hidden was hidden on purpose, and a dashboard built from the registry
-    // should no more show it than Home Assistant's own automatic dashboards do.
-    if (entity?.hidden) continue;
+    if (!named.has(entityId.toLowerCase()) && !shownByDefault(entity, source)) continue;
     if (!entityMatches(hass, entityId, entity, source)) continue;
     // What to leave out wins over what to take in, so one sweep can say "all of these
     // except those three" without listing everything it does want.
     if (drop && entityMatches(hass, entityId, entity, drop)) continue;
 
-    const area = areaOf(hass, entity);
-    items.push({
-      entity: entityId,
-      name: nameOf(hass, entityId, entity),
-      domain: entityId.split('.')[0],
-      area: area?.name ?? '',
-      area_id: area?.area_id ?? '',
-    });
+    items.push(entityItem(hass, entityId, entity, source));
+  }
+
+  /*
+   * An id named outright is kept whatever Home Assistant thinks of showing it - and that
+   * includes an entity with a state but no registry entry. sun.sun is one: it has no unique
+   * id, so it is not in hass.entities at all, and `entities: [light.kitchen, sun.sun]` made
+   * a copy of the light only. Those come after the registry's, in the order they were named;
+   * the other filters still apply, with nothing in the registry to match on.
+   */
+  for (const entityId of asList(source.entities) ?? []) {
+    if (entityId.includes('*') || hass?.entities?.[entityId] !== undefined) continue;
+    if (hass?.states?.[entityId] === undefined) continue;
+    if (items.some((item) => item.entity === entityId)) continue;
+    if (!entityMatches(hass, entityId, undefined, source)) continue;
+    if (drop && entityMatches(hass, entityId, undefined, drop)) continue;
+    items.push(entityItem(hass, entityId, undefined, source));
   }
   return items;
+}
+
+/** The variables one entity's copy is given - the same however the entity was found. */
+function entityItem(hass: any, entityId: string, entity: any, source: RegistrySource): Record<string, any> {
+  const area = areaOf(hass, entity);
+  const item: Record<string, any> = {
+    entity: entityId,
+    name: nameOf(hass, entityId, entity),
+    domain: entityId.split('.')[0],
+    area: area?.name ?? '',
+    area_id: area?.area_id ?? '',
+  };
+  // Only a repeat that narrows by category is told which one: everybody else's copies
+  // keep the shape they always had, and a category is only known once fetched anyway.
+  if (source.category !== undefined) {
+    const patterns = asList(source.category);
+    item.category = (patterns && categoryMatching(entityId, patterns)?.name) ?? '';
+  }
+  return item;
+}
+
+// What an entity id looks like. Checked against what exists too, so `1.5` or `v2.0` in a
+// list of versions is never mistaken for one.
+const ENTITY_ID = /^[a-z_][a-z0-9_]*\.[a-z0-9_]+$/;
+
+/*
+ * The copies a rendered template stands for. A list of entity ids - every one of them
+ * known to Home Assistant - becomes the same copies an `entities:` sweep would make, and
+ * the other filters still narrow it; those entities were picked by the template, so they
+ * are never dropped for being hidden or diagnostic. A mapping is that copy's variables as
+ * they stand. Anything else - a word, a number - is handed over as `item`.
+ */
+function templateItems(hass: any, list: unknown[], source: RegistrySource): Record<string, any>[] {
+  const known = (value: unknown): boolean =>
+    typeof value === 'string' &&
+    ENTITY_ID.test(value) &&
+    (hass?.states?.[value] !== undefined || hass?.entities?.[value] !== undefined);
+
+  if (list.length && list.every(known)) {
+    const drop = excluded(source.exclude);
+    const items: Record<string, any>[] = [];
+    // A template that names the same entity twice still means one copy of it.
+    for (const entityId of new Set(list as string[])) {
+      const entity = hass?.entities?.[entityId];
+      if (!entityMatches(hass, entityId, entity, source)) continue;
+      if (drop && entityMatches(hass, entityId, entity, drop)) continue;
+      items.push(entityItem(hass, entityId, entity, source));
+    }
+    return items;
+  }
+
+  return list.map((value) =>
+    withoutTokenUrls(
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? { ...(value as Record<string, any>) }
+        : { item: value },
+    ),
+  );
+}
+
+/*
+ * A Jinja list can carry anything its author read, a camera's proxied picture included -
+ * and that url grants the picture to whoever holds it. `attr:` refuses such a value at the
+ * one place it reads an attribute; this is the other way one can come in, so the same
+ * refusal applies to every text in a copy (review 2026-10-18).
+ */
+function withoutTokenUrls<T>(value: T): T {
+  if (typeof value === 'string') return (CARRIES_TOKEN.test(value) ? undefined : value) as T;
+  if (Array.isArray(value)) return value.map(withoutTokenUrls) as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) out[key] = withoutTokenUrls(entry);
+    return out as T;
+  }
+  return value;
 }
 
 // What each kind of copy is given, which is also what an editor must not report as a
@@ -514,6 +758,10 @@ const LABEL_NAMES = ['label_id', 'label', 'name', 'total'];
 const GATHERED_NAMES = ['items', 'entities', 'entity_count'];
 const GROUPED_NAMES = ['group', 'name', 'items', 'entities', 'entity_count', 'total'];
 const RANGE_NAMES = ['total'];
+const VIEW_NAMES = ['name', 'path', 'navigation_path', 'icon', 'view_index', 'total'];
+// A template's copies may be entities, plain values or mappings of anything at all; only
+// the first two are known before it renders.
+const TEMPLATE_NAMES = [...ENTITY_NAMES, 'item'];
 
 /** The variable names a source supplies to every copy, whatever the registry holds. */
 export function registryNames(source: any): string[] {
@@ -524,14 +772,17 @@ export function registryNames(source: any): string[] {
   if (source.devices !== undefined) return [...DEVICE_NAMES, ...gathered];
   if (source.floors !== undefined) return [...FLOOR_NAMES, ...gathered];
   if (source.labels !== undefined) return [...LABEL_NAMES, ...gathered];
-  return typeof source.group_by === 'string' ? [...GROUPED_NAMES] : [...ENTITY_NAMES];
+  if (source.views !== undefined) return [...VIEW_NAMES];
+  if (source.template !== undefined) return [...TEMPLATE_NAMES, ...(source.category !== undefined ? ['category'] : [])];
+  if (typeof source.group_by === 'string') return [...GROUPED_NAMES];
+  return source.category !== undefined ? [...ENTITY_NAMES, 'category'] : [...ENTITY_NAMES];
 }
 
 /**
  * The copies a `for_each_from:` asks for, one set of variables each. Order is by the name
  * shown, so the dashboard does not reshuffle itself when the registry does.
  */
-export function resolveRegistryItems(hass: any, source: any): Record<string, any>[] {
+export function resolveRegistryItems(hass: any, source: any, context?: SourceContext): Record<string, any>[] {
   if (!isRegistrySource(source)) return [];
 
   /*
@@ -547,6 +798,27 @@ export function resolveRegistryItems(hass: any, source: any): Record<string, any
     const count = Math.min(asked, MAX_RANGE);
     return Array.from({ length: count }, () => ({ total: count }));
   }
+
+  /*
+   * A template's list is whatever it rendered to, in the order it rendered - sort it in
+   * Jinja, or with `sort:`. Not rendered yet, or not a list, is no copies: the card waits
+   * for the render before building, and says what went wrong when it was not a list.
+   */
+  if (source.template !== undefined) {
+    const template = sourceTemplate(source);
+    const rendered = context?.rendered;
+    // Own keys only - the text is the user's, and `toString` would find a function.
+    const render =
+      template !== undefined && rendered && Object.prototype.hasOwnProperty.call(rendered, template)
+        ? rendered[template]
+        : undefined;
+    const listed = templateList(render);
+    if (!('list' in listed)) return [];
+    return asHaText(ordered(templateItems(hass, listed.list, source), source, hass, true));
+  }
+
+  // Views are the dashboard's, not the registry's, and keep the dashboard's order.
+  if (source.views !== undefined) return asHaText(ordered(viewItems(source, context), source, hass, true));
 
   const items =
     source.areas !== undefined
@@ -573,7 +845,9 @@ function isEntitySource(source: RegistrySource): boolean {
     source.areas === undefined &&
     source.devices === undefined &&
     source.floors === undefined &&
-    source.labels === undefined
+    source.labels === undefined &&
+    source.views === undefined &&
+    source.template === undefined
   );
 }
 
@@ -622,7 +896,8 @@ function groupedItems(hass: any, items: Record<string, any>[], by: string): Reco
 export function registryKey(hass: any): unknown[] {
   // The label registry is fetched rather than carried on hass - see labels.ts - so it is part
   // of the key: the fetch landing is what turns label ids into names on screen.
-  return [hass?.entities, hass?.devices, hass?.areas, hass?.floors, labelRegistry(hass)];
+  // Categories likewise, fetched by categories.ts for the cards that narrow by one.
+  return [hass?.entities, hass?.devices, hass?.areas, hass?.floors, labelRegistry(hass), categoryRegistry()];
 }
 
 /** Whether two registry keys describe the same registry, compared entry by entry. */
