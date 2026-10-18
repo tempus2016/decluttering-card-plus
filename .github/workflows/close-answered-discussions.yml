@@ -1,0 +1,27 @@
+name: Close answered discussions
+
+# A Q&A discussion is closed as resolved once one of its replies is marked as
+# the answer. Anybody can reopen it, and the answer stays where it is.
+
+on:
+  discussion:
+    types: [answered]
+
+permissions:
+  discussions: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.graphql(
+              `mutation($id: ID!) {
+                closeDiscussion(input: { discussionId: $id, reason: RESOLVED }) {
+                  discussion { closed }
+                }
+              }`,
+              { id: context.payload.discussion.node_id },
+            );
