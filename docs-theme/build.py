@@ -49,6 +49,18 @@ def front_matter(fields):
     return "\n".join(lines)
 
 
+def literal(text, name):
+    """
+    Jekyll runs every page through Liquid before Markdown, and Liquid reads {{ }} and {% %} -
+    which is exactly what a Home Assistant Jinja example is made of. {{ states(...) }} came
+    out blank and {% set %} failed the whole build, so a page's text is kept away from it.
+    """
+    if "{% endraw" in text or "{%- endraw" in text:
+        print("left", name, "to Liquid: it spells out an endraw tag")
+        return text
+    return "{% raw %}" + text + "{% endraw %}"
+
+
 def rewrite_links(text):
     text = WIKI_LINK.sub(lambda m: "]({}.html{})".format(m.group(1), m.group(2) or ""), text)
     # Home.md is published as index.md, so nothing should still point at Home.html.
@@ -164,7 +176,7 @@ def main(root):
             # A wiki's Home page is its front page; a web server wants an index.
             fields, body = split_home(text)
             open(os.path.join(root, "index.md"), "w", encoding="utf-8").write(
-                front_matter(fields) + body
+                front_matter(fields) + literal(body, name)
             )
             print("Home.md -> index.md, hero from:", fields.get("hero_headline_html", "-"))
             continue
@@ -173,7 +185,8 @@ def main(root):
         # where each page gets a <title> of its own - the whole point of publishing here.
         title = HEADING.search(text)
         open(path, "w", encoding="utf-8").write(
-            front_matter({"title": title.group(1) if title else name[:-3].replace("-", " ")}) + text
+            front_matter({"title": title.group(1) if title else name[:-3].replace("-", " ")})
+            + literal(text, name)
         )
 
     print("prepared", len([f for f in os.listdir(root) if f.endswith('.md')]), "pages")
