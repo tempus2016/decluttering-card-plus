@@ -77,7 +77,7 @@
 
   "template_editor.declutter_header": "Een bestaande kaart opruimen",
 
-  "template_editor.declutter_hint": "Kies een kaart die al op dit dashboard staat en ze wordt de kaart van dit sjabloon - laat daarna \"Variabelen voorstellen\" vinden wat verschilt. Zodra het sjabloon is opgeslagen, kan het origineel worden vervangen door een kaart die het gebruikt.",
+  "template_editor.declutter_hint": "Kies een kaart die al op dit dashboard staat en die wordt de kaart van deze sjabloon - laat daarna \"Variabelen voorstellen\" vinden wat verschilt. Of kies een hele sectie, dan worden de kaarten daarin een groep. Zodra de sjabloon is opgeslagen, kan het origineel worden vervangen door een kaart die hem gebruikt.",
 
   "template_editor.declutter_pick": "Kaart",
 
@@ -296,6 +296,10 @@
   "report.copied": "Gekopieerd",
   "report.download": "Downloaden",
   "report.show": "Rapport tonen",
+  "report.as_built": "decluttering-card-plus: {label} zoals gebouwd",
+  "report.unredacted": "Er is niets uit dit rapport gehaald, omdat de kaart redact: false heeft. Elk wachtwoord, token, IP-adres, e-mailadres en elke host staat erin zoals geschreven, dus plaats het nergens openbaar.",
+  "report.show_markdown": "Markdown tonen",
+  "report.show_formatted": "Opgemaakt tonen",
 
   "picker.card_description": "Gebruik dezelfde kaartconfiguratie meerdere keren met variabelen om je configuratie op te ruimen.",
   "picker.published_description": "Een kaart gebouwd uit het decluttering-sjabloon \"{template}\".",
@@ -462,5 +466,35 @@
   "editor.matches_template_failed": "Het sjabloon kon niet worden gerenderd ({detail}), dus deze kaart herhaalt niets.",
   "editor.matches_template_not_list": "Het sjabloon gaf {detail}, en dat is geen lijst, dus deze kaart herhaalt niets. Sluit het af met | list.",
   "tools.similar_header_one": "Vergelijkbare kaarten (1 groep)",
-  "warn.many_copies_scroll": "decluttering-card-plus: het sjabloon \"{template}\" wordt op één kaart {count} keer herhaald. lazy: true bouwt alleen de kopieën dicht bij het scherm, maar het is nog steeds veel om door te scrollen – beperk waar het over herhaalt."
+  "warn.many_copies_scroll": "decluttering-card-plus: het sjabloon \"{template}\" wordt op één kaart {count} keer herhaald. lazy: true bouwt alleen de kopieën dicht bij het scherm, maar het is nog steeds veel om door te scrollen – beperk waar het over herhaalt.",
+
+  "template_editor.declutter_pick_section": "Sectie",
+  "template_editor.declutter_section_one": "{where} - 1 kaart",
+  "template_editor.declutter_section_many": "{where} - {count} kaarten",
+  "template_editor.declutter_replace_section": "De kaarten van de sectie vervangen door een kaart die deze sjabloon gebruikt",
+  "template_editor.declutter_section_changed": "De sectie is veranderd sinds hij werd gekozen, dus hij is gelaten zoals hij was. Kies hem opnieuw om te zien wat er nu in staat.",
+  "template_editor.group_order_hint": "De kaarten van de groep, in de volgorde waarin ze worden geplaatst. Sleep er een, of gebruik de pijlen, om hem te verplaatsen.",
+  "template_editor.promote_header": "Een instelling een variabele maken",
+  "template_editor.promote_hint": "Kies een willekeurige instelling van de sjabloon en geef hem een naam. Hij wordt een placeholder, gedeclareerd met de waarde die hij had als standaard, dus de sjabloon bouwt nog steeds hetzelfde totdat een kaart iets anders doorgeeft.",
+  "template_editor.promote_pick": "Instelling",
+  "template_editor.promote_name": "Naam van de variabele",
+  "template_editor.promote_button": "Maak er een variabele van",
+  "template_editor.promote_name_invalid": "\"{name}\" kan geen variabelenaam zijn: gebruik alleen letters, cijfers, _ en -.",
+  "template_editor.promote_name_taken": "De sjabloon heeft al een variabele die \"{name}\" heet.",
+  "template_editor.promote_gone": "Die instelling staat niet meer in de sjabloon. Kies hem opnieuw.",
+  "share.download": "Downloaden",
+  "share.import_file": "Bestand openen",
+  "share.trash_header": "Verwijderde en vervangen sjablonen",
+  "share.trash_hint": "Telkens als een dashboard wordt opgeslagen, wordt een sjabloon die het kwijtraakte of veranderde hier bewaard zoals hij was - de laatste 20, in je Home Assistant-gebruikersgegevens. Opslaan wordt alleen opgemerkt zolang er een dashboard open is in een browser.",
+  "share.trash_removed": "verwijderd uit {dashboard}, {when}",
+  "share.trash_replaced": "vervangen op {dashboard}, {when}",
+  "share.trash_clash": "{name} staat weer op dat dashboard. Herstellen vervangt hem, en de versie die er nu staat komt hier terecht.",
+  "share.trash_restore": "Herstellen",
+  "share.trash_restore_anyway": "Toch herstellen",
+  "share.trash_show": "Tonen",
+  "share.trash_hide": "Verbergen",
+  "share.trash_forget": "Verwijderen",
+  "share.trash_empty": "Nog niets hier.",
+  "undo.op.restore": "het herstellen van een sjabloon",
+  "group.hidden_outside_edit": "+{count} verborgen buiten de bewerkmodus"
 }

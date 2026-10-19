@@ -222,7 +222,21 @@ Templates][wiki-defining].
   fail, deprecated templates still in use, and the slowest builds on the page.
 - **Turning cards into templates and back** — declutter a card already on the dashboard into
   a template and swap the original for it, or eject a card so it becomes exactly what the
-  template built and stops depending on it.
+  template built and stops depending on it. *(v2.1.0+)* Pick a whole section instead and its
+  cards become a `group:` template, with the section's cards swapped for one card using it.
+  In the template editor, **Turn a setting into a variable** makes any one setting a
+  placeholder, declared with the value it had as its default, and a group's cards can be
+  dragged into order, as can the variables.
+- **Deleted and replaced templates** *(v2.1.0+)* — whenever a dashboard is saved, a template
+  it lost or changed is kept as it was: the last 20, in your Home Assistant user data, listed
+  in the template editor's Share tab with a Restore button. That covers a template card
+  deleted from the dashboard menu or a template overwritten in the raw configuration editor,
+  which undo never could. Saves are only seen while a dashboard is open in a browser.
+- **Templates as files** *(v2.1.0+)* — the Share tab downloads the export as a `.yaml` file and
+  opens one to import, alongside copying and pasting.
+- **Hidden cards in a group, in edit mode** *(v2.1.0+)* — edit mode shows every card, so a
+  card in a group that its visibility conditions hide is dimmed, and the group says how many
+  are hidden outside edit mode.
 
 ## Is this the right card?
 
@@ -497,9 +511,13 @@ level.
 the same as `debug: console`, and has a panel underneath holding all of that as one
 Markdown text, with **Copy** and **Download** buttons, ready to paste into an issue or a
 forum post. It starts with the versions of the card, Home Assistant and your browser, then
-each template as written, then every build with its variables, placeholders, warnings and
-result, the cards inside it included. If `strict:` refuses the card, the reason comes first.
-Put it on the outermost card: a card inside it is in its report already.
+what the card ended up as, then each build folded away under its own heading, with the
+template as written, its variables, placeholders, warnings and result, the cards inside it
+included. If `strict:` refuses the card, the reason comes first. Put it on the outermost
+card: a card inside it is in its report already.
+
+**Show the report** opens it on the card formatted, the way GitHub would show it
+*(v2.1.0+)*, with a button to switch to the Markdown source.
 
 Passwords, tokens, IP addresses, email addresses and hosts that could be recognised are
 replaced before the text is shown: the value of any variable named like a secret wherever it
@@ -507,6 +525,17 @@ turns up, secret-looking keys in the configs, credentials and hosts in URLs, and
 token formats. It cannot know every shape a secret takes, and entity ids, names and
 everything else are left as they are, because they are usually what the problem is about,
 so read it through before you post it.
+
+Each one is marked with what it was, `<redacted-ip>`, `<redacted-host>` and so on
+*(v2.1.0+)*. When it is the real value you need to see, `redact: false` *(v2.1.0+)* leaves
+everything in, and the report says so at the top. Keep that one to yourself.
+
+```yaml
+type: custom:decluttering-card-plus
+template: camera
+debug: report
+redact: false
+```
 
 `strict: true` turns the usual warnings into a card that refuses. Nothing normally stops a
 card rendering — a template can be edited after the cards that use it — but somebody

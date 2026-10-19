@@ -77,7 +77,7 @@
 
   "template_editor.declutter_header": "Eine bestehende Karte entrümpeln",
 
-  "template_editor.declutter_hint": "Wähle eine Karte, die schon auf diesem Dashboard liegt, und sie wird die Karte dieser Vorlage - dann findet „Variablen vorschlagen\", was sich unterscheidet. Ist die Vorlage gespeichert, lässt sich das Original gegen eine Karte tauschen, die sie verwendet.",
+  "template_editor.declutter_hint": "Wähle eine Karte, die schon auf diesem Dashboard ist, und sie wird zur Karte dieser Vorlage – lass dann „Variablen vorschlagen“ herausfinden, was sich ändert. Oder wähle einen ganzen Abschnitt, dann werden seine Karten zu einer Gruppe. Sobald die Vorlage gespeichert ist, kann das Original durch eine Karte ersetzt werden, die sie verwendet.",
 
   "template_editor.declutter_pick": "Karte",
 
@@ -296,6 +296,10 @@
   "report.copied": "Kopiert",
   "report.download": "Herunterladen",
   "report.show": "Bericht anzeigen",
+  "report.as_built": "decluttering-card-plus: {label} wie gebaut",
+  "report.unredacted": "Aus diesem Bericht wurde nichts entfernt, weil die Karte redact: false hat. Alle Passwörter, Token, IP-Adressen, E-Mail-Adressen und Hostnamen stehen so darin, wie sie geschrieben sind, also veröffentliche ihn nirgendwo öffentlich.",
+  "report.show_markdown": "Markdown anzeigen",
+  "report.show_formatted": "Formatiert anzeigen",
 
   "picker.card_description": "Verwende dieselbe Kartenkonfiguration mit Variablen mehrfach, um deine Konfiguration zu entrümpeln.",
   "picker.published_description": "Eine Karte aus der Decluttering-Vorlage \"{template}\".",
@@ -462,5 +466,35 @@
   "editor.matches_template_failed": "Die Vorlage konnte nicht gerendert werden ({detail}), daher wiederholt diese Karte nichts.",
   "editor.matches_template_not_list": "Die Vorlage ergab {detail}, und das ist keine Liste, daher wiederholt diese Karte nichts. Beende sie mit | list.",
   "tools.similar_header_one": "Ähnliche Karten (1 Gruppe)",
-  "warn.many_copies_scroll": "decluttering-card-plus: die Vorlage \"{template}\" wird auf einer Karte {count}-mal wiederholt. lazy: true baut nur die Kopien in der Nähe des Bildschirms, aber das ist immer noch ein langer Weg zum Scrollen – grenze ein, worüber sie wiederholt."
+  "warn.many_copies_scroll": "decluttering-card-plus: die Vorlage \"{template}\" wird auf einer Karte {count}-mal wiederholt. lazy: true baut nur die Kopien in der Nähe des Bildschirms, aber das ist immer noch ein langer Weg zum Scrollen – grenze ein, worüber sie wiederholt.",
+
+  "template_editor.declutter_pick_section": "Abschnitt",
+  "template_editor.declutter_section_one": "{where} – 1 Karte",
+  "template_editor.declutter_section_many": "{where} – {count} Karten",
+  "template_editor.declutter_replace_section": "Die Karten des Abschnitts durch eine Karte mit dieser Vorlage ersetzen",
+  "template_editor.declutter_section_changed": "Der Abschnitt hat sich geändert, seit er gewählt wurde, deshalb wurde er so gelassen. Wähle ihn erneut, um zu sehen, was er jetzt enthält.",
+  "template_editor.group_order_hint": "Die Karten der Gruppe in der Reihenfolge, in der sie angeordnet werden. Zieh eine oder nutze die Pfeile, um sie zu verschieben.",
+  "template_editor.promote_header": "Eine Einstellung zur Variable machen",
+  "template_editor.promote_hint": "Wähle eine beliebige Einstellung der Vorlage und gib ihr einen Namen. Sie wird zum Platzhalter, deklariert mit ihrem bisherigen Wert als Standard, sodass die Vorlage weiter dasselbe baut, bis eine Karte etwas anderes übergibt.",
+  "template_editor.promote_pick": "Einstellung",
+  "template_editor.promote_name": "Variablenname",
+  "template_editor.promote_button": "Zur Variable machen",
+  "template_editor.promote_name_invalid": "„{name}“ kann kein Variablenname sein: nur Buchstaben, Ziffern, _ und - verwenden.",
+  "template_editor.promote_name_taken": "Die Vorlage hat bereits eine Variable namens „{name}“.",
+  "template_editor.promote_gone": "Diese Einstellung ist nicht mehr in der Vorlage. Wähle sie erneut.",
+  "share.download": "Herunterladen",
+  "share.import_file": "Datei öffnen",
+  "share.trash_header": "Gelöschte und ersetzte Vorlagen",
+  "share.trash_hint": "Bei jedem Speichern eines Dashboards wird eine Vorlage, die es verloren oder geändert hat, hier so aufbewahrt, wie sie war – die letzten 20, in deinen Home-Assistant-Benutzerdaten. Speichervorgänge werden nur bemerkt, solange ein Dashboard in einem Browser offen ist.",
+  "share.trash_removed": "aus {dashboard} gelöscht, {when}",
+  "share.trash_replaced": "auf {dashboard} ersetzt, {when}",
+  "share.trash_clash": "{name} ist wieder auf diesem Dashboard. Wiederherstellen ersetzt sie, und die jetzige Version landet hier.",
+  "share.trash_restore": "Wiederherstellen",
+  "share.trash_restore_anyway": "Trotzdem wiederherstellen",
+  "share.trash_show": "Anzeigen",
+  "share.trash_hide": "Ausblenden",
+  "share.trash_forget": "Entfernen",
+  "share.trash_empty": "Noch nichts hier.",
+  "undo.op.restore": "das Wiederherstellen einer Vorlage",
+  "group.hidden_outside_edit": "+{count} außerhalb des Bearbeitungsmodus ausgeblendet"
 }

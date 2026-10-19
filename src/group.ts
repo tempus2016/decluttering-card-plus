@@ -32,6 +32,14 @@ class DeclutteringGroup extends LitElement {
   @state() private _wrapperPreview = false;
   private _hass?: any;
   private _gridOptions?: unknown;
+  /*
+   * In edit mode every card is shown, so a card its visibility conditions hide outside edit
+   * mode looked like any other. Each card with conditions gets a twin that is not in edit
+   * mode, kept out of sight, and the twin says whether the card would be showing: those
+   * that would not are dimmed, and counted under the group.
+   */
+  private _twins: Map<number, any> = new Map();
+  @state() private _hiddenOutsideEdit: number[] = [];
 
   /*
    * The hui-card around a group nested in this one takes a hidden group off the page, and
@@ -54,6 +62,7 @@ class DeclutteringGroup extends LitElement {
   set hass(hass: any) {
     this._hass = hass;
     for (const card of this._cards) card.hass = hass;
+    for (const twin of this._twins.values()) twin.hass = hass;
     this._syncHidden();
   }
 
@@ -97,6 +106,41 @@ class DeclutteringGroup extends LitElement {
     };
     if (customElements.get(tag)) build();
     else customElements.whenDefined(tag).then(build);
+    this._twins.clear();
+    this._hiddenOutsideEdit = [];
+  }
+
+  private _syncTwins(): void {
+    if (!this._previewing || this._badges) {
+      if (this._twins.size) {
+        this._twins.clear();
+        this._hiddenOutsideEdit = [];
+      }
+      return;
+    }
+    const Wrapper = customElements.get('hui-card') as any;
+    if (!Wrapper) return;
+    this._cards.forEach((card, index) => {
+      const visibility = card.config?.visibility;
+      if (this._twins.has(index) || !Array.isArray(visibility) || !visibility.length) return;
+      const twin = new Wrapper();
+      twin.config = card.config;
+      twin.preview = false;
+      twin.layout = this.layout;
+      if (this._hass) twin.hass = this._hass;
+      this._twins.set(index, twin);
+    });
+  }
+
+  private _twinChanged(ev: Event): void {
+    // The twins are not on the page as far as anything outside the group is concerned.
+    ev.stopPropagation();
+    this._readTwins();
+  }
+
+  private _readTwins(): void {
+    const hidden = [...this._twins.entries()].filter(([, twin]) => twin.hidden).map(([index]) => index);
+    if (JSON.stringify(hidden) !== JSON.stringify(this._hiddenOutsideEdit)) this._hiddenOutsideEdit = hidden;
   }
 
   /*
@@ -129,6 +173,11 @@ class DeclutteringGroup extends LitElement {
       if (!this._badges) card.layout = this.layout;
     }
     this._syncHidden();
+    const before = this._twins.size;
+    this._syncTwins();
+    if (this._twins.size !== before) this.requestUpdate();
+    // A twin only decides once it has drawn, which is after this.
+    requestAnimationFrame(() => this._readTwins());
   }
 
   // The group fills the section's width unless it says otherwise; how its cards share that is up to them.
@@ -158,11 +207,16 @@ class DeclutteringGroup extends LitElement {
     if (this._badges) return html`<div class="badges">${this._cards}</div>`;
     return html`
       <div class="container" @card-updated=${this._cardUpdated}>
-        ${this._cards.map((card) => {
+        ${this._cards.map((card, index) => {
           // A section tells the cards in it that they are laid out on its grid.
           const { rows, columns } =
             this.layout === 'grid' ? gridSize(card.getGridOptions?.()) : { columns: 'full', rows: 'auto' };
-          const classes = ['card', typeof rows === 'number' ? 'fit-rows' : '', columns === 'full' ? 'full-width' : '']
+          const classes = [
+            'card',
+            typeof rows === 'number' ? 'fit-rows' : '',
+            columns === 'full' ? 'full-width' : '',
+            this._hiddenOutsideEdit.includes(index) ? 'outside-edit' : '',
+          ]
             .filter(Boolean)
             .join(' ');
           // Both are always set, so a cell never picks up the size of the cell the group sits in.
@@ -170,6 +224,20 @@ class DeclutteringGroup extends LitElement {
           return html`<div class=${classes} style=${style}>${card}</div>`;
         })}
       </div>
+      ${
+        this._hiddenOutsideEdit.length
+          ? html`<div class="outside-edit-note">
+              ${localize('group.hidden_outside_edit', { count: this._hiddenOutsideEdit.length }, this._hass)}
+            </div>`
+          : html``
+      }
+      ${
+        this._twins.size
+          ? html`<div class="twins" @card-visibility-changed=${this._twinChanged} @card-updated=${this._twinChanged}>
+              ${[...this._twins.values()]}
+            </div>`
+          : html``
+      }
     `;
   }
 
@@ -202,6 +270,18 @@ class DeclutteringGroup extends LitElement {
         grid-column: 1 / -1;
       }
       .card:has(> [hidden]) {
+        display: none;
+      }
+      .card.outside-edit {
+        opacity: 0.4;
+      }
+      .outside-edit-note {
+        margin-top: 4px;
+        color: var(--secondary-text-color);
+        font-size: 0.85em;
+        text-align: center;
+      }
+      .twins {
         display: none;
       }
       /* The row of badges a view puts above its sections, rule for rule. */

@@ -220,6 +220,61 @@ export function listPlainCards(
   return found;
 }
 
+/*
+ * Every section of every sections view that has cards, with a label that says where it is.
+ * The other half of the declutter picker: a section of tiles copied from room to room is a
+ * group template waiting to happen.
+ */
+export function listSections(
+  ll: LovelaceConfig | null | undefined,
+): { label: string; view: number; section: number; cards: Record<string, any>[] }[] {
+  const found: { label: string; view: number; section: number; cards: Record<string, any>[] }[] = [];
+  ((ll as any)?.views ?? []).forEach((view: any, viewIndex: number) => {
+    if (!Array.isArray(view?.sections)) return;
+    view.sections.forEach((section: any, sectionIndex: number) => {
+      const cards = Array.isArray(section?.cards) ? section.cards : [];
+      // A section holding template definitions is where templates are kept, not a set of cards.
+      if (!cards.length || JSON.stringify(cards).match(/"type":"custom:decluttering-template(-plus)?"/)) return;
+      const heading = cards.find((card: any) => card?.type === 'heading' && typeof card.heading === 'string');
+      const where = `${view?.title ?? view?.path ?? viewIndex + 1} · ${sectionIndex + 1}`;
+      found.push({
+        label: heading ? `${where} (${heading.heading})` : where,
+        view: viewIndex,
+        section: sectionIndex,
+        cards,
+      });
+    });
+  });
+  return found;
+}
+
+/*
+ * The dashboard with one section's cards swapped for `replacement` - but only while the
+ * section still holds exactly `original`. Somebody may have changed it since it was picked,
+ * and replacing cards nobody looked at would lose them; then the dashboard comes back as it was.
+ */
+export function replaceSectionCards(
+  ll: any,
+  view: number,
+  section: number,
+  original: unknown[],
+  replacement: Record<string, any>[],
+): any {
+  const target = ll?.views?.[view]?.sections?.[section];
+  if (!target || JSON.stringify(target.cards) !== JSON.stringify(original)) return ll;
+  const views = ll.views.map((each: any, viewIndex: number) =>
+    viewIndex !== view
+      ? each
+      : {
+          ...each,
+          sections: each.sections.map((place: any, sectionIndex: number) =>
+            sectionIndex === section ? { ...place, cards: replacement } : place,
+          ),
+        },
+  );
+  return { ...ll, views };
+}
+
 /** The dashboard with the first card written exactly like `original` swapped for `replacement`. */
 export function replaceCard(ll: any, original: Record<string, any>, replacement: Record<string, any>): any {
   const wanted = JSON.stringify(original);
@@ -494,6 +549,27 @@ export function groupCard(group: unknown): { type: string; cards: unknown; grid_
   if (Array.isArray(group)) return { type: GROUP_CARD_TYPE, cards: group };
   const { cards, grid_options } = (group as any) ?? {};
   return grid_options === undefined ? { type: GROUP_CARD_TYPE, cards } : { type: GROUP_CARD_TYPE, cards, grid_options };
+}
+
+/** The cards of a `group:`, whichever way it was written; nothing when it is neither. */
+export function groupCards(group: unknown): unknown[] {
+  if (Array.isArray(group)) return group;
+  const cards = (group as any)?.cards;
+  return Array.isArray(cards) ? cards : [];
+}
+
+/** The `group:` with its cards swapped for `cards`, written the way it already was. */
+export function withGroupCards(group: unknown, cards: unknown[]): unknown {
+  return Array.isArray(group) ? cards : { ...(group as Record<string, unknown>), cards };
+}
+
+/** A copy of `list` with the item at `from` moved to `to`; the list itself when either is out of range. */
+export function moveItem<T>(list: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list;
+  const out = [...list];
+  const [item] = out.splice(from, 1);
+  out.splice(to, 0, item);
+  return out;
 }
 
 /* ------------------------------------------------------------------ extends */
