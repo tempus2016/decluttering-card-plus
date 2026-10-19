@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/tempus2016/decluttering-card-plus/releases"><img src="https://img.shields.io/github/v/release/tempus2016/decluttering-card-plus" alt="Latest Release"></a>
-  <a href="https://github.com/hacs/default"><img src="https://img.shields.io/badge/HACS-Custom-41BDF5.svg" alt="HACS Custom"></a>
+  <a href="https://github.com/hacs/default"><img src="https://img.shields.io/badge/HACS-Default-41BDF5.svg" alt="HACS Default"></a>
   <a href="https://github.com/tempus2016/decluttering-card-plus/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License"></a>
   <img src="https://img.shields.io/badge/Home%20Assistant-2024.7+-blue" alt="HA Version">
   <a href="https://github.com/tempus2016/decluttering-card-plus/releases"><img src="https://img.shields.io/github/downloads/tempus2016/decluttering-card-plus/total" alt="Downloads"></a>
@@ -42,19 +42,10 @@ Assistant made badges configurable.
 
 ### Using HACS
 
-This card is not in the HACS default list, so add it as a custom repository first.
+The card is in the HACS default list. Open HACS, search for *Decluttering Card Plus*, download
+it and reload your browser. HACS adds the dashboard resource for you.
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tempus2016&repository=decluttering-card-plus&category=lovelace)
-
-To do it by hand, open HACS, then the three-dot menu at the top right, then **Custom
-repositories**, and paste this URL in full:
-
-```text
-https://github.com/tempus2016/decluttering-card-plus
-```
-
-Set the type to **Dashboard** and click **Add**. The card then appears in HACS as *Decluttering
-Card Plus*; download it there and reload your browser.
 
 ### Manually
 
