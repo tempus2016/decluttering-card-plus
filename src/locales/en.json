@@ -77,7 +77,7 @@
 
   "template_editor.declutter_header": "Declutter an existing card",
 
-  "template_editor.declutter_hint": "Pick a card already on this dashboard and it becomes this template’s card - then let \"Suggest variables\" find what varies. Once the template is saved, the original can be swapped for a card that uses it.",
+  "template_editor.declutter_hint": "Pick a card already on this dashboard and it becomes this template’s card - then let \"Suggest variables\" find what varies. Or pick a whole section, and its cards become a group. Once the template is saved, the original can be swapped for a card that uses it.",
 
   "template_editor.declutter_pick": "Card",
 
@@ -296,6 +296,10 @@
   "report.copied": "Copied",
   "report.download": "Download",
   "report.show": "Show the report",
+  "report.as_built": "decluttering-card-plus: {label} as built",
+  "report.unredacted": "Nothing has been taken out of this report, because the card has redact: false. Every password, token, IP address, email address and host is in it as written, so do not post it anywhere public.",
+  "report.show_markdown": "Show the Markdown",
+  "report.show_formatted": "Show it formatted",
 
   "picker.card_description": "Reuse multiple times the same card configuration with variables to declutter your config.",
   "picker.published_description": "A card built from the decluttering template \"{template}\".",
@@ -462,5 +466,35 @@
   "editor.matches_template_failed": "The template could not be rendered ({detail}), so this card repeats nothing.",
   "editor.matches_template_not_list": "The template rendered {detail}, which is not a list, so this card repeats nothing. End it with | list.",
   "tools.similar_header_one": "Similar cards (1 set)",
-  "warn.many_copies_scroll": "decluttering-card-plus: the template \"{template}\" is being repeated {count} times on one card. lazy: true only builds the copies near the screen, but that is still a long way to scroll - narrow what it repeats over."
+  "warn.many_copies_scroll": "decluttering-card-plus: the template \"{template}\" is being repeated {count} times on one card. lazy: true only builds the copies near the screen, but that is still a long way to scroll - narrow what it repeats over.",
+
+  "template_editor.declutter_pick_section": "Section",
+  "template_editor.declutter_section_one": "{where} - 1 card",
+  "template_editor.declutter_section_many": "{where} - {count} cards",
+  "template_editor.declutter_replace_section": "Replace the section's cards with a card using this template",
+  "template_editor.declutter_section_changed": "The section has changed since it was picked, so it was left as it is. Pick it again to see what it holds now.",
+  "template_editor.group_order_hint": "The group's cards, in the order they are laid out. Drag one, or use the arrows, to move it.",
+  "template_editor.promote_header": "Turn a setting into a variable",
+  "template_editor.promote_hint": "Pick any setting of the template and give it a name. It becomes a placeholder, declared with the value it had as its default, so the template still builds what it did until a card passes something else.",
+  "template_editor.promote_pick": "Setting",
+  "template_editor.promote_name": "Variable name",
+  "template_editor.promote_button": "Make it a variable",
+  "template_editor.promote_name_invalid": "\"{name}\" cannot be a variable name: use letters, digits, _ and - only.",
+  "template_editor.promote_name_taken": "The template already has a variable called \"{name}\".",
+  "template_editor.promote_gone": "That setting is not in the template any more. Pick it again.",
+  "share.download": "Download",
+  "share.import_file": "Open a file",
+  "share.trash_header": "Deleted and replaced templates",
+  "share.trash_hint": "Every time a dashboard is saved, a template it lost or changed is kept here as it was - the last 20, in your Home Assistant user data. Saves are only seen while a dashboard is open in a browser.",
+  "share.trash_removed": "deleted from {dashboard}, {when}",
+  "share.trash_replaced": "replaced on {dashboard}, {when}",
+  "share.trash_clash": "{name} is on that dashboard again. Restoring replaces it, and the version there now comes in here.",
+  "share.trash_restore": "Restore",
+  "share.trash_restore_anyway": "Restore anyway",
+  "share.trash_show": "Show",
+  "share.trash_hide": "Hide",
+  "share.trash_forget": "Remove",
+  "share.trash_empty": "Nothing here yet.",
+  "undo.op.restore": "restoring a template",
+  "group.hidden_outside_edit": "+{count} hidden outside edit mode"
 }

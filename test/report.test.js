@@ -18,26 +18,30 @@ console.groupEnd = () => {};
 
 /* ------------------------------------------------------------------ redact */
 
-check('an IPv4 address goes', redact('stream: 192.168.1.20 and 10.0.0.1'), 'stream: <ip> and <ip>');
+check('an IPv4 address goes', redact('stream: 192.168.1.20 and 10.0.0.1'), 'stream: <redacted-ip> and <redacted-ip>');
 check('a version number with four parts after a slash stays', redact('Chrome/130.0.0.0'), 'Chrome/130.0.0.0');
 check('a three-part version stays', redact('version: 2026.10.1'), 'version: 2026.10.1');
 check(
   'the host in a URL goes, the path and port stay',
   redact('url: http://192.168.1.20:8123/api/camera_proxy/camera.front'),
-  'url: http://<ip>:8123/api/camera_proxy/camera.front',
+  'url: http://<redacted-ip>:8123/api/camera_proxy/camera.front',
 );
-check('a hostname in a URL goes', redact('rtsp://myhouse.tplinkdns.com:554/ch1/main'), 'rtsp://<host>:554/ch1/main');
+check(
+  'a hostname in a URL goes',
+  redact('rtsp://myhouse.tplinkdns.com:554/ch1/main'),
+  'rtsp://<redacted-host>:554/ch1/main',
+);
 check(
   'credentials in a URL go, and are not read as an email',
   redact('rtsp://admin:hunter2@cam.local/ch1/main'),
-  'rtsp://<credentials>@<host>/ch1/main',
+  'rtsp://<redacted-credentials>@<redacted-host>/ch1/main',
 );
 check(
   'a token in a query string goes',
   redact('/api/camera_proxy/camera.x?token=abc123def&width=300'),
   '/api/camera_proxy/camera.x?token=<redacted>&width=300',
 );
-check('an email address goes', redact('notify: someone@example.co.uk'), 'notify: <email>');
+check('an email address goes', redact('notify: someone@example.co.uk'), 'notify: <redacted-email>');
 check(
   'a password as a YAML key goes',
   redact('  - password: hunter2\n    user: bob'),
@@ -50,8 +54,8 @@ check(
 );
 check('`key:` on its own is left alone', redact('key: sort_by'), 'key: sort_by');
 check('a bearer token goes', redact('Authorization: Bearer abc.def-ghi'), 'Authorization: Bearer <redacted>');
-check('a JWT goes', redact('t: eyJhbGciOi.eyJzdWIiOi.SflKxwRJ'), 't: <token>');
-check('an IPv6 address goes', redact('host fe80::1ff:fe23:4567:890a here'), 'host <ip> here');
+check('a JWT goes', redact('t: eyJhbGciOi.eyJzdWIiOi.SflKxwRJ'), 't: <redacted-token>');
+check('an IPv6 address goes', redact('host fe80::1ff:fe23:4567:890a here'), 'host <redacted-ip> here');
 check('a time of day stays', redact('at: 12:30:45'), 'at: 12:30:45');
 check('a CSS pseudo-element stays', redact('ha-card::before { fade::after }'), 'ha-card::before { fade::after }');
 check('an entity id stays', redact('entity: light.living_room'), 'entity: light.living_room');
@@ -105,7 +109,11 @@ check('the versions are in a table', text.includes('| Decluttering Card Plus | 1
 check('Home Assistant too', text.includes('| Home Assistant | 2026.10.1 |'), true);
 check('a fact not known is left out', text.includes('| Dashboard |'), false);
 check('the browser is not mistaken for an address', text.includes('Chrome/130.0.0.0'), true);
-check('the build has the console headline', text.includes('## decluttering-card-plus: "room" built in 1.3 ms'), true);
+check(
+  'the build is folded under the console headline',
+  text.includes('<details>\n<summary><b>decluttering-card-plus: "room" built in 1.3 ms</b></summary>\n\n'),
+  true,
+);
 check('the template is written out', text.includes('### Template "room"\n\n```yaml\ncard:'), true);
 check('variables are a table', text.includes('| variable | value | from |'), true);
 check('a variable row says where it came from', text.includes('| entity | light.kitchen | this card |'), true);
@@ -117,8 +125,18 @@ check(
 check('hunter2 is nowhere', text.includes('hunter2'), false);
 check('a pipe in a value cannot start a cell', text.includes('| title | a \\| b | default: |'), true);
 check('placeholders are a table', text.includes('| \\[\\[entity\\]\\] | light.kitchen |'), true);
-check('an address in what was built goes', text.includes('http://<ip>/x.png'), true);
-check('the whole card is there', text.includes('## decluttering-card-plus: "room" in full'), true);
+check('an address in what was built goes', text.includes('http://<redacted-ip>/x.png'), true);
+check(
+  'the whole card is there, open',
+  text.includes('<details open>\n<summary><b>decluttering-card-plus: "room" in full'),
+  true,
+);
+check('and comes before the builds', text.indexOf('"room" in full') < text.indexOf('"room" built in'), true);
+check(
+  'so does the list of cards that never built',
+  text.indexOf('- cards\\[2\\]') < text.indexOf('"room" built in'),
+  true,
+);
 check('so are the cards that never built', text.includes('- cards\\[2\\]'), true);
 check('no section without warnings has a warnings heading', text.includes('Warnings:'), false);
 
@@ -133,6 +151,46 @@ check('no section without warnings has a warnings heading', text.includes('Warni
 {
   const failed = formatReport({ context: { version: '1' }, reports: [], error: 'Refused: [[x]] is not set' });
   check('an error is reported', failed.includes('## Error\n\n```\nRefused: [[x]] is not set\n```'), true);
+}
+
+{
+  const plain = formatReport({ context: { version: '1' }, reports: [room], built: { type: 'tile' } });
+  check(
+    'a card with nothing inside shows what it built first',
+    plain.includes(
+      '<details open>\n<summary><b>decluttering-card-plus: "room" as built</b></summary>\n\n```yaml\ntype: tile\n```\n\n</details>',
+    ),
+    true,
+  );
+  check('and says nothing about cards inside it', plain.includes('in full'), false);
+}
+
+{
+  const hostileTitle = formatReport({
+    context: { version: '1' },
+    reports: [{ ...room, label: '<b>x</b> & </summary>', sections: [] }],
+  });
+  check(
+    'a label is escaped as HTML in its summary',
+    hostileTitle.includes('<summary><b>decluttering-card-plus: &lt;b&gt;x&lt;/b&gt; &amp; &lt;/summary&gt;'),
+    true,
+  );
+}
+
+/* ------------------------------------------------------------------ redact: false */
+
+{
+  const open = formatReport({
+    context: { version: '1' },
+    reports: [room],
+    full: { type: 'tile', image: 'http://192.168.0.2/x.png' },
+    unredacted: true,
+  });
+  check('an unredacted report says so first', /^> Nothing has been taken out of this report/m.test(open), true);
+  check('and does not claim it was checked', /^> Read it before you post it/m.test(open), false);
+  check('a password variable is shown as it is', open.includes('| password | hunter2 | this card |'), true);
+  check('an address is shown as it is', open.includes('http://192.168.0.2/x.png'), true);
+  check('nothing is marked as taken out', /<redacted/.test(open), false);
 }
 
 /* ------------------------------------------------------------------ the outermost card is told */
@@ -206,30 +264,30 @@ check(
   redact('{"token":"ab\\"cd","user":"bob"}'),
   '{"token":"<redacted>","user":"bob"}',
 );
-check('a GitHub token goes', redact('t: ghp_abcdefghijklmnopqrstuvwxyz0123456789'), 't: <token>');
-check('a fine-grained one too', redact('t: github_pat_11ABCDEFG0abcdefghijklmnopqrstuvwxyz'), 't: <token>');
-check('and an OAuth one', redact('t: gho_abcdefghijklmnopqrstuvwxyz0123456789'), 't: <token>');
-check('an sk- key goes', redact('t: sk-abcdefghijklmnopqrstuvwxyz'), 't: <token>');
-check('a Slack token goes', redact('t: xoxb-1234567890-abcdefghij'), 't: <token>');
-check('the host in any scheme goes', redact('ftp://nas.lan/backup'), 'ftp://<host>/backup');
-check('a protocol-relative host goes', redact('src: //cdn.example.com/x.js'), 'src: //<host>/x.js');
+check('a GitHub token goes', redact('t: ghp_abcdefghijklmnopqrstuvwxyz0123456789'), 't: <redacted-token>');
+check('a fine-grained one too', redact('t: github_pat_11ABCDEFG0abcdefghijklmnopqrstuvwxyz'), 't: <redacted-token>');
+check('and an OAuth one', redact('t: gho_abcdefghijklmnopqrstuvwxyz0123456789'), 't: <redacted-token>');
+check('an sk- key goes', redact('t: sk-abcdefghijklmnopqrstuvwxyz'), 't: <redacted-token>');
+check('a Slack token goes', redact('t: xoxb-1234567890-abcdefghij'), 't: <redacted-token>');
+check('the host in any scheme goes', redact('ftp://nas.lan/backup'), 'ftp://<redacted-host>/backup');
+check('a protocol-relative host goes', redact('src: //cdn.example.com/x.js'), 'src: //<redacted-host>/x.js');
 check(
   'a media source is not an address',
   redact('media-source://media_source/local/x.mp3'),
   'media-source://media_source/local/x.mp3',
 );
-check('a bare .local host goes', redact('host: nas.local'), 'host: <host>');
-check('a bare .lan host with a port goes', redact('host: nas.lan:8123'), 'host: <host>:8123');
-check('a DuckDNS name goes', redact('me.duckdns.org:8123/lovelace'), '<host>:8123/lovelace');
-check('a tplinkdns name goes', redact('at myhouse.tplinkdns.com here'), 'at <host> here');
-check('a Nabu Casa name goes', redact('abc123.ui.nabu.casa'), '<host>');
-check('a .home host with a port goes', redact('nas.home:8123'), '<host>:8123');
+check('a bare .local host goes', redact('host: nas.local'), 'host: <redacted-host>');
+check('a bare .lan host with a port goes', redact('host: nas.lan:8123'), 'host: <redacted-host>:8123');
+check('a DuckDNS name goes', redact('me.duckdns.org:8123/lovelace'), '<redacted-host>:8123/lovelace');
+check('a tplinkdns name goes', redact('at myhouse.tplinkdns.com here'), 'at <redacted-host> here');
+check('a Nabu Casa name goes', redact('abc123.ui.nabu.casa'), '<redacted-host>');
+check('a .home host with a port goes', redact('nas.home:8123'), '<redacted-host>:8123');
 check('an entity called zone.home stays', redact('entity: zone.home'), 'entity: zone.home');
 check('an entity whose id starts local stays', redact('sensor.local_temperature'), 'sensor.local_temperature');
 check(
   'a slash in a password does not end the credentials',
   redact('rtsp://admin:pa/ss@cam.local/ch1/main'),
-  'rtsp://<credentials>@<host>/ch1/main',
+  'rtsp://<redacted-credentials>@<redacted-host>/ch1/main',
 );
 {
   const started = Date.now();
@@ -302,9 +360,10 @@ check(
   });
   check(
     'a newline in a headline does not start a new line',
-    text.includes('## decluttering-card-plus: "x" \\# not a heading built in 1.0 ms'),
+    text.includes('<summary><b>decluttering-card-plus: "x" # not a heading built in 1.0 ms</b></summary>'),
     true,
   );
+  check('a summary cannot carry HTML', text.includes('<summary><b>\\# label'), false);
   check('a section label is one escaped line', text.includes('### \\# label \\<b\\>bold\\</b\\> second line'), true);
   check(
     'a value cannot carry HTML or Markdown into a cell',

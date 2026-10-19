@@ -77,7 +77,7 @@
 
   "template_editor.declutter_header": "Despejar una tarjeta existente",
 
-  "template_editor.declutter_hint": "Elige una tarjeta que ya esté en este panel y se convierte en la tarjeta de esta plantilla; luego deja que «Sugerir variables» encuentre lo que varía. Con la plantilla guardada, la original puede cambiarse por una tarjeta que la use.",
+  "template_editor.declutter_hint": "Elige una tarjeta que ya esté en este panel y se convierte en la tarjeta de esta plantilla; después deja que «Sugerir variables» encuentre lo que cambia. O elige una sección entera y sus tarjetas se convierten en un grupo. Una vez guardada la plantilla, el original puede cambiarse por una tarjeta que la use.",
 
   "template_editor.declutter_pick": "Tarjeta",
 
@@ -296,6 +296,10 @@
   "report.copied": "Copiado",
   "report.download": "Descargar",
   "report.show": "Mostrar el informe",
+  "report.as_built": "decluttering-card-plus: {label} tal como se construyó",
+  "report.unredacted": "No se ha quitado nada de este informe, porque la tarjeta tiene redact: false. Todas las contraseñas, tokens, direcciones IP, direcciones de correo y hosts están tal como se escribieron, así que no lo publiques en ningún sitio público.",
+  "report.show_markdown": "Mostrar el Markdown",
+  "report.show_formatted": "Mostrarlo con formato",
 
   "picker.card_description": "Reutiliza varias veces la misma configuración de tarjeta con variables para despejar tu configuración.",
   "picker.published_description": "Una tarjeta creada con la plantilla de decluttering \"{template}\".",
@@ -462,5 +466,35 @@
   "editor.matches_template_failed": "La plantilla no se pudo renderizar ({detail}), así que esta tarjeta no repite nada.",
   "editor.matches_template_not_list": "La plantilla devolvió {detail}, que no es una lista, así que esta tarjeta no repite nada. Termínala con | list.",
   "tools.similar_header_one": "Tarjetas parecidas (1 grupo)",
-  "warn.many_copies_scroll": "decluttering-card-plus: la plantilla \"{template}\" se está repitiendo {count} veces en una sola tarjeta. lazy: true solo construye las copias cerca de la pantalla, pero sigue siendo mucho que desplazar - acota sobre qué repite."
+  "warn.many_copies_scroll": "decluttering-card-plus: la plantilla \"{template}\" se está repitiendo {count} veces en una sola tarjeta. lazy: true solo construye las copias cerca de la pantalla, pero sigue siendo mucho que desplazar - acota sobre qué repite.",
+
+  "template_editor.declutter_pick_section": "Sección",
+  "template_editor.declutter_section_one": "{where} - 1 tarjeta",
+  "template_editor.declutter_section_many": "{where} - {count} tarjetas",
+  "template_editor.declutter_replace_section": "Sustituir las tarjetas de la sección por una tarjeta que use esta plantilla",
+  "template_editor.declutter_section_changed": "La sección ha cambiado desde que se eligió, así que se ha dejado como estaba. Elígela de nuevo para ver lo que contiene ahora.",
+  "template_editor.group_order_hint": "Las tarjetas del grupo, en el orden en que se colocan. Arrastra una, o usa las flechas, para moverla.",
+  "template_editor.promote_header": "Convertir un ajuste en variable",
+  "template_editor.promote_hint": "Elige cualquier ajuste de la plantilla y dale un nombre. Se convierte en un marcador, declarado con el valor que tenía como predeterminado, así que la plantilla sigue construyendo lo mismo hasta que una tarjeta pase otra cosa.",
+  "template_editor.promote_pick": "Ajuste",
+  "template_editor.promote_name": "Nombre de la variable",
+  "template_editor.promote_button": "Convertirlo en variable",
+  "template_editor.promote_name_invalid": "«{name}» no puede ser un nombre de variable: usa solo letras, dígitos, _ y -.",
+  "template_editor.promote_name_taken": "La plantilla ya tiene una variable llamada «{name}».",
+  "template_editor.promote_gone": "Ese ajuste ya no está en la plantilla. Elígelo de nuevo.",
+  "share.download": "Descargar",
+  "share.import_file": "Abrir un archivo",
+  "share.trash_header": "Plantillas eliminadas y sustituidas",
+  "share.trash_hint": "Cada vez que se guarda un panel, una plantilla que ha perdido o cambiado se guarda aquí tal como era: las 20 últimas, en tus datos de usuario de Home Assistant. Los guardados solo se ven mientras hay un panel abierto en un navegador.",
+  "share.trash_removed": "eliminada de {dashboard}, {when}",
+  "share.trash_replaced": "sustituida en {dashboard}, {when}",
+  "share.trash_clash": "{name} vuelve a estar en ese panel. Restaurar la sustituye, y la versión que hay ahora pasa aquí.",
+  "share.trash_restore": "Restaurar",
+  "share.trash_restore_anyway": "Restaurar de todos modos",
+  "share.trash_show": "Mostrar",
+  "share.trash_hide": "Ocultar",
+  "share.trash_forget": "Quitar",
+  "share.trash_empty": "Nada por ahora.",
+  "undo.op.restore": "restaurar una plantilla",
+  "group.hidden_outside_edit": "+{count} oculta(s) fuera del modo de edición"
 }

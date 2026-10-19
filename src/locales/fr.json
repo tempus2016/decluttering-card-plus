@@ -77,7 +77,7 @@
 
   "template_editor.declutter_header": "Désencombrer une carte existante",
 
-  "template_editor.declutter_hint": "Choisissez une carte déjà sur ce tableau de bord et elle devient la carte de ce modèle - puis laissez « Suggérer des variables » trouver ce qui varie. Une fois le modèle enregistré, l’originale peut être remplacée par une carte qui l’utilise.",
+  "template_editor.declutter_hint": "Choisissez une carte déjà présente sur ce tableau de bord et elle devient la carte de ce modèle - puis laissez « Suggérer des variables » trouver ce qui change. Ou choisissez une section entière : ses cartes deviennent un groupe. Une fois le modèle enregistré, l'original peut être remplacé par une carte qui l'utilise.",
 
   "template_editor.declutter_pick": "Carte",
 
@@ -296,6 +296,10 @@
   "report.copied": "Copié",
   "report.download": "Télécharger",
   "report.show": "Afficher le rapport",
+  "report.as_built": "decluttering-card-plus : {label} telle que construite",
+  "report.unredacted": "Rien n'a été retiré de ce rapport, car la carte a redact: false. Tous les mots de passe, jetons, adresses IP, adresses e-mail et hôtes y figurent tels qu'écrits : ne le publiez nulle part en public.",
+  "report.show_markdown": "Afficher le Markdown",
+  "report.show_formatted": "Afficher la mise en forme",
 
   "picker.card_description": "Réutilisez plusieurs fois la même configuration de carte avec des variables pour désencombrer votre configuration.",
   "picker.published_description": "Une carte construite à partir du modèle decluttering « {template} ».",
@@ -462,5 +466,35 @@
   "editor.matches_template_failed": "Le modèle n'a pas pu être rendu ({detail}), cette carte ne répète donc rien.",
   "editor.matches_template_not_list": "Le modèle a donné {detail}, qui n'est pas une liste, cette carte ne répète donc rien. Terminez-le par | list.",
   "tools.similar_header_one": "Cartes similaires (1 groupe)",
-  "warn.many_copies_scroll": "decluttering-card-plus : le modèle \"{template}\" est répété {count} fois sur une seule carte. lazy: true ne construit que les copies proches de l'écran, mais cela reste beaucoup à faire défiler - restreignez ce sur quoi il répète."
+  "warn.many_copies_scroll": "decluttering-card-plus : le modèle \"{template}\" est répété {count} fois sur une seule carte. lazy: true ne construit que les copies proches de l'écran, mais cela reste beaucoup à faire défiler - restreignez ce sur quoi il répète.",
+
+  "template_editor.declutter_pick_section": "Section",
+  "template_editor.declutter_section_one": "{where} - 1 carte",
+  "template_editor.declutter_section_many": "{where} - {count} cartes",
+  "template_editor.declutter_replace_section": "Remplacer les cartes de la section par une carte utilisant ce modèle",
+  "template_editor.declutter_section_changed": "La section a changé depuis qu'elle a été choisie, elle a donc été laissée telle quelle. Choisissez-la à nouveau pour voir ce qu'elle contient maintenant.",
+  "template_editor.group_order_hint": "Les cartes du groupe, dans l'ordre où elles sont disposées. Faites-en glisser une, ou utilisez les flèches, pour la déplacer.",
+  "template_editor.promote_header": "Transformer un réglage en variable",
+  "template_editor.promote_hint": "Choisissez n'importe quel réglage du modèle et donnez-lui un nom. Il devient un emplacement, déclaré avec sa valeur actuelle par défaut, si bien que le modèle construit toujours la même chose tant qu'une carte ne passe pas autre chose.",
+  "template_editor.promote_pick": "Réglage",
+  "template_editor.promote_name": "Nom de la variable",
+  "template_editor.promote_button": "En faire une variable",
+  "template_editor.promote_name_invalid": "« {name} » ne peut pas être un nom de variable : utilisez uniquement des lettres, des chiffres, _ et -.",
+  "template_editor.promote_name_taken": "Le modèle a déjà une variable nommée « {name} ».",
+  "template_editor.promote_gone": "Ce réglage n'est plus dans le modèle. Choisissez-le à nouveau.",
+  "share.download": "Télécharger",
+  "share.import_file": "Ouvrir un fichier",
+  "share.trash_header": "Modèles supprimés et remplacés",
+  "share.trash_hint": "À chaque enregistrement d'un tableau de bord, un modèle qu'il a perdu ou modifié est conservé ici tel qu'il était - les 20 derniers, dans vos données utilisateur Home Assistant. Les enregistrements ne sont vus que lorsqu'un tableau de bord est ouvert dans un navigateur.",
+  "share.trash_removed": "supprimé de {dashboard}, {when}",
+  "share.trash_replaced": "remplacé sur {dashboard}, {when}",
+  "share.trash_clash": "{name} est de nouveau sur ce tableau de bord. La restauration le remplace, et la version actuelle arrive ici.",
+  "share.trash_restore": "Restaurer",
+  "share.trash_restore_anyway": "Restaurer quand même",
+  "share.trash_show": "Afficher",
+  "share.trash_hide": "Masquer",
+  "share.trash_forget": "Retirer",
+  "share.trash_empty": "Rien pour l'instant.",
+  "undo.op.restore": "la restauration d'un modèle",
+  "group.hidden_outside_edit": "+{count} masquée(s) hors du mode édition"
 }

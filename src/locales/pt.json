@@ -77,7 +77,7 @@
 
   "template_editor.declutter_header": "Arrumar um cartão existente",
 
-  "template_editor.declutter_hint": "Escolha um cartão que já esteja neste painel e ele torna-se o cartão deste modelo - depois deixe o \"Sugerir variáveis\" encontrar o que varia. Com o modelo gravado, o original pode ser trocado por um cartão que o use.",
+  "template_editor.declutter_hint": "Escolha um cartão que já esteja neste painel e ele passa a ser o cartão deste modelo - depois deixe \"Sugerir variáveis\" encontrar o que varia. Ou escolha uma secção inteira, e os seus cartões passam a ser um grupo. Depois de guardar o modelo, o original pode ser trocado por um cartão que o use.",
 
   "template_editor.declutter_pick": "Cartão",
 
@@ -296,6 +296,10 @@
   "report.copied": "Copiado",
   "report.download": "Transferir",
   "report.show": "Mostrar o relatório",
+  "report.as_built": "decluttering-card-plus: {label} tal como foi construído",
+  "report.unredacted": "Nada foi retirado deste relatório, porque o cartão tem redact: false. Todas as palavras-passe, tokens, endereços IP, endereços de e-mail e hosts estão tal como foram escritos, por isso não o publique em nenhum sítio público.",
+  "report.show_markdown": "Mostrar o Markdown",
+  "report.show_formatted": "Mostrar formatado",
 
   "picker.card_description": "Reutilize várias vezes a mesma configuração de cartão com variáveis para organizar a sua configuração.",
   "picker.published_description": "Um cartão criado a partir do modelo decluttering \"{template}\".",
@@ -462,5 +466,35 @@
   "editor.matches_template_failed": "O modelo não pôde ser renderizado ({detail}), por isso este cartão não repete nada.",
   "editor.matches_template_not_list": "O modelo devolveu {detail}, que não é uma lista, por isso este cartão não repete nada. Termine-o com | list.",
   "tools.similar_header_one": "Cartões parecidos (1 grupo)",
-  "warn.many_copies_scroll": "decluttering-card-plus: o modelo \"{template}\" está a ser repetido {count} vezes num só cartão. lazy: true só constrói as cópias perto do ecrã, mas continua a ser muito para percorrer - restrinja aquilo sobre que repete."
+  "warn.many_copies_scroll": "decluttering-card-plus: o modelo \"{template}\" está a ser repetido {count} vezes num só cartão. lazy: true só constrói as cópias perto do ecrã, mas continua a ser muito para percorrer - restrinja aquilo sobre que repete.",
+
+  "template_editor.declutter_pick_section": "Secção",
+  "template_editor.declutter_section_one": "{where} - 1 cartão",
+  "template_editor.declutter_section_many": "{where} - {count} cartões",
+  "template_editor.declutter_replace_section": "Substituir os cartões da secção por um cartão que use este modelo",
+  "template_editor.declutter_section_changed": "A secção mudou desde que foi escolhida, por isso ficou como estava. Escolha-a de novo para ver o que tem agora.",
+  "template_editor.group_order_hint": "Os cartões do grupo, pela ordem em que são dispostos. Arraste um, ou use as setas, para o mover.",
+  "template_editor.promote_header": "Transformar uma definição numa variável",
+  "template_editor.promote_hint": "Escolha qualquer definição do modelo e dê-lhe um nome. Passa a ser um marcador, declarado com o valor que tinha como predefinição, por isso o modelo continua a construir o mesmo até um cartão passar outra coisa.",
+  "template_editor.promote_pick": "Definição",
+  "template_editor.promote_name": "Nome da variável",
+  "template_editor.promote_button": "Torná-la uma variável",
+  "template_editor.promote_name_invalid": "\"{name}\" não pode ser um nome de variável: use apenas letras, algarismos, _ e -.",
+  "template_editor.promote_name_taken": "O modelo já tem uma variável chamada \"{name}\".",
+  "template_editor.promote_gone": "Essa definição já não está no modelo. Escolha-a de novo.",
+  "share.download": "Transferir",
+  "share.import_file": "Abrir um ficheiro",
+  "share.trash_header": "Modelos apagados e substituídos",
+  "share.trash_hint": "Sempre que um painel é guardado, um modelo que ele perdeu ou alterou fica aqui como era - os últimos 20, nos seus dados de utilizador do Home Assistant. Só se vê o que é guardado enquanto houver um painel aberto num navegador.",
+  "share.trash_removed": "apagado de {dashboard}, {when}",
+  "share.trash_replaced": "substituído em {dashboard}, {when}",
+  "share.trash_clash": "{name} está outra vez nesse painel. Restaurar substitui-o, e a versão que lá está agora vem para aqui.",
+  "share.trash_restore": "Restaurar",
+  "share.trash_restore_anyway": "Restaurar mesmo assim",
+  "share.trash_show": "Mostrar",
+  "share.trash_hide": "Ocultar",
+  "share.trash_forget": "Remover",
+  "share.trash_empty": "Ainda nada aqui.",
+  "undo.op.restore": "restaurar um modelo",
+  "group.hidden_outside_edit": "+{count} oculto(s) fora do modo de edição"
 }

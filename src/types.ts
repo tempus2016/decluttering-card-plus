@@ -25,6 +25,8 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   /** Renders what the card builds instead of the card itself, for working out why - `yaml` to show it as YAML,
    *  `console` to render the card as normal and log how it was built, `report` to log it and show it as text to copy. */
   debug?: boolean | 'yaml' | 'console' | 'report';
+  /** `false` leaves passwords, tokens, addresses and hosts in the `debug: report` text as they are. */
+  redact?: boolean;
   /** Turns what is normally a warning into a card that refuses to render. */
   strict?: boolean;
   /** What `debug: console` calls this card, placeholders and all. Beats the template's. */

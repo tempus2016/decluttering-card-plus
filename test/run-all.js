@@ -29,6 +29,9 @@ const SUITES = [
   'similar',
   'search',
   'report',
+  'promote',
+  'trash',
+  'sections',
 ];
 
 // Each suite calls report(), which exits the process. Patching it here lets them run one

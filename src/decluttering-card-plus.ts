@@ -79,7 +79,23 @@ import {
   warnIfDeprecated,
   installedFromShared,
   replaceTemplate,
+  listSections,
+  replaceSectionCards,
+  groupCards,
+  withGroupCards,
+  moveItem,
 } from './templates';
+import { contentKey, listSettings, nameForSetting, namesInUse, promoteSetting, SettingPath } from './promote';
+import {
+  TrashEntry,
+  loadTrash,
+  onTrashChanged,
+  restoreTemplate,
+  saveTrash,
+  trashHass,
+  watchForTrash,
+  withoutEntry,
+} from './trash';
 
 /*
  * Which view this card is being rendered in, read off the URL: the card only renders
@@ -457,6 +473,10 @@ function newRisks(latest: CommunityRisks, installed: CommunityRisks): CommunityR
 // of a double-click: a press this soon after the first is the same press.
 const SECOND_PRESS_MS = 500;
 
+// mdi:drag, the handle a list that can be dragged into order shows on each item.
+const DRAG_PATH =
+  'M7,19V17H9V19H7M11,19V17H13V19H11M15,19V17H17V19H15M7,15V13H9V15H7M11,15V13H13V15H11M15,15V13H17V15H15M7,11V9H9V11H7M11,11V9H13V11H11M15,11V9H17V11H15M7,7V5H9V7H7M11,7V5H13V7H11M15,7V5H17V7H15Z';
+
 function splitAt(sentence: string, token: string): [string, string] {
   const at = sentence.indexOf(token);
   return at === -1 ? [sentence, ''] : [sentence.slice(0, at), sentence.slice(at + token.length)];
@@ -654,6 +674,8 @@ async function undoFrom(
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const HELPERS = (window as any).loadCardHelpers ? (window as any).loadCardHelpers() : undefined;
+// Whether a Markdown card has been asked for, so `debug: report` can show its report formatted.
+let markdownRequested = false;
 
 console.info(
   `%c DECLUTTERING-CARD-PLUS \n%c   Version ${VERSION}   `,
@@ -779,8 +801,12 @@ abstract class DeclutteringElement extends LitElement {
   protected _lastReport?: TraceReport;
   private _reportFor?: string;
   @state() protected _reportResult?: ExpansionResult;
-  private _reportCache?: { result: ExpansionResult; error?: string; text: string };
+  private _reportCache?: { result: ExpansionResult; error?: string; unredacted: boolean; text: string };
   @state() private _reportCopied = false;
+  // `redact: false` (#217): the report keeps everything as the card has it.
+  protected _reportUnredacted = false;
+  // The report on the card as Markdown source rather than formatted.
+  @state() private _reportRaw = false;
   protected _openTemplates: string[] = [];
   // The entities this card rebuilds on, which are also the only ones `|state` can read.
   protected _rebuildOn: string[] = [];
@@ -976,6 +1002,14 @@ abstract class DeclutteringElement extends LitElement {
         flex-wrap: wrap;
         gap: 8px;
         margin-bottom: 8px;
+      }
+      .report .formatted {
+        display: block;
+        margin-top: 8px;
+        max-height: 600px;
+        overflow: auto;
+        -webkit-user-select: text;
+        user-select: text;
       }
       .report pre {
         margin: 8px 0 0;
@@ -1183,7 +1217,9 @@ abstract class DeclutteringElement extends LitElement {
     const result = this._reportResult;
     if (!result) return undefined;
     const cached = this._reportCache;
-    if (cached && cached.result === result && cached.error === this._error) return cached.text;
+    const unredacted = this._reportUnredacted;
+    if (cached && cached.result === result && cached.error === this._error && cached.unredacted === unredacted)
+      return cached.text;
     const hass = this._hass as unknown as {
       config?: { version?: string };
       locale?: { language?: string };
@@ -1201,12 +1237,16 @@ abstract class DeclutteringElement extends LitElement {
         },
         reports: result.reports,
         full: result.full === undefined ? undefined : withoutStamps(result.full),
+        // With no cards inside to wait for, what it built is what it shows.
+        built:
+          result.full === undefined && !this._error && this._thingConfig ? withoutStamps(this._thingConfig) : undefined,
         neverBuilt: result.neverBuilt,
         error: this._error,
+        unredacted,
       },
       this._hass,
     );
-    this._reportCache = { result, error: this._error, text };
+    this._reportCache = { result, error: this._error, unredacted, text };
     return text;
   }
 
@@ -1227,14 +1267,32 @@ abstract class DeclutteringElement extends LitElement {
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
 
+  /*
+   * Formatted by Home Assistant's own Markdown element, the one the Markdown card uses. It is
+   * only defined once something has needed it, so a dashboard without a Markdown card asks
+   * the card helpers for one to load it, and shows the source until it has.
+   */
+  private _renderFormatted(text: string): TemplateResult {
+    if (customElements.get('ha-markdown')) return html`<ha-markdown class="formatted" .content=${text}></ha-markdown>`;
+    if (!markdownRequested) {
+      markdownRequested = true;
+      HELPERS?.then((helpers: { createCardElement: (config: unknown) => unknown }) =>
+        helpers.createCardElement({ type: 'markdown', content: '' }),
+      ).catch(() => {});
+    }
+    customElements.whenDefined('ha-markdown').then(() => this.requestUpdate());
+    return html`<pre>${text}</pre>`;
+  }
+
   private _renderReport(): TemplateResult | string {
     if (!this._reportMode) return '';
-    const ready = this._reportText !== undefined;
+    const text = this._reportText;
+    const ready = text !== undefined;
     return html`
       <ha-card class="report">
         <p>
           ${localize(ready ? 'report.ready' : 'report.waiting', undefined, this._hass)}
-          ${localize('report.check', undefined, this._hass)}
+          ${localize(this._reportUnredacted ? 'report.unredacted' : 'report.check', undefined, this._hass)}
         </p>
         <div class="actions">
           <ha-button .disabled=${!ready} @click=${this._copyReport}>
@@ -1248,7 +1306,10 @@ abstract class DeclutteringElement extends LitElement {
           ready
             ? html`<details>
                 <summary>${localize('report.show', undefined, this._hass)}</summary>
-                <pre>${this._reportText}</pre>
+                <ha-button class="view" @click=${() => (this._reportRaw = !this._reportRaw)}>
+                  ${localize(this._reportRaw ? 'report.show_formatted' : 'report.show_markdown', undefined, this._hass)}
+                </ha-button>
+                ${this._reportRaw ? html`<pre>${text}</pre>` : this._renderFormatted(text)}
               </details>`
             : ''
         }
@@ -2354,6 +2415,7 @@ class DeclutteringCard extends DeclutteringElement {
     this._debug = config.debug === 'yaml' ? 'yaml' : config.debug === true ? 'json' : false;
     this._trace = wantsTrace(config);
     this._reportMode = config.debug === 'report';
+    this._reportUnredacted = config.redact === false;
     this._lastReport = undefined;
     if (!this._reportMode) this._reportResult = undefined;
     this._tracePlace = tracePlace(config);
@@ -2592,6 +2654,8 @@ class DeclutteringCard extends DeclutteringElement {
   }
 
   protected hassAvailable(hass: HomeAssistant): void {
+    watchForTrash(hass);
+    trashHass(hass);
     const config = this._pendingConfig;
     if (!config) {
       this._watchRebuildOn(hass);
@@ -3618,6 +3682,8 @@ class DeclutteringTemplate extends DeclutteringElement {
   }
 
   protected hassAvailable(hass: HomeAssistant): void {
+    watchForTrash(hass);
+    trashHass(hass);
     const config = this._pendingPreview;
     if (!config) return;
     this._pendingPreview = undefined;
@@ -3741,7 +3807,21 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   // the panel re-renders on each state change Home Assistant sends.
   private _examplesChecked?: { ll: unknown; borrowed?: string[]; failed: ReturnType<typeof checkExamples> };
   @state() private _declutterOriginal?: Record<string, unknown>;
+  // A section picked in the declutter list instead of a card: where it is, and the cards it held.
+  @state() private _declutterSection?: { view: number; section: number; cards: unknown[] };
   @state() private _declutterPending = false;
+  // Turning one setting into a variable: which setting, the name it will take, and what was wrong.
+  @state() private _promotePath?: SettingPath;
+  @state() private _promoteName = '';
+  @state() private _promoteError?: string;
+  // A list being dragged in, and the place in it the drag started from.
+  private _dragging?: { list: string; from: number };
+  // Templates a save took away or changed, from the user data; nothing until it has been read.
+  @state() private _trash?: TrashEntry[];
+  @state() private _trashShown?: number;
+  @state() private _trashPending?: number;
+  private _trashArmedAt = 0;
+  private _unwatchTrash?: () => void;
   // The dashboards saved since the rewrite that could be undone, once undoing has found them.
   @state() private _undoChanged?: string[];
   // Sets of cards that are copies of each other but for a few values, worked out once per
@@ -3931,6 +4011,38 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
       .order .spacer {
         flex: 1;
       }
+      .order li[draggable='true'] {
+        cursor: grab;
+      }
+      .order .handle {
+        color: var(--secondary-text-color);
+        flex: none;
+      }
+      .promote {
+        display: block;
+        margin-bottom: 16px;
+      }
+      .promote .hint {
+        margin: 0 0 8px;
+        color: var(--secondary-text-color);
+        font-size: 0.9em;
+      }
+      .promote ha-textfield,
+      .promote ha-input {
+        display: block;
+        width: 100%;
+        margin-top: 8px;
+      }
+      .promote ha-alert {
+        display: block;
+        margin-top: 8px;
+      }
+      .promote ha-button {
+        margin-top: 8px;
+      }
+      .share .trash ha-alert {
+        margin: 4px 0 0;
+      }
       .library {
         margin: 0 0 8px;
       }
@@ -3990,12 +4102,24 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback();
+    this._unwatchTrash = onTrashChanged(() => void this._loadTrash());
 
     if (!this._loadedElements) {
       await loadCardEditorPicker();
       await loadRowEditor();
       this._loadedElements = true;
     }
+  }
+
+  public disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._unwatchTrash?.();
+    this._unwatchTrash = undefined;
+  }
+
+  private async _loadTrash(): Promise<void> {
+    if (!this.hass) return;
+    this._trash = await loadTrash(this.hass);
   }
 
   protected render(): TemplateResult | void {
@@ -4051,7 +4175,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
         this._selectedTab === 'settings'
           ? html`
               ${this._renderInUse()} ${this._renderDiagnostics()} ${this._renderExamplePicker()}
-              ${this._renderSuggest(data.thingType === 'card')} ${this._renderOrder()}
+              ${this._renderSuggest(data.thingType === 'card')} ${this._renderPromote()} ${this._renderOrder()}
+              ${this._renderGroupOrder()}
               <ha-form
                 .hass=${this.hass}
                 .data=${data}
@@ -4232,38 +4357,188 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     return html`
       <div class="order">
         <p class="hint">${localize('template_editor.order_hint', undefined, this.hass)}</p>
-        <ul>
-          ${declarations.map(
-            (declaration, index) => html`
-              <li>
-                <span>${declaration.label ?? declaration.name}</span>
-                <span class="spacer"></span>
-                <ha-icon-button
-                  .path=${'M7,15L12,10L17,15H7Z'}
-                  .disabled=${index === 0}
-                  .label=${localize('template_editor.move_up', { name: declaration.name }, this.hass)}
-                  @click=${(): void => this._move(index, -1)}
-                ></ha-icon-button>
-                <ha-icon-button
-                  .path=${'M7,10L12,15L17,10H7Z'}
-                  .disabled=${index === declarations.length - 1}
-                  .label=${localize('template_editor.move_down', { name: declaration.name }, this.hass)}
-                  @click=${(): void => this._move(index, 1)}
-                ></ha-icon-button>
-              </li>
-            `,
-          )}
-        </ul>
+        ${this._renderSortable(
+          'variables',
+          declarations.map((declaration) => ({ label: declaration.label ?? declaration.name, name: declaration.name })),
+          (from, to) => this._move(from, to),
+        )}
       </div>
     `;
   }
 
-  private _move(index: number, by: number): void {
-    const declarations = [...getDeclarations(this._config)];
-    const to = index + by;
-    if (to < 0 || to >= declarations.length) return;
-    [declarations[index], declarations[to]] = [declarations[to], declarations[index]];
-    this._fireConfigChanged({ ...(this._config as DeclutteringTemplateConfig), variables: declarations });
+  /*
+   * A list that can be put in order by dragging, and by the arrows beside each item for a
+   * keyboard, or a touch screen that will not drag. `list` keeps a drag from one list
+   * landing in another.
+   */
+  private _renderSortable(
+    list: string,
+    items: { label: string; name: string }[],
+    move: (from: number, to: number) => void,
+  ): TemplateResult {
+    const drop = (ev: DragEvent, to: number): void => {
+      ev.preventDefault();
+      const dragging = this._dragging;
+      this._dragging = undefined;
+      if (dragging?.list === list) move(dragging.from, to);
+    };
+    return html`
+      <ul>
+        ${items.map(
+          (item, index) => html`
+            <li
+              draggable="true"
+              @dragstart=${(ev: DragEvent): void => {
+                this._dragging = { list, from: index };
+                ev.dataTransfer?.setData('text/plain', item.name);
+                if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+              }}
+              @dragover=${(ev: DragEvent): void => {
+                if (this._dragging?.list === list) ev.preventDefault();
+              }}
+              @drop=${(ev: DragEvent): void => drop(ev, index)}
+              @dragend=${(): void => {
+                this._dragging = undefined;
+              }}
+            >
+              <ha-svg-icon class="handle" .path=${DRAG_PATH}></ha-svg-icon>
+              <span>${item.label}</span>
+              <span class="spacer"></span>
+              <ha-icon-button
+                .path=${'M7,15L12,10L17,15H7Z'}
+                .disabled=${index === 0}
+                .label=${localize('template_editor.move_up', { name: item.name }, this.hass)}
+                @click=${(): void => move(index, index - 1)}
+              ></ha-icon-button>
+              <ha-icon-button
+                .path=${'M7,10L12,15L17,10H7Z'}
+                .disabled=${index === items.length - 1}
+                .label=${localize('template_editor.move_down', { name: item.name }, this.hass)}
+                @click=${(): void => move(index, index + 1)}
+              ></ha-icon-button>
+            </li>
+          `,
+        )}
+      </ul>
+    `;
+  }
+
+  private _move(from: number, to: number): void {
+    const declarations = getDeclarations(this._config);
+    const moved = moveItem(declarations, from, to);
+    if (moved === declarations) return;
+    this._fireConfigChanged({ ...(this._config as DeclutteringTemplateConfig), variables: moved });
+  }
+
+  /*
+   * A group's cards are laid out in the order they are written, and the only way to change
+   * that used to be cutting and pasting YAML. Each is named by its type and whatever it shows.
+   */
+  private _renderGroupOrder(): TemplateResult {
+    const group = this._config?.group;
+    const cards = groupCards(group);
+    if (group === undefined || cards.length < 2) return html``;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items = cards.map((card: any, index) => {
+      const shown = card?.name ?? card?.heading ?? card?.title ?? card?.entity;
+      const type = String(card?.type ?? '?').replace(/^custom:/, '');
+      return { label: typeof shown === 'string' ? `${type} (${shown})` : type, name: `${index + 1} ${type}` };
+    });
+    return html`
+      <div class="order">
+        <p class="hint">${localize('template_editor.group_order_hint', undefined, this.hass)}</p>
+        ${this._renderSortable('group', items, (from, to) => {
+          const moved = moveItem(cards, from, to);
+          if (moved === cards || !this._config) return;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          this._fireConfigChanged({ ...this._config, group: withGroupCards(group, moved) as any });
+        })}
+      </div>
+    `;
+  }
+
+  /*
+   * Suggest variables guesses at the settings that usually change from copy to copy. This is
+   * for the rest: pick any one setting, and it becomes a placeholder declared with the value
+   * it had as its default - so the template still builds exactly what it did.
+   */
+  private _renderPromote(): TemplateResult {
+    const key = contentKey(this._config);
+    if (!this._config || !key) return html``;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const settings = listSettings((this._config as any)[key]);
+    if (!settings.length) return html``;
+    const picked = this._promotePath ? JSON.stringify(this._promotePath) : '';
+    const shorten = (value: unknown): string => {
+      const text = String(value);
+      return text.length > 40 ? `${text.slice(0, 39)}…` : text;
+    };
+    return html`
+      <ha-expansion-panel outlined class="promote">
+        <span slot="header">${localize('template_editor.promote_header', undefined, this.hass)}</span>
+        <p class="hint">${localize('template_editor.promote_hint', undefined, this.hass)}</p>
+        <ha-form
+          .hass=${this.hass}
+          .data=${{ setting: picked }}
+          .schema=${[
+            {
+              name: 'setting',
+              selector: {
+                select: {
+                  mode: 'dropdown',
+                  options: settings.map((setting) => ({
+                    value: JSON.stringify(setting.path),
+                    label: `${setting.label} = ${shorten(setting.value)}`,
+                  })),
+                },
+              },
+            },
+          ]}
+          .computeLabel=${(): string => localize('template_editor.promote_pick', undefined, this.hass)}
+          @value-changed=${this._promotePicked}
+        ></ha-form>
+        ${
+          this._promotePath
+            ? html`
+                ${textField({
+                  label: localize('template_editor.promote_name', undefined, this.hass),
+                  value: this._promoteName,
+                  onInput: (value) => {
+                    this._promoteName = value;
+                    this._promoteError = undefined;
+                  },
+                })}
+                ${this._promoteError ? html`<ha-alert alert-type="error">${this._promoteError}</ha-alert>` : html``}
+                <ha-button .disabled=${!this._promoteName.trim()} @click=${this._promote}>
+                  ${localize('template_editor.promote_button', undefined, this.hass)}
+                </ha-button>
+              `
+            : html``
+        }
+      </ha-expansion-panel>
+    `;
+  }
+
+  private _promotePicked(ev: CustomEvent): void {
+    ev.stopPropagation();
+    const value = (ev.detail.value as { setting?: string }).setting;
+    if (!value) return;
+    this._promotePath = JSON.parse(value) as SettingPath;
+    this._promoteName = nameForSetting(this._promotePath, namesInUse(this._config));
+    this._promoteError = undefined;
+  }
+
+  private _promote(): void {
+    if (!this._config || !this._promotePath) return;
+    const name = this._promoteName.trim();
+    const result = promoteSetting(this._config, this._promotePath, name);
+    if (!result.ok) {
+      this._promoteError = localize(`template_editor.promote_${result.error}`, { name }, this.hass);
+      return;
+    }
+    this._promotePath = undefined;
+    this._promoteName = '';
+    this._fireConfigChanged(result.template as DeclutteringTemplateConfig);
   }
 
   /*
@@ -4809,38 +5084,77 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   private _renderDeclutter(): TemplateResult {
     const ll = this._savedLovelace;
     const cards = listPlainCards(ll);
-    if (!cards.length || !this._config) return html``;
+    // A section is made into a group, which only a card template can be.
+    const sections = getThingType(this._config ?? ({} as TemplateConfig)) === 'card' ? listSections(ll) : [];
+    if ((!cards.length && !sections.length) || !this._config) return html``;
     const name = this._config.template;
     const saved = !!name && name in collectTemplates(ll);
+    const picked = this._declutterOriginal ?? this._declutterSection;
     return html`
       <ha-expansion-panel outlined>
         <span slot="header">${localize('template_editor.declutter_header', undefined, this.hass)}</span>
         <p class="hint">${localize('template_editor.declutter_hint', undefined, this.hass)}</p>
-        <ha-form
-          .hass=${this.hass}
-          .data=${{}}
-          .schema=${[
-            {
-              name: 'pick',
-              selector: {
-                select: {
-                  mode: 'dropdown',
-                  options: cards.map((card, index) => ({ value: String(index), label: card.label })),
-                },
-              },
-            },
-          ]}
-          .computeLabel=${(): string => localize('template_editor.declutter_pick', undefined, this.hass)}
-          @value-changed=${(ev: CustomEvent): void => this._declutterPicked(ev, cards)}
-        ></ha-form>
         ${
-          this._declutterOriginal
+          cards.length
+            ? html`<ha-form
+                .hass=${this.hass}
+                .data=${{}}
+                .schema=${[
+                  {
+                    name: 'pick',
+                    selector: {
+                      select: {
+                        mode: 'dropdown',
+                        options: cards.map((card, index) => ({ value: String(index), label: card.label })),
+                      },
+                    },
+                  },
+                ]}
+                .computeLabel=${(): string => localize('template_editor.declutter_pick', undefined, this.hass)}
+                @value-changed=${(ev: CustomEvent): void => this._declutterPicked(ev, cards)}
+              ></ha-form>`
+            : html``
+        }
+        ${
+          sections.length
+            ? html`<ha-form
+                .hass=${this.hass}
+                .data=${{}}
+                .schema=${[
+                  {
+                    name: 'pick',
+                    selector: {
+                      select: {
+                        mode: 'dropdown',
+                        options: sections.map((section, index) => ({
+                          value: String(index),
+                          label: localize(
+                            section.cards.length === 1
+                              ? 'template_editor.declutter_section_one'
+                              : 'template_editor.declutter_section_many',
+                            { where: section.label, count: section.cards.length },
+                            this.hass,
+                          ),
+                        })),
+                      },
+                    },
+                  },
+                ]}
+                .computeLabel=${(): string => localize('template_editor.declutter_pick_section', undefined, this.hass)}
+                @value-changed=${(ev: CustomEvent): void => this._declutterSectionPicked(ev, sections)}
+              ></ha-form>`
+            : html``
+        }
+        ${
+          picked
             ? html`
                 <ha-button .disabled=${this._busy || !saved} @click=${this._declutterReplace}>
                   ${localize(
                     this._declutterPending
                       ? 'template_editor.declutter_replace_confirm'
-                      : 'template_editor.declutter_replace',
+                      : this._declutterSection
+                        ? 'template_editor.declutter_replace_section'
+                        : 'template_editor.declutter_replace',
                     undefined,
                     this.hass,
                   )}
@@ -4859,28 +5173,63 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     const picked = cards[index];
     if (!picked || !this._config) return;
     this._declutterOriginal = picked.config;
+    this._declutterSection = undefined;
     this._declutterPending = false;
     this._suggestion = undefined;
     this._suggestedNothing = false;
     // A copy, so editing the template never reaches back into the original card.
-    this._fireConfigChanged({ ...this._config, card: JSON.parse(JSON.stringify(picked.config)) });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const config: any = { ...this._config, card: JSON.parse(JSON.stringify(picked.config)) };
+    delete config.group;
+    this._fireConfigChanged(config);
+  }
+
+  /*
+   * A whole section becomes a group: every card in it, in order, each laid out in the section
+   * as it was. The template takes copies, so the section is untouched until Replace is pressed.
+   */
+  private _declutterSectionPicked(
+    ev: CustomEvent,
+    sections: { view: number; section: number; cards: Record<string, unknown>[] }[],
+  ): void {
+    ev.stopPropagation();
+    const index = Number((ev.detail.value as { pick?: string }).pick);
+    const picked = sections[index];
+    if (!picked || !this._config) return;
+    this._declutterSection = { view: picked.view, section: picked.section, cards: picked.cards };
+    this._declutterOriginal = undefined;
+    this._declutterPending = false;
+    this._suggestion = undefined;
+    this._suggestedNothing = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const config: any = { ...this._config, group: { cards: JSON.parse(JSON.stringify(picked.cards)) } };
+    delete config.card;
+    this._fireConfigChanged(config);
   }
 
   private async _declutterReplace(): Promise<void> {
     const name = this._config?.template;
     const original = this._declutterOriginal;
-    if (!name || !original) return;
+    const section = this._declutterSection;
+    if (!name || (!original && !section)) return;
     if (!this._declutterPending) {
       this._declutterPending = true;
       return;
     }
-    const saved = await this._saveDashboard(
-      (config) => replaceCard(config, original, { type: 'custom:decluttering-card-plus', template: name }),
-      'declutter',
-    );
+    const replacement = { type: 'custom:decluttering-card-plus', template: name };
+    let unchanged = false;
+    const saved = await this._saveDashboard((config) => {
+      if (original) return replaceCard(config, original, replacement);
+      const built = replaceSectionCards(config, section!.view, section!.section, section!.cards, [replacement]);
+      unchanged = built === config;
+      return built;
+    }, 'declutter');
+    if (saved && unchanged)
+      this._toolError = localize('template_editor.declutter_section_changed', undefined, this.hass);
     if (saved) {
       this._declutterPending = false;
       this._declutterOriginal = undefined;
+      this._declutterSection = undefined;
     }
   }
 
@@ -4964,6 +5313,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 : localize('share.copy', undefined, this.hass)
           }
         </ha-button>
+        <ha-button @click=${this._downloadExport}> ${localize('share.download', undefined, this.hass)} </ha-button>
         <ha-button @click=${this._copyPost}>
           ${
             this._postCopyState === 'done'
@@ -4982,7 +5332,17 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
         <h3>${localize('share.import_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.import_hint', undefined, this.hass)}</p>
-        <ha-yaml-editor .hass=${this.hass} @value-changed=${this._importChanged}></ha-yaml-editor>
+        <ha-yaml-editor id="import" .hass=${this.hass} @value-changed=${this._importChanged}></ha-yaml-editor>
+        <input
+          id="import-file"
+          type="file"
+          accept=".yaml,.yml,.json,text/yaml,application/json"
+          hidden
+          @change=${this._importFile}
+        />
+        <ha-button @click=${(): void => (this.renderRoot.querySelector('#import-file') as HTMLInputElement)?.click()}>
+          ${localize('share.import_file', undefined, this.hass)}
+        </ha-button>
         ${this._importErrors.map((error) => html`<ha-alert alert-type="error">${error}</ha-alert>`)}
         ${
           this._importClash
@@ -5002,6 +5362,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
               </ha-button>`
             : html``
         }
+        ${this._renderTrash()}
 
         <h3>${localize('share.library_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.library_hint', undefined, this.hass)}</p>
@@ -6172,6 +6533,148 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     const { notes } = buildExport(this._config, collectTemplates(this._savedLovelace));
     this._postCopyState = (await copyText(postBody(yaml, notes, this._config?.description))) ? 'done' : 'failed';
     setTimeout(() => (this._postCopyState = ''), 3000);
+  }
+
+  /* The export as a file, for keeping or sending - the same text Copy gives. */
+  private _downloadExport(): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const yaml = (this.renderRoot.querySelector('#export') as any)?.yaml;
+    if (!yaml) return;
+    const { notes } = buildExport(this._config);
+    const text = [...notes.map((note) => `# ${note}`), yaml].join('\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([text], { type: 'text/yaml' }));
+    link.download = `${(this._config?.template ?? 'template').replace(/[^\w-]+/g, '_')}.yaml`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+
+  /*
+   * A file read into the import box, as if it had been pasted. The box's own editor parses
+   * it, so a file and a paste are read by the same YAML parser Home Assistant uses.
+   */
+  private async _importFile(ev: Event): Promise<void> {
+    const input = ev.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    const text = await file.text();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const code = (this.renderRoot.querySelector('#import') as any)?.shadowRoot?.querySelector('ha-code-editor');
+    if (!code) {
+      this._importErrors = [localize('share.import_not_yaml', undefined, this.hass)];
+      return;
+    }
+    code.value = text;
+    code.dispatchEvent(new CustomEvent('value-changed', { detail: { value: text } }));
+  }
+
+  /*
+   * Templates a save took away or changed, newest first: one press restores, and a second is
+   * asked for only when the name is in use again on that dashboard, since then something
+   * else gets replaced - and goes in here in turn.
+   */
+  private _renderTrash(): TemplateResult {
+    if (this._trash === undefined) {
+      void this._loadTrash();
+      return html``;
+    }
+    const when = (ms: number): string => new Date(ms).toLocaleString(this.hass?.locale?.language);
+    return html`
+      <h3>${localize('share.trash_header', undefined, this.hass)}</h3>
+      <p class="hint">${localize('share.trash_hint', undefined, this.hass)}</p>
+      ${
+        this._trash.length
+          ? html`<ul class="installed trash">
+              ${this._trash.map(
+                (entry, index) => html`
+                  <li>
+                    <strong>${entry.name}</strong>
+                    <div class="status">
+                      ${localize(
+                        entry.reason === 'removed' ? 'share.trash_removed' : 'share.trash_replaced',
+                        { when: when(entry.at), dashboard: entry.dashboard },
+                        this.hass,
+                      )}
+                    </div>
+                    ${
+                      this._trashPending === index
+                        ? html`<ha-alert alert-type="warning">
+                            ${localize('share.trash_clash', { name: entry.name }, this.hass)}
+                          </ha-alert>`
+                        : html``
+                    }
+                    <ha-button .disabled=${this._busy} @click=${(): Promise<void> => this._restore(entry, index)}>
+                      ${localize(this._trashPending === index ? 'share.trash_restore_anyway' : 'share.trash_restore', undefined, this.hass)}
+                    </ha-button>
+                    <ha-button
+                      @click=${(): void => {
+                        this._trashShown = this._trashShown === index ? undefined : index;
+                      }}
+                    >
+                      ${localize(this._trashShown === index ? 'share.trash_hide' : 'share.trash_show', undefined, this.hass)}
+                    </ha-button>
+                    <ha-button .disabled=${this._busy} @click=${(): Promise<void> => this._forget(entry)}>
+                      ${localize('share.trash_forget', undefined, this.hass)}
+                    </ha-button>
+                    ${
+                      this._trashShown === index
+                        ? html`<ha-yaml-editor
+                            .hass=${this.hass}
+                            .defaultValue=${entry.template}
+                            read-only
+                          ></ha-yaml-editor>`
+                        : html``
+                    }
+                  </li>
+                `,
+              )}
+            </ul>`
+          : html`<p class="hint">${localize('share.trash_empty', undefined, this.hass)}</p>`
+      }
+    `;
+  }
+
+  private async _restore(entry: TrashEntry, index: number): Promise<void> {
+    if (!this.hass) return;
+    const saver = saverFor(this.hass);
+    let current: unknown;
+    try {
+      current = await readDashboard(saver, entry.dashboard);
+    } catch (err) {
+      this._toolError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, this.hass);
+      return;
+    }
+    const clash = entry.name in collectTemplates(current as LovelaceConfig);
+    if (clash && this._trashPending !== index) {
+      this._trashPending = index;
+      this._trashArmedAt = Date.now();
+      return;
+    }
+    if (clash && Date.now() - this._trashArmedAt < SECOND_PRESS_MS) return;
+    this._busy = true;
+    this._toolError = undefined;
+    try {
+      await rewriteDashboards(this, this.hass, 'restore', [
+        { urlPath: entry.dashboard, build: (config) => restoreTemplate(config, entry) },
+      ]);
+      this._trashPending = undefined;
+      this._trashShown = undefined;
+      await this._forget(entry);
+    } catch (err) {
+      this._toolError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, this.hass);
+    } finally {
+      this._busy = false;
+    }
+  }
+
+  private async _forget(entry: TrashEntry): Promise<void> {
+    if (!this.hass) return;
+    // Read fresh: the save a restore just made may have put the replaced version in.
+    const trash = withoutEntry(await loadTrash(this.hass), entry);
+    await saveTrash(this.hass, trash);
+    this._trash = trash;
+    this._trashPending = undefined;
   }
 
   private _importChanged(ev: CustomEvent): void {

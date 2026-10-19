@@ -26,6 +26,10 @@ export interface ReportInput {
   reports: TraceReport[];
   /** The whole card with the cards inside it built, when it has any. */
   full?: unknown;
+  /** What the card built, when it has no cards inside it to build as well. */
+  built?: unknown;
+  /** `redact: false`: everything is left as the card has it. */
+  unredacted?: boolean;
   /** Where cards inside it sit that never built. */
   neverBuilt?: string[];
   /** What the card refused with, if it did. */
@@ -71,7 +75,7 @@ function blankBlock(_: string, indent: string, dash: string | undefined, key: st
 }
 
 const REDACTIONS: [RegExp, string | ((...groups: any[]) => string)][] = [
-  [new RegExp(`(${SCHEME}|${BARE_SLASHES})[^\\s@"'\\\\<>|]{1,256}@`, 'gi'), '$1<credentials>@'],
+  [new RegExp(`(${SCHEME}|${BARE_SLASHES})[^\\s@"'\\\\<>|]{1,256}@`, 'gi'), '$1<redacted-credentials>@'],
   [new RegExp(`([?&;](?:${URL_KEYS})=)[^&\\s"'\\\\|]+`, 'gi'), '$1<redacted>'],
   [new RegExp(`("${SECRET_KEY}"\\s*:\\s*)(?:"(?:[^"\\\\]|\\\\.)*"|[^,}\\]\\s]+)`, 'gi'), '$1"<redacted>"'],
   [
@@ -83,26 +87,32 @@ const REDACTIONS: [RegExp, string | ((...groups: any[]) => string)][] = [
   ],
   [new RegExp(`^([ \\t]*(?:-[ \\t]+)?(?:${SECRET_KEY}):[ \\t]+)\\S.*$`, 'gim'), '$1<redacted>'],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/g, '$1<redacted>'],
-  [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '<token>'],
+  [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '<redacted-token>'],
   // Tokens that announce themselves: GitHub, OpenAI-style `sk-`, Slack.
   [
     /\b(?:gh[opsur]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{16,}|xox[abprs]-[A-Za-z0-9-]{10,})/g,
-    '<token>',
+    '<redacted-token>',
   ],
-  [/[A-Za-z0-9._%+-]{1,256}@[A-Za-z0-9.-]{1,256}\.[A-Za-z]{2,}/g, '<email>'],
+  [/[A-Za-z0-9._%+-]{1,256}@[A-Za-z0-9.-]{1,256}\.[A-Za-z]{2,}/g, '<redacted-email>'],
   // Not after `Chrome/`: a four-part version reads exactly like an address.
-  [/(?<![\w.])(?<![A-Za-z]\/)(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?![\w.])/g, '<ip>'],
-  [/(?<![\w:])(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}(?![\w:])/gi, '<ip>'],
-  [/(?<![\w:])(?:[0-9a-f]{1,4}:){1,6}(?::[0-9a-f]{1,4}){1,6}(?![\w:])/gi, '<ip>'],
+  [
+    /(?<![\w.])(?<![A-Za-z]\/)(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?![\w.])/g,
+    '<redacted-ip>',
+  ],
+  [/(?<![\w:])(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}(?![\w:])/gi, '<redacted-ip>'],
+  [/(?<![\w:])(?:[0-9a-f]{1,4}:){1,6}(?::[0-9a-f]{1,4}){1,6}(?![\w:])/gi, '<redacted-ip>'],
   // Any scheme but `media-source://`, whose host is always `media_source`.
   [
     new RegExp(
-      `(${SCHEME}(?<!media-source://)(?:<credentials>@)?|${BARE_SLASHES}(?:<credentials>@)?)[^\\s/:"'\\\\<>|?#]+`,
+      `(${SCHEME}(?<!media-source://)(?:<redacted-credentials>@)?|${BARE_SLASHES}(?:<redacted-credentials>@)?)[^\\s/:"'\\\\<>|?#]+`,
       'gi',
     ),
-    '$1<host>',
+    '$1<redacted-host>',
   ],
-  [new RegExp(`(?<![\\w.-])(?:[a-z0-9-]+\\.)+(?:(?:${HOME_DOMAINS})(?![\\w.-])|home(?=:\\d))`, 'gi'), '<host>'],
+  [
+    new RegExp(`(?<![\\w.-])(?:[a-z0-9-]+\\.)+(?:(?:${HOME_DOMAINS})(?![\\w.-])|home(?=:\\d))`, 'gi'),
+    '<redacted-host>',
+  ],
 ];
 
 /*
@@ -173,8 +183,8 @@ function asText(value: unknown): string {
 }
 
 // What redact() puts in. escapeInline() puts these in a code span: as bare text GitHub would
-// read <ip> as an unknown HTML tag and drop it, so nobody could see something was taken out.
-const MARKERS = /(<(?:redacted|credentials|ip|host|email|token)>)/;
+// read <redacted-ip> as an unknown HTML tag and drop it, so nobody could see something was taken out.
+const MARKERS = /(<redacted(?:-(?:credentials|ip|host|email|token))?>)/;
 
 /*
  * One line of Markdown that reads as the text it was given. A newline would end a heading,
@@ -207,24 +217,53 @@ function fenced(text: string, language = 'yaml'): string[] {
 
 /*
  * Everything the report writes out goes through one of these: `line` for a heading, a list
- * item or a table cell, `block` for a fenced config. Both redact first and shape after, so
- * the rules see the text as it was written rather than with Markdown escapes in it.
+ * item or a table cell, `block` for a fenced config, `title` for the line a folded section
+ * shows. All redact first and shape after, so the rules see the text as it was written
+ * rather than with Markdown escapes in it.
  */
 interface Writer {
   line: (value: unknown) => string;
   block: (value: unknown, language?: string) => string[];
+  title: (value: unknown) => string;
+  redacting: boolean;
 }
 
-function writer(secrets: readonly string[]): Writer {
+function writer(secrets: readonly string[], redacting: boolean): Writer {
+  const clean = (text: string): string => (redacting ? redact(text, secrets) : text);
   return {
-    line: (value) => escapeInline(redact(asText(value), secrets)),
-    block: (value, language) => fenced(redact(typeof value === 'string' ? value : toYaml(value), secrets), language),
+    line: (value) => escapeInline(clean(asText(value))),
+    block: (value, language) => fenced(clean(typeof value === 'string' ? value : toYaml(value)), language),
+    // A summary is HTML, where Markdown escapes would show as backslashes.
+    title: (value) =>
+      clean(asText(value))
+        .replace(/\r?\n|\r/g, ' ')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;'),
+    redacting,
   };
 }
 
-function buildSection(report: TraceReport, { line, block }: Writer, hass?: any): string[] {
+/*
+ * A section folded away under its title, so somebody reading can skip to the part they want.
+ * GitHub only reads the Markdown inside as Markdown with a blank line after the summary.
+ */
+function folded(title: string, body: string[], open = false): string[] {
+  const end = body[body.length - 1] === '' ? [] : [''];
+  return [
+    `<details${open ? ' open' : ''}>`,
+    `<summary><b>${title}</b></summary>`,
+    '',
+    ...body,
+    ...end,
+    '</details>',
+    '',
+  ];
+}
+
+function buildSection(report: TraceReport, { line, block, title, redacting }: Writer, hass?: any): string[] {
   const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
-  const lines = [`## ${line(headline(report, hass))}`, ''];
+  const lines: string[] = [];
   if (report.template) {
     lines.push(`### ${line(t('report.template', { template: report.template.name }))}`, '');
     lines.push(...block(report.template.config), '');
@@ -234,12 +273,12 @@ function buildSection(report: TraceReport, { line, block }: Writer, hass?: any):
     // A variable called `password` is the likeliest place for one, and its value sits in a
     // table cell of its own - as does what each of its placeholders became.
     const variables = section.variables.map((row) =>
-      SECRET_NAME.test(row.variable) ? { ...row, value: '<redacted>' } : row,
+      redacting && SECRET_NAME.test(row.variable) ? { ...row, value: '<redacted>' } : row,
     );
     const placeholders = new Map(
       [...section.trace.placeholders].map(([placeholder, became]) => [
         placeholder,
-        SECRET_NAME.test(placeholderName(placeholder)) ? '<redacted>' : became,
+        redacting && SECRET_NAME.test(placeholderName(placeholder)) ? '<redacted>' : became,
       ]),
     );
     const described = describeSection({ ...section, variables, trace: { ...section.trace, placeholders } }, hass);
@@ -260,10 +299,10 @@ function buildSection(report: TraceReport, { line, block }: Writer, hass?: any):
     }
     lines.push(`**${t('trace.result')}**`, '', ...block(section.built), '');
   }
-  return lines;
+  return folded(title(headline(report, hass)), lines);
 }
 
-/** The whole report, redacted, as Markdown. */
+/** The whole report as Markdown, redacted unless asked not to be. */
 export function formatReport(input: ReportInput, hass?: any): string {
   const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
   const { context } = input;
@@ -278,7 +317,7 @@ export function formatReport(input: ReportInput, hass?: any): string {
   const header = [
     `# ${t('report.title')}`,
     '',
-    `> ${t('report.check')}`,
+    `> ${t(input.unredacted ? 'report.unredacted' : 'report.check')}`,
     '',
     `| | |`,
     `| --- | --- |`,
@@ -286,16 +325,20 @@ export function formatReport(input: ReportInput, hass?: any): string {
     '',
   ];
 
-  const { line, block } = writer(secretValues(input.reports));
+  const write = writer(input.unredacted ? [] : secretValues(input.reports), !input.unredacted);
+  const { line, block, title } = write;
+  const label = input.reports[0]?.label ?? '';
   const body: string[] = [];
   if (input.error) body.push(`## ${t('report.error')}`, '', ...block(input.error, ''), '');
-  for (const report of input.reports) body.push(...buildSection(report, { line, block }, hass));
+  // What the card ended up as comes first: it is what somebody looks at to see what went wrong.
   if (input.full !== undefined) {
-    body.push(`## ${line(t('trace.in_full', { label: input.reports[0]?.label ?? '' }))}`, '');
-    body.push(...block(input.full), '');
+    body.push(...folded(title(t('trace.in_full', { label })), block(input.full), true));
+  } else if (input.built !== undefined) {
+    body.push(...folded(title(t('report.as_built', { label })), block(input.built), true));
   }
   if (input.neverBuilt?.length) {
     body.push(`**${t('trace.never_built')}**`, '', ...input.neverBuilt.map((path) => `- ${line(path)}`), '');
   }
+  for (const report of input.reports) body.push(...buildSection(report, write, hass));
   return `${header.join('\n')}\n${body.join('\n')}`;
 }
