@@ -382,6 +382,23 @@ blockquote > :last-child { margin-bottom: 0; }
 .builder-error pre { margin: .5rem 0 0; }
 .builder-output li { margin-bottom: .5rem; }
 
+/* ------------------------------------------------------------ describe what you want */
+.describe-group { border: 0; padding: 0; margin: 0 0 1.25rem; min-width: 0; }
+.describe-group > label { display: block; margin: .3rem 0; }
+.describe-group input[type="checkbox"], .describe-group input[type="radio"] { accent-color: var(--amber); margin-right: .4rem; }
+.describe-group label:has(input:disabled) { color: var(--ink-faint); }
+.describe-input {
+  box-sizing: border-box; width: 100%; max-width: 24rem; margin-top: .35rem;
+  font: inherit; font-size: .9375rem; padding: .45rem .6rem;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink);
+}
+.describe-input:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
+.describe-wide { margin-top: .6rem !important; }
+.describe-entities { min-height: 6rem; }
+.describe-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+.describe-pair .builder-label { margin-top: 0; }
+#describe-type-row .builder-label { margin-top: 0; }
+
 /* ------------------------------------------------------------ try a placeholder */
 .try-variables { min-height: 12rem; }
 .try-expression { min-height: 0; resize: none; padding: .7rem 1rem; font-size: .9375rem; }

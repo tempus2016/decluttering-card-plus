@@ -62,3 +62,36 @@ export function codeWithPlaceholders(text: string): HTMLElement {
   }
   return code;
 }
+
+async function copy(text: string, button: HTMLButtonElement, pre: HTMLElement): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    button.textContent = 'Copied';
+  } catch {
+    // No clipboard (plain http, or a browser that refuses): select it for Ctrl+C instead.
+    const range = document.createRange();
+    range.selectNodeContents(pre);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    button.textContent = 'Selected - press Ctrl+C';
+  }
+  window.setTimeout(() => (button.textContent = 'Copy'), 2000);
+}
+
+/** A titled block of code with a line of help and a Copy button. */
+export function codeBlock(title: string, help: string, text: string): HTMLElement {
+  const wrap = el('div', undefined, 'builder-block');
+  const head = el('div', undefined, 'builder-block-head');
+  head.appendChild(el('strong', title));
+  const button = el('button', 'Copy', 'builder-copy');
+  button.type = 'button';
+  head.appendChild(button);
+  wrap.appendChild(head);
+  wrap.appendChild(el('p', help, 'builder-help'));
+  const pre = el('pre');
+  pre.appendChild(codeWithPlaceholders(text));
+  wrap.appendChild(pre);
+  button.addEventListener('click', () => copy(text, button, pre));
+  return wrap;
+}

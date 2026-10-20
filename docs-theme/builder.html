@@ -5,13 +5,15 @@ description: Paste the cards you already have and get the decluttering template 
 ---
 <h1>Template builder</h1>
 
-<p>Paste the cards you already have - copies of one card that differ by an entity, a name, an icon - and this works out the template they are copies of, and what each card becomes once it uses it. Nothing leaves your browser.</p>
-
-<p>Paste them the way the card editor or the raw configuration editor shows them. A list of cards, a whole view or a whole dashboard all work, and cards inside stacks are found too.</p>
+<p>Two ways to get a template: from cards you already have, or from a description of what you want. Either way you get the template and the cards that use it, ready to paste. Nothing leaves your browser.</p>
 
 <p>To see what a single placeholder gives back, step by step, use <a href="playground.html">Try a placeholder</a>.</p>
 
 <noscript><blockquote>The builder runs in your browser and needs JavaScript. Without it, <a href="Using-Templates.html">Using Templates</a> walks through the same thing by hand.</blockquote></noscript>
+
+<h2 id="from-cards-you-already-have">From cards you already have</h2>
+
+<p>Paste the cards - copies of one card that differ by an entity, a name, an icon - the way the card editor or the raw configuration editor shows them. A list of cards, a whole view or a whole dashboard all work, and cards inside stacks are found too.</p>
 
 <div class="builder" id="builder" hidden>
   <label class="builder-label" for="builder-input">Your cards</label>
@@ -22,6 +24,69 @@ description: Paste the cards you already have and get the decluttering template 
     <button type="button" id="builder-example" class="builder-button builder-button-quiet">Try an example</button>
   </div>
   <div id="builder-output" class="builder-output" aria-live="polite"></div>
+</div>
+
+<h2 id="describe-what-you-want">Describe what you want</h2>
+
+<p>Nothing to paste yet? Answer these and the template is written as you go.</p>
+
+<div class="describe" id="describe" hidden>
+  <fieldset class="describe-group">
+    <legend class="builder-label">What it makes</legend>
+    <label><input type="radio" name="describe-kind" value="card" checked> Cards</label>
+    <label><input type="radio" name="describe-kind" value="badge"> Badges</label>
+    <label><input type="radio" name="describe-kind" value="row"> Rows of an Entities card</label>
+  </fieldset>
+
+  <div class="describe-group" id="describe-type-row">
+    <label class="builder-label" for="describe-type">Which card</label>
+    <select id="describe-type" class="describe-input">
+      <option value="tile">Tile</option>
+      <option value="button">Button</option>
+      <option value="entity">Entity</option>
+      <option value="other">Another card - type it in</option>
+    </select>
+    <input id="describe-custom" class="describe-input" type="text" placeholder="custom:mushroom-entity-card" spellcheck="false" autocapitalize="off" hidden>
+  </div>
+
+  <fieldset class="describe-group">
+    <legend class="builder-label">What changes from one copy to the next</legend>
+    <label><input type="checkbox" checked disabled> The entity</label>
+    <label><input type="checkbox" id="describe-name" checked> The name</label>
+    <label><input type="checkbox" id="describe-icon"> The icon</label>
+    <label><input type="checkbox" id="describe-color"> The colour</label>
+    <label><input type="checkbox" id="describe-navigate"> The page it opens when tapped</label>
+    <label class="describe-wide" for="describe-extra">Anything else, by its setting name
+      <input id="describe-extra" class="describe-input" type="text" placeholder="show_state, vertical" spellcheck="false" autocapitalize="off">
+    </label>
+  </fieldset>
+
+  <fieldset class="describe-group">
+    <legend class="builder-label">And</legend>
+    <label><input type="checkbox" id="describe-hide"> Hide a copy while its entity is unavailable</label>
+    <label><input type="checkbox" id="describe-describe" checked> Give each variable a field in the visual editor</label>
+    <label><input type="checkbox" id="describe-repeat"> One card that repeats it, instead of a card per copy</label>
+  </fieldset>
+
+  <div class="describe-group">
+    <label class="builder-label" for="describe-entities">The entities, one a line</label>
+    <textarea id="describe-entities" class="builder-input describe-entities" rows="4" spellcheck="false" autocapitalize="off" autocomplete="off">light.kitchen
+light.lounge
+light.hall</textarea>
+  </div>
+
+  <div class="describe-group describe-pair">
+    <div>
+      <label class="builder-label" for="describe-domain">Their domain, to narrow the entity picker</label>
+      <input id="describe-domain" class="describe-input" type="text" placeholder="light" spellcheck="false" autocapitalize="off">
+    </div>
+    <div>
+      <label class="builder-label" for="describe-name-field">Call the template</label>
+      <input id="describe-name-field" class="describe-input" type="text" placeholder="worked out for you" spellcheck="false" autocapitalize="off">
+    </div>
+  </div>
+
+  <div id="describe-output" class="builder-output" aria-live="polite"></div>
 </div>
 
 <script src="{{ '/assets/js/builder.js' | relative_url }}" defer></script>

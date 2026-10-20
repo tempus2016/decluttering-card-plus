@@ -1,5 +1,6 @@
 import { BuilderResult, BuiltTemplate, LeftOut, MAX_DIFFERING, buildTemplates } from './builder';
-import { codeWithPlaceholders, el } from './docs-dom';
+import { codeBlock, el } from './docs-dom';
+import { startDescribe } from './describe-page';
 
 /*
  * The template builder page on the docs site: docs-theme/builder.html. Built by rollup to
@@ -32,38 +33,6 @@ const EXAMPLE = `- type: tile
   tap_action:
     action: toggle
 `;
-
-async function copy(text: string, button: HTMLButtonElement, pre: HTMLElement): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-    button.textContent = 'Copied';
-  } catch {
-    // No clipboard (plain http, or a browser that refuses): select it for Ctrl+C instead.
-    const range = document.createRange();
-    range.selectNodeContents(pre);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    button.textContent = 'Selected - press Ctrl+C';
-  }
-  window.setTimeout(() => (button.textContent = 'Copy'), 2000);
-}
-
-function codeBlock(title: string, help: string, text: string): HTMLElement {
-  const wrap = el('div', undefined, 'builder-block');
-  const head = el('div', undefined, 'builder-block-head');
-  head.appendChild(el('strong', title));
-  const button = el('button', 'Copy', 'builder-copy');
-  button.type = 'button';
-  head.appendChild(button);
-  wrap.appendChild(head);
-  wrap.appendChild(el('p', help, 'builder-help'));
-  const pre = el('pre');
-  pre.appendChild(codeWithPlaceholders(text));
-  wrap.appendChild(pre);
-  button.addEventListener('click', () => copy(text, button, pre));
-  return wrap;
-}
 
 function inlineCode(parent: HTMLElement, text: string): void {
   parent.appendChild(el('code', text));
@@ -198,6 +167,7 @@ function start(): void {
   const form = document.getElementById('builder');
   if (!input || !run || !example || !output || !form) return;
   form.hidden = false;
+  startDescribe();
   run.addEventListener('click', () => render(output, buildTemplates(input.value)));
   example.addEventListener('click', () => {
     input.value = EXAMPLE;
