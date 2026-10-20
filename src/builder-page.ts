@@ -1,4 +1,5 @@
 import { BuilderResult, BuiltTemplate, LeftOut, MAX_DIFFERING, buildTemplates } from './builder';
+import { codeWithPlaceholders, el } from './docs-dom';
 
 /*
  * The template builder page on the docs site: docs-theme/builder.html. Built by rollup to
@@ -31,27 +32,6 @@ const EXAMPLE = `- type: tile
   tap_action:
     action: toggle
 `;
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  text?: string,
-  className?: string,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (text !== undefined) node.textContent = text;
-  if (className) node.className = className;
-  return node;
-}
-
-function codeWithPlaceholders(text: string): HTMLElement {
-  const code = el('code');
-  for (const part of text.split(/(\[\[[^\]\n]+\]\])/)) {
-    if (!part) continue;
-    if (/^\[\[[^\]\n]+\]\]$/.test(part)) code.appendChild(el('span', part, 'ph-var'));
-    else code.appendChild(document.createTextNode(part));
-  }
-  return code;
-}
 
 async function copy(text: string, button: HTMLButtonElement, pre: HTMLElement): Promise<void> {
   try {

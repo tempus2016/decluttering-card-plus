@@ -1,0 +1,185 @@
+# A sandbox for seeing what placeholders do (discussion #216). Not a dashboard to keep:
+# every card shows a placeholder as you write it and what it turns into, using the values
+# below and your own Home Assistant.
+#
+# To use it: make a new dashboard, open its raw configuration editor (three dots, "Raw
+# configuration editor"), paste all of this in and save.
+#
+# Then change the values under decluttering_defaults and watch the cards follow. Two
+# things to change for your own house:
+#   - entity: one of your lights. sun.sun works anywhere but has no area, device or floor,
+#     so those lines stay as written - which is what a placeholder does when Home
+#     Assistant has nothing to give.
+#   - rebuild_on, on the "Asking Home Assistant" card at the bottom: the same entity. A
+#     card only reads the state of entities it lists there.
+#
+# Everything on a markdown card is text. Whether a value is a number, true or false, or
+# a list only matters when a placeholder is the whole value of an option - "columns:
+# '[[count]]'" gets the number 3 - and "Try a placeholder" on the docs site shows that:
+# https://tempus2016.github.io/decluttering-card-plus/playground.html
+#
+# To try your own, edit the "Your turn" template. A placeholder written [[!name]] is shown
+# as it is, not substituted, which is how each line shows what was written; a placeholder
+# inside another needs its own !, as in [[!count|add:[[!offset]]]].
+
+decluttering_defaults:
+  entity: sun.sun
+  text: Back Garden lights
+  messy: '  hall light  '
+  room_id: living_room
+  number: 7
+  offset: 2
+  decimal: 21.456
+  list: [kitchen, hall, study]
+  csv: 'a, b, c'
+  level: warning
+  colours:
+    error: red
+    warning: amber
+    good: green
+  mode: night
+  empty: ''
+
+decluttering_templates:
+  sandbox_values:
+    card:
+      type: markdown
+      title: Your values
+      content: |
+        - `[[!entity]]` → **[[entity]]**
+        - `[[!text]]` → **[[text]]**
+        - `[[!number]]` → **[[number]]**, `[[!offset]]` → **[[offset]]**
+        - `[[!list]]` → **[[list]]**
+        - `[[!colours]]` → **[[colours]]**
+        - `[[!level]]` → **[[level]]**, `[[!mode]]` → **[[mode]]**
+
+        A list or a mapping inside text comes out as JSON.
+
+  sandbox_text:
+    card:
+      type: markdown
+      title: Text
+      content: |
+        - `[[!text|upper]]` → **[[text|upper]]**
+        - `[[!text|lower]]` → **[[text|lower]]**
+        - `[[!text|slug]]` → **[[text|slug]]**
+        - `[[!text|kebab]]` → **[[text|kebab]]**
+        - `[[!room_id|title]]` → **[[room_id|title]]**
+        - `[[!room_id|replace:_: |title]]` → **[[room_id|replace:_: |title]]**
+        - `[[!messy|trim|capitalize]]` → **[[messy|trim|capitalize]]**
+        - `[[!room_id|prefix:light.]]` → **[[room_id|prefix:light.]]**
+        - `[[!text|suffix: (outside)]]` → **[[text|suffix: (outside)]]**
+        - `[[!text|max:10]]` → **[[text|max:10]]**
+        - `[[!level|map:error=Stop,warning=Careful,*=Fine]]` → **[[level|map:error=Stop,warning=Careful,*=Fine]]**
+        - `[[!text|find:Garden]]` → **[[text|find:Garden]]**
+
+  sandbox_numbers:
+    card:
+      type: markdown
+      title: Numbers
+      content: |
+        - `[[!number|add:1]]` → **[[number|add:1]]**
+        - `[[!number|add:[[!offset]]]]` → **[[number|add:[[offset]]]]**
+        - `[[!number|sub:1|mul:12|add:4]]` → **[[number|sub:1|mul:12|add:4]]**
+        - `[[!number|div:2]]` → **[[number|div:2]]**
+        - `[[!number|mod:4]]` → **[[number|mod:4]]**
+        - `[[!decimal|round]]` → **[[decimal|round]]**
+        - `[[!decimal|round:1]]` → **[[decimal|round:1]]**
+        - `[[!number|pad:2]]` → **[[number|pad:2]]**
+        - `[[!number|div:3|round:2]]` → **[[number|div:3|round:2]]**
+
+  sandbox_lists:
+    card:
+      type: markdown
+      title: Lists and mappings
+      content: |
+        - `[[!list|join]]` → **[[list|join]]**
+        - `[[!list|first]]` → **[[list|first]]**
+        - `[[!list|last]]` → **[[list|last]]**
+        - `[[!list|count]]` → **[[list|count]]**
+        - `[[!list|contains:hall]]` → **[[list|contains:hall]]**
+        - `[[!csv|split|count]]` → **[[csv|split|count]]**
+        - `[[!csv|split|last]]` → **[[csv|split|last]]**
+        - `[[!colours.good]]` → **[[colours.good]]**
+        - `[[!colours.[[!level]]]]` → **[[colours.[[level]]]]**
+        - `[[!colours.[[!mode]]|default:grey]]` → **[[colours.[[mode]]|default:grey]]**
+        - `[[!colours|json]]` → **[[colours|json]]**
+
+  sandbox_stand_ins:
+    card:
+      type: markdown
+      title: When there is nothing to give
+      content: |
+        - `[[!nothing]]` → **[[nothing]]** - no such variable, so it stays as written
+        - `[[!nothing|default:a stand-in]]` → **[[nothing|default:a stand-in]]**
+        - `[[!empty|default:a stand-in]]` → **[[empty|default:a stand-in]]** - empty counts as unset
+        - `[[!nothing|or:text]]` → **[[nothing|or:text]]** - another variable instead
+        - `[[!nothing|or:nothing_either|default:last resort]]` → **[[nothing|or:nothing_either|default:last resort]]**
+        - `[[!nothing?]]` → "[[nothing?]]" - optional, so it goes; on an option of its own, the whole option goes
+        - `[[!text|bool]]` → **[[text|bool]]**, `[[!empty|bool]]` → **[[empty|bool]]**
+        - `[[!text|exists]]` → **[[text|exists]]** - `exists` asks whether Home Assistant knows an entity by that id, not whether the variable is set
+        - `[[!text|contains:Garden]]` → **[[text|contains:Garden]]**
+
+  sandbox_conditions:
+    card:
+      type: markdown
+      title: Only while another says so
+      content: |
+        - `[[!text|if:mode=night]]` → **[[text|if:mode=night]]**
+        - `[[!text|if:mode=day|default:not now]]` → **[[text|if:mode=day|default:not now]]**
+        - `[[!text|if:mode!=off]]` → **[[text|if:mode!=off]]**
+        - `[[!text|if:empty|default:empty is a no]]` → **[[text|if:empty|default:empty is a no]]**
+        - `[[!text|if:!empty]]` → **[[text|if:!empty]]**
+
+  sandbox_home_assistant:
+    card:
+      type: markdown
+      title: Asking Home Assistant
+      content: |
+        - `[[!entity|friendly_name]]` → **[[entity|friendly_name]]**
+        - `[[!entity|state]]` → **[[entity|state]]** - only for an entity in this card's rebuild_on
+        - `[[!entity|attr:friendly_name]]` → **[[entity|attr:friendly_name]]**
+        - `[[!entity|domain]]` → **[[entity|domain]]**, `[[!entity|object_id]]` → **[[entity|object_id]]**
+        - `[[!entity|domain|translate]]` → **[[entity|domain|translate]]**
+        - `[[!entity|area]]` → **[[entity|area]]**, `[[!entity|area_id]]` → **[[entity|area_id]]**
+        - `[[!entity|floor]]` → **[[entity|floor]]**
+        - `[[!entity|device]]` → **[[entity|device]]**, `[[!entity|device_id]]` → **[[entity|device_id]]**
+        - `[[!entity|manufacturer]]` → **[[entity|manufacturer]]**, `[[!entity|model]]` → **[[entity|model]]**
+        - `[[!entity|icon|default:none set]]` → **[[entity|icon|default:none set]]**
+        - `[[!entity|area_icon|default:none set]]` → **[[entity|area_icon|default:none set]]**
+        - `[[!entity|device_class|default:none]]` → **[[entity|device_class|default:none]]**
+        - `[[!entity|labels|default:no labels]]` → **[[entity|labels|default:no labels]]**
+        - `[[!entity|exists]]` → **[[entity|exists]]**
+        - `[[!binary_sensor.[[!entity|area_id]]_motion]]` → **binary_sensor.[[entity|area_id]]_motion**
+
+  sandbox_your_turn:
+    card:
+      type: markdown
+      title: Your turn
+      content: |
+        Edit this template's content in the raw configuration editor and save:
+
+        - `[[!text|slug|upper]]` → **[[text|slug|upper]]**
+
+views:
+  - title: Placeholder sandbox
+    path: sandbox
+    cards:
+      - type: custom:decluttering-card-plus
+        template: sandbox_values
+      - type: custom:decluttering-card-plus
+        template: sandbox_text
+      - type: custom:decluttering-card-plus
+        template: sandbox_numbers
+      - type: custom:decluttering-card-plus
+        template: sandbox_lists
+      - type: custom:decluttering-card-plus
+        template: sandbox_stand_ins
+      - type: custom:decluttering-card-plus
+        template: sandbox_conditions
+      - type: custom:decluttering-card-plus
+        template: sandbox_your_turn
+      - type: custom:decluttering-card-plus
+        template: sandbox_home_assistant
+        # The same entity as `entity` above, so `|state` can read it.
+        rebuild_on: sun.sun

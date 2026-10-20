@@ -14,7 +14,8 @@ directory on top and hands the result to Jekyll.
 | `_layouts/home.html` | The same, with the hero on top. |
 | `assets/css/docs.css` | All of it. Custom properties at the top, dark scheme underneath them. |
 | `assets/js/docs.js` | Enhancement only — placeholder highlighting, the contents column, the marker on the current page. Every page reads fine without it. |
-| `builder.html` | The template builder: paste cards, get the template they are copies of. The one page that is not from the wiki. Its script, `assets/js/builder.js`, is built by rollup from `src/builder-page.ts` and committed - run `npm run build` after changing `src/builder.ts`, `src/similar.ts` or anything they import, and the release rebuilds it too. |
+| `builder.html` | The template builder: paste cards, get the template they are copies of. One of the two pages that are not from the wiki. Its script, `assets/js/builder.js`, is built by rollup from `src/builder-page.ts` and committed - run `npm run build` after changing `src/builder.ts`, `src/similar.ts` or anything they import, and the release rebuilds it too. |
+| `playground.html` | "Try a placeholder": variables and a placeholder in, what each step of the chain gives out. The other page not from the wiki. Its script, `assets/js/playground.js`, is built from `src/playground-page.ts` and committed the same way; the steps that ask Home Assistant read the sample house in `src/playground.ts`, which the page's table describes - change one, change the other. |
 | `assets/fonts/` | IBM Plex, self-hosted (OFL, `LICENSE.txt` alongside). Sans is one variable file covering 400–600. |
 
 ## Things worth knowing before you change it
@@ -43,7 +44,7 @@ that touch this directory and checks the output before anything reaches main. Lo
 ```
 git clone https://github.com/tempus2016/decluttering-card-plus.wiki.git site
 python3 docs-theme/build.py site
-cp -r docs-theme/{_config.yml,_layouts,_includes,assets,builder.html} site/
+cp -r docs-theme/{_config.yml,_layouts,_includes,assets,builder.html,playground.html} site/
 jekyll serve --source site
 ```
 

@@ -382,6 +382,24 @@ blockquote > :last-child { margin-bottom: 0; }
 .builder-error pre { margin: .5rem 0 0; }
 .builder-output li { margin-bottom: .5rem; }
 
+/* ------------------------------------------------------------ try a placeholder */
+.try-variables { min-height: 12rem; }
+.try-expression { min-height: 0; resize: none; padding: .7rem 1rem; font-size: .9375rem; }
+.try-examples { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 1.75rem; }
+.try-chip {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: .15rem;
+  font: inherit; text-align: left; cursor: pointer;
+  padding: .45rem .7rem; border-radius: 6px;
+  border: 1px solid var(--rule); background: var(--surface); color: var(--ink);
+}
+.try-chip:hover { border-color: var(--amber); }
+.try-chip:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.try-chip-label { font-size: .75rem; color: var(--ink-soft); }
+.try-chip code { font-size: .8125rem; }
+.try-table td:nth-child(2) code { white-space: pre-wrap; word-break: break-word; }
+.try-kind { font-family: var(--mono); font-size: .8125rem; white-space: nowrap; }
+.try-kind-unresolved, .try-kind-removed { color: var(--amber-dim); }
+
 /* ============================================================
    Narrower than three columns
    ============================================================ */

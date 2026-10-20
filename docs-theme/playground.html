@@ -1,0 +1,44 @@
+---
+layout: wiki
+title: Try a placeholder
+description: Give it some variables and a placeholder, and see what every step of the chain gives back - text, a number, true or false, a list.
+---
+<h1>Try a placeholder</h1>
+
+<p>Give it some variables and a placeholder, and it shows what comes out: at each step of the chain, and whether that is text, a number, true or false, or a list. It runs the card's own code, so what you see here is what a card gets. Nothing leaves your browser.</p>
+
+<p>Whether a value is text or a number matters when the placeholder is the whole value of an option - <code>columns: '[[count]]'</code> gets the number 3. Inside a longer piece of text everything becomes text. Both are shown below.</p>
+
+<p>To make a template from cards you already have, use the <a href="builder.html">template builder</a>.</p>
+
+<noscript><blockquote>This page runs in your browser and needs JavaScript. Without it, <a href="Variables.html#reference">the reference on the Variables page</a> lists what every step gives.</blockquote></noscript>
+
+<div class="try" id="try" hidden>
+  <label class="builder-label" for="try-variables">Variables</label>
+  <textarea id="try-variables" class="builder-input try-variables" rows="11" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+
+  <label class="builder-label" for="try-expression">Placeholder</label>
+  <input id="try-expression" class="builder-input try-expression" type="text" spellcheck="false" autocapitalize="off" autocomplete="off">
+
+  <div class="try-examples" id="try-examples" aria-label="Things to try"></div>
+
+  <div id="try-output" class="try-output" aria-live="polite"></div>
+</div>
+
+<h2 id="the-sample-house">The sample house</h2>
+
+<p>A web page has no Home Assistant, so the steps that ask one - <code>area</code>, <code>state</code>, <code>friendly_name</code> and the rest - read this made-up house instead. Use these entity ids, as a variable or written straight in the placeholder. To try them against your own Home Assistant, paste the <a href="https://github.com/tempus2016/decluttering-card-plus/blob/main/examples/playground-dashboard.yaml">sandbox dashboard</a> into a new dashboard.</p>
+
+<table>
+  <thead><tr><th>Entity</th><th>State</th><th>What else it has</th></tr></thead>
+  <tbody>
+    <tr><td><code>light.kitchen_ceiling</code></td><td><code>on</code></td><td>Named Kitchen ceiling, brightness 180. Its device, Hue ceiling by Signify (model Hue White), is in the Kitchen on the Ground floor. Labelled Evening lights.</td></tr>
+    <tr><td><code>sensor.garden_temperature</code></td><td><code>14.6</code></td><td>Device class temperature, in °C. Its device, Garden sensor by Aqara, is in the Back Garden, which is on no floor.</td></tr>
+    <tr><td><code>binary_sensor.bedroom_window</code></td><td><code>off</code></td><td>Device class window, icon <code>mdi:window-closed-variant</code>. No device; the entity itself is in the Bedroom (icon <code>mdi:bed</code>) on the First floor.</td></tr>
+    <tr><td><code>input_select.house_mode</code></td><td><code>night</code></td><td>Options day, night and away.</td></tr>
+  </tbody>
+</table>
+
+<p>Every one of them can have its state read here. On a real card, <code>|state</code> only answers for entities the card lists in <a href="Variables.html#following-an-entitys-state-rebuild_on-v200"><code>rebuild_on</code></a>. And <code>translate</code> needs your Home Assistant's language, so here it gives back what it was given.</p>
+
+<script src="{{ '/assets/js/playground.js' | relative_url }}" defer></script>

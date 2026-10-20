@@ -45,6 +45,7 @@ const plugins = [
         'package-lock.json',
         'dist/decluttering-card-plus.js',
         'docs-theme/assets/js/builder.js',
+        'docs-theme/assets/js/playground.js',
       ],
     },
   ],

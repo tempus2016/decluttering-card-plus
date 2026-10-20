@@ -33,6 +33,7 @@ const SUITES = [
   'trash',
   'sections',
   'builder',
+  'playground',
 ];
 
 // Each suite calls report(), which exits the process. Patching it here lets them run one

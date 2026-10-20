@@ -77,4 +77,13 @@ export default [
     },
     plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
   },
+  // "Try a placeholder", the other docs-site tool, committed for the same reason.
+  {
+    input: 'src/playground-page.ts',
+    output: {
+      file: './docs-theme/assets/js/playground.js',
+      format: 'iife',
+    },
+    plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
+  },
 ];
