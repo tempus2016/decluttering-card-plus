@@ -39,7 +39,13 @@ const plugins = [
   [
     '@semantic-release/git',
     {
-      assets: ['README.md', 'package.json', 'package-lock.json', 'dist/decluttering-card-plus.js'],
+      assets: [
+        'README.md',
+        'package.json',
+        'package-lock.json',
+        'dist/decluttering-card-plus.js',
+        'docs-theme/assets/js/builder.js',
+      ],
     },
   ],
   [

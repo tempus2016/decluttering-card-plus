@@ -32,6 +32,7 @@ const SUITES = [
   'promote',
   'trash',
   'sections',
+  'builder',
 ];
 
 // Each suite calls report(), which exits the process. Patching it here lets them run one

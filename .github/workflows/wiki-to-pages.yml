@@ -50,6 +50,7 @@ jobs:
                 repo/docs-theme/_layouts \
                 repo/docs-theme/_includes \
                 repo/docs-theme/assets \
+                repo/docs-theme/builder.html \
                 site/
 
       # No configure-pages step: url and baseurl are set in docs-theme/_config.yml, so the
@@ -67,6 +68,9 @@ jobs:
           test -f _site/index.html || { echo "no index.html - Jekyll did not render"; exit 1; }
           test -f _site/Variables.html || { echo "no Variables.html"; exit 1; }
           test -f _site/assets/css/docs.css || { echo "theme assets missing"; exit 1; }
+          test -f _site/builder.html || { echo "no builder.html"; exit 1; }
+          grep -q 'assets/js/builder.js' _site/builder.html || { echo "builder page lost its script"; exit 1; }
+          test -s _site/assets/js/builder.js || { echo "builder script missing"; exit 1; }
           grep -q 'class="ph"' _site/index.html || { echo "hero did not build"; exit 1; }
           echo "$(ls _site/*.html | wc -l) pages built"
 

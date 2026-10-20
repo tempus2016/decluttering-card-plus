@@ -1,0 +1,25 @@
+---
+layout: wiki
+title: Template builder
+description: Paste the cards you already have and get the decluttering template they are copies of, plus the cards that use it.
+---
+<h1>Template builder</h1>
+
+<p>Paste the cards you already have - copies of one card that differ by an entity, a name, an icon - and this works out the template they are copies of, and what each card becomes once it uses it. Nothing leaves your browser.</p>
+
+<p>Paste them the way the card editor or the raw configuration editor shows them. A list of cards, a whole view or a whole dashboard all work, and cards inside stacks are found too.</p>
+
+<noscript><blockquote>The builder runs in your browser and needs JavaScript. Without it, <a href="Using-Templates.html">Using Templates</a> walks through the same thing by hand.</blockquote></noscript>
+
+<div class="builder" id="builder" hidden>
+  <label class="builder-label" for="builder-input">Your cards</label>
+  <textarea id="builder-input" class="builder-input" rows="16" spellcheck="false" autocapitalize="off" autocomplete="off"
+            placeholder="- type: tile&#10;  entity: light.kitchen&#10;  name: Kitchen&#10;- type: tile&#10;  entity: light.lounge&#10;  name: Lounge"></textarea>
+  <div class="builder-actions">
+    <button type="button" id="builder-run" class="builder-button">Make the template</button>
+    <button type="button" id="builder-example" class="builder-button builder-button-quiet">Try an example</button>
+  </div>
+  <div id="builder-output" class="builder-output" aria-live="polite"></div>
+</div>
+
+<script src="{{ '/assets/js/builder.js' | relative_url }}" defer></script>
