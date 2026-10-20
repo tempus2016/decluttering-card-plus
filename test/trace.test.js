@@ -22,6 +22,7 @@ const {
   formatPath,
   startExpansion,
   reportExpansion,
+  endExpansion,
 } = require('../.test-build/trace.js');
 const { withoutStamps } = require('../.test-build/cycles.js');
 const { OWN_DEFAULTS } = require('../.test-build/variables.js');
@@ -418,4 +419,51 @@ check('the card itself is a dot', formatPath([]), '.');
   check('nothing built is nothing to show', slowestBuilds([]), { byTotal: [], byMax: [], repeats: [] });
 }
 
-report();
+/* ------------------------------------------------- a nested card that builds late */
+
+(async () => {
+  // A camera card can take longer to start than the report waits; what builds after that still counts (#218).
+  const saved = { groupCollapsed: console.groupCollapsed, log: console.log, groupEnd: console.groupEnd };
+  console.groupCollapsed = console.log = console.groupEnd = () => {};
+  const results = [];
+  const cam = {
+    type: 'custom:advanced-camera-card',
+    elements: [{ type: 'custom:decluttering-card-plus' }, { type: 'custom:decluttering-card-plus' }],
+  };
+  startExpansion(
+    'late',
+    '"cam"',
+    cam,
+    [
+      ['elements', 0],
+      ['elements', 1],
+    ],
+    undefined,
+    undefined,
+    (r) => results.push(r),
+  );
+  reportExpansion({ id: 'late', path: ['elements', 0] }, { type: 'icon', icon: 'mdi:car' }, []);
+  await new Promise((resolve) => setTimeout(resolve, 3200));
+  check(
+    'once the reports stop, the card still to build is listed as never built',
+    results.length && results[0].neverBuilt,
+    ['elements[1]'],
+  );
+  reportExpansion({ id: 'late', path: ['elements', 1] }, { type: 'icon', icon: 'mdi:dog' }, [], { label: 'dog' });
+  check('when it builds after all, the report is made again', results.length, 2);
+  check('with it in its place', results[1].full.elements[1], { type: 'icon', icon: 'mdi:dog' });
+  check('and nothing left listed as never built', results[1].neverBuilt, []);
+  check('its own entry is included', results[1].reports.length, 1);
+  reportExpansion({ id: 'late', path: ['elements', 1] }, { type: 'tile' }, []);
+  check('once nothing is missing, later reports are ignored', results.length, 2);
+
+  const ended = [];
+  startExpansion('gone', '"cam"', cam, [['elements', 0]], undefined, undefined, (r) => ended.push(r));
+  endExpansion('gone');
+  reportExpansion({ id: 'gone', path: ['elements', 0] }, { type: 'tile' }, []);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  check('a build the card has moved on from takes no more reports', ended.length, 0);
+
+  Object.assign(console, saved);
+  report();
+})();

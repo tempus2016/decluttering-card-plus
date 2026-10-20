@@ -307,6 +307,7 @@ import {
   handedDownNames,
   logTrace,
   nestedCardPaths,
+  endExpansion,
   newExpansionId,
   newTrace,
   reportExpansion,
@@ -812,6 +813,8 @@ abstract class DeclutteringElement extends LitElement {
   // This card's own entry from its last build, and which build the report on show belongs to.
   protected _lastReport?: TraceReport;
   private _reportFor?: string;
+  // The build this card is the outermost of, still open while cards inside it are missing.
+  private _expansionId?: string;
   @state() protected _reportResult?: ExpansionResult;
   private _reportCache?: { result: ExpansionResult; error?: string; unredacted: boolean; text: string };
   @state() private _reportCopied = false;
@@ -1472,6 +1475,8 @@ abstract class DeclutteringElement extends LitElement {
     const stamped = withInherited(this._trace ? withTrace(chained, named, root) : chained, inherited);
     const nested = expanding ? nestedCardPaths(chained) : [];
     const report = this._lastReport;
+    if (this._expansionId) endExpansion(this._expansionId);
+    this._expansionId = !this._traceRoot && root ? root.id : undefined;
     if (this._traceRoot) {
       reportExpansion(this._traceRoot, withoutStamps(chained), nested, report);
       if (this._reportMode) {
