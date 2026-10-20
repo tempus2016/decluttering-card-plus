@@ -89,7 +89,8 @@
             links[id].classList.toggle('here', !!first && id === first.id);
           });
         },
-        { rootMargin: '-4rem 0px -70% 0px' },
+        // Pixels, not rem: IntersectionObserver throws on any other unit. 64px is the bar's 4rem.
+        { rootMargin: '-64px 0px -70% 0px' },
       );
       headings.forEach(function (h) {
         observer.observe(h);
