@@ -22,7 +22,7 @@ export const MAX_DIFFERING = 8;
 
 // Where a card sits rather than what it is. Each copy keeps its own, on the card that uses
 // the template, so the template is the card and the layout stays the dashboard's.
-const LAYOUT_KEYS = ['grid_options', 'visibility', 'view_layout', 'layout_options'];
+export const LAYOUT_KEYS = ['grid_options', 'visibility', 'view_layout', 'layout_options'];
 
 type Path = (string | number)[];
 
@@ -37,7 +37,8 @@ export interface SimilarGroup {
   key: string;
 }
 
-function withoutLayout(card: any): any {
+/** The card without where it sits - what two copies of a card are compared on. */
+export function withoutLayout(card: any): any {
   const out: Record<string, any> = {};
   for (const [key, value] of Object.entries(card ?? {})) if (!LAYOUT_KEYS.includes(key)) out[key] = value;
   return out;
@@ -55,7 +56,7 @@ function shape(value: any): any {
 }
 
 /** Every leaf of a value, as its path and the value there. */
-function leaves(value: any, path: Path = [], out: { path: Path; value: unknown }[] = []): typeof out {
+export function leaves(value: any, path: Path = [], out: { path: Path; value: unknown }[] = []): typeof out {
   if (Array.isArray(value)) value.forEach((item, index) => leaves(item, [...path, index], out));
   else if (value && typeof value === 'object') {
     for (const [key, item] of Object.entries(value)) leaves(item, [...path, key], out);
@@ -63,7 +64,7 @@ function leaves(value: any, path: Path = [], out: { path: Path; value: unknown }
   return out;
 }
 
-function valueAt(card: any, path: Path): unknown {
+export function valueAt(card: any, path: Path): unknown {
   return path.reduce((node, step) => (node === undefined || node === null ? undefined : node[step]), card);
 }
 

@@ -346,6 +346,77 @@ blockquote > :last-child { margin-bottom: 0; }
 #start-here + table td:last-child a:last-child::after { content: ' \2192'; }
 #start-here + table tr:hover td:last-child a { color: var(--amber-dim); text-decoration: underline; }
 
+/* ------------------------------------------------------------ template builder */
+.builder-label {
+  display: block; margin: 1.5rem 0 .5rem;
+  font-family: var(--mono); font-size: .75rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft);
+}
+.builder-input {
+  box-sizing: border-box; width: 100%; min-height: 14rem; resize: vertical;
+  padding: 1rem 1.125rem; border: 1px solid var(--slab-rule); border-radius: 8px;
+  background: var(--slab); color: var(--slab-ink);
+  font-family: var(--mono); font-size: .8125rem; line-height: 1.6; tab-size: 2;
+}
+.builder-input:focus { outline: 2px solid var(--amber); outline-offset: 2px; }
+.builder-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0 2rem; }
+.builder-button {
+  font: inherit; font-weight: 600; font-size: .9375rem; cursor: pointer;
+  padding: .55rem 1.1rem; border-radius: 6px;
+  border: 1px solid var(--ink); background: var(--ink); color: var(--paper);
+}
+.builder-button-quiet { background: transparent; color: var(--ink); border-color: var(--rule); }
+.builder-button:hover { border-color: var(--amber); }
+.builder-button:focus-visible, .builder-copy:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.builder-summary { font-weight: 600; }
+.builder-result { margin-top: 2rem; }
+.builder-block { margin: 0 0 1.5rem; }
+.builder-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.builder-help { margin: .25rem 0 .5rem; font-size: .9375rem; color: var(--ink-soft); }
+.builder-copy {
+  font: inherit; font-size: .8125rem; cursor: pointer; white-space: nowrap;
+  padding: .2rem .7rem; border-radius: 4px;
+  border: 1px solid var(--rule); background: var(--surface); color: var(--ink);
+}
+.builder-copy:hover { border-color: var(--amber); }
+.builder-error pre { margin: .5rem 0 0; }
+.builder-output li { margin-bottom: .5rem; }
+
+/* ------------------------------------------------------------ describe what you want */
+.describe-group { border: 0; padding: 0; margin: 0 0 1.25rem; min-width: 0; }
+.describe-group > label { display: block; margin: .3rem 0; }
+.describe-group input[type="checkbox"], .describe-group input[type="radio"] { accent-color: var(--amber); margin-right: .4rem; }
+.describe-group label:has(input:disabled) { color: var(--ink-faint); }
+.describe-input {
+  box-sizing: border-box; width: 100%; max-width: 24rem; margin-top: .35rem;
+  font: inherit; font-size: .9375rem; padding: .45rem .6rem;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); color: var(--ink);
+}
+.describe-input:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
+.describe-wide { margin-top: .6rem !important; }
+.describe-entities { min-height: 6rem; }
+.describe-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; }
+.describe-pair .builder-label { margin-top: 0; }
+#describe-type-row .builder-label { margin-top: 0; }
+
+/* ------------------------------------------------------------ try a placeholder */
+.try-variables { min-height: 12rem; }
+.try-expression { min-height: 0; resize: none; padding: .7rem 1rem; font-size: .9375rem; }
+.try-examples { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 1.75rem; }
+.try-chip {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: .15rem;
+  font: inherit; text-align: left; cursor: pointer;
+  padding: .45rem .7rem; border-radius: 6px;
+  border: 1px solid var(--rule); background: var(--surface); color: var(--ink);
+}
+.try-chip:hover { border-color: var(--amber); }
+.try-chip:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.try-chip-label { font-size: .75rem; color: var(--ink-soft); }
+.try-chip code { font-size: .8125rem; }
+.try-table td:nth-child(2) code { white-space: pre-wrap; word-break: break-word; }
+.try-kind { font-family: var(--mono); font-size: .8125rem; white-space: nowrap; }
+.try-kind-unresolved, .try-kind-removed { color: var(--amber-dim); }
+
 /* ============================================================
    Narrower than three columns
    ============================================================ */

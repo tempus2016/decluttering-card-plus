@@ -67,4 +67,23 @@ export default [
       exclude: 'node_modules/**',
     },
   },
+  // The template builder on the docs site. Committed, like dist/, because the Pages build
+  // copies docs-theme/ as it is and runs no npm.
+  {
+    input: 'src/builder-page.ts',
+    output: {
+      file: './docs-theme/assets/js/builder.js',
+      format: 'iife',
+    },
+    plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
+  },
+  // "Try a placeholder", the other docs-site tool, committed for the same reason.
+  {
+    input: 'src/playground-page.ts',
+    output: {
+      file: './docs-theme/assets/js/playground.js',
+      format: 'iife',
+    },
+    plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
+  },
 ];
