@@ -30,7 +30,6 @@ const SUITES = [
   'search',
   'report',
   'promote',
-  'trash',
   'sections',
   'builder',
   'playground',
@@ -55,7 +54,7 @@ for (const suite of SUITES) {
  * patched exit above. Each runs as a child instead - c8 follows child processes, so what
  * they reach still counts - and a failure in one fails the run like any other.
  */
-const ASYNC_SUITES = ['labels', 'categories', 'template-source'];
+const ASYNC_SUITES = ['labels', 'categories', 'template-source', 'trash'];
 const { spawnSync } = require('child_process');
 for (const suite of ASYNC_SUITES) {
   const run = spawnSync(process.execPath, [path.join(__dirname, `${suite}.test.js`)], { stdio: 'inherit' });
