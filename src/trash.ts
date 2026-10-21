@@ -108,6 +108,8 @@ type Hass = {
 };
 
 const snapshots = new Map<string, unknown>();
+// Dashboards kept in a file. Never saved through Home Assistant, so never watched.
+const yamlDashboards = new Set<string>();
 let started = false;
 let hassRef: Hass | undefined;
 const listeners = new Set<() => void>();
@@ -118,9 +120,14 @@ export function onTrashChanged(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/*
+ * Never with `force`. For a YAML-mode dashboard that loads the file again, and Home Assistant
+ * announces it with lovelace_updated - which is what this answers by reading, so the two fed
+ * each other and the dashboard redrew itself without end. A plain read is the saved config.
+ */
 async function readDashboardConfig(hass: Hass, path: string): Promise<unknown> {
   try {
-    return await hass.callWS({ type: 'lovelace/config', url_path: wsUrlPath(path), force: true });
+    return await hass.callWS({ type: 'lovelace/config', url_path: wsUrlPath(path) });
   } catch {
     // A dashboard with nothing saved, or in YAML mode, has no templates to lose here.
     return undefined;
@@ -171,20 +178,25 @@ export function watchForTrash(given: unknown): void {
   started = true;
   hassRef = hass;
   hass.connection.subscribeEvents((event: any) => {
-    if (!hassRef) return;
-    void saved(hassRef, dashboardKey(event?.data?.url_path));
+    const path = dashboardKey(event?.data?.url_path);
+    if (!hassRef || yamlDashboards.has(path)) return;
+    void saved(hassRef, path);
   }, 'lovelace_updated');
   void (async () => {
-    await snapshot(hass, dashboardKey(document.location.pathname.split('/').filter(Boolean)[0]));
     let dashboards: any[] = [];
     try {
       dashboards = await hass.callWS({ type: 'lovelace/dashboards/list' });
     } catch {
-      return;
+      // Still worth reading the one on the page.
     }
     for (const dashboard of dashboards) {
+      if (dashboard?.mode === 'yaml') yamlDashboards.add(dashboardKey(dashboard.url_path));
+    }
+    const here = dashboardKey(document.location.pathname.split('/').filter(Boolean)[0]);
+    if (!yamlDashboards.has(here)) await snapshot(hass, here);
+    for (const dashboard of dashboards) {
       const path = dashboardKey(dashboard?.url_path);
-      if (dashboard?.mode === 'yaml' || snapshots.has(path)) continue;
+      if (yamlDashboards.has(path) || snapshots.has(path)) continue;
       await snapshot(hass, path);
     }
     if (!snapshots.has('lovelace')) await snapshot(hass, 'lovelace');

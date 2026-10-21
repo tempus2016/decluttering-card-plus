@@ -9,6 +9,7 @@ const {
   restoreTemplate,
   withoutEntry,
   TRASH_SIZE,
+  watchForTrash,
 } = require('../.test-build/trash.js');
 
 const { check, report } = require('./harness');
@@ -88,4 +89,32 @@ check(
   { type: 'custom:decluttering-template-plus', template: 'onview', card: { type: 'tile' } },
 );
 
-report();
+/*
+ * A YAML-mode dashboard, the way Home Assistant serves one: a read with `force` loads the
+ * file again and announces lovelace_updated, which the watcher answers by reading again.
+ * Forum thread post 19 - the dashboard redrew itself thousands of times a minute.
+ */
+(async () => {
+  global.document = { location: { pathname: '/tableau-ha/principale' } };
+  let handler;
+  const reads = [];
+  const hass = {
+    user: { is_admin: true },
+    connection: { subscribeEvents: (callback) => (handler = callback) },
+    callWS: async (message) => {
+      if (message.type === 'lovelace/dashboards/list') return [{ url_path: 'tableau-ha', mode: 'yaml' }];
+      if (message.type !== 'lovelace/config') return null;
+      reads.push(message);
+      if (message.force) setTimeout(() => handler({ data: { url_path: message.url_path } }), 0);
+      return { views: [] };
+    },
+  };
+  watchForTrash(hass);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  check('a YAML-mode dashboard is never read with force', reads.filter((each) => each.force).length, 0);
+  const settled = reads.length;
+  handler({ data: { url_path: 'tableau-ha' } });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  check('a YAML-mode dashboard announcing itself is not read again', reads.length, settled);
+  report();
+})();
