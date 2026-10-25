@@ -568,7 +568,7 @@ function isNumberStep(step: string): boolean {
 }
 
 /** The name a step goes by, without its argument. */
-function stepName(step: string): string {
+export function stepName(step: string): string {
   const colon = step.indexOf(':');
   return colon === -1 ? step : step.slice(0, colon);
 }
@@ -948,7 +948,23 @@ export const PARAM_TRANSFORMS: Record<string, (value: string, arg: string) => st
   find: (value, arg) => String(value.indexOf(arg)),
 };
 
-const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP];
+/*
+ * Steps that build structure rather than shape text (#227). `with:` fills a mapping
+ * variable or an item template in again with values of its own; `repeat:` does so once per
+ * item of a list, or per thing a registry source finds. Both are settled in deep-replace.ts
+ * before the chain machinery ever sees them; they are in the grammar here so the
+ * placeholder is recognised, and in KNOWN_PARAM_STEPS so the lint does not call them unknown.
+ */
+export const WITH_STEP = 'with';
+export const REPEAT_STEP = 'repeat';
+export const STRUCTURE_PARAM_STEPS = [WITH_STEP, REPEAT_STEP];
+
+/** Whether a step is one of the structural ones above, whatever its argument. */
+export function isStructureStep(step: string): boolean {
+  return STRUCTURE_PARAM_STEPS.includes(stepName(step));
+}
+
+const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP, ...STRUCTURE_PARAM_STEPS];
 
 /*
  * An arithmetic argument stops short of an opening bracket as well, so `add:[[offset]]`
@@ -1038,6 +1054,15 @@ export function applyTransform(
     return TRANSFORMS[name](input);
   };
 
+  /*
+   * Set when an `or:` found this variable already filled and kept its own value. Until the next
+   * stand-in, a lookup that finds nothing for that value leaves it as it was: in
+   * `[[name|or:entity|friendly_name|default:Unnamed]]` the lookup is there for the entity the
+   * `or:` would have brought in, and a name passed in its own right is not an entity. A
+   * value that is an entity still resolves, so `[[entity|or:other|friendly_name]]` names
+   * whichever entity it ends up with.
+   */
+  let keptOwn = false;
   for (const [index, name] of steps.slice(takesJson ? 1 : 0).entries()) {
     // First in the chain, a step reads the value itself rather than the text of it.
     const firstHand = index === 0 && !takesJson ? value : undefined;
@@ -1084,6 +1109,7 @@ export function applyTransform(
     }
 
     if (isFallback(name)) {
+      keptOwn = !empty && orTarget(name) !== undefined;
       if (empty) {
         const or = orTarget(name);
         const fallback = or === undefined ? name.slice(DEFAULT_PREFIX.length) : values?.[or];
@@ -1181,7 +1207,9 @@ export function applyTransform(
       continue;
     }
 
-    text = reshape(name, text as string);
+    const shaped = reshape(name, text as string);
+    if (shaped === undefined && keptOwn && isResolver(name)) continue;
+    text = shaped;
     empty = text === undefined || text === '';
   }
   // A list still standing at the end goes out as its JSON: a whole value takes it as a real
@@ -1334,10 +1362,54 @@ export function firstDefinitionWins(variableArray: VariablesConfig[]): Variables
   });
 }
 
+/*
+ * Declarations can be written as a mapping keyed by name as well as a list (discussion #223):
+ * `colour: red` declares colour with red as its default, `colour: {selector: ...}` is the
+ * whole declaration, and `colour:` with nothing declares the name alone. An object is always
+ * read as the declaration, so a mapping default has to be written under `default:`. Returned
+ * as the list everything else reads; a list is handed back as it is, anything else is empty.
+ */
+export function declarationList(variables: unknown): any[] {
+  if (Array.isArray(variables)) return variables;
+  if (!variables || typeof variables !== 'object') return [];
+  return Object.entries(variables).map(([name, value]) =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? { ...value, name }
+      : value === null || value === undefined
+        ? { name }
+        : { name, default: value },
+  );
+}
+
+/**
+ * A template's `variables:` with more declarations added after its own, in the shape it was
+ * written in: a mapping (#223) gains a key per name, anything else becomes a list.
+ */
+export function addDeclarations(variables: unknown, added: VariableDeclaration[]): any {
+  if (variables && typeof variables === 'object' && !Array.isArray(variables)) {
+    const out: Record<string, unknown> = { ...variables };
+    for (const { name, ...rest } of added) out[name] = rest;
+    return out;
+  }
+  return [...(Array.isArray(variables) ? variables : []), ...added];
+}
+
+/** Whether a template's `variables:` is something declarations can be read from: a list, a mapping, or nothing. */
+export function isDeclarationsShape(variables: unknown): boolean {
+  return variables === undefined || variables === null || typeof variables === 'object';
+}
+
+/** A template with mapping declarations turned into the list form; any other template as it was. */
+export function withDeclarationList<T extends TemplateConfig>(template: T): T {
+  const declared = (template as any)?.variables;
+  if (!declared || typeof declared !== 'object' || Array.isArray(declared)) return template;
+  return { ...template, variables: declarationList(declared) };
+}
+
 /** The variables a template declares, dropping any entry substitution could not use. */
 export function getDeclarations(template: TemplateConfig | undefined): VariableDeclaration[] {
-  const declared = template?.variables;
-  if (!Array.isArray(declared)) return [];
+  const declared = declarationList(template?.variables);
+  if (!declared.length) return [];
 
   const seen = new Set<string>();
   const declarations: VariableDeclaration[] = [];
@@ -1637,7 +1709,8 @@ function usesStep(template: TemplateConfig | undefined, wanted: (step: string) =
  */
 export function usesResolver(template: TemplateConfig | undefined): boolean {
   // `exists` asks Home Assistant too, so it is built again once there is a Home Assistant to ask.
-  return usesStep(template, (step) => isResolver(step) || step === EXISTS_STEP);
+  // A `repeat:` over a registry source reads it too, and has to follow it the same way.
+  return usesStep(template, (step) => isResolver(step) || step === EXISTS_STEP || stepName(step) === REPEAT_STEP);
 }
 
 /**
@@ -1954,6 +2027,7 @@ export const KNOWN_PARAM_STEPS: string[] = [
   ...NUMBER_PARAM_STEPS,
   ...LIST_PARAM_STEPS,
   CONTAINS_STEP,
+  ...STRUCTURE_PARAM_STEPS,
   ATTRIBUTE_PREFIX.slice(0, -1),
   OR_PREFIX.slice(0, -1),
   DEFAULT_PREFIX.slice(0, -1),

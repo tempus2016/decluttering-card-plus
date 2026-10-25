@@ -1679,4 +1679,170 @@ check(
   );
 }
 
+// `with:` and `repeat:` (#227): a body filled in again with values of its own, inside a
+// card's own list or a longer string, once or once per item of a list or registry source.
+{
+  const hass227 = {
+    states: {
+      'light.a': { state: 'on', attributes: { friendly_name: 'Lamp A' } },
+      'light.b': { state: 'off', attributes: { friendly_name: 'Lamp B' } },
+      'sensor.t': { state: '21', attributes: { friendly_name: 'Temp' } },
+    },
+    entities: {
+      'light.a': { entity_id: 'light.a', area_id: 'kitchen', platform: 'hue', labels: [] },
+      'light.b': { entity_id: 'light.b', area_id: 'living', platform: 'hue', labels: [] },
+      'sensor.t': { entity_id: 'sensor.t', area_id: 'kitchen', platform: 'template', labels: [] },
+    },
+    areas: {
+      kitchen: { area_id: 'kitchen', name: 'Kitchen', floor_id: 'g' },
+      living: { area_id: 'living', name: 'Living', floor_id: 'g' },
+    },
+    devices: {},
+    floors: { g: { floor_id: 'g', name: 'Ground' } },
+  };
+  const vars = [
+    { lights: { domain: 'light' } },
+    { row: { entity: '[[entity]]', name: '[[name]]' } },
+    { rowa: { entity: '[[entity]]', name: '[[name]] / [[area]]' } },
+    { pos: '[[index]]/[[count]]' },
+    { greeting: 'Hello [[who]], it is [[what]]' },
+    { hello: { who: 'dstrohl', what: '[[when]]' } },
+    { when: 'early' },
+    { ids: ['light.a', 'light.b'] },
+    { maps: [{ entity: 'sensor.t', name: 'T' }] },
+    { self: 'x[[self|with:a=1]]' },
+    { live_provider: 'ha' },
+  ];
+  const extras = {
+    itemTemplates: {
+      camera_entry: {
+        default: { live_provider: 'go2rtc' },
+        item: { camera_entity: '[[camera_entity]]', live_provider: '[[live_provider]]' },
+      },
+    },
+  };
+  const run = (content, v = vars, x = extras) =>
+    deepReplace(v, {}, content, 'tpl', hass227, true, undefined, 0, undefined, undefined, false, x);
+
+  check(
+    'with: fills a mapping variable in with literal pairs',
+    run({ entities: ['[[row|with:entity=light.a,name=Lamp]]'] }),
+    {
+      entities: [{ entity: 'light.a', name: 'Lamp' }],
+    },
+  );
+  check('with: a mapping variable, whose own placeholders are filled in too', run({ x: '[[greeting|with:hello]]' }), {
+    x: 'Hello dstrohl, it is early',
+  });
+  check('with: inside a longer string', run({ content: 'Say: [[greeting|with:who=John,what=late]]!' }), {
+    content: 'Say: Hello John, it is late!',
+  });
+  check('repeat: over a list of mappings, as a whole value', run({ entities: '[[row|repeat:maps]]' }), {
+    entities: [{ entity: 'sensor.t', name: 'T' }],
+  });
+  check('repeat: over a list of entity ids gives each copy its entity', run({ entities: '[[pos|repeat:ids]]' }), {
+    entities: ['1/2', '2/2'],
+  });
+  check(
+    'repeat: over a registry source, spliced into the list beside fixed entries',
+    run({
+      entities: ['[[rowa|with:entity=sun.sun,name=Sun,area=Sky]]', '[[rowa|repeat:lights]]', { type: 'divider' }],
+    }),
+    {
+      entities: [
+        { entity: 'sun.sun', name: 'Sun / Sky' },
+        { entity: 'light.a', name: 'Lamp A / Kitchen' },
+        { entity: 'light.b', name: 'Lamp B / Living' },
+        { type: 'divider' },
+      ],
+    },
+  );
+  check('repeat: inside a longer string writes the list out as text', run({ content: 'x [[row|repeat:maps]]' }), {
+    content: 'x [{"entity":"sensor.t","name":"T"}]',
+  });
+  check(
+    'an item template: the with: values win, then the card, then its own default',
+    run({
+      cameras: [
+        '[[camera_entry|with:camera_entity=camera.x]]',
+        '[[camera_entry|with:camera_entity=camera.y,live_provider=image]]',
+      ],
+    }),
+    {
+      cameras: [
+        { camera_entity: 'camera.x', live_provider: 'ha' },
+        { camera_entity: 'camera.y', live_provider: 'image' },
+      ],
+    },
+  );
+  check(
+    "an item template's own default fills what nothing else sets",
+    run(
+      { cameras: ['[[camera_entry|with:camera_entity=camera.x]]'] },
+      vars.filter((v) => !('live_provider' in v)),
+    ),
+    { cameras: [{ camera_entity: 'camera.x', live_provider: 'go2rtc' }] },
+  );
+  check(
+    'a bare item template name is its body, filled in from the card alone',
+    run({ c: '[[camera_entry]]' }, [{ camera_entity: 'camera.z' }]),
+    {
+      c: { camera_entity: 'camera.z', live_provider: '[[live_provider]]' },
+    },
+  );
+  check('a body that fills itself in is refused rather than looping', run({ content: '[[self|with:a=1]]' }), {
+    content: '[[self|with:a=1]]',
+  });
+  check(
+    'a repeat over nothing, a with: of a list, and a with: not first are all left visible',
+    run({ content: 'a: [[row|repeat:nothere]] b: [[row|with:ids]] c: [[greeting|upper|with:who=a]]' }),
+    { content: 'a: [[row|repeat:nothere]] b: [[row|with:ids]] c: [[greeting|upper|with:who=a]]' },
+  );
+  check(
+    'without item templates handed in, a plain variable still works',
+    run({ x: '[[row|with:entity=e,name=n]]' }, vars, undefined),
+    {
+      x: { entity: 'e', name: 'n' },
+    },
+  );
+}
+
+/* ------------------------- a value passed in its own right survives a lookup after or: */
+{
+  const sunHass = {
+    states: { 'sun.sun': { entity_id: 'sun.sun', state: 'below_horizon', attributes: { friendly_name: 'Sun' } } },
+    entities: {},
+    devices: {},
+    areas: {},
+  };
+  const named = {
+    card: { type: 'tile', entity: '[[entity]]', name: '[[name|or:entity|friendly_name|default:Unnamed]]' },
+  };
+  const build = (vars) => deepReplace(vars, named, named.card, 't', sunHass, true).name;
+  check('or: then a lookup: nothing passed gives the entity name', build([{ entity: 'sun.sun' }]), 'Sun');
+  check(
+    'or: then a lookup: a name passed is kept, not looked up',
+    build([{ entity: 'sun.sun' }, { name: 'Shared name' }]),
+    'Shared name',
+  );
+  check(
+    "or: then a lookup: a copy's own name wins over the card's and is kept",
+    build([{ entity: 'sun.sun', name: 'Overridden here' }, { name: 'Shared name' }]),
+    'Overridden here',
+  );
+  check('or: then a lookup: nothing anywhere still reaches default:', build([{ entity: 'sun.nope' }]), 'Unnamed');
+  const either = { card: { a: '[[entity|or:other|friendly_name]]' } };
+  check(
+    'or: then a lookup: an entity kept in its own right is still resolved',
+    deepReplace([{ entity: 'sun.sun' }, { other: 'light.x' }], either, either.card, 't', sunHass, true).a,
+    'Sun',
+  );
+  const after = { card: { a: '[[name|or:entity|friendly_name|default:Unnamed|upper]]' } };
+  check(
+    'and the steps after default: still shape whichever value it ends with',
+    deepReplace([{ entity: 'sun.sun' }, { name: 'Shared name' }], after, after.card, 't', sunHass, true).a,
+    'SHARED NAME',
+  );
+}
+
 report();

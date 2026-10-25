@@ -86,6 +86,12 @@ export interface TemplateConfig {
    * cannot override one.
    */
   let?: Record<string, unknown> | VariablesConfig[];
+  /**
+   * A piece of config rather than a card - one entry of a camera card's `cameras:`, say -
+   * filled in where a placeholder asks for it: `[[name|with:...]]` once, `[[name|repeat:...]]`
+   * once per item. Takes `default:`, `let:` and `variables:` like any template.
+   */
+  item?: unknown;
   card?: any;
   row?: any;
   element?: any;

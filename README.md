@@ -114,6 +114,14 @@ Templates][wiki-defining].
   manufacturer and model, Home Assistant's own words in the viewer's language
   (`[[domain|translate]]`), `decluttering_let:` for a whole dashboard, view or section, and
   declarations that just say `type: entity` or `type: number` and get the right control.
+  *(v2.3.0+)* Declarations, a template's own or `decluttering_variables:`, can be a mapping
+  keyed by name as well as a list: `colour: red` declares `colour` with that default, and
+  `colour: {selector: ...}` is the whole declaration.
+  *(v2.3.0+)* A block of config used more than once with different values, inside a card's
+  own list where a nested card cannot go: `[[camera_entry|with:camera_entity=camera.front]]`
+  fills a mapping in once, `[[camera_entry|repeat:cams]]` once per item of a list or per
+  entity the registry finds, spliced into the list it sits in. The block is a mapping
+  variable, or a template with an `item:` body when it wants defaults of its own.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
   area, device, floor or label Home Assistant knows about, narrowed by domain, area, floor,
   label, device class or integration, with anything you name excluded, sorted, limited, and a card of your own to
@@ -156,7 +164,8 @@ Templates][wiki-defining].
   view's pencil and then the menu. A card already repeating in a section can be turned
   into this from its editor: **Give each copy its own section** rewrites the view for you.
   Written on the dashboard instead *(v2.0.0+)*, the same strategy writes out a whole view
-  per item.
+  per item. *(v2.3.0+)* Its `variables:` fill in the whole dashboard, not just the repeats:
+  plain views and dashboard-level settings such as a `wallpanel:` block too.
 
 - **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
   every other dashboard, or from all of them at once with `'*'`. A dashboard at the path

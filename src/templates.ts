@@ -11,6 +11,7 @@ import {
   forEachNames,
   getDeclarations,
   normaliseVariables,
+  withDeclarationList,
   templateDefaults,
   PLACEHOLDER,
   resolveVariables,
@@ -20,6 +21,7 @@ import deepReplace from './deep-replace';
 import { isRegistrySource, registryNames } from './registry';
 import { rebuildOnEntities } from './rebuild';
 import { localize } from './localize';
+import { isItemTemplate, placeholderHeads, structureNames } from './structure';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -109,6 +111,10 @@ export function checkDashboard(
   // are somebody else's templates, and the only ones this dashboard answers for are its own.
   const elsewhere = new Set(borrowed);
   const available = Object.keys(templates);
+  // An item template is used through a placeholder - `[[camera_entry|with:...]]` - rather
+  // than a card's `template:`, so it is used when a placeholder anywhere starts with its name.
+  const itemNames = available.filter((name) => isItemTemplate(templates[name]));
+  const heads = itemNames.length ? placeholderHeads(ll) : new Set<string>();
   const missing = new Map<string, number>();
   const unset = new Map<string, { names: Set<string>; count: number }>();
 
@@ -144,7 +150,14 @@ export function checkDashboard(
       if (!template) {
         if (!elsewhere.has(node.template)) missing.set(node.template, (missing.get(node.template) ?? 0) + 1);
       } else {
-        const supplements = [...suppliedBy(node), ...handed].map((name) => ({ [name]: null }));
+        // A `with:` or `repeat:` in the template supplies names to the body it fills in, and
+        // the item templates it names are the dashboard's: neither is the card's to set.
+        const supplements = [
+          ...suppliedBy(node),
+          ...handed,
+          ...structureNames(template, normaliseVariables(node.variables)),
+          ...itemNames,
+        ].map((name) => ({ [name]: null }));
         const problems = diagnoseInstance(node.variables, template, supplements);
         if (problems.missing.length) {
           const entry = unset.get(node.template) ?? { names: new Set<string>(), count: 0 };
@@ -172,7 +185,10 @@ export function checkDashboard(
     unsetVariables: [...unset.entries()]
       .sort()
       .map(([template, entry]) => ({ template, names: [...entry.names].sort(), count: entry.count })),
-    unusedTemplates: available.filter((name) => totalUsages(ll, name) === 0 && !extendedNames(ll).has(name)).sort(),
+    unusedTemplates: available
+      .filter((name) => totalUsages(ll, name) === 0 && !extendedNames(ll).has(name))
+      .filter((name) => !(itemNames.includes(name) && heads.has(name)))
+      .sort(),
   };
 }
 
@@ -476,7 +492,11 @@ export function templatePickerOptions(
   templates: Record<string, TemplateConfig>,
   hass?: any,
 ): { value: string; label: string }[] {
-  const options = Object.entries(templates).map(([name, template]) => {
+  // An item template is not something a card can be built from, so it is not on offer here.
+  const offered = Object.entries(templates).filter(
+    ([, template]) => !(isItemTemplate(template) && !TEMPLATE_CONTENT_KEYS.some((key) => key in (template as object))),
+  );
+  const options = offered.map(([name, template]) => {
     const retired = deprecationOf(template) !== undefined;
     const label = templatePickerLabel(name, template);
     return {
@@ -945,6 +965,25 @@ export function collectRawTemplates(ll: LovelaceConfig | null | undefined): Reco
   return templates;
 }
 
+/*
+ * SPIKE #227: the dashboard's item templates - a template with an `item:` body rather than
+ * a card, badge or section - which `with:` and `repeat:` fill in by name. Worked out once
+ * per dashboard configuration, since every card on the page asks on every build.
+ */
+const ITEM_TEMPLATES = new WeakMap<object, Record<string, TemplateConfig>>();
+export function itemTemplatesOf(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
+  if (!ll || typeof ll !== 'object') return {};
+  let found = ITEM_TEMPLATES.get(ll);
+  if (!found) {
+    found = Object.create(null) as Record<string, TemplateConfig>;
+    for (const [name, template] of Object.entries(collectRawTemplates(ll))) {
+      if (template && typeof template === 'object' && 'item' in template) found[name] = template;
+    }
+    ITEM_TEMPLATES.set(ll, found);
+  }
+  return found;
+}
+
 /** The declarations a dashboard shares, in the same shape as a template's own `variables:`. */
 export function collectSharedDeclarations(ll: LovelaceConfig | null | undefined): VariableDeclaration[] {
   return getDeclarations({ variables: (ll as any)?.[DECLARATIONS_KEY] } as TemplateConfig);
@@ -974,8 +1013,12 @@ function withShared(
   templates: Record<string, TemplateConfig>,
   shared: VariableDeclaration[],
 ): Record<string, TemplateConfig> {
-  if (!shared.length) return templates;
-  for (const name of Object.keys(templates)) templates[name] = withSharedDeclarations(templates[name], shared);
+  for (const name of Object.keys(templates)) {
+    // Mapping declarations (#223) become the list here, on the way to being rendered from;
+    // the raw templates keep the shape they were written in for anything that writes back.
+    const template = withDeclarationList(templates[name]);
+    templates[name] = shared.length ? withSharedDeclarations(template, shared) : template;
+  }
   return templates;
 }
 
@@ -1164,7 +1207,12 @@ export async function collectAllTemplates(
     const declarations = [...declaredHere, ...collectSharedDeclarations(config)];
     const lets = [...letsHere, ...dashboardLet(config)];
     for (const [name, template] of Object.entries(collectRawTemplates(config))) {
-      borrowed[name] = withDefaults(withSharedDeclarations(template, declarations), viewValues, shared, lets);
+      borrowed[name] = withDefaults(
+        withSharedDeclarations(withDeclarationList(template), declarations),
+        viewValues,
+        shared,
+        lets,
+      );
     }
   }
   return resolveExtends({ ...borrowed, ...local });

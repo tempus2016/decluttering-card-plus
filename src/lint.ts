@@ -11,6 +11,7 @@ import {
   variableName,
 } from './variables';
 import { closestTemplate } from './templates';
+import { structureNames } from './structure';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -204,7 +205,8 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
     if (declaration.default !== undefined) walk(declaration.default, `variables[${index}].default`, scan);
   });
 
-  const defined = new Set([...definedNames(template), ...known, ...POSITION_NAMES]);
+  // A name a `with:` or `repeat:` gives the body it fills in is set, one copy at a time.
+  const defined = new Set([...definedNames(template), ...known, ...POSITION_NAMES, ...structureNames(template)]);
   const findings = [...scan.findings];
 
   for (const target of scan.targets) {

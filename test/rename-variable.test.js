@@ -355,4 +355,10 @@ check(
   check('the count says so', [done.cards, done.templates], [3, 0]);
 }
 
+check(
+  'a mapping declaration is renamed by its key',
+  renameVariableInTemplate({ variables: { old: 'x', other: 1 }, card: { a: '[[old]]' } }, 'old', 'new'),
+  { variables: { new: 'x', other: 1 }, card: { a: '[[new]]' } },
+);
+
 report();

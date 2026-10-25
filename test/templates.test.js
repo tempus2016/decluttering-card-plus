@@ -371,6 +371,42 @@ check(
   'hall',
 );
 
+/* ------------------------------------------------ declarations as a mapping (#223) */
+
+const mappingDashboard = {
+  decluttering_variables: { colour: { default: 'red', label: 'Colour' }, size: 2 },
+  decluttering_templates: {
+    tile: { card: { type: 'tile' }, variables: { colour: null, room: 'hall', size: { label: 'Size' } } },
+    listed: { card: { type: 'tile' }, variables: [{ name: 'colour' }] },
+    child: { extends: 'tile', variables: { room: 'kitchen' } },
+  },
+};
+const mappingOut = collectTemplates(mappingDashboard);
+check('a template declaring by mapping is read as the list, shared ones underneath', mappingOut.tile.variables, [
+  { default: 'red', label: 'Colour', name: 'colour' },
+  { name: 'room', default: 'hall' },
+  { name: 'size', default: 2, label: 'Size' },
+]);
+check('a mapping decluttering_variables reaches a listed declaration', mappingOut.listed.variables, [
+  { default: 'red', label: 'Colour', name: 'colour' },
+]);
+check(
+  'a mapping default is a declared default when rendering',
+  variableValues(resolveVariables(undefined, mappingOut.tile)),
+  { colour: 'red', room: 'hall', size: 2 },
+);
+check('a card still wins over it', variableValues(resolveVariables([{ room: 'den' }], mappingOut.tile)).room, 'den');
+check(
+  'extends merges mapping declarations by name',
+  variableValues(resolveVariables(undefined, mappingOut.child)).room,
+  'kitchen',
+);
+check('the dashboard as written keeps its mapping', mappingDashboard.decluttering_templates.tile.variables, {
+  colour: null,
+  room: 'hall',
+  size: { label: 'Size' },
+});
+
 /* ------------------------------------------------ a template card's own preview */
 
 // A template card previews the definition it is handed, which in the edit dialog is the
@@ -2111,6 +2147,70 @@ collectAllTemplates(hass, borrower).then((all) => {
         ['decluttering-card-plus'],
       );
       check('the one warned about is the broken one', /"broken"/.test(said[0] ?? ''), true);
+
+      // Item templates and `with:`/`repeat:` in the health check (#227).
+      {
+        const { itemTemplatesOf, templatePickerOptions } = require('../.test-build/templates.js');
+        const { structureNames } = require('../.test-build/structure.js');
+        const ll = {
+          decluttering_defaults: {
+            lights: { domain: 'light' },
+            row: { entity: '[[entity]]', name: '[[name]] [[area]]' },
+          },
+          decluttering_templates: {
+            camera_entry: { item: { camera_entity: '[[camera_entity]]' } },
+            rows: {
+              card: {
+                type: 'entities',
+                entities: ['[[row|repeat:lights]]', '[[camera_entry|with:camera_entity=camera.x]]'],
+              },
+            },
+            spare: { card: { type: 'markdown', content: 'x' } },
+          },
+          views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'rows' }] }],
+        };
+        check('itemTemplatesOf finds the templates with an item: body', Object.keys(itemTemplatesOf(ll)), [
+          'camera_entry',
+        ]);
+        const health = checkDashboard(ll);
+        check('names a repeat: or with: supplies are not called unset', health.unsetVariables, []);
+        check(
+          'an item template used through a placeholder is not unused; a card template nobody uses still is',
+          health.unusedTemplates,
+          ['spare'],
+        );
+        check(
+          'the template picker does not offer an item template',
+          templatePickerOptions(ll.decluttering_templates).map((o) => o.value),
+          ['rows', 'spare'],
+        );
+        check(
+          'structureNames reads pairs, a mapping variable and a registry source',
+          structureNames({
+            default: { lights: { domain: 'light' }, m: { a: 1, b: 2 } },
+            card: { x: '[[r|with:p=1,q=2]]', y: '[[r|with:m]]', z: '[[r|repeat:lights]]' },
+          }).sort(),
+          [
+            'a',
+            'area',
+            'area_id',
+            'b',
+            'count',
+            'domain',
+            'entity',
+            'first',
+            'index',
+            'index0',
+            'item',
+            'last',
+            'name',
+            'p',
+            'q',
+            'total',
+          ],
+        );
+      }
+
       report();
     });
   });
