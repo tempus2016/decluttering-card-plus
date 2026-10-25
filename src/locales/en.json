@@ -146,6 +146,7 @@
   "share.import_copy": "Import as a copy",
   "share.import_clash": "This dashboard already has a template called \"{name}\". Importing will give you two templates with the same name, and only one of them will be used. Press Import again to go ahead.",
   "share.import_not_yaml": "This is not valid YAML, so it cannot be read.",
+  "share.import_too_big": "This is too big to be a template, so it cannot be read.",
   "share.requires_custom_cards": "Requires these custom cards: {types}",
   "share.uses_other_templates": "Uses these other templates, which are not included here: {names}",
   "share.import_not_a_template": "This does not look like a template: it should be a block of YAML keys and values.",
@@ -189,6 +190,7 @@
   "share.community_names_loading": "Reading template names…",
   "share.community_names_failed": "Could not read the dashboards this one borrows templates from, so a name clash cannot be checked. Nothing is installed until they can be read: press “Check for new ones” to try again.",
   "share.community_risk_placeholders": "leaves what it does when pressed, or what kind of card it is, to a variable, which this post cannot show",
+  "share.community_risk_overlay": "styles a card to lie invisibly over the whole screen, so a press anywhere lands on it",
 
   "tools.health_header": "Dashboard health",
 
@@ -247,6 +249,7 @@
   "warn.nothing_for": "nothing in Home Assistant for \"{value}\"",
   "warn.step_not_alone": "{step} has to be the only step in its chain",
   "warn.fills_itself": "{name} fills itself in without end",
+  "warn.too_many_fills": "more than {max} copies would be filled in across this card, so the rest are left",
   "warn.not_a_list_source": "{arg} is not a list or a registry source",
   "warn.not_a_mapping": "{arg} is not a mapping",
   "warn.condition_closed": "its if: condition does not hold",

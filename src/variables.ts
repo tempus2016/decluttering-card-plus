@@ -249,18 +249,70 @@ export const CONSUMER_TYPES = ['custom:decluttering-card-plus', 'custom:declutte
 /*
  * Text that came from Home Assistant rather than from the template: a friendly name, an
  * attribute, a device's model, a label. It is somebody's words and is shown as written,
- * so anything in it shaped like a placeholder is escaped here, once, where it comes in.
- * Without this a device named `[[model|json|bool]]` by whatever registered it - MQTT
- * discovery will take any name - is read as template code on the next pass and rewrites
- * the card for everyone who views the dashboard. Every `[[` is escaped, not only the ones
- * with a `]]` after them: a device named `[[zz` beside a model named `?]]` would otherwise
- * form one placeholder once both are written in (review 2026-10-18). A text with no `[[` in
- * it is returned as it was, so the common case costs one regex test.
+ * so nothing in it may be read as code - not by this card, and not by the card it ends up
+ * in. Every bracket and brace in it is wrapped in a word joiner (U+2060), a character that
+ * is invisible, that no bracket ever has beside it in a template, and that does not break a
+ * line. `[[` is then two brackets with something between them and is not a placeholder,
+ * however the text is reshaped and whatever it is written next to: a `replace:` that takes
+ * the spaces out of `[ [zz?]]`, a `join:` with nothing between the items, a device named
+ * `[[zz` beside an area named `?]]`, or an author's own `[` before a name that starts with
+ * one (reviews 2026-10-18 and 2026-10-25). Both sides of each bracket are marked, so neither
+ * neighbour can complete it. A text with none of those characters is returned as it was.
+ *
+ * The joiners come off again when the build is done - see restoreHaText - except where
+ * taking one off would open a language another card runs: button-card's `[[[`, Jinja's
+ * `{{`, `{%` and `{#`, config-template-card's `${`. One joiner stays there, so a name of
+ * `[[[ return ... ]]]` reaches button-card as a label and not as a function.
  */
-export function asHaText<T>(value: T): T {
-  if (typeof value === 'string') {
-    return value.replace(/\[\[/g, `[[${ESCAPE}`) as unknown as T;
+export const HA_MARK = '\u2060';
+
+const HA_MARKS = new RegExp(HA_MARK, 'g');
+
+/** The marker set around every bracket and brace that does not already have one. */
+export function markHaText(text: string): string {
+  if (!/[[\]{}]/.test(text)) return text;
+  return text.replace(/([[\]{}])(?!\u2060)/g, `$1${HA_MARK}`).replace(/(?<!\u2060)([[\]{}])/g, `${HA_MARK}$1`);
+}
+
+/** Whether this text carries Home Assistant's marker, which only Home Assistant's text does. */
+export function isHaMarked(text: string): boolean {
+  return text.includes(HA_MARK);
+}
+
+/** The text with every marker taken out, for comparing it with what somebody wrote. */
+export function stripHaMarks(text: string): string {
+  return text.includes(HA_MARK) ? text.replace(HA_MARKS, '') : text;
+}
+
+/*
+ * The text as it is written into the finished card: markers off, bar the one that keeps a
+ * language from opening. One joiner is enough, and a run of them is left as one.
+ */
+export function restoreHaText(text: string): string {
+  if (!text.includes(HA_MARK)) return text;
+  let out = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch !== HA_MARK) {
+      out += ch;
+      continue;
+    }
+    if (out.endsWith(HA_MARK)) continue;
+    let j = i + 1;
+    while (text[j] === HA_MARK) j += 1;
+    const next = text[j];
+    const prev = out[out.length - 1];
+    const opens =
+      (next === '[' && out.endsWith('[[')) ||
+      (next === '{' && (prev === '{' || prev === '$')) ||
+      (prev === '{' && (next === '%' || next === '#'));
+    if (opens) out += HA_MARK;
   }
+  return out;
+}
+
+export function asHaText<T>(value: T): T {
+  if (typeof value === 'string') return markHaText(value) as unknown as T;
   if (Array.isArray(value)) return value.map(asHaText) as unknown as T;
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
@@ -831,7 +883,9 @@ export function conditionHolds(step: string, read: (name: string) => unknown): b
   if (text === undefined) return truthy(value) !== negated;
   // Compared as text, as a dropdown and YAML both hand it over - but a mapping or a list
   // has no text to compare, and an unset variable equals nothing.
-  const same = value !== undefined && value !== null && typeof value !== 'object' && String(value) === text;
+  // Home Assistant's text wears its markers until the build is done; the comparison does not.
+  const same =
+    value !== undefined && value !== null && typeof value !== 'object' && stripHaMarks(String(value)) === text;
   return same !== negated;
 }
 
@@ -1012,8 +1066,19 @@ export function applyTransform(
   // Applied to what Home Assistant gives, and only to that: the author's own values are
   // theirs to write. A style passes one that keeps a name from ending a CSS declaration.
   shield?: (text: string) => string,
+  // Whether the value itself is Home Assistant's - a registry copy's name - rather than the
+  // author's. What a resolver brings in is Home Assistant's whether or not this says so.
+  fromHa = false,
 ): string | undefined {
   const steps = transform ? transform.split('|') : [];
+  /*
+   * Whether what comes out is Home Assistant's words. Marked on the way in, a name is still
+   * marked after most steps - but a `replace:` or a `join:` can take a marker off, or put two
+   * brackets together that were apart, so the text is marked again on the way out (review
+   * 2026-10-25). Known from the markers when the value carries any, from the caller when it
+   * knows, and from any resolver that answers.
+   */
+  let haText = fromHa || (typeof value === 'string' && isHaMarked(value));
 
   // `json` is the one step that wants the value as it was rather than as text, so it is
   // read off the front before anything turns a mapping into "[object Object]".
@@ -1045,6 +1110,7 @@ export function applyTransform(
       // A resolver reads the value as an entity id, so it has to run before anything has
       // reshaped it - `[[entity|friendly_name|slug]]` resolves, then slugs.
       const found = resolve(name, input, hass);
+      if (found !== undefined) haText = true;
       return found !== undefined && shield ? shield(found) : found;
     }
     const numeric = numberStep(name, input, hass);
@@ -1091,8 +1157,8 @@ export function applyTransform(
       const wanted = name.slice(CONTAINS_STEP.length + 1);
       const items = list ?? (Array.isArray(firstHand) ? firstHand : undefined);
       const found = items
-        ? items.some((item) => itemText(item) === wanted)
-        : text !== undefined && !empty && text.includes(wanted);
+        ? items.some((item) => stripHaMarks(itemText(item)) === wanted)
+        : text !== undefined && !empty && stripHaMarks(text).includes(wanted);
       text = String(found);
       list = undefined;
       empty = false;
@@ -1211,6 +1277,17 @@ export function applyTransform(
     if (shaped === undefined && keptOwn && isResolver(name)) continue;
     text = shaped;
     empty = text === undefined || text === '';
+  }
+  // Home Assistant's words go out marked whatever the steps did to them. A registry copy's
+  // own value is shielded here too where a style asked for it: the shield has only seen what
+  // the resolvers brought in, and an author's `prefix:rgb(` around one of those is theirs.
+  const settle = (piece: unknown): unknown => {
+    if (typeof piece !== 'string') return piece;
+    return markHaText(fromHa && shield ? shield(piece) : piece);
+  };
+  if (haText) {
+    if (list !== undefined) list = list.map(settle);
+    else if (text !== undefined) text = settle(text) as string;
   }
   // A list still standing at the end goes out as its JSON: a whole value takes it as a real
   // list, and inside a longer string it is written out the way a list variable would be.

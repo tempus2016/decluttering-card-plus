@@ -33,6 +33,39 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check the lockfile only re-resolves the bumped packages' own trees
+        # The name checks above look at what Dependabot says it bumped. The lockfile can
+        # change more than that: a bump of c8 can move a copy of semver, minimatch or
+        # supports-color that eslint, rollup and semantic-release load too, and the
+        # cooldown in dependabot.yml does not apply to those. So the diff of package-lock.json
+        # is read, and any package path outside the bumped packages' own node_modules trees
+        # leaves the PR for a person (review 2026-10-25).
+        id: lock
+        run: |
+          changed=$(gh pr diff "$PR_URL" | grep -E '^[-+][[:space:]]+"node_modules/' | sed -E 's/^[-+][[:space:]]+"(node_modules\/[^"]+)".*/\1/' | sort -u || true)
+          outside=""
+          for path in $changed; do
+            own=false
+            IFS=',' read -ra names <<< "$NAMES"
+            for name in "${names[@]}"; do
+              name=$(echo "$name" | xargs)
+              case "$path" in
+                "node_modules/$name"|"node_modules/$name/"*) own=true ;;
+              esac
+            done
+            if [ "$own" = false ]; then outside="$outside $path"; fi
+          done
+          if [ -n "$outside" ]; then
+            echo "left for a person: the lockfile also changes$outside"
+            echo "own_tree=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "own_tree=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          NAMES: ${{ steps.meta.outputs.dependency-names }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Let it merge itself once the checks are green
         # Only patch and minor bumps of development dependencies merge unattended. A runtime
         # dependency ends up in the bundle every install loads, and a major bump can change
@@ -44,6 +77,7 @@ jobs:
         # compiler, 'conventional-changelog' the notes preset. They must keep matching the
         # release-tooling patterns in dependabot.yml.
         if: >-
+          steps.lock.outputs.own_tree == 'true' &&
           steps.meta.outputs.dependency-type == 'direct:development' &&
           (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
            steps.meta.outputs.update-type == 'version-update:semver-minor') &&

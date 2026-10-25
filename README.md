@@ -335,6 +335,12 @@ elements:
 go2rtc: '[[go2rtc_block|if:live_provider=go2rtc?]]'
 ```
 
+Text that comes from Home Assistant - a friendly name, an attribute, a device's model - is
+always text: it is never read as a placeholder, and it never opens button-card's `[[[ ]]]`,
+Jinja's `{{ }}` or config-template-card's `${ }` either, however the name is written. If you
+put such a value inside a string in code of your own, `[[[ return '[[name]]' ]]]`, use
+`[[name|json]]` there instead, which writes it as a quoted and escaped string literal.
+
 `bool` *(v1.12.0+)* is for options that want a real `true` or `false`. A card reads the
 word `"false"` as switched on, so `hide_state: '[[compact|bool]]'` turns `yes`, `on` or
 `1` into `true`, and `no`, `off`, `0`, nothing at all or an unset variable into `false`.

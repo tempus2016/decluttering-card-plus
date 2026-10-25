@@ -146,6 +146,7 @@
   "share.import_copy": "Als kopie importeren",
   "share.import_clash": "Dit dashboard heeft al een sjabloon met de naam \"{name}\". Na het importeren heb je twee sjablonen met dezelfde naam, en maar één ervan wordt gebruikt. Druk nogmaals op Importeren om door te gaan.",
   "share.import_not_yaml": "Dit is geen geldige YAML en kan dus niet worden gelezen.",
+  "share.import_too_big": "Dit is te groot om een sjabloon te zijn en kan niet worden gelezen.",
   "share.requires_custom_cards": "Vereist deze custom cards: {types}",
   "share.uses_other_templates": "Gebruikt deze andere sjablonen, die hier niet zijn meegenomen: {names}",
   "share.import_not_a_template": "Dit ziet er niet uit als een sjabloon: het hoort een blok YAML-sleutels en -waarden te zijn.",
@@ -189,6 +190,7 @@
   "share.community_names_loading": "Sjabloonnamen worden gelezen…",
   "share.community_names_failed": "De dashboards waarvan dit dashboard sjablonen leent, konden niet worden gelezen, dus een naamconflict kan niet worden gecontroleerd. Er wordt niets geïnstalleerd tot ze gelezen kunnen worden: druk op “Zoeken naar nieuwe” om het opnieuw te proberen.",
   "share.community_risk_placeholders": "laat aan een variabele over wat het doet bij indrukken, of wat voor kaart het is – wat dit bericht niet kan tonen",
+  "share.community_risk_overlay": "geeft een kaart een stijl waardoor ze onzichtbaar over het hele scherm ligt, zodat elke druk erop terechtkomt",
 
   "tools.health_header": "Gezondheid van het dashboard",
 
@@ -247,6 +249,7 @@
   "warn.nothing_for": "niets in Home Assistant voor \"{value}\"",
   "warn.step_not_alone": "{step} moet de enige stap in zijn keten zijn",
   "warn.fills_itself": "{name} vult zichzelf eindeloos in",
+  "warn.too_many_fills": "er zouden meer dan {max} kopieën in deze kaart worden ingevuld, de rest blijft weg",
   "warn.not_a_list_source": "{arg} is geen lijst en geen registerbron",
   "warn.not_a_mapping": "{arg} is geen mapping",
   "warn.condition_closed": "de if:-voorwaarde klopt niet",

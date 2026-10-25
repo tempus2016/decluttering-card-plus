@@ -8,8 +8,10 @@ permissions:
   contents: read
   pull-requests: write
 
+# Under pull_request_target github.ref is always main, so keyed on the PR: two PRs opened
+# together must not cancel each other's labelling.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:

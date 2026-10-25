@@ -53,7 +53,11 @@ check(
   '{"password":"<redacted>","user":"bob"}',
 );
 check('`key:` on its own is left alone', redact('key: sort_by'), 'key: sort_by');
-check('a bearer token goes', redact('Authorization: Bearer abc.def-ghi'), 'Authorization: Bearer <redacted>');
+check(
+  'a bearer token goes, as does the whole of an authorization line',
+  [redact('Authorization: Bearer abc.def-ghi'), redact('h: Bearer abc.def-ghi')],
+  ['Authorization: <redacted>', 'h: Bearer <redacted>'],
+);
 check('a JWT goes', redact('t: eyJhbGciOi.eyJzdWIiOi.SflKxwRJ'), 't: <redacted-token>');
 check('an IPv6 address goes', redact('host fe80::1ff:fe23:4567:890a here'), 'host <redacted-ip> here');
 check('a time of day stays', redact('at: 12:30:45'), 'at: 12:30:45');
@@ -223,6 +227,67 @@ check('no section without warnings has a warnings heading', text.includes('Warni
     ['"room"', '"inner"'],
   );
   check('and the whole card built', results[0].full, { type: 'vertical-stack', cards: [{ type: 'tile' }] });
+}
+
+/* ------------------------------------------------------ redact: what review 2026-10-25 found left in */
+
+check(
+  'an alarm code, a pin and a passcode go',
+  redact('data:\n  code: "482913"\n  pin: 1234\n  passcode: abcd'),
+  'data:\n  code: <redacted>\n  pin: <redacted>\n  passcode: <redacted>',
+);
+check('Basic auth goes', redact('Authorization: Basic dXNlcjpwYXNz'), 'Authorization: <redacted>');
+check('an auth key goes', redact('auth: abc123\nauthorization: xyz'), 'auth: <redacted>\nauthorization: <redacted>');
+check(
+  'a password inside a longer line goes',
+  redact('url: x password=hunter22 more'),
+  'url: x password=<redacted> more',
+);
+check(
+  'where the house is goes',
+  redact('latitude: 57.1234\nlongitude: -4.5678\ngps: [57.1, -4.5]'),
+  'latitude: <redacted>\nlongitude: <redacted>\ngps: <redacted>',
+);
+check(
+  'the token in a webhook, bot or Slack path goes',
+  redact(
+    'a: https://discord.com/api/webhooks/123/TOKENabc\nb: http://ha.local:8123/api/webhook/some-id\nc: https://api.telegram.org/bot123:ABC-def/sendMessage\nd: https://hooks.slack.com/services/T0/B0/xyz',
+  ),
+  'a: https://<redacted-host>/api/webhooks/123/<redacted>\nb: http://<redacted-host>:8123/api/webhook/<redacted>\nc: https://<redacted-host>/bot123:<redacted>\nd: https://<redacted-host>/services/<redacted>',
+);
+check('a MAC address goes', redact('mac: aa:bb:cc:dd:ee:ff'), 'mac: <redacted-mac>');
+check(
+  'a long known secret is taken out whole, not cut to its readable ends',
+  redact(`x: ${'s'.repeat(5000)} y`, ['s'.repeat(5000)]).includes('sss'),
+  false,
+);
+check(
+  'a device class and a sort key stay',
+  redact('device_class: door\nsort: code_format'),
+  'device_class: door\nsort: code_format',
+);
+{
+  const { formatReport: format } = require('../.test-build/report.js');
+  const text = format({
+    context: { version: '1' },
+    reports: [
+      {
+        label: 'c',
+        ms: 1,
+        chain: [],
+        sections: [
+          {
+            label: 'Hello @someone and www.example.com',
+            variables: [{ variable: 'n', value: '@org/team', from: 'this card' }],
+            trace: { placeholders: new Map(), dropped: [], warnings: [] },
+            built: {},
+          },
+        ],
+      },
+    ],
+  });
+  check('a mention in a variable cannot notify anybody', /(?<!\\)@(?:someone|org)/.test(text), false);
+  check('and a bare www. cannot link', text.includes('www.example'), false);
 }
 
 /* ------------------------------------------------------------------ redact: names, shapes, hosts */

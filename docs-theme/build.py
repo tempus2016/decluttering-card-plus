@@ -49,15 +49,23 @@ def front_matter(fields):
     return "\n".join(lines)
 
 
+ENDRAW = re.compile(r"\{(%-?\s*endraw)", re.I)
+
+
 def literal(text, name):
     """
     Jekyll runs every page through Liquid before Markdown, and Liquid reads {{ }} and {% %} -
     which is exactly what a Home Assistant Jinja example is made of. {{ states(...) }} came
     out blank and {% set %} failed the whole build, so a page's text is kept away from it.
+
+    A page that spells out an endraw tag itself would end the block early and hand the rest of
+    itself to Liquid - which is how a tag the stripper took out could be written back in
+    (review 2026-10-25). The tag is broken with a word joiner instead, which is invisible on
+    the page and not a tag to Liquid, however it is spaced or cased.
     """
-    if "{% endraw" in text or "{%- endraw" in text:
-        print("left", name, "to Liquid: it spells out an endraw tag")
-        return text
+    if ENDRAW.search(text):
+        print("broke an endraw tag spelt out in", name)
+        text = ENDRAW.sub("{\u2060\\1", text)
     return "{% raw %}" + text + "{% endraw %}"
 
 
@@ -68,11 +76,25 @@ def rewrite_links(text):
 
 
 def strip_raw_tags(text, name):
-    """Drop the raw HTML tags a page must not carry (see RAW_TAG), and say which."""
-    found = RAW_TAG.findall(text)
-    if found:
-        print("dropped", len(found), "raw tag(s) from", name + ":", " ".join(sorted(set(found))))
-    return RAW_TAG.sub("", text)
+    """
+    Drop the raw HTML tags a page must not carry (see RAW_TAG), and say which. Done again until
+    nothing changes: taking `<meta>` out of `<me<meta>ta ...>` leaves `<meta ...>` behind, and a
+    single pass would have published it (review 2026-10-25). A tag still standing after that is
+    a page that must not be published at all.
+    """
+    dropped = 0
+    while True:
+        found = RAW_TAG.findall(text)
+        if not found:
+            break
+        dropped += len(found)
+        stripped = RAW_TAG.sub("", text)
+        if stripped == text:
+            raise SystemExit("refusing to publish {}: a raw tag survived stripping".format(name))
+        text = stripped
+    if dropped:
+        print("dropped", dropped, "raw tag(s) from", name)
+    return text
 
 
 def headline_html(tagline):
@@ -166,9 +188,11 @@ def main(root):
 
         # The sidebar becomes the navigation on every page rather than a page of its own.
         # Copied after the link rewrite, so its links point at .html too.
+        # Kept away from Liquid like every page: it is on every page, and a tag the stripper
+        # took out could otherwise be written back in by Liquid (review 2026-10-25).
         if name == "_Sidebar.md":
             os.makedirs(os.path.join(root, "_includes"), exist_ok=True)
-            open(os.path.join(root, "_includes", "sidebar.md"), "w", encoding="utf-8").write(text)
+            open(os.path.join(root, "_includes", "sidebar.md"), "w", encoding="utf-8").write(literal(text, name))
             print("sidebar -> navigation")
             continue
 

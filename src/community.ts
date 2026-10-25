@@ -12,8 +12,10 @@
 
 import { load } from 'js-yaml';
 import deepReplace from './deep-replace';
+import { isRegistrySource } from './registry';
 import { scanDependencies, validateImport } from './share';
-import { TemplateConfig } from './types';
+import { CONSUMER_TYPES } from './templates';
+import { TemplateConfig, VariablesConfig } from './types';
 
 export const COMMUNITY_REPO = 'tempus2016/decluttering-card-plus';
 // Posts are matched on the slug, which GitHub derives from the category's name.
@@ -68,6 +70,17 @@ export interface CommunityList {
   fetched: number;
 }
 
+/*
+ * What GitHub shows of a post is what people judge it by - the moderation, the reactions the
+ * list is ordered on - so the card has to read the same YAML they saw. A code block inside an
+ * HTML comment is invisible on GitHub but was the first block to this reader, which let a post
+ * show one template and install another (review 2026-10-25). Comments go before anything is
+ * read; an unterminated one hides the rest of the post, as it does on GitHub.
+ */
+function withoutHiddenHtml(body: string): string {
+  return body.replace(/<!--[\s\S]*?(?:-->|$)/g, '');
+}
+
 /**
  * The YAML in a post: the first block marked as YAML, or failing that the first unmarked
  * one. Anything else in the post is prose for people, not for the card.
@@ -76,10 +89,11 @@ export function extractYaml(body: string): string | undefined {
   if (typeof body !== 'string' || body.length > MAX_BODY_LENGTH) return undefined;
   // Read a line at a time rather than with one expression over the whole post: a post made
   // of fences that never close would otherwise be tried from every one of them.
-  const opening = /^[ \t]*(`{3,}|~{3,})[ \t]*([\w-]*)/;
+  // A fence indented four spaces or more is not a fence to GitHub - it shows as text.
+  const opening = /^ {0,3}(`{3,}|~{3,})[ \t]*([\w-]*)/;
   const blocks: { lang: string; text: string }[] = [];
   let open: { fence: string; lang: string; lines: string[] } | undefined;
-  for (const line of body.split('\n')) {
+  for (const line of withoutHiddenHtml(body).split('\n')) {
     if (open) {
       if (line.trim() === open.fence) {
         blocks.push({ lang: open.lang, text: open.lines.join('\n') + '\n' });
@@ -102,7 +116,7 @@ export function extractYaml(body: string): string | undefined {
  * every piece once for being there, and text - keys included - once more for every
  * CHARS_PER_NODE characters, so what the copy will produce is bounded whatever shape it has.
  */
-function withinBudget(value: unknown): boolean {
+export function withinBudget(value: unknown): boolean {
   let left = MAX_NODES;
   const charge = (length: number): boolean => (left -= 1 + Math.ceil(length / CHARS_PER_NODE)) >= 0;
   const walk = (node: unknown): boolean => {
@@ -119,6 +133,31 @@ function withinBudget(value: unknown): boolean {
 
 const isMapping = (value: unknown): value is Record<string, any> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
+
+/*
+ * A value as plain objects, lists and scalars, within the budget, and with no `__proto__`
+ * key anywhere - copied onto an object later, that key would replace the object's prototype
+ * instead of becoming a key. Nothing when it is too big to be a template.
+ */
+function plainWithinBudget(value: unknown): any {
+  if (!withinBudget(value)) return undefined;
+  return JSON.parse(JSON.stringify(value), (key, inner) => (key === '__proto__' ? undefined : inner));
+}
+
+/*
+ * A title as the list shows it. Blank-looking characters that are not spaces - the Braille
+ * blank, the Hangul filler, format characters - let a title end in a run of nothing that pushes
+ * the real author off the end of the line, so they go, and a title is cut to a length that
+ * leaves room for the author after it (review 2026-10-25).
+ */
+const MAX_TITLE_LENGTH = 80;
+const BLANKS = /[\p{Cf}\u2800\u3164\u115F\u1160\uFFA0]/gu;
+export function cleanTitle(title: unknown): string | undefined {
+  if (typeof title !== 'string') return undefined;
+  const text = title.replace(BLANKS, '').replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+  return text.length > MAX_TITLE_LENGTH ? `${text.slice(0, MAX_TITLE_LENGTH - 1)}…` : text;
+}
 
 const THING_KEYS = ['card', 'badge', 'row', 'element', 'group'];
 
@@ -151,12 +190,10 @@ export function parseDiscussion(discussion: any): CommunityEntry | undefined {
   try {
     // Too many aliases is a parse error, which lands in the catch below like any other.
     const loaded = load(text, { maxAliases: MAX_ALIASES });
-    // Sized before it is copied: the copy is what unfolds every alias.
-    if (!withinBudget(loaded)) return undefined;
-    // A round trip through JSON leaves plain objects, lists and values only, which is all a
-    // card config is. A `__proto__` key goes too: copied onto an object later, it would
-    // replace the object's prototype instead of becoming a key.
-    parsed = JSON.parse(JSON.stringify(loaded), (key, value) => (key === '__proto__' ? undefined : value));
+    // Sized before it is copied: the copy is what unfolds every alias. The round trip through
+    // JSON leaves plain objects, lists and values only, which is all a card config is.
+    parsed = plainWithinBudget(loaded);
+    if (parsed === undefined) return undefined;
   } catch {
     return undefined;
   }
@@ -169,7 +206,7 @@ export function parseDiscussion(discussion: any): CommunityEntry | undefined {
   if (typeof template.description !== 'string') delete template.description;
   return {
     id: discussion.number,
-    title: typeof discussion.title === 'string' && discussion.title.trim() ? discussion.title.trim() : name,
+    title: cleanTitle(discussion.title) ?? name,
     author: typeof discussion.user?.login === 'string' ? discussion.user.login : '',
     url: postUrl(discussion.number, discussion.html_url),
     name: name.trim(),
@@ -194,31 +231,111 @@ export interface CommunityRisks {
   scripts: boolean;
   /** Whether what a press does, or what kind of card it is, is spelt by a variable - which the post cannot show. */
   placeholders: boolean;
+  /** Whether a style lays a card invisibly over the whole screen, where any press lands on it. */
+  overlay: boolean;
 }
 
 // Pressing something on an entity in one of these domains does more than switch a light,
 // so an action that works the entity - a toggle, above all - is worth a sentence. On a light,
 // a switch or a fan it is what the card is for.
-const SENSITIVE_DOMAINS = ['lock', 'alarm_control_panel', 'cover', 'script', 'button', 'input_button'];
+const SENSITIVE_DOMAINS = [
+  'lock',
+  'alarm_control_panel',
+  'cover',
+  'valve',
+  'siren',
+  'script',
+  'automation',
+  'button',
+  'input_button',
+  'water_heater',
+  'lawn_mower',
+  'update',
+];
 // Actions that only show something or go somewhere, fine on anything.
 const HARMLESS_ACTIONS = ['more-info', 'navigate', 'none', 'assist'];
 // The values that decide what a press does and what a card is. A placeholder in one of them
 // is a risk in itself: whoever reads the post cannot tell what it will become.
 const DECIDING_KEYS = ['action', 'perform_action', 'service', 'type'];
 
-// An address with a scheme in any case, or without one but with a dotted host - which is
-// what tells `//evil.example/x` from the `//` that opens a comment. Up to the first template
-// marker: what is after `{{` is not part of it.
-const URL_PATTERN = /https?:\/\/[^\s"'<>)\]{}]+|\/\/[\w-]+(?:\.[\w-]+)+(?::\d+)?(?:[/?#][^\s"'<>)\]{}]*)?/gi;
-// A style fetches too, through url() and @import.
-const CSS_FETCHES = [/url\(\s*['"]?([^'")\s{}]+)/gi, /@import\s+(?:url\(\s*)?['"]?([^'")\s;{}]+)/gi];
+/*
+ * An address: a scheme in any case followed by a dotted host, with or without the `//` -
+ * a browser reads `https:evil.example/x` as an address, and `mdi:lightbulb` has no dot - or
+ * no scheme at all but `//` and a dotted host, which is what tells `//evil.example/x` from
+ * the `//` that opens a comment. Up to the first template marker: what is after `{{` is not
+ * part of it. Backslashes are read as the slashes a browser makes of them before any of this
+ * is matched (review 2026-10-25).
+ */
+const URL_PATTERN =
+  /\b[a-z][a-z0-9+.-]{1,31}:(?:\/\/)?[\w-]+(?:\.[\w-]+)+(?::\d+)?(?:[/?#][^\s"'<>)\]{}]*)?|\/\/[\w-]+(?:\.[\w-]+)+(?::\d+)?(?:[/?#][^\s"'<>)\]{}]*)?/gi;
+// A style fetches too, through url(), image-set(), src() and @import.
+const CSS_FETCHES = [/(?:url|image-set|src)\(\s*['"]?([^'")\s{}]+)/gi, /@import\s+(?:url\(\s*)?['"]?([^'")\s;{}]+)/gi];
 // What a style can fetch without leaving Home Assistant: its own files, an anchor, inline data.
 const LOCAL_FETCH = /^(?:\/(?!\/)|#|data:)/i;
+// Keys whose value is fetched as an address by the card that reads them: an image, a page, a
+// picture. One that is not a path of this Home Assistant's own, a placeholder or inline data
+// goes somewhere, scheme or no scheme.
+const FETCHED_KEYS = ['image', 'url', 'url_path', 'entity_picture', 'camera_image', 'image_url', 'icon_url', 'src'];
 // JavaScript the way button-card, config-template-card and Jinja carry it.
 const SCRIPT_MARKERS = /\[\[\[|\{\{|\{%|\$\{/;
+// A url action aimed at a scheme the browser runs rather than fetches.
+const SCRIPT_SCHEMES = /^\s*(?:javascript|data|vbscript):/i;
+/*
+ * A style that takes a card out of the flow and across the screen while hiding it: anything
+ * pressed anywhere is pressed on it, and whatever action it has fires (review 2026-10-25).
+ */
+const COVERS_SCREEN = /position\s*:\s*(?:fixed|absolute)/i;
+const HIDDEN = /opacity\s*:\s*0(?:[^.\d]|$)|visibility\s*:\s*hidden|transparent/i;
 
 const sensitive = (entity: unknown): entity is string =>
   typeof entity === 'string' && SENSITIVE_DOMAINS.includes(entity.split('.')[0]);
+
+/** Slashes the way a browser reads them: a backslash in an address is a slash. */
+const asBrowserReads = (text: string): string => text.replace(/\\/g, '/');
+
+/*
+ * The domains a filter can reach: named outright, or read off the entity patterns it lists,
+ * where a pattern with no domain in front of its dot - or no pattern at all - reaches every
+ * domain. For a registry source and for an auto-entities filter alike.
+ */
+const ANY_DOMAIN = '*';
+function domainsOf(domain: unknown, patterns: unknown): string[] {
+  const named = ([] as unknown[]).concat(domain ?? []).filter((each): each is string => typeof each === 'string');
+  if (named.length) return named.includes(ANY_DOMAIN) ? [ANY_DOMAIN] : named;
+  const listed = ([] as unknown[]).concat(patterns ?? []).filter((each): each is string => typeof each === 'string');
+  if (!listed.length) return [ANY_DOMAIN];
+  const domains = listed.map((pattern) => {
+    const dot = pattern.indexOf('.');
+    const head = dot === -1 ? pattern : pattern.slice(0, dot);
+    return /^[a-z_]+$/.test(head) ? head : ANY_DOMAIN;
+  });
+  return domains.includes(ANY_DOMAIN) ? [ANY_DOMAIN] : [...new Set(domains)];
+}
+
+/*
+ * The presses in a block of config whose target is not spelt out - it is a placeholder, or
+ * there is none and the card's own entity stands for it. Each is a danger exactly when what
+ * fills the entity in can be something sensitive, which the caller knows and this does not.
+ */
+function unaimedPresses(node: unknown, entity: string | undefined, found = new Set<string>()): Set<string> {
+  if (Array.isArray(node)) {
+    node.forEach((each) => unaimedPresses(each, entity, found));
+    return found;
+  }
+  if (!isMapping(node)) return found;
+  const own = typeof node.entity === 'string' ? node.entity : entity;
+  const action = node.action;
+  if (typeof action === 'string' && !HARMLESS_ACTIONS.includes(action) && !action.includes('[[')) {
+    if (action !== 'perform-action' && action !== 'call-service' && action !== 'fire-dom-event' && action !== 'url') {
+      const aimed = ([] as unknown[]).concat(node.target?.entity_id ?? node.entity_id ?? own ?? []);
+      if (!aimed.length || aimed.some((target) => typeof target !== 'string' || target.includes('[['))) {
+        found.add(action);
+      }
+    }
+  }
+  Object.values(node).forEach((each) => unaimedPresses(each, own, found));
+  return found;
+}
 
 /*
  * The thing a template defines with the template's own defaults in place - its `default:`
@@ -226,14 +343,21 @@ const sensitive = (entity: unknown): entity is string =>
  * scan does not have. Nothing when substitution cannot run on it: the raw text is scanned
  * either way.
  */
-function withOwnDefaults(template: Record<string, any>): unknown {
+function withOwnDefaults(template: Record<string, any>, variables?: VariablesConfig[]): unknown {
   const key = THING_KEYS.find((each) => template[each] !== undefined);
   if (!key) return undefined;
   try {
-    return deepReplace(undefined, template as TemplateConfig, template[key], undefined, undefined, true);
+    return deepReplace(variables, template as TemplateConfig, template[key], undefined, undefined, true);
   } catch {
     return undefined;
   }
+}
+
+/** The variables a nested template card passes, as a list of single-key entries. */
+function passedVariables(value: unknown): VariablesConfig[] | undefined {
+  if (Array.isArray(value)) return value.filter(isMapping) as VariablesConfig[];
+  if (isMapping(value)) return Object.entries(value).map(([name, each]) => ({ [name]: each }));
+  return undefined;
 }
 
 /*
@@ -245,14 +369,18 @@ function withOwnDefaults(template: Record<string, any>): unknown {
  * write `action: '[[a]]'` and keep `a: perform-action` in its defaults, and only the second
  * reading sees the service call - while the first is what notices the placeholder.
  */
-export function communityRisks(entry: Pick<CommunityEntry, 'template' | 'includes'>): CommunityRisks {
+export function communityRisks(
+  entry: Pick<CommunityEntry, 'template' | 'includes'> & Partial<Pick<CommunityEntry, 'name'>>,
+): CommunityRisks {
   const actions = new Set<string>();
   const urls = new Set<string>();
   let embeds = false;
   let scripts = false;
   let placeholders = false;
+  let overlay = false;
 
-  const scanText = (text: string): void => {
+  const scanText = (raw: string): void => {
+    const text = asBrowserReads(raw);
     for (const url of text.match(URL_PATTERN) ?? []) urls.add(url);
     for (const pattern of CSS_FETCHES) {
       pattern.lastIndex = 0;
@@ -262,7 +390,32 @@ export function communityRisks(entry: Pick<CommunityEntry, 'template' | 'include
         found = pattern.exec(text);
       }
     }
-    if (SCRIPT_MARKERS.test(text)) scripts = true;
+    if (SCRIPT_MARKERS.test(raw)) scripts = true;
+    if (COVERS_SCREEN.test(raw) && HIDDEN.test(raw)) overlay = true;
+  };
+
+  // A value a card fetches: anything that is not this Home Assistant's own path, a
+  // placeholder, inline data or an anchor goes somewhere - with a scheme or without one.
+  const scanFetched = (raw: string): void => {
+    const text = asBrowserReads(raw).trim();
+    if (!text || LOCAL_FETCH.test(text) || text.startsWith('[[') || text.startsWith('{{')) return;
+    if (/^[\w.-]+\.[a-z]{2,}(?:[:/?#]|$)/i.test(text)) urls.add(text);
+  };
+
+  // The template a nested template card calls, by the name it uses here.
+  const templateNamed = (name: unknown): Record<string, any> | undefined => {
+    if (typeof name !== 'string') return undefined;
+    if (name === entry.name) return entry.template;
+    return Object.prototype.hasOwnProperty.call(entry.includes, name) ? entry.includes[name] : undefined;
+  };
+
+  // What a press whose target is filled in from a filter can reach: each sensitive domain the
+  // filter reaches, or everything when the filter does not say.
+  const noteReach = (presses: Set<string>, domains: string[]): void => {
+    for (const action of presses) {
+      if (domains.includes(ANY_DOMAIN)) actions.add(`${action} *`);
+      else for (const domain of domains) if (SENSITIVE_DOMAINS.includes(domain)) actions.add(`${action} ${domain}.*`);
+    }
   };
 
   // An action, with the entity the card it sits on is about, which is what a toggle works.
@@ -281,6 +434,7 @@ export function communityRisks(entry: Pick<CommunityEntry, 'template' | 'include
     }
     if (action === 'url') {
       urls.add(typeof node.url_path === 'string' ? node.url_path : '?');
+      if (typeof node.url_path === 'string' && SCRIPT_SCHEMES.test(node.url_path)) scripts = true;
       return;
     }
     if (HARMLESS_ACTIONS.includes(action) || action.includes('[[')) return;
@@ -303,13 +457,42 @@ export function communityRisks(entry: Pick<CommunityEntry, 'template' | 'include
     if (DECIDING_KEYS.some((key) => typeof node[key] === 'string' && node[key].includes('[['))) placeholders = true;
     if (typeof node.action === 'string') noteAction(node, own);
     if (node.type === 'iframe' || node.type === 'webpage') embeds = true;
+    for (const key of FETCHED_KEYS) if (typeof node[key] === 'string') scanFetched(node[key]);
+    /*
+     * A nested template card chooses what a `[[entity]]` in the template it calls becomes:
+     * by the registry it repeats over, or by the variables it passes. The scan of the called
+     * template alone sees a placeholder and nothing more, so it is read again here with what
+     * this card gives it (review 2026-10-25).
+     */
+    if (typeof node.type === 'string' && CONSUMER_TYPES.includes(node.type)) {
+      const called = templateNamed(node.template);
+      if (called) {
+        if (isRegistrySource(node.for_each_from)) {
+          const source = node.for_each_from;
+          const body = THING_KEYS.map((key) => called[key]).find((each) => each !== undefined);
+          noteReach(unaimedPresses(body, undefined), domainsOf(source.domain, source.entities));
+        }
+        const passed = passedVariables(node.variables);
+        if (passed?.length) walk(withOwnDefaults(called, passed), undefined);
+      }
+    }
+    // auto-entities fills its card with whatever its filters find, and the options on each
+    // filter are what a press on those does.
+    if (node.type === 'custom:auto-entities' && isMapping(node.filter)) {
+      for (const filter of ([] as unknown[]).concat(node.filter.include ?? [])) {
+        if (!isMapping(filter)) continue;
+        const reach = domainsOf(filter.domain, filter.entity_id);
+        noteReach(unaimedPresses(filter.options, undefined), reach);
+        noteReach(unaimedPresses(node.card, undefined), reach);
+      }
+    }
     Object.values(node).forEach((each) => walk(each, own));
   };
 
   const templates = [entry.template, ...Object.values(entry.includes)];
   walk(templates, undefined);
   for (const template of templates) walk(withOwnDefaults(template), undefined);
-  return { actions: [...actions].sort(), urls: [...urls].sort(), embeds, scripts, placeholders };
+  return { actions: [...actions].sort(), urls: [...urls].sort(), embeds, scripts, placeholders, overlay };
 }
 
 /** The posts in the shared-templates category, best received first, then newest. */
@@ -361,14 +544,21 @@ export class CommunityError extends Error {
 function cachedEntry(value: any): CommunityEntry | undefined {
   if (!isMapping(value) || typeof value.id !== 'number' || typeof value.name !== 'string') return undefined;
   if (!isMapping(value.template)) return undefined;
+  // Sized, flattened and checked as a fresh post is: storage is anybody's on this origin.
+  const plain = plainWithinBudget({ template: value.template, includes: value.includes });
+  if (!plain || !isMapping(plain.template)) return undefined;
+  if (!validateImport({ template: value.name, ...plain.template }).ok) return undefined;
+  const template = { ...plain.template };
+  delete template.type;
+  if (typeof template.description !== 'string') delete template.description;
   return {
     id: value.id,
-    title: typeof value.title === 'string' ? value.title : value.name,
+    title: cleanTitle(value.title) ?? value.name,
     author: typeof value.author === 'string' ? value.author : '',
     url: postUrl(value.id, value.url),
     name: value.name,
-    template: value.template,
-    includes: usableIncludes(value.includes),
+    template,
+    includes: usableIncludes(plain.includes),
     reactions: typeof value.reactions === 'number' ? value.reactions : 0,
     updated: typeof value.updated === 'string' ? value.updated : '',
   };

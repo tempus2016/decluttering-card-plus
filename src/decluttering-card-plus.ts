@@ -38,6 +38,7 @@ import {
   SharedUpdate,
   sharedUpdates,
   stampedTemplate,
+  withinBudget,
 } from './community';
 import {
   collectTemplates,
@@ -461,7 +462,12 @@ const isDefinedHere = (tag: string): boolean => !!customElements.get(tag);
 
 /** Whether a risk scan found anything worth a sentence. */
 const anyRisk = (risks: CommunityRisks): boolean =>
-  risks.actions.length > 0 || risks.urls.length > 0 || risks.embeds || risks.scripts || risks.placeholders;
+  risks.actions.length > 0 ||
+  risks.urls.length > 0 ||
+  risks.embeds ||
+  risks.scripts ||
+  risks.placeholders ||
+  risks.overlay;
 
 /** What `latest` would let a post do that `installed` already does not: the risks that are new with this version. */
 function newRisks(latest: CommunityRisks, installed: CommunityRisks): CommunityRisks {
@@ -471,6 +477,7 @@ function newRisks(latest: CommunityRisks, installed: CommunityRisks): CommunityR
     embeds: latest.embeds && !installed.embeds,
     scripts: latest.scripts && !installed.scripts,
     placeholders: latest.placeholders && !installed.placeholders,
+    overlay: latest.overlay && !installed.overlay,
   };
 }
 
@@ -1406,7 +1413,7 @@ abstract class DeclutteringElement extends LitElement {
    * SPIKE #227: what a build needs for `with:`, `repeat:` and `__repeat__` - the dashboard's
    * item templates and the context a registry source reads.
    */
-  private _buildExtras(): BuildExtras {
+  protected _buildExtras(): BuildExtras {
     const ll = getLovelaceConfig();
     // No rendered Jinja sources here: a `repeat:` over `template:` is out of the spike's scope.
     return { itemTemplates: itemTemplatesOf(ll), context: sourceContext(ll) };
@@ -1611,6 +1618,11 @@ abstract class DeclutteringElement extends LitElement {
             ...['index', 'index0', 'count', 'first', 'last'].filter((each) => !names(config.variables).includes(each)),
           ]
         : [];
+      // A copy from the registry: its item's values are Home Assistant's words, which a style
+      // inside the card shields as it does a resolver's (review 2026-10-25).
+      const haNames = isRegistrySource(config.for_each_from)
+        ? new Set(ownVariables(item).map((entry) => Object.keys(entry)[0]))
+        : undefined;
       const built = applyOverride(
         deepReplace(
           variables,
@@ -1624,7 +1636,7 @@ abstract class DeclutteringElement extends LitElement {
           trace,
           undefined,
           false,
-          this._buildExtras(),
+          { ...this._buildExtras(), haNames },
         ),
         config,
         'card',
@@ -2298,13 +2310,21 @@ class DeclutteringCard extends DeclutteringElement {
       return;
     }
     try {
+      // Built as the card itself is: against the states it rebuilds on, with the dashboard's
+      // item templates to hand (review 2026-10-25).
       const built = deepReplace(
         this._fallbackSource?.variables,
         template ?? ({} as TemplateConfig),
         onError.config,
         this._fallbackSource?.name,
-        this._hass,
+        this._buildHass,
         true,
+        undefined,
+        0,
+        undefined,
+        undefined,
+        false,
+        this._buildExtras(),
       );
       this._buildingFallback = true;
       this._setResolved(kind, this._withGridOptions(kind, built), '');
@@ -5449,7 +5469,9 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
     const existing = this._communityExisting();
     const entry = list.entries.find((each) => each.id === this._communitySelected);
-    const key = entry ? `community:${entry.id}` : '';
+    // The post as it was when Install was first pressed: an edit in between is a different
+    // template, and the preview is drawn again for it (review 2026-10-25).
+    const key = entry ? `community:${entry.id}:${entry.updated}` : '';
     const armed = !!entry && this._installPending === key;
     const installAs = entry && existing.includes(entry.name) ? freeName(entry.name, existing) : undefined;
     const needs = entry ? communityNeeds(entry, existing) : undefined;
@@ -5522,7 +5544,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
                 <ha-expansion-panel outlined expanded>
                   <span slot="header">${localize('share.library_preview', undefined, this.hass)}</span>
                   ${keyed(
-                    entry.id,
+                    `${entry.id}:${entry.updated}`,
                     html`<ha-yaml-editor
                       .hass=${this.hass}
                       .defaultValue=${{
@@ -5607,6 +5629,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
             ? html`<li>${localize('share.community_risk_placeholders', undefined, this.hass)}</li>`
             : html``
         }
+        ${risks.overlay ? html`<li>${localize('share.community_risk_overlay', undefined, this.hass)}</li>` : html``}
       </ul>
     </ha-alert>`;
   }
@@ -5614,6 +5637,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   private async _loadCommunity(refresh: boolean): Promise<void> {
     this._communityLoading = true;
     this._communityError = undefined;
+    // A list read again is a list that may have changed: nothing stays armed across it.
+    this._installPending = undefined;
     // The names are read again with the list, so a dashboard lent a template since is seen.
     this._communityKnown = undefined;
     this._communityKnownFailed = false;
@@ -5669,7 +5694,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
   private async _installShared(entry: CommunityEntry): Promise<void> {
     // The button is off until the names are in, but a press is checked here as well.
     if (this._communityKnown === undefined) return;
-    const key = `community:${entry.id}`;
+    const key = `community:${entry.id}:${entry.updated}`;
     if (this._installPending !== key) {
       this._installPending = key;
       this._installArmedAt = Date.now();
@@ -6739,6 +6764,12 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
 
     if (!this._importParses) {
       this._importErrors = [localize('share.import_not_yaml', undefined, this.hass)];
+      return;
+    }
+    // A paste gets the same ceiling as a post: the editor hands aliases over as shared
+    // objects, and a scan of them is the copy that unfolds every one (review 2026-10-25).
+    if (!withinBudget(this._importValue)) {
+      this._importErrors = [localize('share.import_too_big', undefined, this.hass)];
       return;
     }
 

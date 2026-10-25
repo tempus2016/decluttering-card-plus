@@ -20,12 +20,23 @@ export function el<K extends keyof HTMLElementTagNameMap>(
  * with another inside it - `[[count|add:[[offset]]]]` - is one piece, not one and a half.
  * An opening with no closing is plain text.
  */
+const MAX_OPENS_PER_LINE = 200;
+
 export function placeholderRuns(text: string): { text: string; placeholder: boolean }[] {
   const runs: { text: string; placeholder: boolean }[] = [];
   let plain = '';
   let at = 0;
+  // A line is scanned once from each `[[` in it, so a line made of thousands of them took the
+  // square of its length. Past this many on one line nothing is a placeholder anybody wrote,
+  // and the line is text (review 2026-10-25).
+  let lineIsText = false;
   while (at < text.length) {
-    if (text.startsWith('[[', at)) {
+    if (at === 0 || text[at - 1] === '\n') {
+      const lineEnd = text.indexOf('\n', at);
+      const line = text.slice(at, lineEnd === -1 ? text.length : lineEnd);
+      lineIsText = (line.match(/\[\[/g) ?? []).length > MAX_OPENS_PER_LINE;
+    }
+    if (!lineIsText && text.startsWith('[[', at)) {
       let depth = 0;
       let end = at;
       while (end < text.length) {

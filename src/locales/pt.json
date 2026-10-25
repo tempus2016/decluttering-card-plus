@@ -146,6 +146,7 @@
   "share.import_copy": "Importar como cópia",
   "share.import_clash": "Este painel já tem um modelo chamado \"{name}\". Importar vai deixá-lo com dois modelos com o mesmo nome, e só um deles será usado. Carregue Importar outra vez para avançar.",
   "share.import_not_yaml": "Isto não é YAML válido, por isso não pode ser lido.",
+  "share.import_too_big": "Isto é demasiado grande para ser um modelo, por isso não pode ser lido.",
   "share.requires_custom_cards": "Requer estes cartões personalizados: {types}",
   "share.uses_other_templates": "Usa estes outros modelos, que não estão incluídos aqui: {names}",
   "share.import_not_a_template": "Isto não parece um modelo: devia ser um bloco de chaves e valores YAML.",
@@ -189,6 +190,7 @@
   "share.community_names_loading": "A ler nomes de modelos…",
   "share.community_names_failed": "Não foi possível ler os painéis de que este pede modelos emprestados, por isso não se consegue verificar um conflito de nomes. Nada é instalado até poderem ser lidos: prima «Procurar novos» para tentar de novo.",
   "share.community_risk_placeholders": "deixa a uma variável o que faz quando premido, ou que tipo de cartão é, algo que esta publicação não pode mostrar",
+  "share.community_risk_overlay": "estiliza um cartão para cobrir invisivelmente todo o ecrã, de modo que qualquer toque cai nele",
 
   "tools.health_header": "Saúde do painel",
 
@@ -247,6 +249,7 @@
   "warn.nothing_for": "nada no Home Assistant para \"{value}\"",
   "warn.step_not_alone": "{step} tem de ser o único passo da sua cadeia",
   "warn.fills_itself": "{name} preenche-se a si próprio sem fim",
+  "warn.too_many_fills": "mais de {max} cópias seriam preenchidas neste cartão, por isso o resto fica de fora",
   "warn.not_a_list_source": "{arg} não é uma lista nem uma fonte do registo",
   "warn.not_a_mapping": "{arg} não é um mapeamento",
   "warn.condition_closed": "a sua condição if: não se verifica",

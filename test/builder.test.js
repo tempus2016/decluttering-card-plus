@@ -346,4 +346,24 @@ check(
   [],
 );
 
+/* ------------------------------------------------- review 2026-10-25: pasted YAML keys */
+
+{
+  const cards = load(
+    [
+      '- type: tile',
+      '  entity: light.a',
+      '  tap_action: {action: toggle}',
+      '- type: tile',
+      '  entity: light.b',
+      '  tap_action:',
+      '    action: toggle',
+      '    __proto__:',
+      '      polluted: owned',
+    ].join('\n'),
+  );
+  buildTemplates(cards);
+  check('a __proto__ key in a pasted card reaches no prototype', {}.polluted, undefined);
+}
+
 report();
