@@ -1,9 +1,14 @@
-import deepReplace from './deep-replace';
+import deepReplace, { BuildExtras } from './deep-replace';
 import { forEachItems, forEachVariables, normaliseVariables, POSITION_NAMES } from './variables';
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import { sourceTemplate, TemplateRender } from './template-source';
 import { CONSUMER_TYPES } from './templates';
 import { VariablesConfig } from './types';
+
+// What a strategy's substitutions are handed for `with:` and `repeat:` (#227): the item
+// templates ride on the context the card already builds, and the context itself serves a
+// `repeat:` over a registry source.
+const extrasOf = (context?: SourceContext): BuildExtras => ({ itemTemplates: context?.itemTemplates, context });
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -86,7 +91,23 @@ export function expandEntry(
   const common = [...normaliseVariables(entry.variables), ...normaliseVariables(shared)];
   return items.map((item, index) => {
     const values = forEachVariables(item, common, index, items.length);
-    return handDown(deepReplace(values, {}, content, undefined, hass), values);
+    return handDown(
+      deepReplace(
+        values,
+        {},
+        content,
+        undefined,
+        hass,
+        undefined,
+        undefined,
+        0,
+        undefined,
+        undefined,
+        false,
+        extrasOf(context),
+      ),
+      values,
+    );
   });
 }
 
@@ -201,7 +222,7 @@ export function uniquePath(path: string, taken: Set<string>): string {
  * the light's. The view's values go in as the inner strategy's shared values instead,
  * which an inner item still beats - minus the position, which is the inner repeat's own.
  */
-function fillNestedStrategy(strategy: any, values: VariablesConfig[], hass: any): any {
+function fillNestedStrategy(strategy: any, values: VariablesConfig[], hass: any, context?: SourceContext): any {
   const held = new Map<string, Record<string, unknown>>();
   const skeleton: any = { ...strategy };
   for (const key of ['sections', 'badges']) {
@@ -218,7 +239,20 @@ function fillNestedStrategy(strategy: any, values: VariablesConfig[], hass: any)
       return rest;
     });
   }
-  const filled = deepReplace(values, {}, skeleton, undefined, hass);
+  const filled = deepReplace(
+    values,
+    {},
+    skeleton,
+    undefined,
+    hass,
+    undefined,
+    undefined,
+    0,
+    undefined,
+    undefined,
+    false,
+    extrasOf(context),
+  );
   for (const key of ['sections', 'badges']) {
     if (!Array.isArray(filled[key])) continue;
     filled[key] = filled[key].map((entry: any, index: number) => ({ ...entry, ...held.get(`${key}:${index}`) }));
@@ -229,16 +263,33 @@ function fillNestedStrategy(strategy: any, values: VariablesConfig[], hass: any)
 }
 
 /** One view of a repeat, filled in with its item's values. */
-function fillView(content: any, values: VariablesConfig[], hass: any): any {
+function fillView(content: any, values: VariablesConfig[], hass: any, context?: SourceContext): any {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return content;
   const { strategy, ...rest } = content;
-  const view = handDown(deepReplace(values, {}, rest, undefined, hass), values);
+  const extras = extrasOf(context);
+  const view = handDown(
+    deepReplace(values, {}, rest, undefined, hass, undefined, undefined, 0, undefined, undefined, false, extras),
+    values,
+  );
   if (strategy === undefined) return view;
   // Somebody else's strategy is filled in like any other part of the view, and left to run.
   view.strategy =
     strategy?.type === STRATEGY_TYPE
-      ? fillNestedStrategy(strategy, values, hass)
-      : deepReplace(values, {}, strategy, undefined, hass);
+      ? fillNestedStrategy(strategy, values, hass, context)
+      : deepReplace(
+          values,
+          {},
+          strategy,
+          undefined,
+          hass,
+          undefined,
+          undefined,
+          0,
+          undefined,
+          undefined,
+          false,
+          extras,
+        );
   return view;
 }
 
@@ -251,17 +302,44 @@ export function expandView(entry: any, shared: unknown, hass?: any, context?: So
   if (!items.length) return entry.empty === undefined ? [] : [entry.empty];
 
   const common = [...normaliseVariables(entry.variables), ...normaliseVariables(shared)];
-  return items.map((item, index) => fillView(entry.view, forEachVariables(item, common, index, items.length), hass));
+  return items.map((item, index) =>
+    fillView(entry.view, forEachVariables(item, common, index, items.length), hass, context),
+  );
+}
+
+/*
+ * The strategy's `variables:` reach the rest of the dashboard too - its own settings, such as
+ * a `wallpanel:` block, and the views written out as they are - not only the repeats (#226).
+ * The template keys are definitions, filled in later by each card that uses them, so they
+ * are left alone. Quietly: a placeholder nothing here sets may well be a card's own, or
+ * button-card's `[[[ ]]]`, and stays as written for whoever reads it next.
+ */
+function fillPlain(content: any, values: VariablesConfig[], hass: any): any {
+  if (!values.length) return content;
+  if (!content || typeof content !== 'object' || Array.isArray(content) || content.strategy === undefined) {
+    return deepReplace(values, {}, content, undefined, hass, true);
+  }
+  const { strategy, ...rest } = content;
+  const view = deepReplace(values, {}, rest, undefined, hass, true);
+  view.strategy =
+    strategy?.type === STRATEGY_TYPE
+      ? fillNestedStrategy(strategy, values, hass)
+      : deepReplace(values, {}, strategy, undefined, hass, true);
+  return view;
 }
 
 /** The dashboard a dashboard strategy config describes, with every repeated view written out. */
 export function generateDashboard(config: any, hass?: any, context?: SourceContext): any {
+  const shared = normaliseVariables(config?.variables);
   const dashboard: any = {};
   for (const [key, value] of Object.entries(config ?? {})) {
-    if (!DASHBOARD_OWN_KEYS.includes(key)) dashboard[key] = value;
+    if (DASHBOARD_OWN_KEYS.includes(key)) continue;
+    dashboard[key] = key.startsWith('decluttering_') ? value : fillPlain(value, shared, hass);
   }
 
-  const entries: any[] = Array.isArray(config?.views) ? config.views : [];
+  const entries: any[] = (Array.isArray(config?.views) ? config.views : []).map((entry: any) =>
+    isRepeatEntry(entry) ? entry : fillPlain(entry, shared, hass),
+  );
   // A path written out by hand is the user's and is kept as written; a generated one makes
   // way for it, wherever in the list either sits.
   const taken = new Set<string>();

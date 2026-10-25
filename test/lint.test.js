@@ -267,4 +267,22 @@ check('a name in defaults: counts as defined', definedNames({ template: 't', def
   'colour',
 ]);
 
+// `with:` and `repeat:` (#227) are steps the lint knows, and what they supply is defined.
+check(
+  'a repeat: body reading what the repeat supplies is not undeclared',
+  lintTemplate({
+    default: { lights: { domain: 'light' }, row: { entity: '[[entity]]', name: '[[name]]' } },
+    card: { type: 'entities', entities: ['[[row|repeat:lights]]'] },
+  }),
+  [],
+);
+check(
+  'a misspelt with: is an unknown step with the right suggestion',
+  lintTemplate({ card: { x: '[[row|wiht:entity=x]]' } }).map((f) => [f.key, f.params.closest]),
+  [
+    ['lint.unknown_step', 'with:entity=x'],
+    ['lint.undeclared', undefined],
+  ],
+);
+
 report();

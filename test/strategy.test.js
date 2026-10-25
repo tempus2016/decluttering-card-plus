@@ -459,9 +459,71 @@ check(
 
   check('a path that slugs to nothing is left out, so the view goes by position', 'path' in generated.views[5], false);
 
-  check('a view with its own view strategy passes through for Home Assistant to run', generated.views[6], {
-    strategy: { type: 'custom:decluttering-card-plus', sections: [] },
+  check(
+    'a view with its own view strategy passes through for Home Assistant to run, with the values',
+    generated.views[6],
+    {
+      strategy: { type: 'custom:decluttering-card-plus', sections: [], variables: [{ theme: 'dark' }] },
+    },
+  );
+}
+
+{
+  // #226: the strategy's values reach the dashboard's own settings and the plain views too.
+  const generated = generateDashboard(
+    {
+      type: 'custom:decluttering-card-plus',
+      variables: [{ use_wallpanel: false }, { room: 'Hall' }],
+      wallpanel: { enabled: '[[use_wallpanel]]', hide_toolbar: true },
+      decluttering_templates: { t: { card: { type: 'markdown', content: '[[room]]' } } },
+      views: [
+        {
+          title: '[[room]]',
+          path: '[[room]]',
+          cards: [
+            { type: 'markdown', content: '[[room]] [[not_set]]' },
+            { type: 'custom:button-card', name: '[[[ return 1 ]]]' },
+            { type: 'custom:decluttering-card-plus', template: 't', variables: [{ name: '[[room]]' }] },
+          ],
+        },
+        { strategy: { type: 'custom:other', area: '[[room]]' } },
+      ],
+    },
+    hass,
+  );
+
+  check('a dashboard setting is filled in, keeping its type', generated.wallpanel, {
+    enabled: false,
+    hide_toolbar: true,
   });
+
+  check('the templates are left for the cards to fill', generated.decluttering_templates.t.card.content, '[[room]]');
+
+  check(
+    'a plain view is filled in, and what nothing sets stays as written',
+    [generated.views[0].title, generated.views[0].path, generated.views[0].cards[0].content],
+    ['Hall', 'Hall', 'Hall [[not_set]]'],
+  );
+
+  check('button-card JavaScript is left alone', generated.views[0].cards[1].name, '[[[ return 1 ]]]');
+
+  check('a card using a template gets the value in its variables', generated.views[0].cards[2].variables, [
+    { name: 'Hall' },
+  ]);
+
+  check('somebody else strategy in a plain view is filled in', generated.views[1].strategy, {
+    type: 'custom:other',
+    area: 'Hall',
+  });
+}
+
+{
+  const config = { title: '[[x]]', views: [{ title: '[[x]]' }] };
+  check(
+    'with no values set, nothing changes',
+    [generateDashboard(config).title, generateDashboard(config).views],
+    ['[[x]]', [{ title: '[[x]]' }]],
+  );
 }
 
 check('a dashboard with no views asked for has none', generateDashboard({ type: 'x' }).views, []);

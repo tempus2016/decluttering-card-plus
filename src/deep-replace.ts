@@ -1,9 +1,15 @@
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
 import { BuildTrace } from './trace';
+import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import {
   answersUnset,
   applyTransform,
+  forEachVariables,
+  isStructureStep,
+  normaliseVariables,
+  REPEAT_STEP,
+  stepName,
   CONSUMER_TYPES,
   ESCAPE,
   gateOpen,
@@ -58,6 +64,72 @@ const MAX_CONDITION_DEPTH = 3;
 // until nothing changes. The cap only matters for a variable that refers to itself,
 // which would otherwise never settle.
 const MAX_PASSES = 10;
+
+/*
+ * What the card hands substitution beyond the variables (#227): the dashboard's item
+ * templates - a `decluttering_templates:` entry with an `item:` body rather than a card -
+ * for `with:` and `repeat:` to fill in by name, and the context a `repeat:` over a registry
+ * source reads, as a card's `for_each_from:` does.
+ */
+export interface BuildExtras {
+  itemTemplates?: Record<string, TemplateConfig>;
+  context?: SourceContext;
+}
+
+// How far a `with:` or `repeat:` may nest inside another before it is refused - a body that
+// fills itself in would otherwise never settle.
+const MAX_EXPAND_DEPTH = 6;
+
+/*
+ * A list a `repeat:` built, wrapped so that the pass at the end can splice it into the list
+ * it sits in rather than leaving a list inside a list - `cameras:` can then mix fixed
+ * entries with repeated ones. A whole value that is not in a list is unwrapped to the list
+ * itself. The key is only ever written here and read here, on the same build.
+ */
+const SPLICE_KEY = '__dcp_splice__';
+
+/** What a structural step produced, or why it would not. */
+type Expansion = { value: unknown; splice?: boolean } | { refused: string };
+
+function isSplice(node: any): boolean {
+  return (
+    !!node &&
+    typeof node === 'object' &&
+    !Array.isArray(node) &&
+    Object.prototype.hasOwnProperty.call(node, SPLICE_KEY) &&
+    Array.isArray(node[SPLICE_KEY])
+  );
+}
+
+/** Every spliced list put into the list it sits in, or unwrapped where it stands alone. */
+function unsplice(node: any): any {
+  if (Array.isArray(node)) {
+    const out: any[] = [];
+    for (const each of node) {
+      if (isSplice(each)) out.push(...each[SPLICE_KEY].map(unsplice));
+      else out.push(unsplice(each));
+    }
+    return out;
+  }
+  if (node && typeof node === 'object') {
+    if (isSplice(node)) return node[SPLICE_KEY].map(unsplice);
+    const out: Record<string, any> = Object.create(null);
+    for (const [key, value] of Object.entries(node)) out[key] = unsplice(value);
+    return out;
+  }
+  return node;
+}
+
+/*
+ * One item of a list to repeat over, as the mapping of variables its copy is given. A
+ * mapping is its own variables, as in a `for_each`. A plain value is `item`, and an entity
+ * id is `entity` as well, so a list of ids reads the way a registry repeat does.
+ */
+function scalarAsItem(item: unknown): unknown {
+  if (item && typeof item === 'object') return item;
+  const entityLike = typeof item === 'string' && /^[a-z_]+\.[a-z0-9_]+$/.test(item);
+  return entityLike ? { item, entity: item } : { item };
+}
 
 // A ceiling on the substituted text, so a chain of variables that each expand into two of
 // the next - `v0: "[[v1]][[v1]]"`, `v1: "[[v2]][[v2]]"`, ... - cannot double its way to a
@@ -189,6 +261,8 @@ function substitutePass(
   trace?: BuildTrace,
   shield?: (text: string) => string,
   settle: (name: string) => unknown = (name) => values[name],
+  // How a `with:` or `repeat:` chain is worked out (#227).
+  expand?: (name: string, chain: string) => Expansion | undefined,
 ): string {
   let json = jsonConfig;
   for (const variable of variableArray) {
@@ -306,6 +380,16 @@ function substitutePass(
         transform = withoutConditions(written);
       }
       if (!transform) return whole ? asWholeValue(value, match) : asPartOfString(value);
+      // `with:` and `repeat:` build their answer from the variables rather than shaping
+      // text, so they are settled here, before the chain machinery would refuse a mapping.
+      if (expand && isStructureStep(transform.split('|')[0])) {
+        const outcome = expand(Object.keys(variable)[0], transform);
+        if (outcome === undefined) return match;
+        if ('refused' in outcome) return refuse(match, written as string, outcome.refused, 'shape');
+        const out = outcome.value === undefined ? null : outcome.value;
+        if (!whole) return asPartOfString(out);
+        return JSON.stringify(outcome.splice ? { [SPLICE_KEY]: out } : out);
+      }
       const chain = transform;
       // `json` reads the variable's own value, so anywhere but first it has nothing to
       // work on - and without this it would be blamed on Home Assistant.
@@ -523,6 +607,8 @@ function deepReplace(
   // Leave every escape in place: the output is itself going to be substituted, as the
   // variables handed down to a nested card are.
   keepEscapes = false,
+  // The item templates and registry context `with:` and `repeat:` read (#227).
+  extras?: BuildExtras,
 ): any {
   if (content === undefined) return content;
   // What the console is told is also noted on the trace, for `debug: report` (#207) -
@@ -546,7 +632,113 @@ function deepReplace(
   for (const entity of stateScope(hass)) {
     if (!variableArray.some((entry) => Object.keys(entry)[0] === entity)) variableArray.push({ [entity]: entity });
   }
+  /*
+   * An item template stands as a variable too, its body as the value, so
+   * `[[camera_entry|with:...]]` is reached by the same pass as any placeholder - and a bare
+   * `[[camera_entry]]` is the body filled in with nothing but the card's own variables.
+   * A variable of the same name wins, as it does over an entity.
+   */
+  const itemTemplates = extras?.itemTemplates ?? {};
+  for (const [name, template] of Object.entries(itemTemplates)) {
+    if (!variableArray.some((entry) => Object.keys(entry)[0] === name)) {
+      variableArray.push({ [name]: (template as any)?.item });
+    }
+  }
   const values = variableValues(variableArray);
+
+  /*
+   * `with:` and `repeat:` (#227) fill a body in again with values of their own: the same
+   * block of config used twice with different entities, or once per thing a list or the
+   * registry holds, inside a card's own list - a camera card's `cameras:` - where a nested
+   * card cannot go. The body is an item template's `item:`, with the template itself for
+   * its `default:` and `let:`, or a plain mapping variable's value.
+   */
+  const bodyOf = (name: unknown): { body: unknown; template: TemplateConfig } | undefined => {
+    if (typeof name !== 'string' || !name) return undefined;
+    const template = Object.prototype.hasOwnProperty.call(itemTemplates, name) ? itemTemplates[name] : undefined;
+    if (template && typeof template === 'object' && 'item' in template) {
+      return { body: (template as any).item, template };
+    }
+    if (Object.prototype.hasOwnProperty.call(values, name))
+      return { body: values[name], template: {} as TemplateConfig };
+    return undefined;
+  };
+  // The body filled in once: these values first, then everything the card already has -
+  // which includes the dashboard's shared values - and the item template's own defaults
+  // under both, as any template's are.
+  const fill = (found: { body: unknown; template: TemplateConfig }, own: VariablesConfig[]): unknown =>
+    deepReplace(
+      [...own, ...variableArray],
+      found.template,
+      found.body,
+      templateName,
+      hass,
+      quiet,
+      onUnresolved,
+      depth + 1,
+      undefined,
+      shield,
+      keepEscapes,
+      extras,
+    );
+  // The list a `repeat:` runs over: a list variable, or what a registry source finds.
+  const itemsOf = (name: string): unknown[] | undefined => {
+    const source = values[name];
+    if (Array.isArray(source)) return source;
+    if (isRegistrySource(source)) return resolveRegistryItems(hass, source, extras?.context);
+    return undefined;
+  };
+  // What a `with:` lays over the variables: `a=1,b=2` pairs read as text, or a mapping variable.
+  const overlayOf = (arg: string): VariablesConfig[] | undefined => {
+    if (!arg) return [];
+    if (arg.includes('=')) {
+      const pairs: VariablesConfig[] = [];
+      for (const pair of arg.split(',')) {
+        const equals = pair.indexOf('=');
+        if (equals === -1) return undefined;
+        pairs.push({ [pair.slice(0, equals).trim()]: pair.slice(equals + 1) });
+      }
+      return pairs;
+    }
+    const mapping = values[arg];
+    return mapping && typeof mapping === 'object' && !Array.isArray(mapping) ? normaliseVariables(mapping) : undefined;
+  };
+  // One copy per item, each given its item's values and its place, as a `for_each` copy is.
+  const repeatOver = (found: { body: unknown; template: TemplateConfig }, items: unknown[]) =>
+    items.map((item, index) => fill(found, forEachVariables(scalarAsItem(item), undefined, index, items.length)));
+  // Each placeholder is expanded once per build: the variables do not change between
+  // passes, and a body that refers to itself would otherwise be filled in again on every
+  // pass of every level - ten to the power of the depth, which hangs the tab.
+  const expansions = new Map<string, Expansion | undefined>();
+  const expand = (name: string, chain: string): Expansion | undefined => {
+    const key = `${name}|${chain}`;
+    if (expansions.has(key)) return expansions.get(key);
+    const outcome = ((): Expansion | undefined => {
+      const [step, ...rest] = chain.split('|');
+      if (rest.length) return { refused: localize('warn.step_not_alone', { step: `${stepName(step)}:` }) };
+      if (depth >= MAX_EXPAND_DEPTH) return { refused: localize('warn.fills_itself', { name }) };
+      const found = bodyOf(name);
+      if (!found) return undefined;
+      const kind = stepName(step);
+      const arg = step.slice(kind.length + 1);
+      if (kind === REPEAT_STEP) {
+        const items = itemsOf(arg);
+        if (!items) return { refused: localize('warn.not_a_list_source', { arg: arg || '""' }) };
+        return { value: repeatOver(found, items), splice: true };
+      }
+      const overlay = overlayOf(arg);
+      if (!overlay) return { refused: localize('warn.not_a_mapping', { arg }) };
+      const value = fill(found, overlay);
+      // A body still carrying a structural placeholder of its own name is one that fills
+      // itself in: refused here, so every level says so rather than inserting another copy
+      // of it on every pass until the size ceiling stops it.
+      if (JSON.stringify(value)?.includes(`[[${name}|`)) return { refused: localize('warn.fills_itself', { name }) };
+      return { value };
+    })();
+    expansions.set(key, outcome);
+    return outcome;
+  };
+
   let jsonConfig = JSON.stringify(content);
 
   // What an `if:` reads: a variable's value as it will end up, worked out once per name.
@@ -585,7 +777,19 @@ function deepReplace(
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
       const before = jsonConfig;
-      jsonConfig = substitutePass(jsonConfig, variableArray, refused, read, values, hass, limit, trace, shield, settle);
+      jsonConfig = substitutePass(
+        jsonConfig,
+        variableArray,
+        refused,
+        read,
+        values,
+        hass,
+        limit,
+        trace,
+        shield,
+        settle,
+        expand,
+      );
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
@@ -674,7 +878,9 @@ function deepReplace(
   const nothingToDo = !variableArray.length && !hasOptional && !fallbacks && !hasEscape(jsonConfig);
   if (nothingToDo) return content;
 
-  const pruned = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig), trace?.dropped) : JSON.parse(jsonConfig);
+  const parsed = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig), trace?.dropped) : JSON.parse(jsonConfig);
+  // The lists a `repeat:` built go into the lists they sit in.
+  const pruned = jsonConfig.includes(`"${SPLICE_KEY}"`) ? unsplice(parsed) : parsed;
   if (!hasEscape(jsonConfig) || keepEscapes) return pruned;
   return unescapeOutsideConsumers(pruned);
 }

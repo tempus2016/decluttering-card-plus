@@ -15,6 +15,9 @@ const {
   isResolver,
   usesResolver,
   getDeclarations,
+  declarationList,
+  addDeclarations,
+  isDeclarationsShape,
   usedVariables,
   resolveVariables,
   diagnoseInstance,
@@ -1477,5 +1480,47 @@ check(
   validateDeclared([{ plug: 'switch.plug' }], TYPED),
   [],
 );
+
+/* ------------------------------------------------ declarations as a mapping (#223) */
+
+check(
+  'a mapping of declarations reads as the list',
+  declarationList({
+    var1: 'foobar',
+    var2: { default: 'snafu' },
+    var3: { default: 'blah', selector: { text: {} }, description: 'xxx' },
+    bare: null,
+    many: ['a', 'b'],
+  }),
+  [
+    { name: 'var1', default: 'foobar' },
+    { default: 'snafu', name: 'var2' },
+    { default: 'blah', selector: { text: {} }, description: 'xxx', name: 'var3' },
+    { name: 'bare' },
+    { name: 'many', default: ['a', 'b'] },
+  ],
+);
+check('a list is handed back as it is', declarationList([{ name: 'a' }]), [{ name: 'a' }]);
+check('a string declares nothing', declarationList('colour'), []);
+check('the key is the name, whatever name: says', declarationList({ a: { name: 'b' } }), [{ name: 'a' }]);
+check('falsy defaults are still defaults', declarationList({ off: false, zero: 0, empty: '' }), [
+  { name: 'off', default: false },
+  { name: 'zero', default: 0 },
+  { name: 'empty', default: '' },
+]);
+check('getDeclarations reads a mapping', getDeclarations({ variables: { colour: 'red' } }), [
+  { name: 'colour', default: 'red' },
+]);
+check(
+  'and a mapping declaration can say defaults: too',
+  getDeclarations({ variables: { colour: { defaults: 'red' } } }),
+  [{ name: 'colour', default: 'red' }],
+);
+check('a mapping gains keys', addDeclarations({ a: 1 }, [{ name: 'b', default: 2 }]), { a: 1, b: { default: 2 } });
+check('a list gains entries', addDeclarations([{ name: 'a' }], [{ name: 'b' }]), [{ name: 'a' }, { name: 'b' }]);
+check('nothing becomes a list', addDeclarations(undefined, [{ name: 'b' }]), [{ name: 'b' }]);
+check('a mapping is a declarations shape', isDeclarationsShape({ a: 1 }), true);
+check('so is a list, and nothing', [isDeclarationsShape([]), isDeclarationsShape(undefined)], [true, true]);
+check('a string is not', isDeclarationsShape('a'), false);
 
 report();

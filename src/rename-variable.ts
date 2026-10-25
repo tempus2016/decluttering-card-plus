@@ -122,6 +122,9 @@ export function renameVariableInTemplate<T extends TemplateConfig>(template: T, 
     out.variables = out.variables.map((entry: any) =>
       entry && typeof entry === 'object' && entry.name === from ? { ...entry, name: to } : entry,
     );
+  } else if (out.variables && typeof out.variables === 'object') {
+    // Declarations written as a mapping (#223) are keyed by name.
+    out.variables = renameVariableKey(out.variables, from, to);
   }
   if (out.default !== undefined) out.default = renameVariableKey(out.default, from, to);
   if ((out as any).defaults !== undefined) (out as any).defaults = renameVariableKey((out as any).defaults, from, to);

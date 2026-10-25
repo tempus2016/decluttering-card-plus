@@ -18,7 +18,8 @@ import {
   LovelaceThingConfig,
   LovelaceThingType,
 } from './types';
-import deepReplace, { cssSafe } from './deep-replace';
+import deepReplace, { BuildExtras, cssSafe } from './deep-replace';
+import { structureNames } from './structure';
 import { buildExport, validateImport, freeName, missingCustomCards, withoutSources } from './share';
 import { suggestVariables } from './suggest';
 import { LIBRARY, libraryEntry, libraryNeeds, librarySource } from './library';
@@ -84,6 +85,7 @@ import {
   groupCards,
   withGroupCards,
   moveItem,
+  itemTemplatesOf,
 } from './templates';
 import { contentKey, listSettings, nameForSetting, namesInUse, promoteSetting, SettingPath } from './promote';
 import {
@@ -204,7 +206,9 @@ import {
   forEachItems,
   forEachNames,
   forEachVariables,
+  addDeclarations,
   getDeclarations,
+  isDeclarationsShape,
   inheritableVariables,
   mergeVariables,
   ownVariables,
@@ -218,6 +222,7 @@ import {
   VariableDeclaration,
   withInheritedVariables,
   withStateScope,
+  normaliseVariables,
 } from './variables';
 import {
   chainOf,
@@ -1161,6 +1166,9 @@ abstract class DeclutteringElement extends LitElement {
         (names) => unresolved.push(...names),
         0,
         trace,
+        undefined,
+        false,
+        this._buildExtras(),
       ),
       instance,
       thingType,
@@ -1175,7 +1183,7 @@ abstract class DeclutteringElement extends LitElement {
         templateConfig,
       );
     }
-    this._setResolved(thingType, built, styles, inherited);
+    this._setResolved(thingType, this._withGridOptions(thingType, built), styles, inherited);
     // Strict is held to the build on the page too, which knows the section.
     if (!quiet) this._refuseIfStrict(unresolved);
   }
@@ -1394,6 +1402,16 @@ abstract class DeclutteringElement extends LitElement {
    * placeholders in them filled in here - in the nested card they would be read against
    * the wrong values. An optional placeholder that nothing fills drops its entry.
    */
+  /*
+   * SPIKE #227: what a build needs for `with:`, `repeat:` and `__repeat__` - the dashboard's
+   * item templates and the context a registry source reads.
+   */
+  private _buildExtras(): BuildExtras {
+    const ll = getLovelaceConfig();
+    // No rendered Jinja sources here: a `repeat:` over `template:` is out of the spike's scope.
+    return { itemTemplates: itemTemplatesOf(ll), context: sourceContext(ll) };
+  }
+
   private _handDown(
     variables: VariablesConfig[] | undefined,
     templateConfig: TemplateConfig,
@@ -1539,7 +1557,7 @@ abstract class DeclutteringElement extends LitElement {
       this._widths?.disconnect();
       this._setResolved(
         'card',
-        config.empty as LovelaceThingConfig,
+        this._withGridOptions('card', config.empty as LovelaceThingConfig),
         this._resolveStyles(templateConfig, config.variables, config.style, config.template),
         () => this._handDown(config.variables, templateConfig, config.template),
       );
@@ -1604,6 +1622,9 @@ abstract class DeclutteringElement extends LitElement {
           undefined,
           0,
           trace,
+          undefined,
+          false,
+          this._buildExtras(),
         ),
         config,
         'card',
@@ -1834,6 +1855,21 @@ abstract class DeclutteringElement extends LitElement {
     super.disconnectedCallback();
     this._resizes?.disconnect();
     this._widths?.disconnect();
+  }
+
+  /*
+   * Some cards size what they draw from their own grid_options rather than from the space
+   * they are given - a statistics-graph only stretches its chart to fill the cell when its
+   * config has a number of rows, and otherwise draws it at its usual height and runs off the
+   * bottom (forum, post 22). The section reads this card's grid_options, never the wrapped
+   * card's, so the wrapped card is handed them too, the same as it would have if it sat in
+   * the section itself. Its own grid_options still win. Not for repeats: there each copy is
+   * one of several in the space, and the rows describe all of them together.
+   */
+  protected _withGridOptions(thingType: LovelaceThingType, thingConfig: LovelaceThingConfig): LovelaceThingConfig {
+    if (thingType !== 'card' || this._gridOptions === undefined) return thingConfig;
+    if (!thingConfig || typeof thingConfig !== 'object' || 'grid_options' in thingConfig) return thingConfig;
+    return { ...thingConfig, grid_options: this._gridOptions };
   }
 
   /*
@@ -2271,7 +2307,7 @@ class DeclutteringCard extends DeclutteringElement {
         true,
       );
       this._buildingFallback = true;
-      this._setResolved(kind, built, '');
+      this._setResolved(kind, this._withGridOptions(kind, built), '');
     } catch {
       // An on_error that cannot be built itself shows the error it stood in for.
       this._fallbackFailed = true;
@@ -3428,6 +3464,10 @@ class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
       ...this._renderedTemplateNames(),
       // An entity the card rebuilds on stands for itself in a placeholder.
       ...rebuildOnEntities(this._config?.rebuild_on),
+      // What the template's own `with:` and `repeat:` give the bodies they fill in, and the
+      // item templates those name, which are the dashboard's rather than the card's.
+      ...structureNames(template, normaliseVariables(this._config?.variables)),
+      ...Object.keys(itemTemplatesOf(this._lovelace ?? getLovelaceConfig())),
     ];
     const repeated = supplied.map((name) => ({ [name]: null }));
     const { missing, unused, required } = diagnoseInstance(this._config?.variables, template, repeated);
@@ -4129,7 +4169,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     if (!isVariablesShape(this._config.default) || !isVariablesShape(this._config.defaults)) {
       error.default = localize('error.variables_shape', undefined, this.hass);
     }
-    if (this._config.variables !== undefined && !Array.isArray(this._config.variables)) {
+    if (!isDeclarationsShape(this._config.variables)) {
       error.variables = localize('template_editor.declarations_shape', undefined, this.hass);
     }
 
@@ -4228,7 +4268,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
    * knowing while writing one, and neither is a reason to refuse the configuration.
    */
   private _renderDiagnostics(): TemplateResult {
-    if (!this._config || (this._config.variables !== undefined && !Array.isArray(this._config.variables))) {
+    if (!this._config || !isDeclarationsShape(this._config.variables)) {
       return html``;
     }
 
@@ -4333,7 +4373,8 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     if (!this._config) return html``;
     const ll = this._savedLovelace;
     const resolved = collectTemplates(ll, undefined, this._config)[this._config.template];
-    const findings = lintTemplate(this._config, definedNames(resolved));
+    // Item templates are names a placeholder may start with, and the dashboard's to define.
+    const findings = lintTemplate(this._config, [...definedNames(resolved), ...Object.keys(itemTemplatesOf(ll))]);
     if (!findings.length) return html``;
     return html`${findings.map(
       (finding) =>
@@ -4608,7 +4649,7 @@ class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEdito
     if (this._suggestion) {
       const config = { ...this._config, card: this._suggestion.card };
       // Existing declarations are kept: the suggestion was worked out around them.
-      config.variables = [...getDeclarations(this._config), ...this._suggestion.variables];
+      config.variables = addDeclarations(this._config.variables, this._suggestion.variables);
       this._suggestion = undefined;
       this._fireConfigChanged(config as DeclutteringTemplateConfig);
       return;
@@ -7023,7 +7064,8 @@ class DeclutteringViewStrategy extends HTMLElement {
     // strategy may wait, and Home Assistant only calls it again on a registry change.
     const rendered = await renderStrategyTemplates(config, (template) => renderTemplateOnce(hass, template));
     for (const [template, render] of Object.entries(rendered)) warnUnlisted(template, render, hass);
-    return generateView(config, hass, { ...sourceContext(getLovelaceConfig()), rendered });
+    const ll = getLovelaceConfig();
+    return generateView(config, hass, { ...sourceContext(ll), rendered, itemTemplates: itemTemplatesOf(ll) });
   }
 }
 

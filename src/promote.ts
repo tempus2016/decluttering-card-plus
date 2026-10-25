@@ -1,4 +1,4 @@
-import { PLACEHOLDER, VariableDeclaration } from './variables';
+import { PLACEHOLDER, VariableDeclaration, addDeclarations, declarationList } from './variables';
 import { freeName } from './share';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -66,7 +66,7 @@ export function listSettings(content: any): Setting[] {
 /** The names a template already answers to: what it declares, and what its content uses. */
 export function namesInUse(template: any): string[] {
   const names = new Set<string>();
-  for (const declaration of Array.isArray(template?.variables) ? template.variables : []) {
+  for (const declaration of declarationList(template?.variables)) {
     if (declaration && typeof declaration.name === 'string') names.add(declaration.name);
   }
   const text = JSON.stringify(template ?? {});
@@ -119,9 +119,12 @@ export function promoteSetting(template: any, path: SettingPath, name: string): 
   if (!key || value === undefined || value === null || typeof value === 'object') return { ok: false, error: 'gone' };
 
   const declaration: VariableDeclaration = { name, type: typeFor(value), default: value };
-  const declared = Array.isArray(template.variables) ? template.variables : [];
   return {
     ok: true,
-    template: { ...template, [key]: setAt(template[key], path, `[[${name}]]`), variables: [...declared, declaration] },
+    template: {
+      ...template,
+      [key]: setAt(template[key], path, `[[${name}]]`),
+      variables: addDeclarations(template.variables, [declaration]),
+    },
   };
 }

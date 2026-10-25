@@ -83,4 +83,11 @@ check('a name with a space is refused', promoteSetting(tile, ['entity'], 'my lig
 check('a path that is gone is refused', promoteSetting(tile, ['nothing'], 'x'), { ok: false, error: 'gone' });
 check('the original is not mutated', tile.card.entity, 'light.hall');
 
+check(
+  'a template declaring by mapping keeps the mapping when a setting is promoted',
+  promoteSetting({ variables: { colour: 'red' }, card: { type: 'gauge', min: 0 } }, ['min'], 'low').template.variables,
+  { colour: 'red', low: { type: 'number', default: 0 } },
+);
+check('a mapping declaration counts as a name in use', namesInUse({ variables: { colour: 'red' } }), ['colour']);
+
 report();

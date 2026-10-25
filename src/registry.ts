@@ -8,6 +8,7 @@
  */
 
 import { categoriesOf, categoryRegistry, EntityCategory } from './categories';
+import { TemplateConfig } from './types';
 import { labelRegistry } from './labels';
 import { asHaText, CARRIES_TOKEN } from './variables';
 import { sourceTemplate, TemplateRender, templateList } from './template-source';
@@ -112,6 +113,8 @@ export interface SourceContext {
   dashboard?: string;
   /** What each `template:` rendered to, keyed by the template's text. Absent until it has. */
   rendered?: Record<string, TemplateRender>;
+  /** The dashboard's item templates, for a `with:` or `repeat:` inside what a strategy writes out. */
+  itemTemplates?: Record<string, TemplateConfig>;
 }
 
 /** Whether a `for_each_from:` value is a description of what to repeat over. */
