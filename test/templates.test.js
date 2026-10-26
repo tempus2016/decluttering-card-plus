@@ -2172,6 +2172,21 @@ collectAllTemplates(hass, borrower).then((all) => {
         check('itemTemplatesOf finds the templates with an item: body', Object.keys(itemTemplatesOf(ll)), [
           'camera_entry',
         ]);
+        // #233: an item template's extends: is folded in, list edits and all, and a child with
+        // nothing but extends: is still an item template.
+        const extended = itemTemplatesOf({
+          decluttering_templates: {
+            item_1: { item: { test: 'string1', entities: ['[[e1?]]', 'sun.sun'] } },
+            item_2: { extends: 'item_1', item: { entities: { __append__: ['camera.a', 'camera.b'] } } },
+            item_3: { extends: 'item_1' },
+          },
+        });
+        check('an item template inherits its parent through extends:', extended.item_2, {
+          item: { test: 'string1', entities: ['[[e1?]]', 'sun.sun', 'camera.a', 'camera.b'] },
+        });
+        check('an item template with only extends: is found', extended.item_3, {
+          item: { test: 'string1', entities: ['[[e1?]]', 'sun.sun'] },
+        });
         const health = checkDashboard(ll);
         check('names a repeat: or with: supplies are not called unset', health.unsetVariables, []);
         check(
