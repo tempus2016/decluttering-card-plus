@@ -81,7 +81,8 @@ export function suggestVariables(card: any, taken: string[]): { card: any; varia
 
     const out: any = {};
     for (const [key, value] of Object.entries(node)) {
-      const candidate = CANDIDATES[key];
+      // Own names only: `constructor` or `toString` as a key would find Object's, not a candidate.
+      const candidate = Object.prototype.hasOwnProperty.call(CANDIDATES, key) ? CANDIDATES[key] : undefined;
       // Only a plain string is replaced. A list of entities would have to become a list
       // of variables, and half-replacing one is worse than leaving it alone.
       // A value that already refers to a variable is somebody's deliberate work, not a

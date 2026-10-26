@@ -146,6 +146,7 @@
   "share.import_copy": "Importar como copia",
   "share.import_clash": "Este panel ya tiene una plantilla llamada \"{name}\". Importar te dejará dos plantillas con el mismo nombre, y solo se usará una. Pulsa Importar otra vez para seguir.",
   "share.import_not_yaml": "Esto no es YAML válido, así que no se puede leer.",
+  "share.import_too_big": "Esto es demasiado grande para ser una plantilla, así que no se puede leer.",
   "share.requires_custom_cards": "Requiere estas tarjetas personalizadas: {types}",
   "share.uses_other_templates": "Usa estas otras plantillas, que no van incluidas aquí: {names}",
   "share.import_not_a_template": "Esto no parece una plantilla: debería ser un bloque de claves y valores YAML.",
@@ -189,6 +190,7 @@
   "share.community_names_loading": "Leyendo nombres de plantillas…",
   "share.community_names_failed": "No se pudieron leer los paneles de los que este toma plantillas prestadas, así que no se puede comprobar un conflicto de nombres. No se instala nada hasta que puedan leerse: pulsa «Buscar nuevas» para intentarlo de nuevo.",
   "share.community_risk_placeholders": "deja a una variable lo que hace al pulsarla, o qué tipo de tarjeta es, algo que esta publicación no puede mostrar",
+  "share.community_risk_overlay": "da estilo a una tarjeta para que cubra toda la pantalla de forma invisible, así que cualquier pulsación cae sobre ella",
 
   "tools.health_header": "Salud del panel",
 
@@ -247,6 +249,7 @@
   "warn.nothing_for": "nada en Home Assistant para \"{value}\"",
   "warn.step_not_alone": "{step} tiene que ser el único paso de su cadena",
   "warn.fills_itself": "{name} se rellena a sí mismo sin fin",
+  "warn.too_many_fills": "se rellenarían más de {max} copias en esta tarjeta, así que el resto se omite",
   "warn.not_a_list_source": "{arg} no es una lista ni una fuente del registro",
   "warn.not_a_mapping": "{arg} no es un mapa",
   "warn.condition_closed": "su condición if: no se cumple",

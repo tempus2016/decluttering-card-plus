@@ -151,6 +151,8 @@ export function formatPath(path: TracePath): string {
  * builds after it, once Home Assistant creates it. So every nested card reports what it
  * built to the outermost one, which logs the whole thing once nothing is left to wait for -
  * or, when a nested card is never built (hidden, or not shown yet), once the reports stop.
+ * A card that builds after that (one inside a camera card that is slow to start, #218) is
+ * still put in its place, and the whole thing is logged and reported again with it.
  */
 interface Expansion {
   label: string;
@@ -208,7 +210,8 @@ function settle(id: string): void {
 function finish(id: string): void {
   const expansion = expansions.get(id);
   if (!expansion) return;
-  expansions.delete(id);
+  // Kept while cards are still missing, so one that builds late still gets its place.
+  if (!expansion.waiting.size) expansions.delete(id);
   if (expansion.timer) clearTimeout(expansion.timer);
   const { hass } = expansion;
   console.groupCollapsed(localize('trace.in_full', { label: expansion.label }, hass));
@@ -217,6 +220,13 @@ function finish(id: string): void {
   if (neverBuilt.length) console.log(localize('trace.never_built', undefined, hass), neverBuilt);
   console.groupEnd();
   expansion.done?.({ reports: expansion.reports, full: expansion.config, neverBuilt });
+}
+
+/** The outermost card has built again, or gone: what it was still waiting for no longer matters. */
+export function endExpansion(id: string): void {
+  const expansion = expansions.get(id);
+  if (expansion?.timer) clearTimeout(expansion.timer);
+  expansions.delete(id);
 }
 
 /** The outermost logging card has built: wait for the cards inside it, if it has any. */

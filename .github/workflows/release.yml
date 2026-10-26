@@ -14,6 +14,12 @@ permissions:
 jobs:
   release-bundle:
     runs-on: ubuntu-latest
+    # id-token and attestations are for the provenance step at the end, which ties the asset
+    # every install downloads to this run and this commit. Nothing before it uses them.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     # main is the only release branch (release.config.js agrees), and the only branch the
     # ruleset protects.
     if: github.ref == 'refs/heads/main'
@@ -44,3 +50,15 @@ jobs:
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Was a release made?
+        # semantic-release commits and tags the release locally before pushing, so a new tag
+        # on HEAD is the sign. No tag means nothing to attest.
+        id: tagged
+        run: echo "tag=$(git tag --points-at HEAD | head -n 1)" >> "$GITHUB_OUTPUT"
+      - name: Attest the bundle's provenance
+        # Signed statement that dist/decluttering-card-plus.js was built by this workflow from
+        # this commit, checkable with `gh attestation verify` (review 2026-10-25).
+        if: steps.tagged.outputs.tag != ''
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/decluttering-card-plus.js

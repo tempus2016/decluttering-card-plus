@@ -121,7 +121,8 @@ Templates][wiki-defining].
   own list where a nested card cannot go: `[[camera_entry|with:camera_entity=camera.front]]`
   fills a mapping in once, `[[camera_entry|repeat:cams]]` once per item of a list or per
   entity the registry finds, spliced into the list it sits in. The block is a mapping
-  variable, or a template with an `item:` body when it wants defaults of its own.
+  variable, or a template with an `item:` body when it wants defaults of its own, which can
+  `extends:` another item template *(v2.3.1+)*.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
   area, device, floor or label Home Assistant knows about, narrowed by domain, area, floor,
   label, device class or integration, with anything you name excluded, sorted, limited, and a card of your own to
@@ -335,6 +336,12 @@ elements:
 go2rtc: '[[go2rtc_block|if:live_provider=go2rtc?]]'
 ```
 
+Text that comes from Home Assistant - a friendly name, an attribute, a device's model - is
+always text: it is never read as a placeholder, and it never opens button-card's `[[[ ]]]`,
+Jinja's `{{ }}` or config-template-card's `${ }` either, however the name is written. If you
+put such a value inside a string in code of your own, `[[[ return '[[name]]' ]]]`, use
+`[[name|json]]` there instead, which writes it as a quoted and escaped string literal.
+
 `bool` *(v1.12.0+)* is for options that want a real `true` or `false`. A card reads the
 word `"false"` as switched on, so `hide_state: '[[compact|bool]]'` turns `yes`, `on` or
 `1` into `true`, and `no`, `off`, `0`, nothing at all or an unset variable into `false`.
@@ -523,7 +530,8 @@ forum post. It starts with the versions of the card, Home Assistant and your bro
 what the card ended up as, then each build folded away under its own heading, with the
 template as written, its variables, placeholders, warnings and result, the cards inside it
 included. If `strict:` refuses the card, the reason comes first. Put it on the outermost
-card: a card inside it is in its report already.
+card: a card inside it is in its report already. A card inside that builds late, such as a
+camera card waiting on its stream, is filled in when it arrives *(v2.3.1+)*.
 
 **Show the report** opens it on the card formatted, the way GitHub would show it
 *(v2.1.0+)*, with a button to switch to the Markdown source.

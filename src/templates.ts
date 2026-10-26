@@ -618,7 +618,9 @@ function mergeDeclarations(parent: any, child: any): any[] {
 
 function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): TemplateConfig {
   const merged: any = { ...parent, ...child };
-  for (const key of TEMPLATE_CONTENT_KEYS) {
+  // An item template's body merges the same way (#233); it is kept out of the content keys
+  // because those are what a card shows, and an item template shows nothing on its own.
+  for (const key of [...TEMPLATE_CONTENT_KEYS, 'item']) {
     const combined = deepMergeConfig((parent as any)[key], (child as any)[key]);
     if (combined !== undefined) merged[key] = combined;
   }
@@ -976,7 +978,9 @@ export function itemTemplatesOf(ll: LovelaceConfig | null | undefined): Record<s
   let found = ITEM_TEMPLATES.get(ll);
   if (!found) {
     found = Object.create(null) as Record<string, TemplateConfig>;
-    for (const [name, template] of Object.entries(collectRawTemplates(ll))) {
+    // extends: first (#233), so a child picks up its parent's item: - list edits and all -
+    // and one written with nothing but extends: is an item template too.
+    for (const [name, template] of Object.entries(resolveExtends(collectRawTemplates(ll)))) {
       if (template && typeof template === 'object' && 'item' in template) found[name] = template;
     }
     ITEM_TEMPLATES.set(ll, found);

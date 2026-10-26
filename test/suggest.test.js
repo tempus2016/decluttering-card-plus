@@ -95,4 +95,17 @@ check(
   },
 );
 
+check(
+  'a key that names what every object inherits is left alone rather than throwing',
+  (() => {
+    try {
+      const out = suggestVariables({ card: { type: 'tile', constructor: 'x', toString: 'light.a', __proto__: 'y' } });
+      return typeof out === 'object';
+    } catch (err) {
+      return String(err);
+    }
+  })(),
+  true,
+);
+
 report();

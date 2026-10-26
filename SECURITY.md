@@ -14,7 +14,18 @@ logged-in user has. In the course of doing its job it reads:
 Everything it reads from Home Assistant is treated as text: a device name, a friendly name
 or an attribute that happens to look like a placeholder is shown as written, never read as
 template code, and an attribute that carries a token (`access_token`, `entity_picture`,
-`entity_picture_local`, or any value with `token=` in it) is refused.
+`entity_picture_local`, or any value with `token=` in it) is refused. The same text is kept
+from opening a language another card runs: a name shaped like button-card JavaScript
+(`[[[ ... ]]]`), a Jinja template (`{{ ... }}`, `{% ... %}`) or a config-template-card
+expression (`${ ... }`) reaches that card with an invisible word joiner (U+2060) inside the
+opening brackets, so it is shown as a name and not run. Inside a stylesheet - the template's
+`style:`, card-mod's `card_mod:`, button-card's `styles:` - the characters that would let a
+name end a declaration or fetch something are taken out of it altogether.
+
+One thing it cannot do is quote Home Assistant's text for you inside code you wrote: a
+placeholder inside a JavaScript or Jinja string literal, `[[[ return '[[name]]' ]]]`, is still
+the author's string with whatever the name holds spliced in. Write `[[name|json]]` there, which
+puts the name in as a quoted, escaped string literal.
 
 A dashboard never reaches the internet by being opened. The starter templates in the editor
 are carried in the bundle rather than fetched. The one network request the card makes is the

@@ -1292,12 +1292,15 @@ check(
   [true, true, true],
 );
 check(
-  'what Home Assistant gives is escaped like any other answer',
-  applyTransform('model', 'light.x', {
-    entities: { 'light.x': { device_id: 'd' } },
-    devices: { d: { model: '[[evil]]' } },
-  }),
-  '[[!evil]]',
+  'what Home Assistant gives is marked like any other answer, and reads back as the text',
+  (() => {
+    const model = applyTransform('model', 'light.x', {
+      entities: { 'light.x': { device_id: 'd' } },
+      devices: { d: { model: '[[evil]]' } },
+    });
+    return [model.includes('[['), model.replace(/\u2060/g, '')];
+  })(),
+  [false, '[[evil]]'],
 );
 
 /* ---------------------------------------------------------- translate */

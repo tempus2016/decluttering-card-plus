@@ -181,4 +181,14 @@ check(
   ['[[a]]', '[[b]]'],
 );
 
+{
+  const started = Date.now();
+  const runs = placeholderRuns('['.repeat(40000) + '\nok [[x]]');
+  check(
+    'a line of forty thousand brackets is text, read in no time, and the next line is still read',
+    [Date.now() - started < 500, runs[runs.length - 1]],
+    [true, { text: '[[x]]', placeholder: true }],
+  );
+}
+
 report();

@@ -23,10 +23,12 @@ import {
   OPTIONAL,
   OPTIONAL_SUFFIX,
   hasEscape,
+  HA_MARK,
   isFallback,
   isJsonNumber,
   PLACEHOLDER,
   resolveVariables,
+  restoreHaText,
   STATE_STEP,
   stateScope,
   TRANSFORM_SUFFIX,
@@ -74,7 +76,27 @@ const MAX_PASSES = 10;
 export interface BuildExtras {
   itemTemplates?: Record<string, TemplateConfig>;
   context?: SourceContext;
+  /*
+   * The variables whose values are Home Assistant's rather than the author's - a registry
+   * copy's name, area and the rest - so a style can shield them as it shields what a
+   * resolver brings in (review 2026-10-25).
+   */
+  haNames?: Set<string>;
+  /*
+   * How much the substituted text may still grow, shared by every fill a build makes: a
+   * `repeat:` inside a `repeat:` otherwise did all its work against a fresh ceiling of its
+   * own before the outer one threw the result away (review 2026-10-25).
+   */
+  budget?: { left: number; fills: number };
 }
+
+/*
+ * How many bodies a build may fill in altogether, across every `with:` and `repeat:` at every
+ * level. The size ceiling stops the text growing, but a `repeat:` inside a `repeat:` over a
+ * long list does its work before anything measures the result - two hundred copies of two
+ * hundred copies is forty thousand builds for a card nobody could read (review 2026-10-25).
+ */
+const MAX_FILLS = 2000;
 
 // How far a `with:` or `repeat:` may nest inside another before it is refused - a body that
 // fills itself in would otherwise never settle.
@@ -208,7 +230,7 @@ function isJsonList(text: string): boolean {
  * needs is among them.
  */
 export function cssSafe(text: string): string {
-  return text.replace(/[{}()[\];\\@"'/]/g, '');
+  return text.replace(/[{}()[\];\\@"'/\u2060]/g, '');
 }
 
 /*
@@ -219,13 +241,30 @@ export function cssSafe(text: string): string {
  * nested card unwraps what reaches it when its own build is done.
  */
 function unescapeOutsideConsumers(node: any): any {
-  if (typeof node === 'string') return unescapePlaceholders(node);
+  if (typeof node === 'string') return restoreHaText(unescapePlaceholders(node));
   if (Array.isArray(node)) return node.map(unescapeOutsideConsumers);
   if (!node || typeof node !== 'object') return node;
   if (CONSUMER_TYPES.includes(node.type)) return node;
   const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(node)) out[unescapePlaceholders(key)] = unescapeOutsideConsumers(value);
+  for (const [key, value] of Object.entries(node)) {
+    out[restoreHaText(unescapePlaceholders(key))] = unescapeOutsideConsumers(value);
+  }
   return out;
+}
+
+/*
+ * The keys under which a card carries a stylesheet: card-mod's, button-card's, and the
+ * `style:` card-mod used to read and a picture element still does. Text Home Assistant
+ * supplies is shielded inside these the way it is in the template's own `style:`, so a name
+ * cannot end a declaration and start its own (review 2026-10-25). The template's `style:` is
+ * built by the card separately and does not pass through here.
+ */
+const STYLE_KEYS = ['card_mod', 'styles', 'style'];
+
+function hasStyleKey(node: any): boolean {
+  if (Array.isArray(node)) return node.some(hasStyleKey);
+  if (!node || typeof node !== 'object') return false;
+  return Object.keys(node).some((key) => STYLE_KEYS.includes(key) || hasStyleKey(node[key]));
 }
 
 /** How to describe a value that a transform cannot shape, in a sentence about it. */
@@ -263,6 +302,10 @@ function substitutePass(
   settle: (name: string) => unknown = (name) => values[name],
   // How a `with:` or `repeat:` chain is worked out (#227).
   expand?: (name: string, chain: string) => Expansion | undefined,
+  // The variables whose values are Home Assistant's, for the shield.
+  haNames?: Set<string>,
+  // What the text may still grow by, shared with every fill this build makes.
+  budget?: { left: number },
 ): string {
   let json = jsonConfig;
   for (const variable of variableArray) {
@@ -271,16 +314,20 @@ function substitutePass(
     // because one variable whose value holds two hundred placeholders grows the text two
     // hundredfold in a single step, not twofold. Once what has been added would pass the
     // ceiling, the matches still to come are left as written.
+    if (budget && budget.left <= 0) break;
     if (limit !== undefined && json.length > limit) break;
-    let room = limit === undefined ? Infinity : limit - json.length;
     const within = (match: string, out: string): string => {
+      if (!budget) return out;
       const growth = out.length - match.length;
-      if (growth > room) return match;
-      room -= growth;
+      if (growth > budget.left) return match;
+      budget.left -= growth;
       return out;
     };
-    const key = escapeForRegExp(Object.keys(variable)[0]);
+    const name = Object.keys(variable)[0];
+    const key = escapeForRegExp(name);
     const value = Object.values(variable)[0];
+    // A registry copy's value is Home Assistant's; a style shields it as it does a resolver's.
+    const fromHa = !!haNames?.has(name);
     const wholeValue = new RegExp(`"\\[\\[${key}${TRANSFORM_SUFFIX}${OPTIONAL_SUFFIX}\\]\\]"`, 'gm');
     const withinString = new RegExp(`\\[\\[${key}${TRANSFORM_SUFFIX}${OPTIONAL_SUFFIX}\\]\\]`, 'gm');
 
@@ -325,7 +372,7 @@ function substitutePass(
       if (unlisted !== undefined) {
         return refuse(match, written, localize('warn.state_unlisted', { entity: unlisted }), 'unlisted');
       }
-      const text = applyTransform(transform, input, hass, values, read, shield);
+      const text = applyTransform(transform, input, hass, values, read, shield, fromHa);
       if (text !== undefined) return wrap(text);
       // A gap that an `or:` could not fill is still just a gap - nothing gives it a value -
       // so it is left to be reported as unset rather than blamed on Home Assistant.
@@ -379,7 +426,10 @@ function substitutePass(
         if (!gateOpen(written, read)) return closed(match, written, optional, whole);
         transform = withoutConditions(written);
       }
-      if (!transform) return whole ? asWholeValue(value, match) : asPartOfString(value);
+      if (!transform) {
+        const plain = fromHa && shield && typeof value === 'string' ? shield(value) : value;
+        return whole ? asWholeValue(plain, match) : asPartOfString(plain);
+      }
       // `with:` and `repeat:` build their answer from the variables rather than shaping
       // text, so they are settled here, before the chain machinery would refuse a mapping.
       if (expand && isStructureStep(transform.split('|')[0])) {
@@ -666,8 +716,14 @@ function deepReplace(
   // The body filled in once: these values first, then everything the card already has -
   // which includes the dashboard's shared values - and the item template's own defaults
   // under both, as any template's are.
-  const fill = (found: { body: unknown; template: TemplateConfig }, own: VariablesConfig[]): unknown =>
-    deepReplace(
+  const fill = (
+    found: { body: unknown; template: TemplateConfig },
+    own: VariablesConfig[],
+    // The names among `own` whose values are Home Assistant's, when the copy is a registry's.
+    fromHa?: Set<string>,
+  ): unknown => {
+    budget.fills += 1;
+    return deepReplace(
       [...own, ...variableArray],
       found.template,
       found.body,
@@ -679,13 +735,17 @@ function deepReplace(
       undefined,
       shield,
       keepEscapes,
-      extras,
+      { ...extras, budget, haNames: fromHa ? new Set([...(haNames ?? []), ...fromHa]) : haNames },
     );
-  // The list a `repeat:` runs over: a list variable, or what a registry source finds.
-  const itemsOf = (name: string): unknown[] | undefined => {
+  };
+  // The list a `repeat:` runs over: a list variable, or what a registry source finds - the
+  // second being Home Assistant's words, which a style shields.
+  const itemsOf = (name: string): { items: unknown[]; fromHa: boolean } | undefined => {
     const source = values[name];
-    if (Array.isArray(source)) return source;
-    if (isRegistrySource(source)) return resolveRegistryItems(hass, source, extras?.context);
+    if (Array.isArray(source)) return { items: source, fromHa: false };
+    if (isRegistrySource(source)) {
+      return { items: resolveRegistryItems(hass, source, extras?.context), fromHa: true };
+    }
     return undefined;
   };
   // What a `with:` lays over the variables: `a=1,b=2` pairs read as text, or a mapping variable.
@@ -704,8 +764,15 @@ function deepReplace(
     return mapping && typeof mapping === 'object' && !Array.isArray(mapping) ? normaliseVariables(mapping) : undefined;
   };
   // One copy per item, each given its item's values and its place, as a `for_each` copy is.
-  const repeatOver = (found: { body: unknown; template: TemplateConfig }, items: unknown[]) =>
-    items.map((item, index) => fill(found, forEachVariables(scalarAsItem(item), undefined, index, items.length)));
+  const repeatOver = (found: { body: unknown; template: TemplateConfig }, items: unknown[], fromHa: boolean) =>
+    items.map((item, index) => {
+      const own = scalarAsItem(item);
+      return fill(
+        found,
+        forEachVariables(own, undefined, index, items.length),
+        fromHa ? new Set(Object.keys(own as object)) : undefined,
+      );
+    });
   // Each placeholder is expanded once per build: the variables do not change between
   // passes, and a body that refers to itself would otherwise be filled in again on every
   // pass of every level - ten to the power of the depth, which hangs the tab.
@@ -722,10 +789,14 @@ function deepReplace(
       const kind = stepName(step);
       const arg = step.slice(kind.length + 1);
       if (kind === REPEAT_STEP) {
-        const items = itemsOf(arg);
-        if (!items) return { refused: localize('warn.not_a_list_source', { arg: arg || '""' }) };
-        return { value: repeatOver(found, items), splice: true };
+        const listed = itemsOf(arg);
+        if (!listed) return { refused: localize('warn.not_a_list_source', { arg: arg || '""' }) };
+        if (budget.fills + listed.items.length > MAX_FILLS) {
+          return { refused: localize('warn.too_many_fills', { max: MAX_FILLS }) };
+        }
+        return { value: repeatOver(found, listed.items, listed.fromHa), splice: true };
       }
+      if (budget.fills >= MAX_FILLS) return { refused: localize('warn.too_many_fills', { max: MAX_FILLS }) };
       const overlay = overlayOf(arg);
       if (!overlay) return { refused: localize('warn.not_a_mapping', { arg }) };
       const value = fill(found, overlay);
@@ -739,7 +810,50 @@ function deepReplace(
     return outcome;
   };
 
+  const haNames = extras?.haNames;
   let jsonConfig = JSON.stringify(content);
+  // How much the text may still grow, counted across every fill this build makes.
+  const limit = outputLimit(jsonConfig.length);
+  const budget = extras?.budget ?? { left: limit - jsonConfig.length, fills: 0 };
+
+  /*
+   * A stylesheet inside the card - card-mod's, button-card's - is built first, with the shield
+   * on, and put back for the pass over the rest to find already written. Escapes and markers
+   * stay in until the end like everything else's; a nested template card inside is left for
+   * its own build. A build that is itself a style has the shield already and skips this.
+   */
+  const shieldStyles = (node: any): any => {
+    if (Array.isArray(node)) return node.map(shieldStyles);
+    if (!node || typeof node !== 'object') return node;
+    if (CONSUMER_TYPES.includes(node.type)) return node;
+    const out: Record<string, any> = {};
+    for (const [key, value] of Object.entries(node)) {
+      if (!STYLE_KEYS.includes(key)) {
+        out[key] = shieldStyles(value);
+        continue;
+      }
+      // Built inside a wrapper, so a style that is nothing but options nobody set is taken out
+      // of the wrapper rather than left as an empty string - and is then put back as written
+      // here, for the pass over the whole card to take out along with whatever held it.
+      const built = deepReplace(
+        variables,
+        templateConfig,
+        { style: value },
+        templateName,
+        hass,
+        true,
+        undefined,
+        depth,
+        trace,
+        cssSafe,
+        true,
+        { ...extras, budget },
+      );
+      out[key] = built && typeof built === 'object' && 'style' in built ? built.style : value;
+    }
+    return out;
+  };
+  if (shield === undefined && hasStyleKey(content)) jsonConfig = JSON.stringify(shieldStyles(content));
 
   // What an `if:` reads: a variable's value as it will end up, worked out once per name.
   const settled = new Map<string, unknown>();
@@ -773,9 +887,8 @@ function deepReplace(
   // Each placeholder a transform refused, and what its value turned out to be.
   const refused = new Map<string, Refusal>();
   if (variableArray.length) {
-    const limit = outputLimit(jsonConfig.length);
     let passes = 0;
-    while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES) {
+    while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES && budget.left > 0) {
       const before = jsonConfig;
       jsonConfig = substitutePass(
         jsonConfig,
@@ -789,13 +902,15 @@ function deepReplace(
         shield,
         settle,
         expand,
+        haNames,
+        budget,
       );
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
       // A chain that keeps growing has been stopped mid-expansion; carrying on would only
       // grow it further, so give up here and let the placeholders left standing be reported.
-      if (jsonConfig.length > limit) {
+      if (jsonConfig.length > limit || budget.left <= 0) {
         say(localize('warn.gave_up', { passes }));
         break;
       }
@@ -875,13 +990,14 @@ function deepReplace(
    * in - and one whose key the mapping does not have still has to drop out (#192).
    */
   const hasOptional = new RegExp(`\\[\\[[^[\\]]*\\${'?'}\\]\\]`).test(jsonConfig);
-  const nothingToDo = !variableArray.length && !hasOptional && !fallbacks && !hasEscape(jsonConfig);
+  const marked = jsonConfig.includes(HA_MARK);
+  const nothingToDo = !variableArray.length && !hasOptional && !fallbacks && !hasEscape(jsonConfig) && !marked;
   if (nothingToDo) return content;
 
   const parsed = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig), trace?.dropped) : JSON.parse(jsonConfig);
   // The lists a `repeat:` built go into the lists they sit in.
   const pruned = jsonConfig.includes(`"${SPLICE_KEY}"`) ? unsplice(parsed) : parsed;
-  if (!hasEscape(jsonConfig) || keepEscapes) return pruned;
+  if (keepEscapes || (!hasEscape(jsonConfig) && !marked)) return pruned;
   return unescapeOutsideConsumers(pruned);
 }
 

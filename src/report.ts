@@ -45,11 +45,15 @@ export interface ReportInput {
 
 // A name is parts joined by `_` or `-`, and counts as a secret when one of its parts is one
 // of these: `password`, `api_token`, `client_secret`, `x-api-key`. Not `tokens` or `secretary`.
-const SECRET_WORDS = 'token|secret|password|passwd|pwd|api[_-]?key|apikey|webhook[_-]?id|private[_-]?key|signature';
+const SECRET_WORDS =
+  'token|secret|password|passwd|pwd|pass|pin|passcode|code|auth|authorization|credentials?|api[_-]?key|apikey|webhook[_-]?id|private[_-]?key|signature|lat|latitude|lon|lng|longitude|gps';
 const SECRET_KEY = `(?:[a-z0-9]+[_-])*(?:${SECRET_WORDS})(?:[_-][a-z0-9]+)*`;
 const SECRET_NAME = new RegExp(`^${SECRET_KEY}$`, 'i');
-// More count in a query string: `?key=` and `?auth=` mean plenty of other things as config keys.
-const URL_KEYS = `${SECRET_KEY}|auth|sig|key`;
+// More count in a query string: `?key=` and `?sig=` mean plenty of other things as config keys.
+const URL_KEYS = `${SECRET_KEY}|sig|key`;
+// Paths that carry a token as a segment: a Home Assistant or Discord webhook, a Telegram bot,
+// a Slack incoming webhook. The segment after is the secret, whatever the host was.
+const TOKEN_PATHS = /(\/api\/webhooks?\/(?:\d+\/)?|\/bot\d+:|\/services\/)[A-Za-z0-9_~./-]+/g;
 // A scheme is short and starts a word; bounding it keeps one long word from being scanned once per letter.
 const SCHEME = '(?<![\\w.+-])[a-z][a-z0-9+.-]{0,31}://';
 // `//host` on its own, where it is not the tail of `://` or a doubled slash in a path.
@@ -87,6 +91,11 @@ const REDACTIONS: [RegExp, string | ((...groups: any[]) => string)][] = [
   ],
   [new RegExp(`^([ \\t]*(?:-[ \\t]+)?(?:${SECRET_KEY}):[ \\t]+)\\S.*$`, 'gim'), '$1<redacted>'],
   [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/g, '$1<redacted>'],
+  [/\b(Basic\s+)[A-Za-z0-9+/=_-]{8,}/g, '$1<redacted>'],
+  // `password=x` or `token = x` inside a longer line, where the key is not the line's own.
+  [new RegExp(`(?<![\\w"'-])((?:${SECRET_KEY})\\s*[=]\\s*)[^\\s,;&"'|]+`, 'gi'), '$1<redacted>'],
+  [TOKEN_PATHS, '$1<redacted>'],
+  [/(?<![\w:])(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}(?![\w:])/gi, '<redacted-mac>'],
   [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '<redacted-token>'],
   // Tokens that announce themselves: GitHub, OpenAI-style `sk-`, Slack.
   [
@@ -129,8 +138,11 @@ const LONG_RUN = new RegExp(`\\S{${LONGEST_RUN + 1},}`, 'g');
  */
 export function redact(text: string, secrets: readonly string[] = []): string {
   const half = LONGEST_RUN / 2;
-  let out = text.replace(LONG_RUN, (run) => `${run.slice(0, half)} … ${run.slice(-half)}`);
+  // The known secrets first, so a long one is taken out whole rather than cut to its ends
+  // with the middle gone and each end still readable (review 2026-10-25).
+  let out = text;
   for (const secret of secrets) out = out.split(secret).join('<redacted>');
+  out = out.replace(LONG_RUN, (run) => `${run.slice(0, half)} … ${run.slice(-half)}`);
   return REDACTIONS.reduce((done, [pattern, replacement]) => done.replace(pattern, replacement as string), out);
 }
 
@@ -184,7 +196,7 @@ function asText(value: unknown): string {
 
 // What redact() puts in. escapeInline() puts these in a code span: as bare text GitHub would
 // read <redacted-ip> as an unknown HTML tag and drop it, so nobody could see something was taken out.
-const MARKERS = /(<redacted(?:-(?:credentials|ip|host|email|token))?>)/;
+const MARKERS = /(<redacted(?:-(?:credentials|ip|host|email|token|mac))?>)/;
 
 /*
  * One line of Markdown that reads as the text it was given. A newline would end a heading,
@@ -195,7 +207,14 @@ function escapeInline(text: string): string {
   return text
     .replace(/\r?\n|\r/g, ' ')
     .split(MARKERS)
-    .map((part, index) => (index % 2 ? `\`${part}\`` : part.replace(/[\\`*_[\]<>|!#]/g, '\\$&')))
+    .map((part, index) =>
+      index % 2
+        ? `\`${part}\``
+        : part
+            // `@` would notify whoever a variable happens to name; `www.` would link.
+            .replace(/[\\`*_[\]<>|!#@]/g, '\\$&')
+            .replace(/\b(www)\./gi, '$1\\.'),
+    )
     .join('');
 }
 

@@ -126,6 +126,9 @@ const isContainer = (card: any): boolean => Array.isArray(card.cards) || (card.c
 const usesTemplate = (card: any): boolean =>
   CONSUMER_TYPES.includes(card.type) || isTemplateCardType(card.type) || JSON.stringify(card).includes('[[');
 
+const INHERITED = new Set(['__proto__', 'constructor', 'prototype']);
+const isInherited = (step: string | number): boolean => typeof step === 'string' && INHERITED.has(step);
+
 const keyOf = (path: Path): string => JSON.stringify(path);
 
 const readable = (path: Path): string =>
@@ -150,8 +153,10 @@ function plan(bodies: any[]): Plan | undefined {
   const reference = JSON.parse(JSON.stringify(bodies[0]));
   const seen = new Map<string, Path>();
   for (const body of bodies) for (const leaf of leaves(body)) seen.set(keyOf(leaf.path), leaf.path);
-  const paths = [...seen.values()];
-  const keys = new Set(seen.keys());
+  // A key that names an object's own machinery is no setting: walked into, `__proto__` is the
+  // prototype every object shares, and writing under it would reach them all (review 2026-10-25).
+  const paths = [...seen.values()].filter((path) => !path.some(isInherited));
+  const keys = new Set(paths.map(keyOf));
   // One card's value where another card has a block of settings.
   for (const path of paths)
     for (let length = 1; length < path.length; length += 1)

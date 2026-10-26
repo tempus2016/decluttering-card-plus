@@ -146,6 +146,7 @@
   "share.import_copy": "Importer comme copie",
   "share.import_clash": "Ce tableau de bord a déjà un modèle nommé \"{name}\". Importer vous laissera deux modèles du même nom, et un seul sera utilisé. Appuyez encore sur Importer pour continuer.",
   "share.import_not_yaml": "Ceci n'est pas du YAML valide, il ne peut donc pas être lu.",
+  "share.import_too_big": "C'est trop volumineux pour être un modèle, donc illisible.",
   "share.requires_custom_cards": "Nécessite ces cartes personnalisées : {types}",
   "share.uses_other_templates": "Utilise ces autres modèles, qui ne sont pas inclus ici : {names}",
   "share.import_not_a_template": "Ceci ne ressemble pas à un modèle : ce devrait être un bloc de clés et de valeurs YAML.",
@@ -189,6 +190,7 @@
   "share.community_names_loading": "Lecture des noms de modèles…",
   "share.community_names_failed": "Impossible de lire les tableaux de bord auxquels celui-ci emprunte des modèles, donc un conflit de nom ne peut pas être vérifié. Rien n’est installé tant qu’ils ne peuvent pas être lus : appuyez sur « Chercher les nouveaux » pour réessayer.",
   "share.community_risk_placeholders": "laisse à une variable ce qu'il fait quand on appuie, ou quel type de carte il est, ce que cette publication ne peut pas montrer",
+  "share.community_risk_overlay": "stylise une carte pour qu'elle couvre tout l'écran de façon invisible, si bien que toute pression tombe dessus",
 
   "tools.health_header": "État du tableau de bord",
 
@@ -247,6 +249,7 @@
   "warn.nothing_for": "rien dans Home Assistant pour \"{value}\"",
   "warn.step_not_alone": "{step} doit être la seule étape de sa chaîne",
   "warn.fills_itself": "{name} se remplit lui-même sans fin",
+  "warn.too_many_fills": "plus de {max} copies seraient remplies dans cette carte, le reste est laissé de côté",
   "warn.not_a_list_source": "{arg} n'est ni une liste ni une source du registre",
   "warn.not_a_mapping": "{arg} n'est pas un mapping",
   "warn.condition_closed": "sa condition if: n'est pas remplie",

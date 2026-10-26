@@ -146,6 +146,7 @@
   "share.import_copy": "Als Kopie importieren",
   "share.import_clash": "Dieses Dashboard hat bereits eine Vorlage namens \"{name}\". Nach dem Import gäbe es zwei Vorlagen mit demselben Namen, und nur eine davon würde verwendet. Drücke erneut auf Importieren, um fortzufahren.",
   "share.import_not_yaml": "Das ist kein gültiges YAML und kann daher nicht gelesen werden.",
+  "share.import_too_big": "Das ist zu groß für eine Vorlage und kann nicht gelesen werden.",
   "share.requires_custom_cards": "Benötigt diese Custom Cards: {types}",
   "share.uses_other_templates": "Verwendet diese anderen Vorlagen, die hier nicht enthalten sind: {names}",
   "share.import_not_a_template": "Das sieht nicht nach einer Vorlage aus: Es sollte ein Block aus YAML-Schlüsseln und -Werten sein.",
@@ -189,6 +190,7 @@
   "share.community_names_loading": "Vorlagennamen werden gelesen…",
   "share.community_names_failed": "Die Dashboards, von denen dieses Vorlagen ausleiht, konnten nicht gelesen werden, daher lässt sich ein Namenskonflikt nicht prüfen. Bis sie gelesen werden können, wird nichts installiert: drücke „Nach neuen suchen“, um es erneut zu versuchen.",
   "share.community_risk_placeholders": "überlässt einer Variablen, was beim Drücken geschieht oder welche Art Karte es ist – was dieser Beitrag nicht zeigen kann",
+  "share.community_risk_overlay": "gestaltet eine Karte so, dass sie unsichtbar über dem ganzen Bildschirm liegt und jeder Druck auf ihr landet",
 
   "tools.health_header": "Zustand des Dashboards",
 
@@ -247,6 +249,7 @@
   "warn.nothing_for": "nichts in Home Assistant für \"{value}\"",
   "warn.step_not_alone": "{step} muss der einzige Schritt in seiner Kette sein",
   "warn.fills_itself": "{name} füllt sich endlos selbst aus",
+  "warn.too_many_fills": "mehr als {max} Kopien würden in dieser Karte ausgefüllt, der Rest bleibt weg",
   "warn.not_a_list_source": "{arg} ist weder eine Liste noch eine Registry-Quelle",
   "warn.not_a_mapping": "{arg} ist kein Mapping",
   "warn.condition_closed": "seine if:-Bedingung trifft nicht zu",
