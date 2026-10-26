@@ -441,4 +441,29 @@ check(
   check('an error with a fence in it is fenced longer', text.includes('## Error\n\n````\nbad\n```\nfence\n````'), true);
 }
 
+/* ------------------------------------------------------- item templates (#235) */
+{
+  const trace = newTrace();
+  const inner = newTrace();
+  inner.values = new Map([
+    ['entity', 'sensor.a'],
+    ['api_password', 'swordfish'],
+    ['there', false],
+  ]);
+  inner.placeholders.set('[[entity|exists]]', false);
+  trace.items = [{ placeholder: '[[row|repeat:rooms]]', copy: { number: 1, count: 2 }, trace: inner }];
+  const text = formatReport({
+    context: { version: '1' },
+    reports: [{ label: '"t"', chain: [], ms: 1, sections: [{ variables: [], trace, built: {} }] }],
+  });
+  check(
+    'an item template fill gets a heading',
+    text.includes('#### Item template \\[\\[row\\|repeat:rooms\\]\\] - Copy 1 of 2'),
+    true,
+  );
+  check('its values are a table', text.includes('| there | false |'), true);
+  check('its placeholders too', text.includes('| \\[\\[entity\\|exists\\]\\] | false |'), true);
+  check('a secret among them is taken out', text.includes('swordfish'), false);
+}
+
 report();

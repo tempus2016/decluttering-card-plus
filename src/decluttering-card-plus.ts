@@ -2430,7 +2430,7 @@ class DeclutteringCard extends DeclutteringElement {
         warnIfDeprecated(picked.name, picked.template, this._hass);
         return picked;
       },
-      resolvers: named.some((name) => usesResolver(lookup(name))),
+      resolvers: named.some((name) => usesResolver(lookup(name), this._buildExtras().itemTemplates)),
     };
 
     const repeats = forEachItems(config.for_each) !== undefined || isRegistrySource(config.for_each_from);
@@ -2497,9 +2497,10 @@ class DeclutteringCard extends DeclutteringElement {
      * again whether it is rendered once or repeated, and recording it only on the plain
      * path left every copy of a repeat showing the brackets for good.
      */
-    const resolvers = picker ? picker.resolvers : usesResolver(templateConfig);
+    const { itemTemplates } = this._buildExtras();
+    const resolvers = picker ? picker.resolvers : usesResolver(templateConfig, itemTemplates);
     this._fromResolvers = resolvers
-      ? { templateConfig, config, picker, translates: usesTranslate(templateConfig) }
+      ? { templateConfig, config, picker, translates: usesTranslate(templateConfig, itemTemplates) }
       : undefined;
 
     // A single mapping counts as a list of one, the same forgiveness `variables` gets. A

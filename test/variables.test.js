@@ -1526,4 +1526,21 @@ check('a mapping is a declarations shape', isDeclarationsShape({ a: 1 }), true);
 check('so is a list, and nothing', [isDeclarationsShape([]), isDeclarationsShape(undefined)], [true, true]);
 check('a string is not', isDeclarationsShape('a'), false);
 
+check(
+  'a template whose item templates ask Home Assistant has to build again too (#235)',
+  usesResolver(
+    { card: { items: ['[[outer|with:a=1]]'] } },
+    {
+      outer: { default: [{ b: '[[inner|with:c=2]]' }], item: '[[b]]' },
+      inner: { item: '[[c|exists]]' },
+    },
+  ),
+  true,
+);
+check(
+  'but not for an item template it never fills in',
+  usesResolver({ card: { name: 'x' } }, { inner: { item: '[[c|exists]]' } }),
+  false,
+);
+
 report();

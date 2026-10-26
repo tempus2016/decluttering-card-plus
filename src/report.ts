@@ -1,5 +1,5 @@
 import { localize } from './localize';
-import { describeSection, headline, TraceReport } from './trace';
+import { BuildTrace, describeSection, headline, ItemTrace, itemTitle, itemValueRows, TraceReport } from './trace';
 import { toYaml } from './yaml';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -171,11 +171,16 @@ function secretValues(reports: TraceReport[]): string[] {
       }
     }
   };
+  // An item template's fill has values and placeholders of its own, and fills of its own (#235).
+  const addTrace = (trace: BuildTrace): void => {
+    for (const [placeholder, became] of trace.placeholders) add(became, SECRET_NAME.test(placeholderName(placeholder)));
+    for (const [name, value] of trace.values ?? []) add(value, SECRET_NAME.test(name));
+    for (const item of trace.items ?? []) addTrace(item.trace);
+  };
   for (const report of reports) {
     for (const section of report.sections) {
       for (const row of section.variables) add(row.value, SECRET_NAME.test(row.variable));
-      for (const [placeholder, became] of section.trace.placeholders)
-        add(became, SECRET_NAME.test(placeholderName(placeholder)));
+      addTrace(section.trace);
     }
   }
   return [...found].sort((a, b) => b.length - a.length);
@@ -283,6 +288,36 @@ function folded(title: string, body: string[], open = false): string[] {
 function buildSection(report: TraceReport, { line, block, title, redacting }: Writer, hass?: any): string[] {
   const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
   const lines: string[] = [];
+  const hidden = (name: string, value: unknown): unknown =>
+    redacting && SECRET_NAME.test(name) ? '<redacted>' : value;
+  const placeholdersOf = (trace: BuildTrace): Map<string, unknown> =>
+    new Map(
+      [...trace.placeholders].map(([placeholder, became]) => [
+        placeholder,
+        hidden(placeholderName(placeholder), became),
+      ]),
+    );
+  /*
+   * Each item template a `with:` or `repeat:` filled in, a heading level further down for
+   * each fill inside another: its values as they ended up - so an `exists` or an `if:` that
+   * gave the wrong answer shows what it was asked about - and its own placeholders (#235).
+   */
+  const items = (list: ItemTrace[] | undefined, level: number): void => {
+    for (const item of list ?? []) {
+      lines.push(`${'#'.repeat(Math.min(level, 6))} ${line(itemTitle(item, hass))}`, '');
+      const values = new Map([...(item.trace.values ?? [])].map(([name, value]) => [name, hidden(name, value)]));
+      const valueRows = itemValueRows({ ...item.trace, values }, hass);
+      lines.push(`**${t('trace.item_values')}**`, '');
+      lines.push(...(valueRows.length ? table(valueRows, line) : [t('trace.none')]), '');
+      const described = describeSection(
+        { variables: [], trace: { ...item.trace, placeholders: placeholdersOf(item.trace) }, built: undefined },
+        hass,
+      );
+      lines.push(`**${t('trace.placeholders')}**`, '');
+      lines.push(...(described.placeholders.length ? table(described.placeholders, line) : [t('trace.none')]), '');
+      items(item.trace.items, level + 1);
+    }
+  };
   if (report.template) {
     lines.push(`### ${line(t('report.template', { template: report.template.name }))}`, '');
     lines.push(...block(report.template.config), '');
@@ -294,12 +329,7 @@ function buildSection(report: TraceReport, { line, block, title, redacting }: Wr
     const variables = section.variables.map((row) =>
       redacting && SECRET_NAME.test(row.variable) ? { ...row, value: '<redacted>' } : row,
     );
-    const placeholders = new Map(
-      [...section.trace.placeholders].map(([placeholder, became]) => [
-        placeholder,
-        redacting && SECRET_NAME.test(placeholderName(placeholder)) ? '<redacted>' : became,
-      ]),
-    );
+    const placeholders = placeholdersOf(section.trace);
     const described = describeSection({ ...section, variables, trace: { ...section.trace, placeholders } }, hass);
     lines.push(`**${t('trace.variables')}**`, '');
     lines.push(...(described.variables.length ? table(described.variables, line) : [t('trace.none')]), '');
@@ -308,6 +338,7 @@ function buildSection(report: TraceReport, { line, block, title, redacting }: Wr
     if (described.dropped.length) {
       lines.push(`**${t('trace.taken_out')}**`, '', ...described.dropped.map((path) => `- ${line(path)}`), '');
     }
+    items(section.trace.items, 4);
     if (section.trace.warnings.length) {
       lines.push(
         `**${t('report.warnings')}**`,

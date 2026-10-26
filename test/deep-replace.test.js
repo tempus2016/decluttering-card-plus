@@ -2058,4 +2058,114 @@ check(
   );
 }
 
+/* ------------------------------------------- or: stand-ins and deep reads (#235) */
+{
+  const hass235 = { states: { 'binary_sensor.porch_car': { state: 'off' } } };
+  const vars = [
+    { frigate: 'Porch' },
+    { fr_name: '[[frigate|lower]]' },
+    { ele: '[[zone|or:fr_name]]' },
+    { calc: 'binary_sensor.[[ele]]_car' },
+    { final: '[[nope|or:calc]]' },
+    { there: '[[final|exists]]' },
+  ];
+  check(
+    'an or: stand-in that brings placeholders in is finished before a step reads it',
+    deepReplace(vars, {}, { e: '[[final]]', x: '[[there]]' }, 't', hass235, true),
+    { e: 'binary_sensor.porch_car', x: true },
+  );
+  check(
+    'and inside a value an if: reads',
+    deepReplace([...vars, { shown: 'yes' }], {}, { a: '[[shown|if:there?]]' }, 't', hass235, true),
+    { a: 'yes' },
+  );
+
+  const chain = (n) => {
+    const v = [{ v0: 'no' }, { yes: 'yes' }, { x: 'X' }];
+    for (let i = 1; i <= n; i += 1) v.push({ [`v${i}`]: `[[yes|if:v${i - 1}?]]` });
+    return v;
+  };
+  check(
+    'a chain of conditions six deep is read to the end',
+    deepReplace(chain(6), {}, { a: '[[x|if:v6?]]' }, 't', undefined, true),
+    {},
+  );
+  const warned = [];
+  const warn = console.warn;
+  console.warn = (message) => warned.push(message);
+  deepReplace(chain(12), {}, { a: '[[x|if:v12?]]' }, 't', undefined, new Set());
+  console.warn = warn;
+  check(
+    'past the limit it says so',
+    warned.some((message) => message.includes('more than 8 deep')),
+    true,
+  );
+
+  const extras = {
+    itemTemplates: {
+      inner: { item: { id: '[[entity]]', there: '[[there]]' } },
+      outer: {
+        default: [{ entity: 'binary_sensor.[[room]]_car' }, { there: '[[entity|exists]]' }],
+        item: '[[inner|with:c=2]]',
+      },
+    },
+  };
+  const trace = newTrace235();
+  deepReplace(
+    [],
+    {},
+    { items: ['[[outer|with:room=porch]]'] },
+    't',
+    hass235,
+    true,
+    undefined,
+    0,
+    trace,
+    undefined,
+    false,
+    extras,
+  );
+  const item = trace.items?.[0];
+  check('a with: fill is traced on its own', item?.placeholder, '[[outer|with:room=porch]]');
+  check('with its values as they ended up', Object.fromEntries(item?.trace.values ?? []), {
+    room: 'porch',
+    entity: 'binary_sensor.porch_car',
+    there: true,
+  });
+  check('and the fill inside it under it', item?.trace.items?.[0]?.placeholder, '[[inner|with:c=2]]');
+}
+
+{
+  const x = { itemTemplates: { opt: { default: [{ c: false }], item: '[[body|if:c?]]' } } };
+  const run = (content, v) =>
+    deepReplace(v, {}, content, 't', undefined, true, undefined, 0, undefined, undefined, false, x);
+  check(
+    'an optional with: whose fill comes out as nothing leaves its list (#235)',
+    run({ l: ['[[opt|with:?]]', '[[opt|with:c=true?]]', 'k'] }, [{ body: { a: 1 } }]),
+    { l: [{ a: 1 }, 'k'] },
+  );
+  check(
+    'a with: mapping entry that names itself takes the value from outside',
+    deepReplace(
+      [{ there: 'yes' }, { data: { there: '[[there]]', n: 1 } }],
+      {},
+      { r: '[[row|with:data]]' },
+      't',
+      undefined,
+      true,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      { itemTemplates: { row: { item: { t: '[[there]]', n: '[[n]]' } } } },
+    ),
+    { r: { t: 'yes', n: 1 } },
+  );
+}
+
+function newTrace235() {
+  return { placeholders: new Map(), dropped: [], warnings: [] };
+}
+
 report();
