@@ -293,6 +293,14 @@ depends on the order the resources were added rather than on anything you can se
 New configuration should use `custom:decluttering-card-plus` and
 `custom:decluttering-template-plus`, which are always available.
 
+### Coming from Streamline card
+
+Most of a Streamline template works as it is: rename `streamline_templates:` to
+`decluttering_templates:` and `custom:streamline-card` to `custom:decluttering-card-plus`.
+`_javascript` keys are not run here, and
+[Migrating from Streamline card][wiki-migrating-streamline] shows what to use instead. The two
+cards can be installed together while you move across.
+
 ## Filling the gaps
 
 A placeholder can say what to do when nothing sets it, rather than rendering its own
@@ -648,6 +656,7 @@ npm start       # rebuild on change, served on :5000 for the dev container
 [wiki-elements]: https://github.com/tempus2016/decluttering-card-plus/wiki/Elements
 [wiki-installation]: https://github.com/tempus2016/decluttering-card-plus/wiki/Installation
 [wiki-migrating]: https://github.com/tempus2016/decluttering-card-plus/wiki/Migrating-from-decluttering-card
+[wiki-migrating-streamline]: https://github.com/tempus2016/decluttering-card-plus/wiki/Migrating-from-Streamline-card
 [wiki-quickstart]: https://github.com/tempus2016/decluttering-card-plus/wiki/Quick-Start
 [wiki-recipes]: https://github.com/tempus2016/decluttering-card-plus/wiki/Recipes
 [wiki-repeating]: https://github.com/tempus2016/decluttering-card-plus/wiki/Repeating-a-Template
