@@ -25,9 +25,7 @@ We all use the same block of configuration over and over across a Lovelace dashb
 of us want to change the same thing in a hundred places. Define it once as a template, pass in
 what differs, and use it everywhere.
 
-![Four rooms built from one template](images/overview.png)
-
-*One template, four rooms — each instance passes only the entity and the name.*
+![One room template on the left, the card using it in the middle, four rooms built from it below](images/readme-hero.png)
 
 📖 **The documentation is in the [wiki][wiki]**, also published as a [searchable site][pages]
 with a [template builder][builder] and a [placeholder playground][playground]. This page is
@@ -77,7 +75,7 @@ Templates can also be defined as a card on the dashboard itself, with a visual e
 live preview, if you would rather not touch YAML. [Quick Start][wiki-quickstart] goes on from
 here.
 
-![The visual editor for a card instance](images/editor-card-instance.png)
+![The card editor: template picker and variables on the left, live preview on the right](images/readme-editor.png)
 
 *Picking a template and setting its variables in the visual editor, with a live preview.*
 
