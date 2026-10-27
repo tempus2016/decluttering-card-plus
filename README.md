@@ -29,36 +29,26 @@ what differs, and use it everywhere.
 
 *One template, four rooms — each instance passes only the entity and the name.*
 
-📖 **The documentation is in the [wiki][wiki]**: a [quick start][wiki-quickstart], a page per
-content type, [variables][wiki-variables], [recipes][wiki-recipes] and
-[troubleshooting][wiki-troubleshooting]. This page is the summary.
-
-What changed in each version is on the [releases page][releases].
+📖 **The documentation is in the [wiki][wiki]**, also published as a [searchable site][pages]
+with a [template builder][builder] and a [placeholder playground][playground]. This page is
+the summary. What changed in each version is on the [releases page][releases].
 
 ## Installation
-
-Requires Home Assistant 2024.7 or newer. Badge templates need 2024.8, since that is when Home
-Assistant made badges configurable.
-
-### Using HACS
 
 The card is in the HACS default list. Open HACS, search for *Decluttering Card Plus*, download
 it and reload your browser. HACS adds the dashboard resource for you.
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tempus2016&repository=decluttering-card-plus&category=lovelace)
 
-### Manually
+To install by hand, save [decluttering-card-plus.js][latest-release] to `<config>/www/` and add
+`/local/decluttering-card-plus.js` as a dashboard resource of type `module`. The
+[Installation][wiki-installation] page has the detail.
 
-Save [decluttering-card-plus.js][latest-release] to `<config directory>/www/` on your Home
-Assistant instance, then add it as a dashboard resource:
-
-```yaml
-resources:
-  - url: /local/decluttering-card-plus.js
-    type: module
-```
-
-Full instructions, including how to check it loaded, are in [Installation][wiki-installation].
+| You need | For |
+| --- | --- |
+| 2024.7 | everything, unless it is listed below |
+| 2024.8 | `badge:` templates |
+| 2024.11 | `grid_options`, which is what the sections view reads |
 
 ## A first template
 
@@ -84,8 +74,8 @@ variables:
 ```
 
 Templates can also be defined as a card on the dashboard itself, with a visual editor and a
-live preview, if you would rather not touch YAML. Both ways are covered in [Defining
-Templates][wiki-defining].
+live preview, if you would rather not touch YAML. [Quick Start][wiki-quickstart] goes on from
+here.
 
 ![The visual editor for a card instance](images/editor-card-instance.png)
 
@@ -93,161 +83,30 @@ Templates][wiki-defining].
 
 ## What it can do
 
-- **[Cards][wiki-cards], [badges][wiki-badges], [Entities rows][wiki-rows] and
-  [Picture elements][wiki-elements]** — a template can hold any of the four, and goes wherever
-  that kind of content goes.
-- **[Variables][wiki-variables]** with defaults, nesting, lookups in a mapping by another
-  variable (`[[colours.[[level]]]]`), transforms (`[[room|slug]]`), values
-  read from Home Assistant (`[[entity|friendly_name]]`, its domain, object id, labels, area,
-  floor or device), values a template works out for itself with `let:`, stand-ins for what
-  nothing sets (`[[name|default:Unnamed]]`), values that only appear when another is set
-  (`[[name|if:other]]`, or while it is not: `if:!other`, `if:mode!=off`), real yes/no
-  values for options that switch on and off (`[[name|bool]]`, `[[motion|exists]]`,
-  `[[name|contains:door]]`), optional placeholders, dashboard-wide
-  fallbacks, and values a whole view, or one section of it, sets for every card in it. A
-  declaration can say what a good value looks like (`pattern:`, `allowed:`), fold into a
-  section of the editor (`group:`), or take a whole card. Declarations used by many
-  templates can be written once in the dashboard's `decluttering_variables:` *(v1.13.0+)*;
-  a template takes one up with `- name: colour`, and anything it writes beside the name
-  wins. *(v2.0.0+)* Sums and lists in a placeholder (`[[watts|div:1000|round:1]]`,
-  `[[rooms|split|slug|join:,]]`, `count`, `first`, `last`), an entity's icon, device class,
-  manufacturer and model, Home Assistant's own words in the viewer's language
-  (`[[domain|translate]]`), `decluttering_let:` for a whole dashboard, view or section, and
-  declarations that just say `type: entity` or `type: number` and get the right control.
-  *(v2.3.0+)* Declarations, a template's own or `decluttering_variables:`, can be a mapping
-  keyed by name as well as a list: `colour: red` declares `colour` with that default, and
-  `colour: {selector: ...}` is the whole declaration.
-  *(v2.3.0+)* A block of config used more than once with different values, inside a card's
-  own list where a nested card cannot go: `[[camera_entry|with:camera_entity=camera.front]]`
-  fills a mapping in once, `[[camera_entry|repeat:cams]]` once per item of a list or per
-  entity the registry finds, spliced into the list it sits in. The block is a mapping
-  variable, or a template with an `item:` body when it wants defaults of its own, which can
-  `extends:` another item template *(v2.3.1+)*. Marked optional, `[[camera_entry|with:...?]]`,
-  a fill that comes out empty leaves the list instead of putting a blank entry in *(v2.3.2+)*.
-- **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
-  area, device, floor or label Home Assistant knows about, narrowed by domain, area, floor,
-  label, device class or integration, with anything you name excluded, sorted, limited, and a card of your own to
-  show when nothing matches. The order can run backwards, break ties on a second key, or
-  follow a state attribute; `offset` splits one long list across two cards, `require` drops a
-  copy that came out empty, and `overrides` gives one copy its own variables.
-  *(v2.0.0+)* Also by unit, state class or Home Assistant category, once per view of the
-  dashboard (a navigation bar that keeps up), or over whatever list a Jinja template works
-  out. `lazy: true` builds a long repeat's copies only as they scroll near. Diagnostic and
-  config entities are left out unless `entity_category:` asks for them.
-- **Grouping** — a copy per area that knows what is in it, so one card becomes a tile per
-  room, each listing that room's lights — or `group_by:` a domain, floor or label.
+- [Cards][wiki-cards], [badges][wiki-badges], [Entities rows][wiki-rows] and
+  [Picture elements][wiki-elements] — a template can hold any of the four, or a `group:` of
+  several cards that sit in a section as if each were written there.
+- [Variables][wiki-variables] with defaults, fallbacks (`[[name|default:Unnamed]]`),
+  conditions (`[[name|if:other]]`), transforms (`[[room|slug]]`, `[[watts|div:1000]]`),
+  values read from Home Assistant (`[[entity|friendly_name]]`, its area, floor, device or
+  labels), and values a whole dashboard, view or section sets for every card in it.
+- [Repeating a template][wiki-repeating] — one copy per item in a list, or per entity, area,
+  device, floor or label Home Assistant knows about, filtered, sorted and grouped.
+  [Whole sections or views][wiki-repeating-sections] can be repeated too.
+- [List entries][wiki-list-entries] — `with:` and `repeat:` fill a block of config into a
+  card's own lists, where a nested card cannot go.
+- [Sharing templates between dashboards][wiki-sharing-between], or from one library
+  dashboard to all of them, plus templates [shared by other people][discussions-share].
+- Templates built on templates with `extends:`, and one-off tweaks with a card's own
+  `card:` block laid over what its template builds.
+- [Visibility][wiki-visibility] and [styling][wiki-styling] inside a template.
+- [Visual editors][wiki-editors] that show what a card builds, where a template is used,
+  rename a template or a variable everywhere, turn existing cards into a template, and keep
+  the last 20 deleted or replaced templates to restore.
+- A health panel for missing templates, unset variables and unused templates, and
+  `debug: report` to write up what a card built, ready to paste into an issue.
 
-  ![Four room tiles in two columns, all from one card](images/repeat.png)
-
-  *One `for_each` card, four copies of the same template.*
-
-- **Whole sections and badges, repeated** — a view strategy writes out a section, or a badge,
-  per item: one section per room, each with its own heading and background, reflowing with
-  the screen like any other sections view. Ordinary sections and badges sit alongside.
-
-  ```yaml
-  views:
-    - title: Rooms
-      strategy:
-        type: custom:decluttering-card-plus
-        sections:
-          - for_each_from: { areas: true }
-            section:
-              type: grid
-              cards:
-                - type: heading
-                  heading: '[[area]]'
-                - type: custom:decluttering-card-plus
-                  template: room_lights
-  ```
-
-  A templated card inside a repeated section is handed that copy's values, so `room_lights`
-  above gets `area_id` without being told. A generated view is edited as YAML, from the
-  view's pencil and then the menu. A card already repeating in a section can be turned
-  into this from its editor: **Give each copy its own section** rewrites the view for you.
-  Written on the dashboard instead *(v2.0.0+)*, the same strategy writes out a whole view
-  per item. *(v2.3.0+)* Its `variables:` fill in the whole dashboard, not just the repeats:
-  plain views and dashboard-level settings such as a `wallpanel:` block too.
-
-- **[Sharing templates between dashboards][wiki-sharing-between]** — define once, borrow from
-  every other dashboard, or from all of them at once with `'*'`. A dashboard at the path
-  `decluttering-templates` *(v1.13.0+)* is borrowed from by every dashboard without being
-  named, so a template library written there, with its `decluttering_defaults`, is available
-  everywhere. A dashboard's own templates, and any it names, win over the library's.
-- **Offered in the add-card dialog** *(v1.13.0+)* — a template with `suggest_for:` appears
-  under Community when you pick a matching entity in the dialog's By entity tab, with the
-  entity filled in as `entity`. It takes the filters a repeat does: `suggest_for:
-  { domain: camera, area: Garden }`. Badge templates are offered in the badge dialog.
-  Needs Home Assistant 2026.6 or later, 2026.7 for badges.
-- **Listed as a card of its own** *(v1.14.0+)* — `publish: true` on a template puts it in
-  the add-card dialog's By card list, under its template name or under the name you give
-  (`publish: House light`). Picking it adds an ordinary decluttering card using that
-  template, with the first entity its `suggest_for:` matches filled in if it has one.
-  Badge templates go in the badge list.
-- **Templates built on templates** — `extends:` lets a family of templates differ by a line,
-  merging the way a card's own `card:` block does, `null` included, and `category:` groups a big collection in the picker. A card nested inside a template
-  can take every variable of the card around it with `inherit_variables: true` *(v1.13.0+)*.
-  *(v2.0.0+)* `extends:` takes a list of parents, a template can be marked `deprecated:`
-  with a note on what to use instead, carry `examples:` the health panel builds and the
-  editors offer, and a card can pick its template by its entity's domain with
-  `template_by_domain:`.
-- **A card of your choosing when one cannot be built** *(v2.0.0+)* — `on_error:` on a card
-  or its template shows that instead of the red error card, or `hide` shows nothing.
-- **Following a few entities** *(v2.0.0+)* — cards build once, but one that lists entities in
-  `rebuild_on:` builds again when they change, and `[[layout|state]]` reads their state.
-- **A set of cards as one card** *(v1.14.0+)* — a `group:` template puts several cards on a
-  view from one decluttering card, each laid out in the section as if it were written there.
-  In a view's badges the same template is a set of badges *(v1.15.0+)*.
-- **One-off tweaks without a new template** *(v1.12.0+)* — a card's own `card:` block is laid over what
-  its template builds, so a single card can change an icon or an action and nothing else.
-  Mappings merge key by key, lists replace, and `null` drops a key the template sets. To change
-  a list rather than replace it *(v2.0.0+)*, write `__append__`, `__prepend__`, `__update__` or `__remove__`
-  under it, by index; `extends:` understands them too.
-- **[Visibility][wiki-visibility]** conditions inside a template, including leaving out a copy
-  that has nothing to show.
-- **[Styling][wiki-styling]** with a `style` option and CSS custom properties, a `gap`
-  between repeated copies, `grid_options` a template can declare once for every card using
-  it, and a `decluttering-container` class to hang CSS off.
-- **A starter library** — worked examples of the shapes people build most, picked from a
-  dropdown in the editor and installed into the view you are working on. Carried in the
-  card, so a dashboard never reaches the internet to show one.
-- **Templates other people have shared** *(v1.15.0+)* — the Share tab lists templates posted
-  in the [Share your templates][discussions-share] discussions, and installs one the way the
-  starter library does, with the templates it carries. GitHub is only asked when you press
-  Load, and every template is shown in full before you install it, since nobody checks what
-  is posted. Copy as a post writes yours out ready to paste into a new discussion.
-  Installed ones can be checked for updates *(v2.0.0+)*, and an install says which custom
-  cards it needs that you do not have.
-- **[Visual editors][wiki-editors]** for both the template and the instance — see what a card
-  actually builds, see what uses a template before you change it (on this dashboard and on
-  every other one), see what one real card becomes under the edit in hand, rename a template
-  and have its uses follow, and [export a template][wiki-sharing] to give to someone else,
-  with the templates it calls bundled in. *(v2.0.0+)* Rename a variable in the template and
-  every card passing it, find copy-pasted cards and make them one template, search every
-  dashboard for the cards passing a value, see an edit's effect as a line diff, and undo
-  the last of these rewrites. The template editor points out placeholders that will not
-  work, with the step a typo was meant to be.
-- **A health panel** — cards pointing at a template that is not there, cards leaving a
-  variable unset, templates nothing uses: the console warnings gathered into one place.
-  *(v2.0.0+)* Also variables a card passes that its template never reads, examples that
-  fail, deprecated templates still in use, and the slowest builds on the page.
-- **Turning cards into templates and back** — declutter a card already on the dashboard into
-  a template and swap the original for it, or eject a card so it becomes exactly what the
-  template built and stops depending on it. *(v2.1.0+)* Pick a whole section instead and its
-  cards become a `group:` template, with the section's cards swapped for one card using it.
-  In the template editor, **Turn a setting into a variable** makes any one setting a
-  placeholder, declared with the value it had as its default, and a group's cards can be
-  dragged into order, as can the variables.
-- **Deleted and replaced templates** *(v2.1.0+)* — whenever a dashboard is saved, a template
-  it lost or changed is kept as it was: the last 20, in your Home Assistant user data, listed
-  in the template editor's Share tab with a Restore button. That covers a template card
-  deleted from the dashboard menu or a template overwritten in the raw configuration editor,
-  which undo never could. Saves are only seen while a dashboard is open in a browser.
-- **Templates as files** *(v2.1.0+)* — the Share tab downloads the export as a `.yaml` file and
-  opens one to import, alongside copying and pasting.
-- **Hidden cards in a group, in edit mode** *(v2.1.0+)* — edit mode shows every card, so a
-  card in a group that its visibility conditions hide is dimmed, and the group says how many
-  are hidden outside edit mode.
+The [Configuration Reference][wiki-config] lists every option.
 
 ## Is this the right card?
 
@@ -262,349 +121,31 @@ Templates][wiki-defining].
 They coexist happily: a template here can hold a button-card, and an auto-entities card can
 hold cards built from a template here.
 
-## Which Home Assistant
-
-| You need | For |
-| --- | --- |
-| 2024.7 | everything, unless it is listed below |
-| 2024.8 | `badge:` templates — Home Assistant made badges configurable in that release |
-| 2024.11 | `grid_options`, on a template or a card, which is what the sections view reads |
-
-Newer releases are fine. If a feature quietly does nothing, check this table first.
-
-## Try it without committing to anything
-
-[`examples/demo-dashboard.yaml`](examples/demo-dashboard.yaml) is a whole dashboard that
-exercises most of what the card does. Make a new dashboard, open its raw configuration
-editor, and paste it in — everything it needs is either built into the card or taken from
-your own Home Assistant.
-
-## Migrating from `decluttering-card`
-
-**Your existing configuration keeps working.** As well as its own `custom:decluttering-card-plus`
-and `custom:decluttering-template-plus` types, this card also registers the original
-`custom:decluttering-card` and `custom:decluttering-template` types when the original card is not
-installed. The `decluttering_templates` key is unchanged. So you can install this, remove the old
-card, and change nothing else.
-
-Do not run both. Whichever loads first claims the original type names, and which one that is
-depends on the order the resources were added rather than on anything you can see.
-[Migrating from decluttering-card][wiki-migrating] has the detail.
-
-New configuration should use `custom:decluttering-card-plus` and
-`custom:decluttering-template-plus`, which are always available.
-
-### Coming from Streamline card
-
-Most of a Streamline template works as it is: rename `streamline_templates:` to
-`decluttering_templates:` and `custom:streamline-card` to `custom:decluttering-card-plus`.
-`_javascript` keys are not run here, and
-[Migrating from Streamline card][wiki-migrating-streamline] shows what to use instead. The two
-cards can be installed together while you move across.
-
-## Filling the gaps
-
-A placeholder can say what to do when nothing sets it, rather than rendering its own
-brackets:
-
-```yaml
-name: '[[name|default:Unnamed]]'          # this text instead
-name: '[[name|or:label|default:Unnamed]]' # try another variable first
-```
-
-`default:` supplies the text itself and `or:` names another variable to try. Both chain
-with the transforms, and with each other, so the last word is always something. A variable
-set to nothing — unset, `null` or an empty string — counts as a gap; a `0` and a `false`
-are values and keep their place. `none` is not a gap either: it is the text "none".
-
-`or:` only takes a variable name (letters, digits, `_` and `-`), so text with a space in it
-belongs in a `default:`. Put `or:` first and `default:` last: a `default:` with text in it
-always fills the gap, so an `or:` after it never gets a turn. An empty `default:` is still a
-gap, so the next step does get one, and from v1.12.1 `[[name|default:?]]` drops the key
-just as `[[name?]]` does.
-
-That is different from `[[name?]]`, which removes the key from the card entirely. Use `?`
-when the option should not be there at all, and `default:` when something should be shown.
-From v1.12.0, a block left with nothing in it goes too, so a whole section can hang on one
-variable:
-
-```yaml
-features:
-  - type: '[[light_type?]]'   # no light_type, no features
-```
-
-`if:` *(v1.12.0+)* makes a value depend on a different variable. `[[name|if:other]]` keeps the value
-only while `other` is a yes, and `[[name|if:other=text]]` only while `other` is exactly that
-text. When the condition fails, the placeholder is treated as unset, so `?` drops it and a
-`default:` after it still applies. It works on whole mappings too, which means one card can
-choose which list items it gets:
-
-```yaml
-elements:
-  - '[[car_element|if:car_entity?]]'          # only on cards that name a car_entity
-go2rtc: '[[go2rtc_block|if:live_provider=go2rtc?]]'
-```
-
-Text that comes from Home Assistant - a friendly name, an attribute, a device's model - is
-always text: it is never read as a placeholder, and it never opens button-card's `[[[ ]]]`,
-Jinja's `{{ }}` or config-template-card's `${ }` either, however the name is written. If you
-put such a value inside a string in code of your own, `[[[ return '[[name]]' ]]]`, use
-`[[name|json]]` there instead, which writes it as a quoted and escaped string literal.
-
-`bool` *(v1.12.0+)* is for options that want a real `true` or `false`. A card reads the
-word `"false"` as switched on, so `hide_state: '[[compact|bool]]'` turns `yes`, `on` or
-`1` into `true`, and `no`, `off`, `0`, nothing at all or an unset variable into `false`.
-
-## Templates inside templates
-
-A template can hold decluttering cards of its own, a stack of two cameras say. Each of those
-gets only the variables written on it, so a stack that needs the same twenty values in both
-cards has to pass every one down by name.
-
-`inherit_variables: true` *(v1.13.0+)* on the nested card hands it everything the card
-around it has instead: what that card was given, what its view sets and what its template
-defaults to. Anything the nested card writes for itself still wins.
-
-```yaml
-cam_backup:
-  card:
-    type: vertical-stack
-    cards:
-      - type: custom:decluttering-card-plus
-        template: camera
-        inherit_variables: true
-      - type: custom:decluttering-card-plus
-        template: camera
-        inherit_variables: true
-        variables:
-          - camera_entity: '[[direct_camera_entity]]'   # this one differs
-```
-
-Placeholders in the values are filled in by the outer card before they are handed down, and
-it works through any number of levels as long as each nested card asks. Two things stay
-behind: the outer template's `let:` values, which are its own internals, and the dashboard's
-`decluttering_defaults`, which every card reads for itself anyway. It is off unless asked
-for, because a value handed down beats the nested template's own default for the same name.
-
-### A set of cards as one card (v1.14.0+)
-
-Cards in a stack are sized by the stack, so a template holding six tiles in a
-vertical-stack shows them one under another, not two to a row as the section would.
-`group:` in place of `card:` holds the cards without a stack. Each one gets the place in
-the section it would have had written out on its own, `grid_options` and all:
-
-```yaml
-decluttering_templates:
-  room:
-    default:
-      - room: kitchen
-    group:
-      cards:
-        - type: heading
-          heading: '[[room]]'
-        - type: custom:decluttering-card-plus
-          template: light_tile
-          variables:
-            - entity: 'light.[[room]]'
-        - type: tile
-          entity: 'sensor.[[room]]_temperature'
-```
-
-```yaml
-- type: custom:decluttering-card-plus
-  template: room
-  variables:
-    - room: bedroom
-```
-
-The group fills the width of its section and lays its cards out on the section's own grid,
-so a wider section gives them more room the same way it would anyway. Variables reach the
-cards in a group like any other content, and the group's `default:` covers the defaults
-for the whole set. `for_each` repeats the whole group, one copy under another.
-
-On the dashboard the group is still one card: it is dragged, edited and deleted as a whole.
-Outside a sections view its cards go one under another, which is where they would be in a
-masonry column anyway.
-
-#### Sizing the group itself (v1.15.2+)
-
-`grid_options` on the `group:` sizes the group in its section, the same way it sizes any
-card. It can take variables, so a repeated group can give each copy its own width:
-
-```yaml
-decluttering_templates:
-  room_tile:
-    default:
-      - width: 6
-    group:
-      grid_options:
-        columns: '[[width]]'
-      cards:
-        - type: tile
-          entity: '[[entity]]'
-          grid_options:
-            columns: full
-```
-
-```yaml
-- type: custom:decluttering-card-plus
-  template: room_tile
-  for_each_from:
-    area: bathroom
-    overrides:
-      climate.bathroom_floor:
-        width: 12
-```
-
-Each copy here takes half the section, two to a row, and the climate tile takes the whole
-row. The `grid_options` of the cards inside the group still size them within the group.
-A `grid_options` written at the top of the template, or on the card using it, sizes the
-whole card and is the same for every copy. Copies laid out with `columns:` go in a grid
-card of their own, which leaves the group's `grid_options` unread.
-
-### A set of badges as one badge (v1.15.0+)
-
-Put a group template in a view's badges and its cards are built as badges, side by side in
-the row with the others. Nothing changes in the template: the same `group:` is a set of
-cards in a section and a set of badges in the badges row.
-
-```yaml
-decluttering_templates:
-  lights:
-    group:
-      cards:
-        - type: custom:decluttering-card-plus
-          template: light_badge
-          variables:
-            - entity: light.kitchen
-        - type: entity
-          entity: light.living_room
-```
-
-```yaml
-badges:
-  - type: custom:decluttering-card-plus
-    template: lights
-```
-
-Everything in the group has to be something that works as a badge, the same as anything
-else in the badges row. A badge with `visibility` hides on its own and the row closes up
-around it. The group still wraps as one: when it does not fit at the end of a line, the
-whole set moves to the next. In edit mode it is one badge, dragged and edited as a whole.
-
-## Working out what a card built
-
-`debug: true` on a card renders what it built instead of the card itself, with every
-variable put in. The editor's **Result** view answers the same question, but not when the
-card only misbehaves on a phone, or in a view whose editor is awkward to reach.
-
-`debug: yaml` *(v1.13.0+)* shows the same thing as YAML rather than JSON, which is easier
-to hold up against a card you know works, or to paste straight back into a dashboard.
-
-`debug: console` *(v1.13.0+)* leaves the card looking as it should and writes how it was
-built to the browser console instead: every variable with where its value came from (the
-card, a `let:`, a default, the view, the card around it), what each placeholder turned into,
-which options an empty variable took out, the finished config, and how long it took. Any
-template card nested inside logs its own entry too, labelled with the templates it sits in,
-so you can see what each level was given. Open the developer tools (F12) and look for
-`decluttering-card-plus:` lines. The time covers building the config, not Home Assistant
-drawing the card afterwards.
-
-Ten cards from one template all log under its name, so a card or its template can have a
-`name:` *(v1.14.0+)*, filled in with the card's own variables. A card's beats its
-template's. A card nested in a logging card also says where it sits:
-
-```text
-decluttering-card-plus: "back_yard" [camera] built in 0.8 ms
-decluttering-card-plus: "but2 button" [ele_button] built in 0.1 ms (inside "back_yard" [camera], at elements[1])
-```
-
-with `name: '[[camera]]'` on the `camera` template and `name: '[[ele_name]] button'` on
-`ele_button`.
-
-Each nested card builds after the card around it, once Home Assistant creates it, so the
-outer entry shows its nested cards as the decluttering cards they are. From v1.14.0 the
-outermost card waits for them and then logs one more entry, `"back_yard" [camera] in full`,
-with every nested card replaced by what it built. A nested card that never builds - hidden,
-not shown yet, or in error - is left as written and listed underneath, after a few seconds.
-
-`debug: true` and `debug: yaml` log too *(v1.14.0+)*, on top of showing what was built on
-the card. Nothing inside a card showing its debug view is built, so those log only the one
-level.
-
-`debug: report` *(v2.0.0+)* is for asking someone else. The card looks as it should, logs
-the same as `debug: console`, and has a panel underneath holding all of that as one
-Markdown text, with **Copy** and **Download** buttons, ready to paste into an issue or a
-forum post. It starts with the versions of the card, Home Assistant and your browser, then
-what the card ended up as, then each build folded away under its own heading, with the
-template as written, its variables, placeholders, warnings and result, the cards inside it
-included. If `strict:` refuses the card, the reason comes first. Put it on the outermost
-card: a card inside it is in its report already. A card inside that builds late, such as a
-camera card waiting on its stream, is filled in when it arrives *(v2.3.1+)*.
-
-**Show the report** opens it on the card formatted, the way GitHub would show it
-*(v2.1.0+)*, with a button to switch to the Markdown source.
-
-Passwords, tokens, IP addresses, email addresses and hosts that could be recognised are
-replaced before the text is shown: the value of any variable named like a secret wherever it
-turns up, secret-looking keys in the configs, credentials and hosts in URLs, and the common
-token formats. It cannot know every shape a secret takes, and entity ids, names and
-everything else are left as they are, because they are usually what the problem is about,
-so read it through before you post it.
-
-Each one is marked with what it was, `<redacted-ip>`, `<redacted-host>` and so on
-*(v2.1.0+)*. When it is the real value you need to see, `redact: false` *(v2.1.0+)* leaves
-everything in, and the report says so at the top. Keep that one to yourself.
-
-```yaml
-type: custom:decluttering-card-plus
-template: camera
-debug: report
-redact: false
-```
-
-`strict: true` turns the usual warnings into a card that refuses. Nothing normally stops a
-card rendering — a template can be edited after the cards that use it — but somebody
-building a template for other people wants the opposite.
-
-## When something is wrong
-
-The card tries to say what, rather than leaving you to work it out:
-
-- **A template that uses itself** — directly, or through another template that uses it back
-  — is refused, naming the whole loop. Without that the tab simply stops responding, since
-  every level builds the next one before any of them reach the page.
-- **A template name that doesn't exist** offers the closest one that does, which is usually
-  the typo or the rename you are looking for.
-- **A template defining two things** says which two. It can only define one of `card:`,
-  `badge:`, `row:` or `element:`.
-- **A repeat producing more than 50 copies** is mentioned in the browser console. It is not
-  an error — it may be exactly what you asked for — but it is worth a look.
-
-## Languages (v1.2.0+)
-
-Everything the card says — its editors, its error messages, its Share and Where-used
-tools, even its console warnings — follows the language set in your Home Assistant
-profile. Dutch, English, French, German, Portuguese and Spanish are included; anything a
-translation does not cover falls back to English.
-
-Adding a language is one file and no code. Copy
-[`src/locales/en.json`](src/locales/en.json) to `src/locales/<code>.json` — `de.json`,
-`it.json` — translate the values, and register it in
-[`src/localize.ts`](src/localize.ts) by adding one import and one entry to `LANGUAGES`.
-Leave the `{placeholders}` and any `[[name]]` brackets exactly as they are: the card fills
-those in. `npm test` lists any keys you have missed and checks that every placeholder
-survived. The wiki's [Translations page][wiki-translations] walks through it, including
-how to send one in without touching git.
-
-[wiki-translations]: https://github.com/tempus2016/decluttering-card-plus/wiki/Translations
-
-## Troubleshooting
-
-Common problems and their fixes are in the wiki: [Troubleshooting][wiki-troubleshooting].
-
-For dashboard plugins in general, see
-[this guide](https://github.com/thomasloven/hass-config/wiki/Lovelace-Plugins).
+To try it without touching your own dashboards, paste
+[`examples/demo-dashboard.yaml`](examples/demo-dashboard.yaml) into a new dashboard's raw
+configuration editor. [Trying It Out][wiki-trying] has more ways in.
+
+## Migrating
+
+**From `decluttering-card`, your existing configuration keeps working.** This card also
+registers the original `custom:decluttering-card` and `custom:decluttering-template` types
+when the original is not installed, and `decluttering_templates` is unchanged. Install this,
+remove the old card, and change nothing else. Do not run both: whichever loads first claims
+the type names. [Migrating from decluttering-card][wiki-migrating] has the detail.
+
+**From Streamline card**, rename `streamline_templates:` to `decluttering_templates:` and
+`custom:streamline-card` to `custom:decluttering-card-plus`. `_javascript` keys are not run
+here; [Migrating from Streamline card][wiki-migrating-streamline] shows what to use instead.
+
+## Help and languages
+
+Common problems are in [Troubleshooting][wiki-troubleshooting]. If you need to ask, put
+`debug: report` on the card and paste what it gives you into an [issue][issues] or the
+[forum thread][forum].
+
+The card speaks Dutch, English, French, German, Portuguese and Spanish, following your Home
+Assistant profile. Adding a language is one file and no code: see
+[Translations][wiki-translations].
 
 ## Credits
 
@@ -615,10 +156,6 @@ a release since April 2023, and on the work of three people:
 - [j9brown][j9brown] — visual editors, and support for templating entity rows and picture
   elements as well as cards ([upstream PR #78][pr78], unmerged).
 - [simbaja][simbaja] — modernisation to lit 3 and TypeScript 5, plus the `style` option.
-
-It is now maintained here as its own project, with badge templates, templates shared between
-dashboards, `visibility` support inside templates, and a series of variable-substitution and
-layout fixes on top of that work.
 
 This project is maintained by [tempus2016](https://github.com/tempus2016) and is copyright 2026
 John MacKinnon. It began as a fork of RomRider's `decluttering-card`, which is copyright 2018
@@ -631,42 +168,45 @@ Alexandre Garcia, and parts of that original card remain in it — so both notic
 cut from, and the handful of changes that tend to get pushed back. Security reports go
 through [SECURITY.md](SECURITY.md).
 
-## Developers
-
-Fork and then clone the repo to your local machine. From the cloned directory run
-
 ```bash
 npm install     # or npm ci
-npm test        # unit tests for variable substitution
+npm test        # unit tests
 npm run build   # lint, then bundle into dist/
 npm start       # rebuild on change, served on :5000 for the dev container
 ```
 
+[builder]: https://tempus2016.github.io/decluttering-card-plus/builder.html
+[discussions-share]: https://github.com/tempus2016/decluttering-card-plus/discussions/categories/share-your-templates
+[forum]: https://community.home-assistant.io/t/decluttering-card-plus-a-maintained-continuation-of-decluttering-card-badges-cross-dashboard-templates-repeat/1021962
+[issues]: https://github.com/tempus2016/decluttering-card-plus/issues
 [j9brown]: https://github.com/j9brown/decluttering-card
 [latest-release]: https://github.com/tempus2016/decluttering-card-plus/releases/latest
-[releases]: https://github.com/tempus2016/decluttering-card-plus/releases
+[pages]: https://tempus2016.github.io/decluttering-card-plus/
+[playground]: https://tempus2016.github.io/decluttering-card-plus/playground.html
 [pr78]: https://github.com/custom-cards/decluttering-card/pull/78
+[releases]: https://github.com/tempus2016/decluttering-card-plus/releases
 [romrider]: https://github.com/RomRider
 [simbaja]: https://github.com/simbaja/ha-decluttering-card
 [upstream]: https://github.com/custom-cards/decluttering-card
 [wiki]: https://github.com/tempus2016/decluttering-card-plus/wiki
 [wiki-badges]: https://github.com/tempus2016/decluttering-card-plus/wiki/Badges
 [wiki-cards]: https://github.com/tempus2016/decluttering-card-plus/wiki/Cards
-[wiki-defining]: https://github.com/tempus2016/decluttering-card-plus/wiki/Defining-Templates
+[wiki-config]: https://github.com/tempus2016/decluttering-card-plus/wiki/Configuration-Reference
 [wiki-editors]: https://github.com/tempus2016/decluttering-card-plus/wiki/Visual-Editors
 [wiki-elements]: https://github.com/tempus2016/decluttering-card-plus/wiki/Elements
 [wiki-installation]: https://github.com/tempus2016/decluttering-card-plus/wiki/Installation
+[wiki-list-entries]: https://github.com/tempus2016/decluttering-card-plus/wiki/List-Entries
 [wiki-migrating]: https://github.com/tempus2016/decluttering-card-plus/wiki/Migrating-from-decluttering-card
 [wiki-migrating-streamline]: https://github.com/tempus2016/decluttering-card-plus/wiki/Migrating-from-Streamline-card
 [wiki-quickstart]: https://github.com/tempus2016/decluttering-card-plus/wiki/Quick-Start
-[wiki-recipes]: https://github.com/tempus2016/decluttering-card-plus/wiki/Recipes
 [wiki-repeating]: https://github.com/tempus2016/decluttering-card-plus/wiki/Repeating-a-Template
+[wiki-repeating-sections]: https://github.com/tempus2016/decluttering-card-plus/wiki/Repeating-Sections
 [wiki-rows]: https://github.com/tempus2016/decluttering-card-plus/wiki/Rows
-[wiki-sharing]: https://github.com/tempus2016/decluttering-card-plus/wiki/Sharing-a-Template
-[discussions-share]: https://github.com/tempus2016/decluttering-card-plus/discussions/categories/share-your-templates
 [wiki-sharing-between]: https://github.com/tempus2016/decluttering-card-plus/wiki/Sharing-Templates-Between-Dashboards
 [wiki-styling]: https://github.com/tempus2016/decluttering-card-plus/wiki/Styling
+[wiki-translations]: https://github.com/tempus2016/decluttering-card-plus/wiki/Translations
 [wiki-troubleshooting]: https://github.com/tempus2016/decluttering-card-plus/wiki/Troubleshooting
+[wiki-trying]: https://github.com/tempus2016/decluttering-card-plus/wiki/Trying-It-Out
 [wiki-variables]: https://github.com/tempus2016/decluttering-card-plus/wiki/Variables
 [wiki-visibility]: https://github.com/tempus2016/decluttering-card-plus/wiki/Visibility
 
