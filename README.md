@@ -122,7 +122,8 @@ Templates][wiki-defining].
   fills a mapping in once, `[[camera_entry|repeat:cams]]` once per item of a list or per
   entity the registry finds, spliced into the list it sits in. The block is a mapping
   variable, or a template with an `item:` body when it wants defaults of its own, which can
-  `extends:` another item template *(v2.3.1+)*.
+  `extends:` another item template *(v2.3.1+)*. Marked optional, `[[camera_entry|with:...?]]`,
+  a fill that comes out empty leaves the list instead of putting a blank entry in *(v2.3.2+)*.
 - **[Repeating a template][wiki-repeating]** — one card per item in a list, or one per entity
   area, device, floor or label Home Assistant knows about, narrowed by domain, area, floor,
   label, device class or integration, with anything you name excluded, sorted, limited, and a card of your own to

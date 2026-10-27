@@ -1759,8 +1759,16 @@ function answeredNames(template: TemplateConfig | undefined, values: Record<stri
  * and in the values that feed it: `let:`, `default:`, declarations, and the `decluttering_let`
  * of the view, section and dashboard, since a resolver in any of those ends up in the card.
  */
-function usesStep(template: TemplateConfig | undefined, wanted: (step: string) => boolean): boolean {
-  const json = JSON.stringify([template, outerLet(template).map((layer) => layer.values)]);
+function usesStep(
+  template: TemplateConfig | undefined,
+  wanted: (step: string) => boolean,
+  itemTemplates?: Record<string, TemplateConfig>,
+): boolean {
+  const json = JSON.stringify([
+    template,
+    outerLet(template).map((layer) => layer.values),
+    ...itemTemplatesReached(template, itemTemplates),
+  ]);
   if (typeof json !== 'string') return false;
   const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
   let match = pattern.exec(json);
@@ -1779,23 +1787,60 @@ function usesStep(template: TemplateConfig | undefined, wanted: (step: string) =
   return false;
 }
 
+/*
+ * The item templates a template fills in by name - `[[camera_entry|with:...]]` - and the ones
+ * those fill in, and so on. A step inside one ends up in the card as surely as one written
+ * in the template itself, so whether the card has to build again reads them too (#235).
+ */
+function itemTemplatesReached(
+  template: TemplateConfig | undefined,
+  itemTemplates: Record<string, TemplateConfig> | undefined,
+): TemplateConfig[] {
+  if (!itemTemplates) return [];
+  const reached: TemplateConfig[] = [];
+  const seen = new Set<string>();
+  const names = Object.keys(itemTemplates);
+  const visit = (text: string | undefined): void => {
+    if (typeof text !== 'string') return;
+    for (const name of names) {
+      if (seen.has(name)) continue;
+      if (!text.includes(`[[${name}|`) && !text.includes(`[[${name}]]`) && !text.includes(`[[${name}?`)) continue;
+      seen.add(name);
+      reached.push(itemTemplates[name]);
+      visit(JSON.stringify(itemTemplates[name]));
+    }
+  };
+  visit(JSON.stringify([template, outerLet(template).map((layer) => layer.values)]));
+  return reached;
+}
+
 /**
  * Whether anything in the template asks Home Assistant for a value. Worth knowing because
  * those answers come from the registry, which can arrive after the card has first
  * rendered - a template that uses one has to be built again when it does.
  */
-export function usesResolver(template: TemplateConfig | undefined): boolean {
+export function usesResolver(
+  template: TemplateConfig | undefined,
+  itemTemplates?: Record<string, TemplateConfig>,
+): boolean {
   // `exists` asks Home Assistant too, so it is built again once there is a Home Assistant to ask.
   // A `repeat:` over a registry source reads it too, and has to follow it the same way.
-  return usesStep(template, (step) => isResolver(step) || step === EXISTS_STEP || stepName(step) === REPEAT_STEP);
+  return usesStep(
+    template,
+    (step) => isResolver(step) || step === EXISTS_STEP || stepName(step) === REPEAT_STEP,
+    itemTemplates,
+  );
 }
 
 /**
  * Whether the template asks for a translation, whose answer changes when Home Assistant
  * loads more of them or the language changes - not when the registry does.
  */
-export function usesTranslate(template: TemplateConfig | undefined): boolean {
-  return usesStep(template, (step) => step === 'translate');
+export function usesTranslate(
+  template: TemplateConfig | undefined,
+  itemTemplates?: Record<string, TemplateConfig>,
+): boolean {
+  return usesStep(template, (step) => step === 'translate', itemTemplates);
 }
 
 /**

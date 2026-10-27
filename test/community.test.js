@@ -505,6 +505,23 @@ check(
   ['toggle lock.front'],
 );
 check(
+  'two templates that call each other with variables are each read once, not until the stack runs out',
+  risksOf(
+    [
+      'card: {type: custom:decluttering-card-plus, template: t, variables: {entity: lock.front}}',
+      'includes:',
+      '  t:',
+      '    card:',
+      '      type: vertical-stack',
+      '      cards:',
+      '        - {type: custom:decluttering-card-plus, template: r, variables: {entity: lock.back}}',
+      '        - {type: tile, entity: "[[entity]]", tap_action: {action: toggle}}',
+    ],
+    'r',
+  ).actions,
+  ['toggle lock.front'],
+);
+check(
   'an auto-entities filter on locks with a toggle in its options is spelt out',
   risksOf([
     'card:',

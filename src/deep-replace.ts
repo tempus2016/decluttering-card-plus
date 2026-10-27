@@ -58,14 +58,19 @@ interface Refusal {
  * How deep a condition's own value is worked out. `if:` reads a variable as it will end up,
  * not as it was written - a `let:` value built from the others is still `[[...]]` text until
  * it is substituted - so a condition settles that value first, with the same variables.
- * The settling can meet conditions of its own; past this depth they are read as written.
+ * The settling can meet conditions of its own; past this depth they are read as written,
+ * and the build says so. Counted apart from how deep `with:` fills nest, which used to eat
+ * into it: a chain of defaults inside an item template ran out after two (#235).
  */
-const MAX_CONDITION_DEPTH = 3;
+const MAX_CONDITION_DEPTH = 8;
 
 // A variable's value can itself contain placeholders, so substitution runs repeatedly
 // until nothing changes. The cap only matters for a variable that refers to itself,
 // which would otherwise never settle.
 const MAX_PASSES = 10;
+
+// How many times the passes go over what a `default:` or `or:` stand-in brought in (#235).
+const MAX_FALLBACK_ROUNDS = 3;
 
 /*
  * What the card hands substitution beyond the variables (#227): the dashboard's item
@@ -88,6 +93,10 @@ export interface BuildExtras {
    * own before the outer one threw the result away (review 2026-10-25).
    */
   budget?: { left: number; fills: number };
+  // How many values deep a condition or a step is reading, and the names it gave up on
+  // past MAX_CONDITION_DEPTH, shared by every read of one build so the build can say so (#235).
+  readDepth?: number;
+  tooDeep?: Set<string>;
 }
 
 /*
@@ -437,6 +446,9 @@ function substitutePass(
         if (outcome === undefined) return match;
         if ('refused' in outcome) return refuse(match, written as string, outcome.refused, 'shape');
         const out = outcome.value === undefined ? null : outcome.value;
+        // A fill that came out as nothing - its body an option that dropped - is a gap like
+        // any other, so `[[row|with:...?]]` leaves its list rather than putting "" in (#235).
+        if (optional && (out === null || out === '')) return match;
         if (!whole) return asPartOfString(out);
         return JSON.stringify(outcome.splice ? { [SPLICE_KEY]: out } : out);
       }
@@ -659,6 +671,8 @@ function deepReplace(
   keepEscapes = false,
   // The item templates and registry context `with:` and `repeat:` read (#227).
   extras?: BuildExtras,
+  // For a fill being traced, the names whose values `debug:` shows as they ended up (#235).
+  noteValues?: string[],
 ): any {
   if (content === undefined) return content;
   // What the console is told is also noted on the trace, for `debug: report` (#207) -
@@ -721,8 +735,22 @@ function deepReplace(
     own: VariablesConfig[],
     // The names among `own` whose values are Home Assistant's, when the copy is a registry's.
     fromHa?: Set<string>,
+    // What filled it in, and which copy, when this build is traced.
+    from?: { placeholder: string; copy?: { number: number; count: number } },
   ): unknown => {
     budget.fills += 1;
+    let itemTrace: BuildTrace | undefined;
+    let names: string[] | undefined;
+    if (trace && from) {
+      itemTrace = { placeholders: new Map(), dropped: [], warnings: [] };
+      names = [
+        ...new Set([
+          ...own.map((entry) => Object.keys(entry)[0]),
+          ...resolveVariables([], found.template).map((entry) => Object.keys(entry)[0]),
+        ]),
+      ].filter((name) => name !== undefined && !name.includes('.'));
+      (trace.items ??= []).push({ ...from, trace: itemTrace });
+    }
     return deepReplace(
       [...own, ...variableArray],
       found.template,
@@ -732,10 +760,11 @@ function deepReplace(
       quiet,
       onUnresolved,
       depth + 1,
-      undefined,
+      itemTrace,
       shield,
       keepEscapes,
-      { ...extras, budget, haNames: fromHa ? new Set([...(haNames ?? []), ...fromHa]) : haNames },
+      { ...extras, budget, tooDeep, haNames: fromHa ? new Set([...(haNames ?? []), ...fromHa]) : haNames },
+      names,
     );
   };
   // The list a `repeat:` runs over: a list variable, or what a registry source finds - the
@@ -761,16 +790,49 @@ function deepReplace(
       return pairs;
     }
     const mapping = values[arg];
-    return mapping && typeof mapping === 'object' && !Array.isArray(mapping) ? normaliseVariables(mapping) : undefined;
+    if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return undefined;
+    /*
+     * An entry that names itself - `ent_exists: '[[ent_exists]]'` - can only mean the value
+     * out here: inside the fill it would be its own value, and never settle. So it is filled
+     * in from these variables first (#235).
+     */
+    return normaliseVariables(mapping).map((entry) => {
+      const [name, value] = Object.entries(entry)[0] ?? [];
+      if (typeof value !== 'string' || !value.includes(`[[${name}`)) return entry;
+      const below = deeper(name, value);
+      if (!below) return entry;
+      return {
+        [name]: deepReplace(
+          variableArray,
+          {},
+          value,
+          templateName,
+          hass,
+          true,
+          undefined,
+          depth,
+          undefined,
+          shield,
+          true,
+          below,
+        ),
+      };
+    });
   };
   // One copy per item, each given its item's values and its place, as a `for_each` copy is.
-  const repeatOver = (found: { body: unknown; template: TemplateConfig }, items: unknown[], fromHa: boolean) =>
+  const repeatOver = (
+    found: { body: unknown; template: TemplateConfig },
+    items: unknown[],
+    fromHa: boolean,
+    placeholder: string,
+  ) =>
     items.map((item, index) => {
       const own = scalarAsItem(item);
       return fill(
         found,
         forEachVariables(own, undefined, index, items.length),
         fromHa ? new Set(Object.keys(own as object)) : undefined,
+        { placeholder, copy: { number: index + 1, count: items.length } },
       );
     });
   // Each placeholder is expanded once per build: the variables do not change between
@@ -794,12 +856,17 @@ function deepReplace(
         if (budget.fills + listed.items.length > MAX_FILLS) {
           return { refused: localize('warn.too_many_fills', { max: MAX_FILLS }) };
         }
-        return { value: repeatOver(found, listed.items, listed.fromHa), splice: true };
+        // A copy whose body dropped out - an item template gated on its own `if:...?` - leaves
+        // the list rather than putting "" in its place, so a repeat can decide copy by copy (#235).
+        const copies = repeatOver(found, listed.items, listed.fromHa, `[[${key}]]`).filter(
+          (copy) => copy !== undefined && copy !== null && copy !== '',
+        );
+        return { value: copies, splice: true };
       }
       if (budget.fills >= MAX_FILLS) return { refused: localize('warn.too_many_fills', { max: MAX_FILLS }) };
       const overlay = overlayOf(arg);
       if (!overlay) return { refused: localize('warn.not_a_mapping', { arg }) };
-      const value = fill(found, overlay);
+      const value = fill(found, overlay, undefined, { placeholder: `[[${key}]]` });
       // A body still carrying a structural placeholder of its own name is one that fills
       // itself in: refused here, so every level says so rather than inserting another copy
       // of it on every pass until the size ceiling stops it.
@@ -856,14 +923,39 @@ function deepReplace(
   if (shield === undefined && hasStyleKey(content)) jsonConfig = JSON.stringify(shieldStyles(content));
 
   // What an `if:` reads: a variable's value as it will end up, worked out once per name.
+  const readDepth = extras?.readDepth ?? 0;
+  const tooDeep = extras?.tooDeep ?? new Set<string>();
+  // What a value read below this one is handed: one level further down, and the same note
+  // of what was given up on.
+  const deeper = (name: string, raw: unknown): BuildExtras | undefined => {
+    if (typeof raw !== 'string' || !PLACEHOLDER.test(raw)) return undefined;
+    if (readDepth >= MAX_CONDITION_DEPTH) {
+      tooDeep.add(name);
+      return undefined;
+    }
+    return { readDepth: readDepth + 1, tooDeep };
+  };
   const settled = new Map<string, unknown>();
   const read = (name: string): unknown => {
     if (settled.has(name)) return settled.get(name);
     const raw = values[name];
-    const value =
-      typeof raw === 'string' && PLACEHOLDER.test(raw) && depth < MAX_CONDITION_DEPTH
-        ? deepReplace(variableArray, {}, raw, templateName, hass, true, undefined, depth + 1)
-        : raw;
+    const below = deeper(name, raw);
+    const value = below
+      ? deepReplace(
+          variableArray,
+          {},
+          raw,
+          templateName,
+          hass,
+          true,
+          undefined,
+          depth,
+          undefined,
+          undefined,
+          false,
+          below,
+        )
+      : raw;
     settled.set(name, value);
     return value;
   };
@@ -877,16 +969,16 @@ function deepReplace(
   const settle = (name: string): unknown => {
     if (shapedInputs.has(name)) return shapedInputs.get(name);
     const raw = values[name];
-    const value =
-      typeof raw === 'string' && PLACEHOLDER.test(raw) && depth < MAX_CONDITION_DEPTH
-        ? deepReplace(variableArray, {}, raw, templateName, hass, true, undefined, depth + 1, undefined, shield, true)
-        : raw;
+    const below = deeper(name, raw);
+    const value = below
+      ? deepReplace(variableArray, {}, raw, templateName, hass, true, undefined, depth, undefined, shield, true, below)
+      : raw;
     shapedInputs.set(name, value);
     return value;
   };
   // Each placeholder a transform refused, and what its value turned out to be.
   const refused = new Map<string, Refusal>();
-  if (variableArray.length) {
+  const substituteAll = (): void => {
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES && budget.left > 0) {
       const before = jsonConfig;
@@ -918,30 +1010,54 @@ function deepReplace(
     if (passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
       say(localize('warn.gave_up', { passes: MAX_PASSES }));
     }
-
-    if (refused.size) {
-      const each = [...refused].map(([placeholder, refusal]) => `[[${placeholder}]] (${refusal.text})`);
-      // The ways a chain gives up read differently, so say whichever apply rather than a
-      // sentence that only half fits.
-      const reasons = new Set([...refused.values()].map((refusal) => refusal.reason));
-      const why = [
-        reasons.has('shape') ? localize('warn.refused_transform') : '',
-        reasons.has('missing') ? localize('warn.refused_resolver') : '',
-        reasons.has('closed') ? localize('warn.refused_condition') : '',
-        reasons.has('json') ? localize('warn.refused_json') : '',
-        reasons.has('unlisted') ? localize('warn.refused_unlisted') : '',
-      ]
-        .filter(Boolean)
-        .join(' ');
-      say(localize('warn.refused', { which: each.join(', '), why }));
-    }
+  };
+  /*
+   * Anything still saying `default:`, `or:` or `bool` gets its turn after the passes, whether
+   * or not there were any variables to substitute in the first place. What it puts in can
+   * carry placeholders of its own - `or:` hands over the other variable as it was written -
+   * so the passes go over that again (#235). Inside a value a condition reads, nothing comes
+   * after this build to finish them, and `exists` was asked about half an entity id.
+   */
+  let fallbacks = false;
+  for (let round = 0; ; round += 1) {
+    if (variableArray.length) substituteAll();
+    if (!hasFallback(jsonConfig)) break;
+    fallbacks = true;
+    const before = jsonConfig;
+    jsonConfig = fallbackPass(jsonConfig, values, read, hass, trace, shield);
+    if (jsonConfig === before || !variableArray.length || round >= MAX_FALLBACK_ROUNDS) break;
+    if (!PLACEHOLDER.test(jsonConfig) || budget.left <= 0) break;
   }
 
-  // Anything still saying `default:`, `or:` or `bool` gets its turn now, whether or not there were
-  // any variables to substitute in the first place.
-  const fallbacks = hasFallback(jsonConfig);
-  if (fallbacks) jsonConfig = fallbackPass(jsonConfig, values, read, hass, trace, shield);
+  if (variableArray.length && refused.size) {
+    const each = [...refused].map(([placeholder, refusal]) => `[[${placeholder}]] (${refusal.text})`);
+    // The ways a chain gives up read differently, so say whichever apply rather than a
+    // sentence that only half fits.
+    const reasons = new Set([...refused.values()].map((refusal) => refusal.reason));
+    const why = [
+      reasons.has('shape') ? localize('warn.refused_transform') : '',
+      reasons.has('missing') ? localize('warn.refused_resolver') : '',
+      reasons.has('closed') ? localize('warn.refused_condition') : '',
+      reasons.has('json') ? localize('warn.refused_json') : '',
+      reasons.has('unlisted') ? localize('warn.refused_unlisted') : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    say(localize('warn.refused', { which: each.join(', '), why }));
+  }
+
+  // Said once, by the build that started the reading, however many fills and reads met it.
+  if (!extras?.tooDeep && tooDeep.size) {
+    say(localize('warn.read_too_deep', { names: [...tooDeep].join(', '), depth: MAX_CONDITION_DEPTH }));
+  }
   if (trace) noteLeftStanding(trace, jsonConfig, refused);
+  // A traced fill notes its values as they ended up, `exists` and `if:` answers and all.
+  if (trace && noteValues) {
+    trace.values = new Map();
+    for (const name of noteValues) {
+      if (Object.prototype.hasOwnProperty.call(values, name)) trace.values.set(name, read(name));
+    }
+  }
 
   /*
    * A variable nobody set renders as the literal `[[name]]` on the card. The editors

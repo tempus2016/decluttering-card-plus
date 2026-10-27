@@ -30,6 +30,23 @@ export interface BuildTrace {
   dropped: string[];
   /** What substitution warned about in the console while building it. */
   warnings: string[];
+  /** Each item template a `with:` or `repeat:` filled in, and what went on inside it (#235). */
+  items?: ItemTrace[];
+  /** For an item template's fill: its own values and the defaults it declares, as each ended up. */
+  values?: Map<string, unknown>;
+}
+
+/*
+ * One fill of an item template. Its placeholders are its own, read against its own values,
+ * so they are kept apart from the card's: the card's table only says what the whole fill
+ * became, which hid why a step inside it gave the answer it did (#235).
+ */
+export interface ItemTrace {
+  /** What filled it in, as written in the card - `[[camera_entry|with:camera=front]]`. */
+  placeholder: string;
+  /** Which copy, for a `repeat:`. */
+  copy?: { number: number; count: number };
+  trace: BuildTrace;
 }
 
 export function newTrace(): BuildTrace {
@@ -378,6 +395,38 @@ export function describeSection(
   };
 }
 
+/** What an item template's fill is called in the console and the report. */
+export function itemTitle(item: ItemTrace, hass?: any): string {
+  const title = localize('trace.item', { placeholder: item.placeholder }, hass);
+  return item.copy ? `${title} - ${localize('trace.copy', item.copy, hass)}` : title;
+}
+
+/** An item template's values as table rows, worked out apart from the logging so it can be tested. */
+export function itemValueRows(trace: BuildTrace, hass?: any): Record<string, unknown>[] {
+  const col = (key: string): string => localize(`trace.col_${key}`, undefined, hass);
+  return [...(trace.values ?? [])].map(([variable, value]) => ({
+    [col('variable')]: variable,
+    [col('value')]: cell(value),
+  }));
+}
+
+// Each fill inside a build, and the fills inside those, as collapsed groups of their own.
+function logItems(items: ItemTrace[] | undefined, hass?: any): void {
+  for (const item of items ?? []) {
+    console.groupCollapsed(itemTitle(item, hass));
+    const values = itemValueRows(item.trace, hass);
+    console.log(localize('trace.item_values', undefined, hass));
+    if (values.length) console.table(values);
+    else console.log(localize('trace.none', undefined, hass));
+    const placeholders = describeSection({ variables: [], trace: item.trace, built: undefined }, hass).placeholders;
+    console.log(localize('trace.placeholders', undefined, hass));
+    if (placeholders.length) console.table(placeholders);
+    else console.log(localize('trace.none', undefined, hass));
+    logItems(item.trace.items, hass);
+    console.groupEnd();
+  }
+}
+
 export function headline(report: TraceReport, hass?: any): string {
   const built = localize('trace.built', { label: report.label, ms: report.ms.toFixed(1) }, hass);
   if (!report.chain.length) return built;
@@ -404,6 +453,7 @@ export function logTrace(report: TraceReport, hass?: any): void {
     if (described.placeholders.length) console.table(described.placeholders);
     else console.log(localize('trace.none', undefined, hass));
     if (described.dropped.length) console.log(localize('trace.taken_out', undefined, hass), described.dropped);
+    logItems(section.trace.items, hass);
     console.log(localize('trace.result', undefined, hass), section.built);
     if (section.label) console.groupEnd();
   }
