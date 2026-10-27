@@ -403,6 +403,8 @@ export function communityRisks(
   };
 
   // The template a nested template card calls, by the name it uses here.
+  // The templates being read again with a card's variables right now, outermost first.
+  const calling = new Set<string>();
   const templateNamed = (name: unknown): Record<string, any> | undefined => {
     if (typeof name !== 'string') return undefined;
     if (name === entry.name) return entry.template;
@@ -472,8 +474,14 @@ export function communityRisks(
           const body = THING_KEYS.map((key) => called[key]).find((each) => each !== undefined);
           noteReach(unaimedPresses(body, undefined), domainsOf(source.domain, source.entities));
         }
+        // A template that calls itself, or two that call each other, is read once per chain:
+        // reading it again with the same card inside would never end.
         const passed = passedVariables(node.variables);
-        if (passed?.length) walk(withOwnDefaults(called, passed), undefined);
+        if (passed?.length && !calling.has(node.template)) {
+          calling.add(node.template);
+          walk(withOwnDefaults(called, passed), undefined);
+          calling.delete(node.template);
+        }
       }
     }
     // auto-entities fills its card with whatever its filters find, and the options on each
