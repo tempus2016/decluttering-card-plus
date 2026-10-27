@@ -856,7 +856,12 @@ function deepReplace(
         if (budget.fills + listed.items.length > MAX_FILLS) {
           return { refused: localize('warn.too_many_fills', { max: MAX_FILLS }) };
         }
-        return { value: repeatOver(found, listed.items, listed.fromHa, `[[${key}]]`), splice: true };
+        // A copy whose body dropped out - an item template gated on its own `if:...?` - leaves
+        // the list rather than putting "" in its place, so a repeat can decide copy by copy (#235).
+        const copies = repeatOver(found, listed.items, listed.fromHa, `[[${key}]]`).filter(
+          (copy) => copy !== undefined && copy !== null && copy !== '',
+        );
+        return { value: copies, splice: true };
       }
       if (budget.fills >= MAX_FILLS) return { refused: localize('warn.too_many_fills', { max: MAX_FILLS }) };
       const overlay = overlayOf(arg);

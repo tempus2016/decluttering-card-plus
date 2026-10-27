@@ -2168,4 +2168,30 @@ function newTrace235() {
   return { placeholders: new Map(), dropped: [], warnings: [] };
 }
 
+{
+  const hass = { states: { 'sensor.thing': {} } };
+  const x = {
+    itemTemplates: {
+      gated: { default: [{ t_exists: '[[entity|exists]]' }], item: '[[row|if:t_exists?]]' },
+    },
+  };
+  check(
+    'a repeat copy whose body dropped out leaves the list (#235)',
+    deepReplace(
+      [{ row: { e: '[[entity]]' } }, { ids: ['sensor.thing', 'sensor.nope'] }],
+      {},
+      { l: ['[[gated|repeat:ids]]'] },
+      't',
+      hass,
+      true,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      x,
+    ),
+    { l: [{ e: 'sensor.thing' }] },
+  );
+}
 report();
