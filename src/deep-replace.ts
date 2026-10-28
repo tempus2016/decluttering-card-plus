@@ -40,15 +40,20 @@ import {
   yieldsList,
   yieldsNumber,
 } from './variables';
+import { closestStep, knownStep } from './closest';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // What a refusal says, and which way it happened: a transform was handed something it
 // cannot shape, Home Assistant had nothing to give, an `if:` did not hold, `json` was
-// written somewhere other than first, or `state` was asked of an entity the card does not
-// rebuild on. The reason carries the difference so the wording never has to - the wording
-// is translated.
-type RefusalReason = 'shape' | 'missing' | 'closed' | 'json' | 'unlisted';
+// written somewhere other than first, `state` was asked of an entity the card does not
+// rebuild on, a `map:` had no pair for the value, or a `with:` or `repeat:` could not fill
+// in. The reason carries the difference so the wording never has to - the wording is
+// translated.
+type RefusalReason = 'shape' | 'missing' | 'closed' | 'json' | 'unlisted' | 'map' | 'structure';
+
+// The lookup step, whose "no pair for this value" is told apart from Home Assistant having nothing.
+const MAP_STEP = 'map';
 
 interface Refusal {
   text: string;
@@ -431,6 +436,21 @@ function substitutePass(
       // A gap that an `or:` could not fill is still just a gap - nothing gives it a value -
       // so it is left to be reported as unset rather than blamed on Home Assistant.
       if (gap && transform.split('|').some(isFallback)) return match;
+      /*
+       * A `map:` with no pair for the value gives nothing too, and that is not Home
+       * Assistant's doing. Which step gave up is found by running the chain a step at a
+       * time - only on this path, where the placeholder is already being left.
+       */
+      const steps = transform.split('|');
+      for (let upTo = 1; upTo <= steps.length; upTo += 1) {
+        if (applyTransform(steps.slice(0, upTo).join('|'), input, hass, values, read, shield, fromHa) !== undefined) {
+          continue;
+        }
+        if (stepName(steps[upTo - 1]) !== MAP_STEP) break;
+        const before =
+          upTo === 1 ? input : applyTransform(steps.slice(0, upTo - 1).join('|'), input, hass, values, read);
+        return refuse(match, written, localize('warn.no_map_match', { value: before }), 'map');
+      }
       return refuse(match, written, localize('warn.nothing_for', { value }), 'missing');
     };
 
@@ -496,7 +516,7 @@ function substitutePass(
       if (expand && isStructureStep(transform.split('|')[0])) {
         const outcome = expand(name, transform);
         if (outcome === undefined) return match;
-        if ('refused' in outcome) return refuse(match, written as string, outcome.refused, 'shape');
+        if ('refused' in outcome) return refuse(match, written as string, outcome.refused, 'structure');
         const out = outcome.value === undefined ? null : outcome.value;
         // A fill that came out as nothing - its body an option that dropped - is a gap like
         // any other, so `[[row|with:...?]]` leaves its list rather than putting "" in (#235).
@@ -1255,10 +1275,12 @@ function deepReplace(
       reasons.has('closed') ? localize('warn.refused_condition') : '',
       reasons.has('json') ? localize('warn.refused_json') : '',
       reasons.has('unlisted') ? localize('warn.refused_unlisted') : '',
+      reasons.has('map') ? localize('warn.refused_map') : '',
+      // A `with:` or `repeat:` refusal already says in its own words what was wrong.
     ]
       .filter(Boolean)
       .join(' ');
-    say(localize('warn.refused', { which: each.join(', '), why }), 'refused');
+    say(localize('warn.refused', { which: each.join(', '), why }).replace(/\s+$/, ''), 'refused');
   }
 
   // Said once, by the build that started the reading, however many fills and reads met it.
@@ -1297,7 +1319,34 @@ function deepReplace(
     const which = unlistedNames.map((name) => `[[${name}]]`).join(', ');
     say(localize('warn.state_unlisted_unset', { which }), 'state_unlisted');
   }
-  const unset = unresolved.filter((inside) => !asksState(inside));
+  /*
+   * A chain with a word in it that is not a step never matches the placeholder grammar, so
+   * it is left standing however set its variable is. When the variable does have a value -
+   * or a `default:` or `or:` would give it one - the step is the thing to fix, and calling
+   * the variable unset sends the author looking in the wrong place.
+   */
+  const unknownSteps = new Map<string, string>();
+  for (const inside of unresolved) {
+    if (asksState(inside)) continue;
+    const [head, ...steps] = withoutOptional(inside).split('|');
+    const unknown = steps.find((step) => !knownStep(step));
+    if (unknown === undefined) continue;
+    const given = Object.prototype.hasOwnProperty.call(values, head) && read(head) !== undefined;
+    if (given || steps.some(isFallback)) unknownSteps.set(inside, unknown);
+  }
+  if (unknownSteps.size) {
+    const which = [...unknownSteps]
+      .map(([inside, step]) => {
+        const closest = closestStep(step);
+        return (
+          localize('warn.unknown_step_one', { placeholder: `[[${inside}]]`, step }) +
+          (closest ? localize('error.did_you_mean', { closest }) : '')
+        );
+      })
+      .join(' ');
+    say(localize('warn.unknown_step', { which }), 'other');
+  }
+  const unset = unresolved.filter((inside) => !asksState(inside) && !unknownSteps.has(inside));
   if (unset.length) {
     const which = unset.map((name) => `[[${name}]]`).join(', ');
     const whose = templateName

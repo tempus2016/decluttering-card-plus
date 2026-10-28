@@ -2183,6 +2183,19 @@ check(
       x: { entity: 'e', name: 'n' },
     },
   );
+  // A with: or repeat: refusal says what went wrong in its own words, without the sentence
+  // about text transforms, which has nothing to do with it.
+  const said = [];
+  console.warn = (m) => said.push(m);
+  deepReplace(vars, {}, { content: '[[self|with:a=1]] [[row|repeat:nothere]] [[row|with:ids]]' }, 'tpl', hass227);
+  console.warn = realWarn;
+  check(
+    'a with: or repeat: refusal is not explained as a transform needing a scalar',
+    said.length > 0 &&
+      said.every((m) => !/A transform only shapes text/.test(m)) &&
+      said.some((m) => /fills itself/.test(m)),
+    true,
+  );
 }
 
 /* ------------------------- a value passed in its own right survives a lookup after or: */
@@ -2469,6 +2482,58 @@ function newTrace235() {
   check(
     'a for_each_from with no placeholders is handed back as it was (#309)',
     fillSource(plain, [], {}, hass) === plain,
+    true,
+  );
+}
+
+/* ------------------------- console warnings say what actually went wrong */
+{
+  const said = [];
+  const capture = (fn) => {
+    said.length = 0;
+    console.warn = (m) => said.push(m);
+    const out = fn();
+    console.warn = realWarn;
+    return out;
+  };
+
+  check(
+    'a map: no pair matches leaves the placeholder',
+    capture(() => deepReplace([{ r: 'mid' }], {}, { c: '[[r|map:low=green,high=red]]' })),
+    { c: '[[r|map:low=green,high=red]]' },
+  );
+  check(
+    'and says no pair matched, suggesting *=, rather than blaming Home Assistant',
+    said.length === 1 && /mid/.test(said[0]) && /\*=/.test(said[0]) && !/Home Assistant|resolver/.test(said[0]),
+    true,
+  );
+
+  check(
+    'a set variable with an unknown step is left as written',
+    capture(() => deepReplace([{ room: 'Hall' }], {}, { n: '[[room|shout]]' })),
+    { n: '[[room|shout]]' },
+  );
+  check(
+    'and says the step is unknown, not that nothing gives the variable a value',
+    said.length === 1 && /"shout" is not a step/.test(said[0]) && !/nothing gives a value/.test(said[0]),
+    true,
+  );
+  capture(() => deepReplace([{ room: 'Hall' }], {}, { n: '[[room|Slug]]' }));
+  check(
+    'a misspelt step suggests the closest real one',
+    said.length === 1 && /Did you mean "slug"/.test(said[0]),
+    true,
+  );
+  capture(() => deepReplace([{ z: 'Z' }], {}, { n: '[[room|or:z|shout]]' }));
+  check(
+    'an unknown step on an unset variable with an or: is still the step',
+    said.length === 1 && /"shout" is not a step/.test(said[0]),
+    true,
+  );
+  capture(() => deepReplace([{ other: 1 }], {}, { n: '[[room|shout]]' }));
+  check(
+    'an unset variable is still reported as unset',
+    said.length === 1 && /nothing gives a value/.test(said[0]),
     true,
   );
 }
