@@ -1542,3 +1542,9 @@ check(
   usesResolver({ card: { name: 'x' } }, { inner: { item: '[[c|exists]]' } }),
   false,
 );
+
+check(
+  "button-card's [[[ ]]] is not a missing variable, but an unset placeholder inside it is",
+  diagnoseInstance([], { card: { name: '[[[ return entity.state ]]]', label: '[[[ return [[n|json]] ]]]' } }).missing,
+  ['n'],
+);

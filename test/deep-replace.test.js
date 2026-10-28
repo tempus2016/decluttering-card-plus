@@ -2537,3 +2537,39 @@ function newTrace235() {
     true,
   );
 }
+
+/* ------------------------------------------- button-card's [[[ ]]] is not a variable */
+
+// `[[[ return ... ]]]` is button-card's JavaScript. The placeholder grammar reads its inside
+// as `[[ return ... ]]`, which used to be reported as a variable nothing sets - both with a
+// filled placeholder inside (the wiki's `[[name|json]]` pattern) and with none at all.
+console.warn = (m) => warnings.push(m);
+warnings.length = 0;
+check(
+  'button-card JavaScript quoting a name with json is filled',
+  deepReplace([{ name: `O'Brien "x"` }], {}, { name: '[[[ return [[name|json]] ]]]' }),
+  { name: `[[[ return "O'Brien \\"x\\"" ]]]` },
+);
+check('and says nothing about the JavaScript around it', warnings, []);
+
+warnings.length = 0;
+deepReplace([{ x: 1 }], {}, { name: '[[[ return entity.state ]]]', label: '[[[ if (x) return [a][0]; ]]]' });
+check('button-card JavaScript with no placeholder in it is quiet', warnings, []);
+
+const jsLeft = [];
+deepReplace([{ x: 1 }], {}, { name: '[[[ return entity.state ]]]' }, undefined, undefined, true, (n) =>
+  jsLeft.push(...n),
+);
+check('and is not handed on as unresolved (strict mode)', jsLeft, []);
+
+warnings.length = 0;
+deepReplace([{ x: 1 }], {}, { name: '[[[ return [[nope]] ]]]', label: "[[[ return '[[gone]]' ]]]" });
+check(
+  'an unset placeholder written inside the JavaScript is still reported',
+  warnings.length === 1 &&
+    /\[\[nope\]\]/.test(warnings[0]) &&
+    /\[\[gone\]\]/.test(warnings[0]) &&
+    !/return/.test(warnings[0]),
+  true,
+);
+console.warn = realWarn;
