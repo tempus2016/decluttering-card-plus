@@ -1094,16 +1094,15 @@ export function collectTemplates(
 }
 
 /**
- * `'*'` in the sources list stands for every dashboard there is. Named sources keep
- * their place ahead of it - their templates win name clashes by being merged last - and
- * nothing is fetched twice.
+ * `'*'` in the sources list stands for every dashboard there is. A later source wins a
+ * name clash, so the star's dashboards go first and the ones named on purpose after them,
+ * in the order they were written: naming a dashboard beside the star is how you say its
+ * templates are the ones you want. Nothing is fetched twice.
  */
 export function expandSources(sources: string[], available: string[]): string[] {
   if (!sources.includes('*')) return sources;
   const named = sources.filter((source) => source !== '*');
-  const out = [...named];
-  for (const path of available) if (!out.includes(path)) out.push(path);
-  return out;
+  return [...available.filter((path) => !named.includes(path)), ...named];
 }
 
 let dashboardListCache: Promise<string[]> | null = null;
