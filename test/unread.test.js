@@ -281,3 +281,26 @@ check(
     ['nobody'],
   );
 }
+
+{
+  const SOURCE = {
+    decluttering_templates: { t: { card: { type: 'tile', entity: '[[entity]]' } } },
+    views: [
+      {
+        cards: [
+          {
+            type: 'custom:decluttering-card-plus',
+            template: 't',
+            for_each_from: { area: '[[room]]' },
+            variables: [{ room: 'Kitchen' }, { nobody: 4 }],
+          },
+        ],
+      },
+    ],
+  };
+  check(
+    "a name the card's for_each_from reads is read (#309)",
+    checkUnreadVariables(SOURCE, collectTemplates(SOURCE)).map((each) => each.name),
+    ['nobody'],
+  );
+}

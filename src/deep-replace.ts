@@ -239,6 +239,21 @@ export function cssSafe(text: string): string {
 }
 
 /*
+ * A card's `for_each_from:` filled in from its own variables and its template's, before it is
+ * looked up - the same as a `repeat:` source is (#309). A source with no placeholders is
+ * handed back as it was.
+ */
+export function fillSource(
+  source: unknown,
+  variables: VariablesConfig[] | undefined,
+  templateConfig: TemplateConfig | undefined,
+  hass?: any,
+): unknown {
+  if (!isRegistrySource(source) || !PLACEHOLDER.test(JSON.stringify(source))) return source;
+  return deepReplace(variables, templateConfig ?? ({} as TemplateConfig), source, undefined, hass, true);
+}
+
+/*
  * Every escape written out, except inside a card that will substitute again: what is handed
  * to a nested decluttering card - its `variables:` - is read as template code by that card,
  * and an escape unwrapped here would be live there. A friendly name of `[[zz?]]` passed down
@@ -907,9 +922,32 @@ function deepReplace(
     const source = values[name];
     if (Array.isArray(source)) return { items: source, fromHa: false };
     if (isRegistrySource(source)) {
-      return { items: resolveRegistryItems(hass, source, extras?.context), fromHa: true };
+      return { items: resolveRegistryItems(hass, filledSource(name, source), extras?.context), fromHa: true };
     }
     return undefined;
+  };
+  /*
+   * A registry source is filled in from the variables before it is looked up, so a filter
+   * can be built from them - `entities: binary_sensor.[[name]]_*` - and a repeat inside
+   * another repeat's copy can filter by that copy's values (#309).
+   */
+  const filledSource = (name: string, source: unknown): unknown => {
+    const below = deeper(name, JSON.stringify(source));
+    if (!below) return source;
+    return deepReplace(
+      variableArray,
+      {},
+      source,
+      templateName,
+      hass,
+      true,
+      undefined,
+      depth,
+      undefined,
+      undefined,
+      false,
+      below,
+    );
   };
   // What a `with:` lays over the variables: `a=1,b=2` pairs read as text, or a mapping variable.
   const overlayOf = (arg: string): VariablesConfig[] | undefined => {

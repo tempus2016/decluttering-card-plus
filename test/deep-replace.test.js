@@ -3,7 +3,7 @@
  * Run with `npm test`, which transpiles the source into .test-build first.
  */
 const deepReplace = require('../.test-build/deep-replace.js').default;
-const { cssSafe } = require('../.test-build/deep-replace.js');
+const { cssSafe, fillSource } = require('../.test-build/deep-replace.js');
 
 const { check } = require('./check');
 
@@ -2238,5 +2238,89 @@ function newTrace235() {
       x,
     ),
     { l: [{ e: 'sensor.thing' }] },
+  );
+}
+// A repeat's registry source is filled in from the variables before it is looked up (#309).
+{
+  const hass = {
+    states: {
+      'binary_sensor.porch_car_occupancy': { state: 'on', attributes: { friendly_name: 'Porch car' } },
+      'binary_sensor.porch_person_occupancy': { state: 'off', attributes: { friendly_name: 'Porch person' } },
+      'light.a': { state: 'on', attributes: { friendly_name: 'Lamp A' } },
+      'light.b': { state: 'on', attributes: { friendly_name: 'Lamp B' } },
+    },
+    entities: {
+      'binary_sensor.porch_car_occupancy': { entity_id: 'binary_sensor.porch_car_occupancy', labels: [] },
+      'binary_sensor.porch_person_occupancy': { entity_id: 'binary_sensor.porch_person_occupancy', labels: [] },
+      'light.a': { entity_id: 'light.a', area_id: 'kitchen', labels: [] },
+      'light.b': { entity_id: 'light.b', area_id: 'living', labels: [] },
+    },
+    areas: {
+      kitchen: { area_id: 'kitchen', name: 'Kitchen' },
+      living: { area_id: 'living', name: 'Living' },
+    },
+    devices: {},
+  };
+  const run = (vars, content) =>
+    deepReplace(vars, {}, content, 't', hass, true, undefined, 0, undefined, undefined, false, {});
+  check(
+    'repeat: a registry source with placeholders in its filter (#309)',
+    run(
+      [
+        { name: 'porch' },
+        { kind: 'car' },
+        { src: { entities: 'binary_sensor.[[name]]_[[kind]]_occupancy' } },
+        { row: { entity: '[[entity]]' } },
+      ],
+      { rows: '[[row|repeat:src]]' },
+    ),
+    { rows: [{ entity: 'binary_sensor.porch_car_occupancy' }] },
+  );
+  check(
+    'repeat: a registry source whose filter is a variable that is itself a placeholder (#309)',
+    run(
+      [
+        { pattern: 'binary_sensor.[[name]]_*' },
+        { name: 'porch' },
+        { src: { entities: '[[pattern]]' } },
+        { row: '[[entity]]' },
+      ],
+      { rows: '[[row|repeat:src]]' },
+    ),
+    { rows: ['binary_sensor.porch_car_occupancy', 'binary_sensor.porch_person_occupancy'] },
+  );
+  check(
+    "repeat: inside another repeat's copy reads that copy's values in its source (#309)",
+    run(
+      [
+        { rooms: [{ room: 'Kitchen' }, { room: 'Living' }] },
+        { lights: { domain: 'light', area: '[[room]]' } },
+        { section: { title: '[[room]]', rows: '[[row|repeat:lights]]' } },
+        { row: '[[entity]]' },
+      ],
+      { sections: '[[section|repeat:rooms]]' },
+    ),
+    {
+      sections: [
+        { title: 'Kitchen', rows: ['light.a'] },
+        { title: 'Living', rows: ['light.b'] },
+      ],
+    },
+  );
+  check(
+    "a card's for_each_from is filled in from its variables and its template's defaults (#309)",
+    fillSource(
+      { entities: 'binary_sensor.[[name]]_[[kind]]_occupancy', exclude: ['[[skip]]'] },
+      [{ name: 'porch' }, { skip: 'x' }],
+      { default: [{ kind: 'car' }] },
+      hass,
+    ),
+    { entities: 'binary_sensor.porch_car_occupancy', exclude: ['x'] },
+  );
+  const plain = { domain: 'light' };
+  check(
+    'a for_each_from with no placeholders is handed back as it was (#309)',
+    fillSource(plain, [], {}, hass) === plain,
+    true,
   );
 }

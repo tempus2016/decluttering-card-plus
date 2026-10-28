@@ -7,7 +7,7 @@ import {
   LovelaceThingConfig,
   LovelaceThingType,
 } from './types';
-import deepReplace from './deep-replace';
+import deepReplace, { fillSource } from './deep-replace';
 import {
   collectTemplates,
   collectAllTemplates,
@@ -631,9 +631,13 @@ export class DeclutteringCard extends DeclutteringElement {
     const key = [...registryKey(hass), context.views, context.rendered];
     if (sameRegistry(this._registry, key)) return;
 
+    // Its placeholders filled in from the card's variables first, so a filter can be built
+    // from them (#309).
+    const from = fillSource(source.config.for_each_from, source.config.variables, source.templateConfig, hass);
+
     // A template source builds nothing until its template has rendered - building with no
     // copies first would flash the `empty:` card at everyone on every page load.
-    const template = sourceTemplate(source.config.for_each_from);
+    const template = sourceTemplate(from);
     if (template !== undefined && !Object.prototype.hasOwnProperty.call(this._rendered, template)) {
       this._renderSourceTemplate(hass, template);
       return;
@@ -641,7 +645,7 @@ export class DeclutteringCard extends DeclutteringElement {
     this._registry = key;
 
     try {
-      const items = resolveRegistryItems(hass, source.config.for_each_from, context);
+      const items = resolveRegistryItems(hass, from, context);
       this._setForEach(source.templateConfig, source.config, items, source.picker);
       this._error = undefined;
     } catch (err) {

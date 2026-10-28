@@ -125,7 +125,7 @@ export function templateReads(
  * decluttering_let and decluttering_defaults. A name one of their values reads is read,
  * and a name a decluttering_let works out is, like the template's own `let:`, never read
  * from the card. `reads` is anything else that reads the card's variables - its own
- * `on_error:` card, which is filled in from them.
+ * `on_error:` card and its `for_each_from:`, both filled in from them.
  */
 export function unreadVariables(
   template: TemplateConfig | undefined,
@@ -236,15 +236,13 @@ export function checkUnreadVariables(ll: any, templates: Record<string, Template
         // A name is reported once per card, from the first place the card wrote it.
         const said = new Set<string>();
         const report = (where: UnreadFinding['where'], variables: unknown): void => {
-          // The card's own on_error: is built from its variables too; the template's is
-          // part of the template, and read with it.
-          for (const each of unreadVariables(
-            template,
-            templates,
-            variables as VariablesConfig[],
-            outside,
+          // The card's own on_error: is built from its variables too, and so is its
+          // for_each_from (#309); the template's on_error is part of the template, and
+          // read with it.
+          for (const each of unreadVariables(template, templates, variables as VariablesConfig[], outside, [
             node.on_error,
-          )) {
+            node.for_each_from,
+          ])) {
             if (said.has(each.name)) continue;
             said.add(each.name);
             add(view, node.template, where, each);
