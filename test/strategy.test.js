@@ -548,3 +548,37 @@ check(
     { title: 'Downstairs', path: 'downstairs' },
   ],
 );
+
+{
+  // The dashboard strategy's own item templates fill a with: or repeat: in a view it writes
+  // out - nothing fills a plain card's list later, so this is the only chance.
+  const generated = generateDashboard(
+    {
+      type: 'custom:decluttering-card-plus',
+      decluttering_templates: { row: { item: { entity: '[[entity]]', name: '[[label]]' } } },
+      views: [
+        { title: 'Plain', cards: [{ type: 'entities', entities: ['[[row|with:entity=light.a,label=A]]'] }] },
+        {
+          for_each: [{ room: 'kitchen' }],
+          view: {
+            title: '[[room]]',
+            cards: [{ type: 'entities', entities: ['[[row|with:entity=light.[[room]],label=[[room]]]]'] }],
+          },
+        },
+      ],
+    },
+    hass,
+    { rendered: {} },
+  );
+
+  check('an item template fills a with: in a plain view', generated.views[0].cards[0].entities, [
+    { entity: 'light.a', name: 'A' },
+  ]);
+
+  check('and in a repeated view', generated.views[1].cards[0].entities, [{ entity: 'light.kitchen', name: 'kitchen' }]);
+
+  check('the item template itself goes to the root untouched', generated.decluttering_templates.row.item, {
+    entity: '[[entity]]',
+    name: '[[label]]',
+  });
+}
