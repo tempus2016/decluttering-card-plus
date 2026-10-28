@@ -360,6 +360,17 @@ export function isOptional(inside: string): boolean {
 export const PLACEHOLDER = new RegExp(PLACEHOLDER_SOURCE);
 
 /*
+ * Whether a placeholder found at `index` is really the inside of button-card's `[[[ ... ]]]`:
+ * the grammar reads `[[[ return entity.state ]]]` as `[[ return entity.state ]]` with one
+ * bracket either side. That is the card's own JavaScript, not a variable nobody set, so the
+ * scans that report unset variables skip it. A real `[[name]]` written inside the JavaScript
+ * has a space or a quote before it, not a bracket, so it is still reported.
+ */
+export function insideButtonCardJs(text: string, index: number): boolean {
+  return index > 0 && text[index - 1] === '[';
+}
+
+/*
  * A placeholder can ask for its value in a different shape - `[[room|slug]]` alongside
  * `[[room]]` - which is what lets one variable serve both a name and the entity id built
  * from it. The set is deliberately closed: an unrecognised word after the bar is not a
@@ -1713,7 +1724,7 @@ function placeholdersIn(value: unknown): string[] {
   while (match !== null) {
     // `[[room|slug]]` is a use of `room`, not of a variable called `room|slug`, and
     // `[[!room]]` is not a use of anything - it is the brackets, written out.
-    if (!match[1].startsWith(ESCAPE)) {
+    if (!match[1].startsWith(ESCAPE) && !insideButtonCardJs(json, match.index)) {
       const inside = withoutOptional(match[1]);
       names.push(inside.replace(TRANSFORM_TAIL, ''));
       // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing -

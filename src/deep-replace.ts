@@ -29,6 +29,7 @@ import {
   isFallback,
   isJsonNumber,
   PLACEHOLDER,
+  insideButtonCardJs,
   resolveVariables,
   STATE_STEP,
   restoreHaText,
@@ -583,7 +584,8 @@ function unresolvedPlaceholders(json: string, refused: Map<string, Refusal>): st
   while (match) {
     const inside = match[1];
     // An optional one having no value is the point of it, not a mistake worth reporting.
-    if (!inside.startsWith(ESCAPE) && !refused.has(inside) && !isOptional(inside)) names.add(inside);
+    const reported = !inside.startsWith(ESCAPE) && !refused.has(inside) && !isOptional(inside);
+    if (reported && !insideButtonCardJs(json, match.index)) names.add(inside);
     match = everyPlaceholder.exec(json);
   }
   return [...names];
@@ -733,7 +735,7 @@ function noteLeftStanding(trace: BuildTrace, json: string, refused: Map<string, 
   while (match) {
     const placeholder = match[0];
     const inside = match[1];
-    if (!inside.startsWith(ESCAPE) && !trace.placeholders.has(placeholder)) {
+    if (!inside.startsWith(ESCAPE) && !trace.placeholders.has(placeholder) && !insideButtonCardJs(json, match.index)) {
       const refusal = refused.get(inside) ?? refused.get(withoutOptional(inside));
       const why = refusal
         ? localize('trace.left_refused', { why: refusal.text })
