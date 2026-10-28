@@ -2020,12 +2020,18 @@ export function diagnoseInstance(
   // Values supplied from elsewhere - a for_each item, say - which satisfy a variable the
   // template uses, but are not the card's own to be called unused.
   supplements?: VariablesConfig[],
+  // Parts of the card outside the template that are filled in from its variables too: its
+  // for_each_from and its own on_error card. What they read is used, and missing if unset.
+  reads?: unknown,
 ): { missing: string[]; unused: string[]; required: string[] } {
   // Supplements go after full resolution, so they only fill names nothing else defines.
   // Folded in earlier, a supplement would shadow a declared default and hide the
   // variables that default's own value goes on to use.
   const values = variableValues([...resolveVariables(variables, template), ...normaliseVariables(supplements)]);
   const used = reachable(template, values);
+  if (reads !== undefined) {
+    for (const name of reachable({ card: reads } as TemplateConfig, values)) if (!used.includes(name)) used.push(name);
+  }
   const isUsed = new Set(used);
 
   // What the card wrote, not the dotted names derived from its mappings - and a mapping
