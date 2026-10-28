@@ -64,6 +64,11 @@ jobs:
           source: ./site
           destination: ./_site
 
+      # After Jekyll, from the HTML it wrote, so every link in the index is an id a page
+      # really has. The Jekyll action runs in a container as root, so _site is root's.
+      - name: Index the pages for the search box
+        run: sudo python3 -I repo/docs-theme/search_index.py _site
+
       - name: Check the build produced pages, not markdown
         run: |
           test -f _site/index.html || { echo "no index.html - Jekyll did not render"; exit 1; }
@@ -76,6 +81,11 @@ jobs:
           grep -q 'assets/js/playground.js' _site/playground.html || { echo "playground page lost its script"; exit 1; }
           test -s _site/assets/js/playground.js || { echo "playground script missing"; exit 1; }
           grep -q 'class="ph"' _site/index.html || { echo "hero did not build"; exit 1; }
+          grep -q 'search.json' _site/index.html || { echo "search box missing from the layout"; exit 1; }
+          python3 -I -c 'import json,sys; d=json.load(open("_site/search.json")); sys.exit(len(d) < 100 and "search index has only %d sections" % len(d))'
+          python3 -I -c 'import json,sys; d=json.load(open("_site/search.json")); k=[e for e in d if "k" in e]; sys.exit(len(k) < 100 and "search index has only %d key rows" % len(k))'
+          test -f _site/A-to-Z.html || { echo "no A to Z page"; exit 1; }
+          grep -q 'id="k-rebuild_on"' _site/Configuration-Reference.html || { echo "key rows lost their anchors"; exit 1; }
           echo "$(ls _site/*.html | wc -l) pages built"
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
