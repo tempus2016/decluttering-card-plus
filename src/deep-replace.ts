@@ -480,6 +480,13 @@ function substitutePass(
         if (!gateOpen(written, read)) return closed(match, written, optional, whole);
         transform = withoutConditions(written);
       }
+      // A mapping or list is a value, so a `default:` or `or:` before anything else has
+      // nothing to fill and comes off: `[[room|default:x]]` is the room, as `[[room]]` is.
+      if (transform && !isScalar) {
+        const steps = transform.split('|');
+        while (steps.length && isFallback(steps[0])) steps.shift();
+        transform = steps.join('|');
+      }
       if (!transform) {
         const plain = fromHa && shield && typeof value === 'string' ? shield(value) : value;
         return whole ? asWholeValue(plain, match) : asPartOfString(plain);
