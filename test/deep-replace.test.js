@@ -1921,6 +1921,71 @@ check(
   ),
   { a: true, b: true, c: false, d: false },
 );
+/* ------------------------- a mapping or a list through a fallback or a yes/no step */
+
+{
+  const vars = () => [{ m: { a: 1 } }, { l: ['a', 'b'] }, { e: 'light.x' }];
+  const listHass = {
+    states: { 'light.x': { state: 'on', attributes: { list_attr: [1, 2], obj_attr: { k: 'v' } } } },
+    entities: {},
+  };
+  const run = (card) => deepReplace(vars(), {}, card, undefined, listHass);
+  check(
+    'default: and or: on a set mapping or list leave the value as a plain placeholder would',
+    run({
+      a: '[[m|default:x]]',
+      b: '[[l|default:x]]',
+      c: 'm=[[m|default:x]] l=[[l|or:e]]',
+      d: '[[m|or:e]]',
+      e: '[[l|default:x|join]]',
+      f: '[[m]]',
+      g: 'm=[[m]] l=[[l]]',
+    }),
+    {
+      a: { a: 1 },
+      b: ['a', 'b'],
+      c: 'm={"a":1} l=["a","b"]',
+      d: { a: 1 },
+      e: 'a, b',
+      f: { a: 1 },
+      g: 'm={"a":1} l=["a","b"]',
+    },
+  );
+  check(
+    'contains: on a mapping asks whether it has that key',
+    run({ a: '[[m|contains:a]]', b: '[[m|contains:b]]', c: '[[m|contains:object]]', d: 'has [[m|contains:a]]' }),
+    { a: true, b: false, c: false, d: 'has true' },
+  );
+  check(
+    'exists, or a text step before a fallback, leaves a mapping or list as written',
+    run({ a: '[[m|exists]]', b: '[[l|exists]]', c: '[[m|upper|default:x]]', d: 'x [[l|slug|or:e]]' }),
+    { a: '[[m|exists]]', b: '[[l|exists]]', c: '[[m|upper|default:x]]', d: 'x [[l|slug|or:e]]' },
+  );
+  check(
+    'attr: joins a list attribute and writes a mapping attribute as its JSON',
+    run({ a: '[[e|attr:list_attr]]', b: '[[e|attr:obj_attr]]' }),
+    { a: '1, 2', b: '{"k":"v"}' },
+  );
+  check(
+    'nothing puts [object Object] into a card',
+    JSON.stringify(
+      run({
+        a: '[[m|default:x]]',
+        b: 'in [[m|default:x]]',
+        c: '[[m|or:e]]',
+        d: '[[m|contains:object]]',
+        e: '[[m|exists]]',
+        f: 'in [[m|exists]]',
+        g: '[[m|upper|default:x]]',
+        h: '[[e|attr:obj_attr]]',
+        i: '[[l|exists]]',
+        j: '[[l|lower|default:x]]',
+      }),
+    ).includes('object Object'),
+    false,
+  );
+}
+
 check(
   'find: gives where the text starts as a number, -1 when it is not there',
   deepReplace([{ id: 'camera_1_car' }], {}, { a: '[[id|find:car]]', b: '[[id|find:dog]]', c: 'at [[id|find:_]]' }),
