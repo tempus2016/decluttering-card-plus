@@ -698,6 +698,66 @@ function noteLeftStanding(trace: BuildTrace, json: string, refused: Map<string, 
   }
 }
 
+/*
+ * A variable whose value is a fill - `thing: '[[camera_entry|with:entity=camera.front]]'` -
+ * also offers the item template's own values, as they ended up for that fill:
+ * `[[thing.ent_exists]]`, or `if:thing.ent_exists`. The fill does its working out and the
+ * caller decides what to do with it (#235). Only the names something here asks for are
+ * worked out, each with the item template's body swapped for that one value.
+ */
+const FILL_VALUE = /^\[\[([A-Za-z0-9_-]+)\|with:(.*)\]\]$/;
+const DOTTED_ASK = /(?:\[\[!?|\|(?:if:!?|or:))([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)/g;
+
+function exposeFillValues(
+  variableArray: VariablesConfig[],
+  content: unknown,
+  itemTemplates: Record<string, TemplateConfig>,
+  build: (variables: VariablesConfig[], template: TemplateConfig, key: string) => unknown,
+  // The with: arguments filled in here first, as the pass that fills the fill would have.
+  settleText: (text: string) => unknown,
+): void {
+  if (!Object.keys(itemTemplates).length) return;
+  const values = variableValues(variableArray);
+  const text = JSON.stringify([content, variableArray]);
+  if (typeof text !== 'string' || !text.includes('.')) return;
+  const asked = new Set<string>();
+  for (let match = DOTTED_ASK.exec(text); match !== null; match = DOTTED_ASK.exec(text)) {
+    asked.add(`${match[1]}.${match[2]}`);
+  }
+  DOTTED_ASK.lastIndex = 0;
+  for (const dotted of asked) {
+    if (Object.prototype.hasOwnProperty.call(values, dotted)) continue;
+    const [name, key] = dotted.split('.');
+    const raw = values[name];
+    const fill = typeof raw === 'string' ? FILL_VALUE.exec(raw) : null;
+    if (!fill || !Object.prototype.hasOwnProperty.call(itemTemplates, fill[1])) continue;
+    const arg = fill[2].includes('[[') ? settleText(fill[2]) : fill[2];
+    if (typeof arg !== 'string' || arg.includes('[[')) continue;
+    const overlay = fillOverlay(arg, values);
+    if (!overlay) continue;
+    const value = build([...overlay, ...variableArray], itemTemplates[fill[1]], key);
+    // Nothing in the fill sets it: left alone, so it reads as unset like any other name.
+    if (value === undefined || value === `[[${key}]]`) continue;
+    variableArray.push({ [dotted]: value });
+  }
+}
+
+// The values a `with:` lays over, read the same way as where it is filled in.
+function fillOverlay(arg: string, values: Record<string, any>): VariablesConfig[] | undefined {
+  if (!arg) return [];
+  if (arg.includes('=')) {
+    const pairs: VariablesConfig[] = [];
+    for (const pair of arg.split(',')) {
+      const equals = pair.indexOf('=');
+      if (equals === -1) return undefined;
+      pairs.push({ [pair.slice(0, equals).trim()]: pair.slice(equals + 1) });
+    }
+    return pairs;
+  }
+  const mapping = values[arg];
+  return mapping && typeof mapping === 'object' && !Array.isArray(mapping) ? normaliseVariables(mapping) : undefined;
+}
+
 function deepReplace(
   variables: VariablesConfig[] | undefined,
   templateConfig: TemplateConfig,
@@ -755,6 +815,33 @@ function deepReplace(
       variableArray.push({ [name]: (template as any)?.item });
     }
   }
+  exposeFillValues(
+    variableArray,
+    content,
+    itemTemplates,
+    (vars, template, key) =>
+      depth >= MAX_EXPAND_DEPTH
+        ? undefined
+        : deepReplace(
+            vars,
+            template,
+            `[[${key}]]`,
+            templateName,
+            hass,
+            true,
+            undefined,
+            depth + 1,
+            undefined,
+            shield,
+            true,
+            {
+              ...extras,
+              tooDeep: extras?.tooDeep,
+            },
+          ),
+    (text) =>
+      deepReplace(variableArray, {}, text, templateName, hass, true, undefined, depth + 1, undefined, shield, true),
+  );
   const values = variableValues(variableArray);
 
   /*
