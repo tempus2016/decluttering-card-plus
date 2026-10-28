@@ -68,7 +68,8 @@ export interface RegistrySource {
   range?: number;
   /** Skip a copy when any of these keys came out empty - entities in no area, say. */
   require?: string | string[];
-  /** Extra or different variables for particular copies, keyed by entity or area pattern. */
+  /** Extra or different variables for particular copies, keyed by a pattern matched against
+   * the copy's id or name: entity, area, device, floor, label, group, view or listed item. */
   overrides?: Record<string, Record<string, any>>;
   /** Fold entity copies into one per `domain`, `floor`, `label` or `area`. */
   group_by?: string;
@@ -332,13 +333,19 @@ function ordered(
 }
 
 /*
- * What an `overrides:` key is matched against: the entity or area as it always was, for a
- * view - which has neither - its path or its title, and for a template's plain values the
- * value itself.
+ * What an `overrides:` key is matched against: whatever the copy is, by its id or its name -
+ * an entity by its id, an area, device, floor or label by id or name, a group by its value,
+ * a view by its path or title, and a template's plain values by the value itself.
  */
 function overrideKeys(item: Record<string, any>): (string | undefined)[] {
-  const id = item.entity ?? item.area_id;
-  if (id !== undefined) return [id];
+  if (item.entity !== undefined) return [item.entity];
+  // A device copy carries its area too, so it is checked before the area: keyed by the
+  // area, an override would have hit every device in that room rather than the one named.
+  if (item.device_id !== undefined) return [item.device_id, item.device];
+  if (item.floor_id !== undefined) return [item.floor_id, item.floor];
+  if (item.label_id !== undefined) return [item.label_id, item.label];
+  if (item.area_id !== undefined) return [item.area_id, item.area];
+  if (item.group !== undefined) return [String(item.group), item.name];
   if (item.path !== undefined) return [item.path, item.name];
   if (Object.prototype.hasOwnProperty.call(item, 'item')) return [String(item.item)];
   return [];

@@ -451,6 +451,51 @@ check(
   ['mdi:sleep', undefined],
 );
 
+check(
+  'an area copy is overridden by its name too',
+  resolveRegistryItems(hass, { areas: true, overrides: { Bedroom: { icon: 'mdi:sleep' } } }).map((i) => i.icon),
+  ['mdi:sleep', undefined],
+);
+
+check(
+  'a device copy is overridden by its own id, not its area',
+  [
+    resolveRegistryItems(hass, { devices: true, overrides: { lamp_device: { icon: 'mdi:lamp' } } }).map((i) => i.icon),
+    resolveRegistryItems(hass, { devices: true, overrides: { bedroom: { icon: 'mdi:lamp' } } }).map((i) => i.icon),
+  ],
+  [['mdi:lamp'], [undefined]],
+);
+
+check(
+  'a floor copy is overridden by its id or name',
+  resolveRegistryItems(hass, { floors: true, overrides: { ground: { a: 1 }, Upstairs: { a: 2 } } }).map((i) => [
+    i.floor_id,
+    i.a,
+  ]),
+  [
+    ['ground', 1],
+    ['upstairs', 2],
+  ],
+);
+
+check(
+  'a label copy is overridden by its id or name',
+  resolveRegistryItems(hass, { labels: true, overrides: { night: { a: 1 }, Quiet: { a: 2 } } }).map((i) => [
+    i.label_id,
+    i.a,
+  ]),
+  [
+    ['night', 1],
+    ['quiet', 2],
+  ],
+);
+
+check(
+  'a group_by copy is overridden by its group',
+  resolveRegistryItems(hass, { domain: 'light', group_by: 'domain', overrides: { light: { a: 1 } } }).map((i) => i.a),
+  [1],
+);
+
 /* ------------------------------------------------------------------- group_by */
 
 check(
