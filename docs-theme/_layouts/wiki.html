@@ -31,6 +31,19 @@
     <span class="brand-name">{{ site.title }}</span>
   </a>
   <span class="spacer"></span>
+  {%- comment -%}
+    Hidden until docs.js shows it: without the script there is nothing behind the box.
+    search.json is written after Jekyll by search_index.py, from these same pages.
+  {%- endcomment -%}
+  <div class="search" role="search" hidden>
+    <label class="visually-hidden" for="search-input">Search the documentation</label>
+    <input id="search-input" class="search-input" type="search" placeholder="Search"
+           autocomplete="off" spellcheck="false" enterkeyhint="go"
+           role="combobox" aria-expanded="false" aria-controls="search-results" aria-autocomplete="list"
+           data-index="{{ '/search.json' | relative_url }}">
+    <kbd class="search-key" aria-hidden="true">/</kbd>
+    <ul id="search-results" class="search-results" role="listbox" aria-label="Search results" hidden></ul>
+  </div>
   <a class="topbar-link jump" href="#nav">Contents ↓</a>
   <a class="topbar-link" href="https://github.com/tempus2016/decluttering-card-plus">GitHub&nbsp;↗</a>
 </header>
