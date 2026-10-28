@@ -39,7 +39,7 @@ import {
   normaliseVariables,
 } from './variables';
 import { exampleSets } from './examples';
-import { isRegistrySource, registryNames, resolveRegistryItems } from './registry';
+import { copyLabel, isRegistrySource, registryNames, resolveRegistryItems } from './registry';
 import { categoryRegistry, loadCategories, wantsCategories } from './categories';
 import { renderTemplateOnce, sourceTemplate, TemplateRender, templateList } from './template-source';
 import { findRepeatingCard, sectionPerCopy } from './strategy';
@@ -750,15 +750,6 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     // The names, not the whole mappings: it is a sanity check on the filters, not a data
     // dump, and a sweep of the house should not fill the dialog.
     const shown = matched.slice(0, MATCHES_SHOWN);
-    const label = (item: Record<string, unknown>): string =>
-      String(
-        item.entity ??
-          item.area_id ??
-          item.navigation_path ??
-          item.item ??
-          item.name ??
-          `${(item.total as number) ?? ''}`,
-      );
 
     return html`
       <ha-expansion-panel outlined>
@@ -771,7 +762,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         </span>
         <div class="matches">
           <ul>
-            ${shown.map((item) => html`<li>${label(item)}</li>`)}
+            ${shown.map((item, index) => html`<li>${copyLabel(item, index)}</li>`)}
           </ul>
           ${
             matched.length > shown.length

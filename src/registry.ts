@@ -865,6 +865,40 @@ export function resolveRegistryItems(hass: any, source: any, context?: SourceCon
   return asHaText(ordered(items, source, hass));
 }
 
+/*
+ * A copy named for a person reading the editor's match list: the entity id for an entity,
+ * and otherwise the name of whatever the copy stands for. Each source's copies carry a
+ * different shape, and a device copy also carries its area - so the shape is read first,
+ * or a device would be listed under its room, and a device in no room as a blank line.
+ * Nothing to go on at all, as with `range:`, is the copy's position, counted as [[index]].
+ */
+export function copyLabel(item: Record<string, unknown>, position: number): string {
+  const first = (...keys: string[]): string => {
+    for (const key of keys) {
+      const value = item[key];
+      if (value === undefined || value === null || typeof value === 'object') continue;
+      const text = String(value).trim();
+      if (text) return text;
+    }
+    return '';
+  };
+  const has = (key: string): boolean => item[key] !== undefined && item[key] !== null && item[key] !== '';
+  const named =
+    first('entity') ||
+    (has('device_id')
+      ? first('device', 'name', 'device_id')
+      : has('label_id')
+        ? first('label', 'name', 'label_id')
+        : has('floor_id')
+          ? first('floor', 'name', 'floor_id')
+          : has('navigation_path')
+            ? first('name', 'path', 'navigation_path')
+            : has('group')
+              ? first('name', 'group')
+              : first('area', 'area_id', 'item', 'name'));
+  return named || String(position + 1);
+}
+
 /** Whether the copies are entities, rather than areas, devices, floors or labels. */
 function isEntitySource(source: RegistrySource): boolean {
   return (
