@@ -2181,6 +2181,35 @@ check(
   );
 }
 
+{
+  const hass = { states: { 'sensor.thing': {} } };
+  const x = {
+    itemTemplates: {
+      t1: { default: [{ t_exists: '[[entity|exists]]' }], item: { entity: '[[entity]]' } },
+      t2: { default: [{ probe: '[[t1|with:entity=sensor.[[n]]]]' }], item: '[[probe|if:probe.t_exists?]]' },
+    },
+  };
+  const run = (v, content) =>
+    deepReplace(v, {}, content, 't', hass, true, undefined, 0, undefined, undefined, false, x);
+  check(
+    'a variable holding a fill offers the fill’s own values by dotted name',
+    run([{ a: '[[t1|with:entity=sensor.thing]]' }, { b: '[[t1|with:entity=sensor.nope]]' }], {
+      x: '[[a.t_exists]]',
+      y: '[[b.t_exists]]',
+      z: '[[b|if:b.t_exists?]]',
+      w: '[[a.unset]]',
+    }),
+    { x: true, y: false, w: '[[a.unset]]' },
+  );
+  check(
+    'and inside an item template, its with: arguments filled in first, in a repeat too',
+    run([{ ns: [{ n: 'thing' }, { n: 'nope' }] }], {
+      l: ['[[t2|with:n=thing?]]', '[[t2|with:n=nope?]]', '[[t2|repeat:ns]]'],
+    }),
+    { l: [{ entity: 'sensor.thing' }, { entity: 'sensor.thing' }] },
+  );
+}
+
 function newTrace235() {
   return { placeholders: new Map(), dropped: [], warnings: [] };
 }

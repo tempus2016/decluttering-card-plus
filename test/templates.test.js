@@ -2190,6 +2190,20 @@ collectAllTemplates(hass, borrower).then((all) => {
         const health = checkDashboard(ll);
         check('names a repeat: or with: supplies are not called unset', health.unsetVariables, []);
         check(
+          'nor a fill value read by dotted name (#235)',
+          checkDashboard({
+            decluttering_templates: {
+              probe: { default: [{ ok: '[[entity|exists]]' }], item: { entity: '[[entity]]' } },
+              card1: {
+                default: [{ p: '[[probe|with:entity=sensor.x]]' }],
+                card: { type: 'entities', entities: ['[[p|if:p.ok?]]'], title: '[[p.ok]]' },
+              },
+            },
+            views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'card1' }] }],
+          }).unsetVariables,
+          [],
+        );
+        check(
           'an item template used through a placeholder is not unused; a card template nobody uses still is',
           health.unusedTemplates,
           ['spare'],
@@ -2198,6 +2212,14 @@ collectAllTemplates(hass, borrower).then((all) => {
           'the template picker does not offer an item template',
           templatePickerOptions(ll.decluttering_templates).map((o) => o.value),
           ['rows', 'spare'],
+        );
+        check(
+          'a variable name is matched as written when reading dotted fill values, not as a pattern',
+          structureNames({
+            default: { 'p+': '[[probe|with:n=x]]' },
+            card: { a: '[[pp.ok]]', b: '[[p+.found]]' },
+          }).filter((name) => name.includes('.')),
+          ['p+.found'],
         );
         check(
           'structureNames reads pairs, a mapping variable and a registry source',
