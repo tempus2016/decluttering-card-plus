@@ -31,7 +31,7 @@
   "editor.for_each_label": "Repeat for each",
   "editor.for_each_helper": "One copy of the template per item. Example: - entity: light.hall, name: Hall",
   "editor.for_each_from_label": "Repeat for each thing Home Assistant knows about",
-  "editor.for_each_from_helper": "One copy per entity or area, kept up to date. Example: domain: light, area: Kitchen",
+  "editor.for_each_from_helper": "One copy per entity, area, device, floor, label or view, kept up to date. Example: domain: light, area: Kitchen",
   "editor.gap_label": "Space between copies",
   "editor.gap_helper": "Pixels. Leave it out for the spacing Home Assistant uses everywhere else",
   "editor.empty_label": "Show instead when nothing matches",
