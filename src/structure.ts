@@ -1,5 +1,6 @@
 import { TemplateConfig, VariablesConfig } from './types';
 import {
+  FLAT_STEP,
   normaliseVariables,
   POSITION_NAMES,
   REPEAT_STEP,
@@ -17,8 +18,9 @@ import { isRegistrySource, registryNames } from './registry';
  * template that repeats anything.
  */
 
-// A `with:` or `repeat:` placeholder: the name it fills in, which step, and the argument.
-const STRUCTURE_PLACEHOLDER = `\\[\\[([^|[\\]?]+)\\|(${WITH_STEP}|${REPEAT_STEP}):([^|\\]]*?)\\??\\]\\]`;
+// A `with:` or `repeat:` placeholder: the name it fills in, which step, and the argument -
+// a `repeat:` may end in `|flat` (#311).
+const STRUCTURE_PLACEHOLDER = `\\[\\[([^|[\\]?]+)\\|(${WITH_STEP}|${REPEAT_STEP}):([^|\\]]*?)(?:\\|${FLAT_STEP})?\\??\\]\\]`;
 
 /** The names the items of a written-out list set: a mapping's keys, or `item` and `entity`. */
 function itemNames(items: unknown[]): string[] {
@@ -65,6 +67,15 @@ export function structureNames(template: TemplateConfig | undefined, extra?: Var
     const source = values[arg];
     if (isRegistrySource(source)) for (const name of registryNames(source)) names.add(name);
     else if (Array.isArray(source)) for (const name of itemNames(source)) names.add(name);
+  }
+  // A variable holding a fill offers the fill's own values by dotted name too (#235).
+  for (const [name, value] of Object.entries(values)) {
+    if (typeof value !== 'string' || !new RegExp(`^\\[\\[[A-Za-z0-9_-]+\\|${WITH_STEP}:`).test(value)) continue;
+    const dotted = new RegExp(
+      `(?:\\[\\[!?|\\|(?:if:!?|or:))${name.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&')}\\.([A-Za-z0-9_-]+)`,
+      'g',
+    );
+    for (let match = dotted.exec(json); match !== null; match = dotted.exec(json)) names.add(`${name}.${match[1]}`);
   }
   return [...names];
 }

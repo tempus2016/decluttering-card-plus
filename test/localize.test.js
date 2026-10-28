@@ -127,3 +127,11 @@ check(
   const missing = [...used].filter((key) => !key.includes('${') && !(key in en));
   check('every key the source localizes exists in en.json', missing, []);
 }
+
+// for_each_from reads devices, floors, labels and views too, so the field hint must not
+// still say entities and areas only.
+check(
+  'the for_each_from hint names the newer sources',
+  ['device', 'floor', 'label', 'view'].filter((word) => !en['editor.for_each_from_helper'].includes(word)),
+  [],
+);

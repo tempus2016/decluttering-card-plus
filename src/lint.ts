@@ -3,14 +3,14 @@ import {
   conditionTarget,
   ESCAPE,
   getDeclarations,
-  KNOWN_PARAM_STEPS,
-  KNOWN_STEPS,
   normaliseVariables,
   POSITION_NAMES,
   templateDefaults,
   variableName,
 } from './variables';
-import { closestTemplate } from './templates';
+import { closestTemplate, closestStep, knownStep } from './closest';
+
+export { closestStep, knownStep };
 import { structureNames } from './structure';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -47,26 +47,6 @@ const STAND_IN = '_';
 
 const DEFAULT_STEP = 'default:';
 const OR_STEP = 'or:';
-
-/** Whether a step is one the chain grammar knows, by name or by its `name:` prefix. */
-function knownStep(step: string): boolean {
-  if (KNOWN_STEPS.includes(step)) return true;
-  const colon = step.indexOf(':');
-  return colon > 0 && KNOWN_PARAM_STEPS.includes(step.slice(0, colon));
-}
-
-/**
- * The known step a mistyped one was probably meant to be: `slgu` is `slug`, and `defualt:x`
- * is `default:x` - a step with an argument is matched by its name and keeps its argument.
- */
-function closestStep(step: string): string | undefined {
-  const colon = step.indexOf(':');
-  if (colon > 0) {
-    const name = closestTemplate(step.slice(0, colon), KNOWN_PARAM_STEPS);
-    return name ? `${name}:${step.slice(colon + 1)}` : undefined;
-  }
-  return closestTemplate(step, KNOWN_STEPS);
-}
 
 /** The variable an `or:` or `if:` step reads, or undefined for any other step. */
 function stepTarget(step: string): string | undefined {

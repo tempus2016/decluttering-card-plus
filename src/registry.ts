@@ -68,7 +68,8 @@ export interface RegistrySource {
   range?: number;
   /** Skip a copy when any of these keys came out empty - entities in no area, say. */
   require?: string | string[];
-  /** Extra or different variables for particular copies, keyed by entity or area pattern. */
+  /** Extra or different variables for particular copies, keyed by a pattern matched against
+   * the copy's id or name: entity, area, device, floor, label, group, view or listed item. */
   overrides?: Record<string, Record<string, any>>;
   /** Fold entity copies into one per `domain`, `floor`, `label` or `area`. */
   group_by?: string;
@@ -217,6 +218,25 @@ function byName(a: Record<string, any>, b: Record<string, any>): number {
   return shown(a).localeCompare(shown(b)) || id(a).localeCompare(id(b));
 }
 
+/** A plain decimal as a person or HA would write it: `19.25`, `-10`, `.5`, `1e-3`. */
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+/*
+ * A carried key or attribute compared as what it is. Numeric collation reads each run of
+ * digits on its own, which is right for "room 2" before "room 10" but puts 19.5 before
+ * 19.25 and -2 before -10, so two numbers are compared as numbers. Empty still comes
+ * first, then numbers, then text - the order collation gave a mix already.
+ */
+function byValue(a: string, b: string): number {
+  const x = a.trim();
+  const y = b.trim();
+  const xNumber = DECIMAL.test(x);
+  const yNumber = DECIMAL.test(y);
+  if (xNumber && yNumber) return Math.sign(Number(x) - Number(y));
+  if (x && y && xNumber !== yNumber) return xNumber ? -1 : 1;
+  return a.localeCompare(b, undefined, { numeric: true });
+}
+
 /** What each `sort:` orders by. Any other name is read as a key on the items themselves. */
 const SORTS: Record<string, (item: Record<string, any>) => string> = {
   name: (item) => String(item.name ?? item.area ?? ''),
@@ -298,9 +318,7 @@ function ordered(
             }
           : (item: Record<string, any>): string => String(item[key] ?? ''));
       return (a: Record<string, any>, b: Record<string, any>): number => {
-        const compared = known
-          ? read(a).localeCompare(read(b))
-          : read(a).localeCompare(read(b), undefined, { numeric: true });
+        const compared = known ? read(a).localeCompare(read(b)) : byValue(read(a), read(b));
         return descending ? -compared : compared;
       };
     });
@@ -332,13 +350,19 @@ function ordered(
 }
 
 /*
- * What an `overrides:` key is matched against: the entity or area as it always was, for a
- * view - which has neither - its path or its title, and for a template's plain values the
- * value itself.
+ * What an `overrides:` key is matched against: whatever the copy is, by its id or its name -
+ * an entity by its id, an area, device, floor or label by id or name, a group by its value,
+ * a view by its path or title, and a template's plain values by the value itself.
  */
 function overrideKeys(item: Record<string, any>): (string | undefined)[] {
-  const id = item.entity ?? item.area_id;
-  if (id !== undefined) return [id];
+  if (item.entity !== undefined) return [item.entity];
+  // A device copy carries its area too, so it is checked before the area: keyed by the
+  // area, an override would have hit every device in that room rather than the one named.
+  if (item.device_id !== undefined) return [item.device_id, item.device];
+  if (item.floor_id !== undefined) return [item.floor_id, item.floor];
+  if (item.label_id !== undefined) return [item.label_id, item.label];
+  if (item.area_id !== undefined) return [item.area_id, item.area];
+  if (item.group !== undefined) return [String(item.group), item.name];
   if (item.path !== undefined) return [item.path, item.name];
   if (Object.prototype.hasOwnProperty.call(item, 'item')) return [String(item.item)];
   return [];
@@ -839,6 +863,40 @@ export function resolveRegistryItems(hass: any, source: any, context?: SourceCon
     return asHaText(ordered(groupedItems(hass, items, source.group_by), source, hass));
   }
   return asHaText(ordered(items, source, hass));
+}
+
+/*
+ * A copy named for a person reading the editor's match list: the entity id for an entity,
+ * and otherwise the name of whatever the copy stands for. Each source's copies carry a
+ * different shape, and a device copy also carries its area - so the shape is read first,
+ * or a device would be listed under its room, and a device in no room as a blank line.
+ * Nothing to go on at all, as with `range:`, is the copy's position, counted as [[index]].
+ */
+export function copyLabel(item: Record<string, unknown>, position: number): string {
+  const first = (...keys: string[]): string => {
+    for (const key of keys) {
+      const value = item[key];
+      if (value === undefined || value === null || typeof value === 'object') continue;
+      const text = String(value).trim();
+      if (text) return text;
+    }
+    return '';
+  };
+  const has = (key: string): boolean => item[key] !== undefined && item[key] !== null && item[key] !== '';
+  const named =
+    first('entity') ||
+    (has('device_id')
+      ? first('device', 'name', 'device_id')
+      : has('label_id')
+        ? first('label', 'name', 'label_id')
+        : has('floor_id')
+          ? first('floor', 'name', 'floor_id')
+          : has('navigation_path')
+            ? first('name', 'path', 'navigation_path')
+            : has('group')
+              ? first('name', 'group')
+              : first('area', 'area_id', 'item', 'name'));
+  return named || String(position + 1);
 }
 
 /** Whether the copies are entities, rather than areas, devices, floors or labels. */

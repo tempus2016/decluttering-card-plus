@@ -2,7 +2,7 @@ import deepReplace, { BuildExtras } from './deep-replace';
 import { forEachItems, forEachVariables, normaliseVariables, POSITION_NAMES } from './variables';
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import { sourceTemplate, TemplateRender } from './template-source';
-import { CONSUMER_TYPES } from './templates';
+import { CONSUMER_TYPES, itemTemplatesOf } from './templates';
 import { VariablesConfig } from './types';
 
 // What a strategy's substitutions are handed for `with:` and `repeat:` (#227): the item
@@ -314,31 +314,35 @@ export function expandView(entry: any, shared: unknown, hass?: any, context?: So
  * are left alone. Quietly: a placeholder nothing here sets may well be a card's own, or
  * button-card's `[[[ ]]]`, and stays as written for whoever reads it next.
  */
-function fillPlain(content: any, values: VariablesConfig[], hass: any): any {
-  if (!values.length) return content;
+function fillPlain(content: any, values: VariablesConfig[], hass: any, context?: SourceContext): any {
+  const extras = extrasOf(context);
+  if (!values.length && !Object.keys(extras.itemTemplates ?? {}).length) return content;
+  const fill = (node: any): any =>
+    deepReplace(values, {}, node, undefined, hass, true, undefined, 0, undefined, undefined, false, extras);
   if (!content || typeof content !== 'object' || Array.isArray(content) || content.strategy === undefined) {
-    return deepReplace(values, {}, content, undefined, hass, true);
+    return fill(content);
   }
   const { strategy, ...rest } = content;
-  const view = deepReplace(values, {}, rest, undefined, hass, true);
+  const view = fill(rest);
   view.strategy =
-    strategy?.type === STRATEGY_TYPE
-      ? fillNestedStrategy(strategy, values, hass)
-      : deepReplace(values, {}, strategy, undefined, hass, true);
+    strategy?.type === STRATEGY_TYPE ? fillNestedStrategy(strategy, values, hass, context) : fill(strategy);
   return view;
 }
 
 /** The dashboard a dashboard strategy config describes, with every repeated view written out. */
 export function generateDashboard(config: any, hass?: any, context?: SourceContext): any {
   const shared = normaliseVariables(config?.variables);
+  // The strategy's own item templates are what a `with:` or `repeat:` in the views it writes
+  // names - a plain card's list is never filled in again after this, so they are needed here.
+  context = { ...context, itemTemplates: context?.itemTemplates ?? itemTemplatesOf(config) };
   const dashboard: any = {};
   for (const [key, value] of Object.entries(config ?? {})) {
     if (DASHBOARD_OWN_KEYS.includes(key)) continue;
-    dashboard[key] = key.startsWith('decluttering_') ? value : fillPlain(value, shared, hass);
+    dashboard[key] = key.startsWith('decluttering_') ? value : fillPlain(value, shared, hass, context);
   }
 
   const entries: any[] = (Array.isArray(config?.views) ? config.views : []).map((entry: any) =>
-    isRepeatEntry(entry) ? entry : fillPlain(entry, shared, hass),
+    isRepeatEntry(entry) ? entry : fillPlain(entry, shared, hass, context),
   );
   // A path written out by hand is the user's and is kept as written; a generated one makes
   // way for it, wherever in the list either sits.
