@@ -1567,6 +1567,89 @@ check(
   );
 }
 
+{
+  // #311: a repeat inside a repeat. Without |flat each outer copy that is a list stays one;
+  // with it the copies are laid out in one list. An item without the inner list gives none.
+  const detect = [
+    { detect_type: 'car', zones: ['front', 'street'] },
+    { detect_type: 'person', zones: ['front'] },
+    { detect_type: 'cat' },
+  ];
+  const vars = [
+    { detect_list: detect },
+    { zone_t: 'binary_sensor.[[item]]_[[detect_type]]' },
+    { per: ['[[zone_t|repeat:zones]]', 'binary_sensor.porch_[[detect_type]]'] },
+  ];
+  check(
+    'a nested repeat without flat keeps a list per copy',
+    deepReplace(vars, {}, { entities: '[[per|repeat:detect_list]]' }, undefined, undefined, true).entities,
+    [
+      ['binary_sensor.front_car', 'binary_sensor.street_car', 'binary_sensor.porch_car'],
+      ['binary_sensor.front_person', 'binary_sensor.porch_person'],
+      ['binary_sensor.porch_cat'],
+    ],
+  );
+  check(
+    'repeat:...|flat lays the copies out in one list, and a copy without the inner list adds none of it',
+    deepReplace(vars, {}, { entities: ['sensor.first', '[[per|repeat:detect_list|flat]]'] }, undefined, undefined, true)
+      .entities,
+    [
+      'sensor.first',
+      'binary_sensor.front_car',
+      'binary_sensor.street_car',
+      'binary_sensor.porch_car',
+      'binary_sensor.front_person',
+      'binary_sensor.porch_person',
+      'binary_sensor.porch_cat',
+    ],
+  );
+  check(
+    'flat leaves a copy that is not a list as it is, and only goes one level',
+    deepReplace(
+      [{ l: [{ v: 'a' }, { v: 'b' }] }, { body: '[[v]]' }, { pair: [['[[v]]']] }],
+      {},
+      { x: '[[body|repeat:l|flat]]', y: '[[pair|repeat:l|flat]]' },
+      undefined,
+      undefined,
+      true,
+    ),
+    { x: ['a', 'b'], y: [['a'], ['b']] },
+  );
+  const caught = [];
+  const saved = console.warn;
+  console.warn = (...m) => caught.push(m.join(' '));
+  check(
+    'at the card level a missing list is still left visible and warned about',
+    [deepReplace([{ zone_t: 'x' }], {}, { e: '[[zone_t|repeat:zones]]' }), caught.some((m) => m.includes('zones'))],
+    [{ e: '[[zone_t|repeat:zones]]' }, true],
+  );
+  caught.length = 0;
+  check(
+    'flat anywhere but after a repeat is refused and left visible',
+    [
+      deepReplace([{ a: 'x' }, { m: { k: 'v' } }], {}, { p: '[[a|flat]]', q: '[[m|with:k=1|flat]]' }),
+      caught.some((m) => m.includes('flat only works straight after a repeat:')),
+    ],
+    [{ p: '[[a|flat]]', q: '[[m|with:k=1|flat]]' }, true],
+  );
+  console.warn = saved;
+  const traced = { placeholders: new Map(), dropped: [], warnings: [] };
+  deepReplace(
+    [{ detect_list: [{ d: 'cat' }] }, { zone_t: '[[item]]' }, { per: ['[[zone_t|repeat:zones]]'] }],
+    {},
+    { e: '[[per|repeat:detect_list|flat]]' },
+    undefined,
+    undefined,
+    true,
+    undefined,
+    0,
+    traced,
+  );
+  check('the debug trace says why a copy gave nothing', traced.items[0].trace.dropped, [
+    '[[zone_t|repeat:zones]] gave nothing: this copy has no zones',
+  ]);
+}
+
 /* ------------------------------------------------------------ arithmetic */
 
 {

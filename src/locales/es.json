@@ -252,6 +252,7 @@
   "warn.read_too_deep": "decluttering-card-plus: {names} se construye a partir de otros valores con más de {depth} niveles, así que se usó a medio construir. Acorta la cadena de valores de la que sale.",
   "warn.too_many_fills": "se rellenarían más de {max} copias en esta tarjeta, así que el resto se omite",
   "warn.not_a_list_source": "{arg} no es una lista ni una fuente del registro",
+  "warn.flat_after_repeat": "flat solo funciona justo después de un repeat:",
   "warn.not_a_mapping": "{arg} no es un mapa",
   "warn.condition_closed": "su condición if: no se cumple",
   "warn.json_not_first": "json solo puede ser el primer paso",
@@ -291,6 +292,7 @@
   "trace.left_refused": "se deja tal cual: {why}",
   "trace.dropped_option": "{path} ({placeholder} estaba vacío)",
   "trace.dropped_block": "{path} (no quedó nada dentro)",
+  "trace.repeat_missing": "{placeholder} no dio nada: esta copia no tiene {arg}",
 
   "report.title": "Informe de depuración de Decluttering Card Plus",
   "report.check": "Léelo antes de publicarlo en ningún sitio: las contraseñas, los tokens, las direcciones IP, las direcciones de correo y los hosts reconocibles se han sustituido allí donde la tarjeta pudo detectarlos, pero no conoce todas las formas que toman, y los ids de entidad, los nombres y todo lo demás siguen tal cual.",

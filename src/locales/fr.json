@@ -252,6 +252,7 @@
   "warn.read_too_deep": "decluttering-card-plus: {names} est construit à partir d'autres valeurs sur plus de {depth} niveaux, il a donc été utilisé à moitié construit. Raccourcis la chaîne de valeurs dont il dépend.",
   "warn.too_many_fills": "plus de {max} copies seraient remplies dans cette carte, le reste est laissé de côté",
   "warn.not_a_list_source": "{arg} n'est ni une liste ni une source du registre",
+  "warn.flat_after_repeat": "flat ne fonctionne que juste après un repeat:",
   "warn.not_a_mapping": "{arg} n'est pas un mapping",
   "warn.condition_closed": "sa condition if: n'est pas remplie",
   "warn.json_not_first": "json ne peut être que la première étape",
@@ -291,6 +292,7 @@
   "trace.left_refused": "laissé tel quel : {why}",
   "trace.dropped_option": "{path} ({placeholder} était vide)",
   "trace.dropped_block": "{path} (plus rien dedans)",
+  "trace.repeat_missing": "{placeholder} n'a rien donné : cette copie n'a pas de {arg}",
 
   "report.title": "Rapport de débogage de Decluttering Card Plus",
   "report.check": "Relisez-le avant de le publier où que ce soit : les mots de passe, les jetons, les adresses IP, les adresses e-mail et les hôtes reconnaissables ont été remplacés là où la carte a pu les repérer, mais elle n'en connaît pas toutes les formes, et les identifiants d'entité, les noms et tout le reste sont tels quels.",

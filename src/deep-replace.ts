@@ -11,6 +11,7 @@ import {
   HA_MARK,
   isStructureStep,
   normaliseVariables,
+  FLAT_STEP,
   REPEAT_STEP,
   stepName,
   CONSUMER_TYPES,
@@ -499,6 +500,9 @@ function substitutePass(
       const chain = transform;
       // `json` reads the variable's own value, so anywhere but first it has nothing to
       // work on - and without this it would be blamed on Home Assistant.
+      if (chain.split('|').includes(FLAT_STEP)) {
+        return refuse(match, written as string, localize('warn.flat_after_repeat'), 'shape');
+      }
       if (chain.split('|').lastIndexOf(JSON_STEP) > 0) {
         return refuse(match, written as string, localize('warn.json_not_first'), 'json');
       }
@@ -1016,13 +1020,24 @@ function deepReplace(
     if (expansions.has(key)) return expansions.get(key);
     const outcome = ((): Expansion | undefined => {
       const [step, ...rest] = chain.split('|');
-      if (rest.length) return { refused: localize('warn.step_not_alone', { step: `${stepName(step)}:` }) };
+      const flat = rest.length === 1 && rest[0] === FLAT_STEP;
+      if (flat && stepName(step) !== REPEAT_STEP) return { refused: localize('warn.flat_after_repeat') };
+      if (rest.length && !flat) return { refused: localize('warn.step_not_alone', { step: `${stepName(step)}:` }) };
       if (depth >= MAX_EXPAND_DEPTH) return { refused: localize('warn.fills_itself', { name }) };
       const found = bodyOf(name);
       if (!found) return undefined;
       const kind = stepName(step);
       const arg = step.slice(kind.length + 1);
       if (kind === REPEAT_STEP) {
+        /*
+         * Inside a copy, a list its item does not have - `zones:` on one detection but not the
+         * next - is no copies rather than a placeholder left in the list (#311). At the card's
+         * own level a missing name is still a mistake worth showing.
+         */
+        if (arg && depth > 0 && values[arg] === undefined) {
+          trace?.dropped.push(localize('trace.repeat_missing', { placeholder: `[[${key}]]`, arg }));
+          return { value: [], splice: true };
+        }
         const listed = itemsOf(arg);
         if (!listed) return { refused: localize('warn.not_a_list_source', { arg: arg || '""' }) };
         if (budget.fills + listed.items.length > MAX_FILLS) {
@@ -1030,9 +1045,17 @@ function deepReplace(
         }
         // A copy whose body dropped out - an item template gated on its own `if:...?` - leaves
         // the list rather than putting "" in its place, so a repeat can decide copy by copy (#235).
-        const copies = repeatOver(found, listed.items, listed.fromHa, `[[${key}]]`).filter(
-          (copy) => copy !== undefined && copy !== null && copy !== '',
-        );
+        const kept = (copy: unknown) => copy !== undefined && copy !== null && copy !== '';
+        const copies = repeatOver(found, listed.items, listed.fromHa, `[[${key}]]`).filter(kept);
+        // `|flat` lays a copy that is a list out in the outer list, one level deep (#311).
+        if (flat) {
+          const laid: unknown[] = [];
+          for (const copy of copies) {
+            if (Array.isArray(copy)) laid.push(...copy.filter(kept));
+            else laid.push(copy);
+          }
+          return { value: laid, splice: true };
+        }
         return { value: copies, splice: true };
       }
       if (budget.fills >= MAX_FILLS) return { refused: localize('warn.too_many_fills', { max: MAX_FILLS }) };

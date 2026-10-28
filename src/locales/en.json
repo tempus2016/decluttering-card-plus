@@ -252,6 +252,7 @@
   "warn.read_too_deep": "decluttering-card-plus: {names} is built from other values more than {depth} deep, so it was used part-built. Shorten the chain of values it is made from.",
   "warn.too_many_fills": "more than {max} copies would be filled in across this card, so the rest are left",
   "warn.not_a_list_source": "{arg} is not a list or a registry source",
+  "warn.flat_after_repeat": "flat only works straight after a repeat:",
   "warn.not_a_mapping": "{arg} is not a mapping",
   "warn.condition_closed": "its if: condition does not hold",
   "warn.json_not_first": "json can only be the first step",
@@ -291,6 +292,7 @@
   "trace.left_refused": "left as written: {why}",
   "trace.dropped_option": "{path} ({placeholder} was empty)",
   "trace.dropped_block": "{path} (nothing left in it)",
+  "trace.repeat_missing": "{placeholder} gave nothing: this copy has no {arg}",
 
   "report.title": "Decluttering Card Plus debug report",
   "report.check": "Read it before you post it anywhere: passwords, tokens, IP addresses, email addresses and hosts that could be recognised have been replaced where the card could spot them, but it cannot know every shape one takes, and entity ids, names and everything else are as they are.",
