@@ -5,7 +5,7 @@
 const { readsIn, templateReads, unreadVariables, checkUnreadVariables } = require('../.test-build/unread.js');
 const { collectTemplates } = require('../.test-build/templates.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 /* -------------------------------------------------------------------- readsIn */
 
@@ -281,5 +281,3 @@ check(
     ['nobody'],
   );
 }
-
-report();

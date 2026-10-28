@@ -5,7 +5,7 @@
 const { lintTemplate, definedNames } = require('../.test-build/lint.js');
 const { KNOWN_STEPS, KNOWN_PARAM_STEPS } = require('../.test-build/variables.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 // The findings as short strings, which reads far better in a failure than the objects.
 const lint = (template, known) =>
@@ -284,5 +284,3 @@ check(
     ['lint.undeclared', undefined],
   ],
 );
-
-report();

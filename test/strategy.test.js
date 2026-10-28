@@ -16,7 +16,7 @@ const {
   dashboardWantsLabels,
 } = require('../.test-build/strategy.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const hass = {
   floors: { ground: { floor_id: 'ground', name: 'Ground floor' } },
@@ -548,5 +548,3 @@ check(
     { title: 'Downstairs', path: 'downstairs' },
   ],
 );
-
-report();

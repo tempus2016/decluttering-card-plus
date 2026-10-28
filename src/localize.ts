@@ -1,22 +1,71 @@
-import de from './locales/de.json';
 import en from './locales/en.json';
-import es from './locales/es.json';
-import fr from './locales/fr.json';
-import nl from './locales/nl.json';
-import pt from './locales/pt.json';
 
 /*
  * Every sentence the card shows is looked up here by key, so a dashboard set to another
- * language reads in that language. The locale files are compiled into the bundle rather
- * than fetched: this card is one file with no backend to serve them from, and a bundled
- * lookup is synchronous - no render ever shows a raw key while a file loads.
+ * language reads in that language. English is compiled into the bundle; the other
+ * languages are chunks of their own (idea 4), fetched once when the page's language first
+ * asks for one - requested as this module loads, so the chunk is normally there before the
+ * first card builds. Until it is, a sentence falls back to English rather than to a raw
+ * key, and every element re-renders when the language lands.
  *
  * A language is tried most specific first - "pt-BR" reads pt-BR.json if it exists, then
  * pt.json - and anything a locale does not translate falls back to English, so a partial
  * translation is better than none rather than broken.
  */
 
-const LANGUAGES: Record<string, Record<string, string>> = { de, en, es, fr, nl, pt };
+const LANGUAGES: Record<string, Record<string, string>> = { en };
+
+// One loader per bundled language; a dynamic import each, so rollup makes each a chunk.
+const LOADERS: Record<string, () => Promise<{ default: Record<string, string> }>> = {
+  de: () => import('./locales/de.json'),
+  es: () => import('./locales/es.json'),
+  fr: () => import('./locales/fr.json'),
+  nl: () => import('./locales/nl.json'),
+  pt: () => import('./locales/pt.json'),
+};
+
+const loading = new Map<string, Promise<void>>();
+
+/** Fired on window once a language's strings have arrived, so what is on screen can be drawn again. */
+export const LANGUAGE_LOADED_EVENT = 'decluttering-card-plus-language-loaded';
+
+/** The languages that can be loaded, English included. */
+export const AVAILABLE_LANGUAGES = ['en', ...Object.keys(LOADERS)];
+
+/**
+ * Makes a language's strings available, fetching its chunk the first time. Resolves at once
+ * for English, for a language already here, and for one this card does not have.
+ */
+export function ensureLanguage(language: string): Promise<void> {
+  const wanted = candidatesFor(language).find((candidate) => LOADERS[candidate] !== undefined);
+  if (!wanted || LANGUAGES[wanted]) return Promise.resolve();
+  let pending = loading.get(wanted);
+  if (!pending) {
+    pending = LOADERS[wanted]()
+      .then((module) => {
+        registerLanguage(wanted, module.default);
+      })
+      .catch(() => {
+        // Left English; asked again next time something needs the language.
+        loading.delete(wanted);
+      });
+    loading.set(wanted, pending);
+  }
+  return pending;
+}
+
+/** Puts a language's strings in place without fetching anything: the loader's last step, and the tests' way in. */
+export function registerLanguage(code: string, strings: Record<string, string>): void {
+  LANGUAGES[code] = strings;
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(LANGUAGE_LOADED_EVENT));
+}
+
+/** Calls back whenever a language lands; returns what to call to stop listening. */
+export function onLanguageLoaded(listener: () => void): () => void {
+  if (typeof window === 'undefined') return () => undefined;
+  window.addEventListener(LANGUAGE_LOADED_EVENT, listener);
+  return () => window.removeEventListener(LANGUAGE_LOADED_EVENT, listener);
+}
 
 const FALLBACK = 'en';
 
@@ -75,6 +124,8 @@ export function localize(key: string, params?: Record<string, unknown>, hass?: H
     text = LANGUAGES[candidate]?.[key];
     if (text !== undefined) break;
   }
+  // A language not here yet is asked for now and answered in English this once.
+  if (text === undefined && language !== FALLBACK) void ensureLanguage(language);
   text ??= LANGUAGES[FALLBACK][key] ?? key;
 
   if (params) {
@@ -83,4 +134,10 @@ export function localize(key: string, params?: Record<string, unknown>, hass?: H
     }
   }
   return text;
+}
+
+// Asked for as the resource loads, so the chunk is normally here before the first card builds.
+{
+  const language = pageLanguage();
+  if (language) void ensureLanguage(language);
 }

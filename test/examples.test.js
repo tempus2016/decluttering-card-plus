@@ -5,7 +5,7 @@
  */
 const { exampleSets, exampleVariables, checkExamples } = require('../.test-build/examples.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 /* ---------------------------------------------------------------- reading them */
 
@@ -144,5 +144,3 @@ check(
   ).find((each) => each.template === 'stack')?.problems,
   ['Uses the template "lent", which does not exist.', 'Uses the template "gone", which does not exist.'],
 );
-
-report();

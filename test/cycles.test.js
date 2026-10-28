@@ -16,7 +16,7 @@ const {
 } = require('../.test-build/cycles.js');
 const { INHERITED_KEY } = require('../.test-build/variables.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 /* --------------------------------------------------------------- reading the chain */
 
@@ -243,5 +243,3 @@ check(
     cards: [{ type: 'custom:decluttering-card-plus', template: 'inner', inherit_variables: true }],
   },
 );
-
-report();

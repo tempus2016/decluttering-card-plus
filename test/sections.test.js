@@ -10,7 +10,7 @@ const {
   moveItem,
 } = require('../.test-build/templates.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const tiles = [
   { type: 'heading', heading: 'Kitchen' },
@@ -66,5 +66,3 @@ check('moving down', moveItem(['a', 'b', 'c'], 0, 2), ['b', 'c', 'a']);
 check('moving up', moveItem(['a', 'b', 'c'], 2, 0), ['c', 'a', 'b']);
 const list = ['a'];
 check('out of range is the same list', moveItem(list, 0, 3) === list, true);
-
-report();

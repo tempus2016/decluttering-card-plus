@@ -6,7 +6,7 @@ const { describeTemplate, readEntities, supported } = require('../.test-build/de
 const deepReplace = require('../.test-build/deep-replace.js').default;
 const { load } = require('js-yaml');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const base = (more = {}) => ({ kind: 'card', cardType: 'tile', changes: [], entities: ['light.kitchen'], ...more });
 
@@ -201,5 +201,3 @@ check(
     ],
   );
 }
-
-report();

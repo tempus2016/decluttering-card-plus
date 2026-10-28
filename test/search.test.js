@@ -4,7 +4,7 @@
  */
 const { searchValues } = require('../.test-build/search.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const home = {
   decluttering_templates: {
@@ -98,5 +98,3 @@ check('a dashboard with nothing on it is fine', searchValues([{ urlPath: 'x', co
   cards: [],
   templates: [],
 });
-
-report();

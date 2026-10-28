@@ -3,7 +3,7 @@
  * same card, so every case is read back with js-yaml - the parser Home Assistant itself
  * uses - as well as checked for how it looks. Run with `npm test`.
  */
-const { check, report } = require('./harness');
+const { check } = require('./check');
 const yaml = require('js-yaml');
 const { toYaml } = require('../.test-build/yaml.js');
 
@@ -154,5 +154,3 @@ for (let i = 0; i < 3000; i += 1) {
 const read = yaml.load(toYaml(fuzz));
 const wrong = Object.keys(fuzz).filter((k) => JSON.stringify(read[k]) !== JSON.stringify(fuzz[k]));
 check('3000 random strings, as keys, values and list items, all read back', wrong.slice(0, 5), []);
-
-report();

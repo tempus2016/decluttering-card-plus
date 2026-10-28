@@ -5,3 +5,4 @@ yarn.lock
 .test-build/
 coverage/
 .nyc_output/
+.dom-build/

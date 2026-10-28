@@ -3,7 +3,7 @@
  * worked out by a Jinja template, rendered once over the websocket and never again.
  * Run with `npm test`.
  */
-const { check, report } = require('./harness');
+const { check } = require('./check');
 const { renderTemplateOnce, templateList, sourceTemplate } = require('../.test-build/template-source.js');
 const { resolveRegistryItems, registryNames, isRegistrySource } = require('../.test-build/registry.js');
 const { renderStrategyTemplates, generateView } = require('../.test-build/strategy.js');
@@ -303,6 +303,4 @@ const T = "{{ states.light | selectattr('state','eq','on') | map(attribute='enti
     view.badges.map((b) => b.name),
     [1, 2],
   );
-
-  report();
 })();

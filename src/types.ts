@@ -116,12 +116,19 @@ export interface LovelaceElementConfig {
 
 export interface LovelaceRow extends HTMLElement {
   hass?: HomeAssistant;
-  setConfig(config: LovelaceRowConfig);
+  setConfig(config: LovelaceRowConfig): void;
 }
 
 export interface LovelaceRowConfig {
   type?: string;
   [key: string]: any;
+}
+
+/** One entry of an ha-form schema, as far as the card's label and helper callbacks read it. */
+export interface FormSchemaEntry {
+  name: string;
+  label?: string;
+  helper?: string;
 }
 
 export type LovelaceThing = LovelaceCard | LovelaceElement | LovelaceRow;

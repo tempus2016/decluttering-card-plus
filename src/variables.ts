@@ -1,6 +1,8 @@
 import { TemplateConfig, VariablesConfig } from './types';
 import { labelName } from './labels';
+import { registryIndex } from './registry-index';
 import { localize } from './localize';
+import { warn } from './warnings';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -134,9 +136,15 @@ function typeSelector(declaration: VariableDeclaration): unknown {
   const said = `${declaration.name}\u0000${String(type)}`;
   if (!unknownTypesSaid.has(said)) {
     unknownTypesSaid.add(said);
-    console.warn(
-      localize('warn.unknown_type', { name: declaration.name, type: String(type), types: VARIABLE_TYPES.join(', ') }),
-    );
+    warn({
+      kind: 'other',
+      message: localize('warn.unknown_type', {
+        name: declaration.name,
+        type: String(type),
+        types: VARIABLE_TYPES.join(', '),
+      }),
+      variable: declaration.name,
+    });
   }
   return undefined;
 }
@@ -551,7 +559,7 @@ function warnOnce(key: string, step: string, value: string, hass?: any): void {
   const id = `${key}|${step}|${value}`;
   if (warnedAbout.has(id)) return;
   warnedAbout.add(id);
-  console.warn(localize(key, { step, value }, hass));
+  warn({ kind: 'refused', message: localize(key, { step, value }, hass), step });
 }
 
 /** Rounded to so many places, written with exactly that many - `round:2` of 2.5 is 2.50. */
@@ -687,29 +695,17 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
     const entity = hass?.entities?.[entityId];
     return hass?.states?.[entityId]?.attributes?.friendly_name ?? entity?.name ?? entity?.original_name;
   },
-  area: (entityId, hass) => {
-    const entity = hass?.entities?.[entityId];
-    const areaId = entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
-    return areaId ? hass?.areas?.[areaId]?.name : undefined;
-  },
+  // The registry resolvers read one lookup table, built once per registry (idea 11).
+  area: (entityId, hass) => areaOf(entityId, hass)?.name,
   device: (entityId, hass) => {
-    const entity = hass?.entities?.[entityId];
-    const device = hass?.devices?.[entity?.device_id];
+    const device = deviceOf(entityId, hass);
     return device?.name_by_user ?? device?.name;
   },
-  floor: (entityId, hass) => {
-    const entity = hass?.entities?.[entityId];
-    const areaId = entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
-    const floorId = areaId ? hass?.areas?.[areaId]?.floor_id : undefined;
-    return floorId ? hass?.floors?.[floorId]?.name : undefined;
-  },
+  floor: (entityId, hass) => floorOf(entityId, hass)?.name,
   // The ids underneath the names. A name is for showing; an id is for building another
   // entity id out of - `binary_sensor.[[entity|area_id]]_motion` - which is the other half
   // of what people template with.
-  area_id: (entityId, hass) => {
-    const entity = hass?.entities?.[entityId];
-    return entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
-  },
+  area_id: (entityId, hass) => areaOf(entityId, hass)?.area_id,
   device_id: (entityId, hass) => hass?.entities?.[entityId]?.device_id,
   // The two halves of the entity id itself, no registry needed. A value not shaped like
   // an entity id has no halves to give, so the placeholder stays visible.
@@ -718,6 +714,8 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
   // The names of the labels the entity carries, joined for showing. A label the registry
   // does not name keeps its id - a visible stand-in beats a silent hole in the list.
   labels: (entityId, hass) => {
+    // The entity's own labels, as before - not its device's, which `labelsOf` in a repeat
+    // counts for matching; a label on the device is not something the entity shows.
     const ids: string[] = hass?.entities?.[entityId]?.labels ?? [];
     if (!ids.length) return undefined;
     return ids.map((id) => labelName(hass, id)).join(', ');
@@ -744,8 +742,7 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
     return area ? (area.icon ?? '') : undefined;
   },
   floor_icon: (entityId, hass) => {
-    const floorId = areaOf(entityId, hass)?.floor_id;
-    const floor = floorId ? hass?.floors?.[floorId] : undefined;
+    const floor = floorOf(entityId, hass);
     return floor ? (floor.icon ?? '') : undefined;
   },
   /*
@@ -774,14 +771,18 @@ export const RESOLVERS: Record<string, (entityId: string, hass: any) => string |
 
 /** The device an entity belongs to, if the registry says. */
 function deviceOf(entityId: string, hass: any): any {
-  return hass?.devices?.[hass?.entities?.[entityId]?.device_id];
+  return registryIndex(hass).deviceOfEntity.get(entityId);
 }
 
 /** The entity's area, or its device's when it has none of its own - how `|area` finds it. */
 function areaOf(entityId: string, hass: any): any {
-  const entity = hass?.entities?.[entityId];
-  const areaId = entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
-  return areaId ? hass?.areas?.[areaId] : undefined;
+  return registryIndex(hass).areaOfEntity.get(entityId);
+}
+
+/** The floor of the entity's area, if it has one. */
+function floorOf(entityId: string, hass: any): any {
+  const area = areaOf(entityId, hass);
+  return area ? registryIndex(hass).floorOfArea.get(area.area_id) : undefined;
 }
 
 const ENTITY_ID_SHAPE = /^([a-z0-9_]+)\.([a-z0-9_]+)$/i;
@@ -1018,14 +1019,16 @@ export function isStructureStep(step: string): boolean {
   return STRUCTURE_PARAM_STEPS.includes(stepName(step));
 }
 
-const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP, ...STRUCTURE_PARAM_STEPS];
+const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP];
 
 /*
  * An arithmetic argument stops short of an opening bracket as well, so `add:[[offset]]`
  * waits for `[[offset]]` to be substituted and then reads the number it became, rather than
- * swallowing half of it as an argument that is not one.
+ * swallowing half of it as an argument that is not one. A `with:` or `repeat:` argument
+ * does too: `with:entity=light.[[which]]` was otherwise cut off at the inner brackets.
  */
-const PARAM_STEP = `(?:(?:${PARAM_PREFIXES.join('|')}):[^|\\]]*|(?:${NUMBER_PARAM_STEPS.join('|')}):[^|\\][]*)`;
+const BRACKETLESS_STEPS = [...NUMBER_PARAM_STEPS, ...STRUCTURE_PARAM_STEPS];
+const PARAM_STEP = `(?:(?:${PARAM_PREFIXES.join('|')}):[^|\\]]*|(?:${BRACKETLESS_STEPS.join('|')}):[^|\\][]*)`;
 
 /** The parameterised transform a step asks for, or undefined when it is not one. */
 function paramTransform(

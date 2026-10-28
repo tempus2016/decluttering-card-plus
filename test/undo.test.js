@@ -4,7 +4,7 @@
  */
 const undo = require('../.test-build/undo.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 // A sessionStorage stand-in, so the persistence can be seen. Node has none of its own.
 const stored = new Map();
@@ -287,6 +287,4 @@ const retitle = (title) => (config) => ({ ...config, views: [{ title }] });
     check('and lets it go', undo.heldUndo(), undefined);
     global.sessionStorage = saved;
   }
-
-  report();
 })();

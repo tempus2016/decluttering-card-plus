@@ -40,6 +40,28 @@ jobs:
         # catches a real slide rather than failing on a rounding difference.
         run: npm run coverage --if-present
 
+  dom:
+    name: Browser suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.x
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Install a Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      # The regressions that only a rendered element shows (idea 6): a hidden card giving up
+      # its slot, a badge previewed in the editor, section defaults reaching the card, a group
+      # hiding when its cards do, card-updated once per card - and axe over both editors.
+      - name: Run the browser suite
+        run: npm run test:dom -- --local
+
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -75,6 +97,11 @@ jobs:
             git status --porcelain --ignored=matching -- dist/
             exit 1
           fi
+      # The bundle budget: more than 5% over the size recorded in scripts/bundle-size.json
+      # fails here, so growth is recorded on purpose in the pull request that causes it.
+      - name: Check the bundle against its budget
+        if: matrix.node-version == '22.x'
+        run: node scripts/check-bundle-size.js
 
   # Nothing else here runs semantic-release, so a dependency that quietly breaks note
   # generation ships a release with empty notes while every check stays green.

@@ -11,7 +11,7 @@ const {
   sameRegistry,
 } = require('../.test-build/registry.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 // A small house: two areas on one floor, one of them holding a lamp on a device.
 const hass = {
@@ -1078,5 +1078,3 @@ check(
   resolveRegistryItems(hass, { entities: 'ight.*' }),
   [],
 );
-
-report();

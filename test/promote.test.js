@@ -4,7 +4,7 @@
  */
 const { listSettings, nameForSetting, namesInUse, promoteSetting } = require('../.test-build/promote.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const tile = {
   template: 'room',
@@ -89,5 +89,3 @@ check(
   { colour: 'red', low: { type: 'number', default: 0 } },
 );
 check('a mapping declaration counts as a name in use', namesInUse({ variables: { colour: 'red' } }), ['colour']);
-
-report();

@@ -38,8 +38,9 @@ it and reload your browser. HACS adds the dashboard resource for you.
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tempus2016&repository=decluttering-card-plus&category=lovelace)
 
-To install by hand, save [decluttering-card-plus.js][latest-release] to `<config>/www/` and add
-`/local/decluttering-card-plus.js` as a dashboard resource of type `module`. The
+To install by hand, save every `.js` file of the [latest release][latest-release] to
+`<config>/www/` *(v2.4.0+: the editors and translations are files of their own beside the main
+one)* and add `/local/decluttering-card-plus.js` as a dashboard resource of type `module`. The
 [Installation][wiki-installation] page has the detail.
 
 | You need | For |

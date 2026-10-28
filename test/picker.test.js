@@ -1,5 +1,5 @@
 const { entitySuggestions, publishTag, publishedTemplates, publishedStub } = require('../.test-build/picker.js');
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const hass = {
   entities: {
@@ -104,5 +104,3 @@ check(
   publishedStub(stateful, 'x', { suggest_for: { domain: 'vacuum' }, card: {} }, TYPE),
   { type: TYPE, template: 'x' },
 );
-
-report();

@@ -32,8 +32,9 @@ const plugins = [
     // and attached to the release carries it too.
     '@semantic-release/exec',
     {
-      // Rebuild once the new version is in package.json.
-      prepareCmd: 'npm run build',
+      // Rebuild once the new version is in package.json, and record the size the
+      // release ships at so the bundle budget measures from it.
+      prepareCmd: 'npm run build && node scripts/check-bundle-size.js --record',
     },
   ],
   [
@@ -43,7 +44,9 @@ const plugins = [
         'README.md',
         'package.json',
         'package-lock.json',
-        'dist/decluttering-card-plus.js',
+        'dist/*.js',
+        'dist/*.js.map',
+        'scripts/bundle-size.json',
         'docs-theme/assets/js/builder.js',
         'docs-theme/assets/js/playground.js',
       ],
@@ -52,7 +55,7 @@ const plugins = [
   [
     '@semantic-release/github',
     {
-      assets: 'dist/*.js',
+      assets: ['dist/*.js', 'dist/*.js.map'],
       // Commit messages cite issue numbers from the upstream repository, which do not
       // exist here; the comment step fails the whole run trying to resolve them.
       successComment: false,

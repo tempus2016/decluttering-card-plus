@@ -12,7 +12,7 @@ const {
   watchForTrash,
 } = require('../.test-build/trash.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const room = { card: { type: 'tile', entity: '[[entity]]' } };
 const before = {
@@ -116,5 +116,4 @@ check(
   handler({ data: { url_path: 'tableau-ha' } });
   await new Promise((resolve) => setTimeout(resolve, 50));
   check('a YAML-mode dashboard announcing itself is not read again', reads.length, settled);
-  report();
 })();

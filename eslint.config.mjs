@@ -8,11 +8,16 @@ export default [
       'docs-theme/assets/js/builder.js',
       'docs-theme/assets/js/playground.js',
       '.test-build/**',
+      '.dom-build/**',
       '.tmp/**',
       'node_modules/**',
     ],
   },
   ...tseslint.configs.recommended,
+  {
+    // The explicit anys that are there stay for now; new code should not add more (idea 7).
+    rules: { '@typescript-eslint/no-explicit-any': 'warn' },
+  },
   prettierRecommended,
   {
     // The test runner and the release scripts are plain CommonJS Node scripts, not
