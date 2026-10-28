@@ -218,6 +218,25 @@ function byName(a: Record<string, any>, b: Record<string, any>): number {
   return shown(a).localeCompare(shown(b)) || id(a).localeCompare(id(b));
 }
 
+/** A plain decimal as a person or HA would write it: `19.25`, `-10`, `.5`, `1e-3`. */
+const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+
+/*
+ * A carried key or attribute compared as what it is. Numeric collation reads each run of
+ * digits on its own, which is right for "room 2" before "room 10" but puts 19.5 before
+ * 19.25 and -2 before -10, so two numbers are compared as numbers. Empty still comes
+ * first, then numbers, then text - the order collation gave a mix already.
+ */
+function byValue(a: string, b: string): number {
+  const x = a.trim();
+  const y = b.trim();
+  const xNumber = DECIMAL.test(x);
+  const yNumber = DECIMAL.test(y);
+  if (xNumber && yNumber) return Math.sign(Number(x) - Number(y));
+  if (x && y && xNumber !== yNumber) return xNumber ? -1 : 1;
+  return a.localeCompare(b, undefined, { numeric: true });
+}
+
 /** What each `sort:` orders by. Any other name is read as a key on the items themselves. */
 const SORTS: Record<string, (item: Record<string, any>) => string> = {
   name: (item) => String(item.name ?? item.area ?? ''),
@@ -299,9 +318,7 @@ function ordered(
             }
           : (item: Record<string, any>): string => String(item[key] ?? ''));
       return (a: Record<string, any>, b: Record<string, any>): number => {
-        const compared = known
-          ? read(a).localeCompare(read(b))
-          : read(a).localeCompare(read(b), undefined, { numeric: true });
+        const compared = known ? read(a).localeCompare(read(b)) : byValue(read(a), read(b));
         return descending ? -compared : compared;
       };
     });

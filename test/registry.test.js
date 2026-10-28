@@ -901,6 +901,43 @@ check(
   'sensor.hall',
 );
 
+// Numeric collation reads each digit run on its own, so 19.5 came before 19.25 (5 < 25)
+// and -2 before -10. Numbers are now compared as numbers, whether HA stores the attribute
+// as a number or as text.
+const valuesHass = (values) => ({
+  entities: Object.fromEntries(Object.keys(values).map((name) => [`sensor.${name}`, { entity_id: `sensor.${name}` }])),
+  areas: {},
+  states: Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [`sensor.${name}`, { attributes: { reading: value } }]),
+  ),
+});
+const byReading = (values, sort = 'attr:reading') =>
+  ids(resolveRegistryItems(valuesHass(values), { domain: 'sensor', sort })).map((id) => id.slice(7));
+
+check('sort attr puts 19.25 before 19.5', byReading({ a: 19.5, b: 19.25, c: 19 }), ['c', 'b', 'a']);
+check('the same when the attribute is text', byReading({ a: '19.5', b: '19.25', c: '19' }), ['c', 'b', 'a']);
+check('negatives sort below each other properly', byReading({ a: -2, b: -10, c: 0 }), ['b', 'a', 'c']);
+check('negative text too', byReading({ a: '-2', b: '-10', c: '3' }), ['b', 'a', 'c']);
+check('a bare leading point is a number', byReading({ a: '0.5', b: '.25', c: '1e-1' }), ['c', 'b', 'a']);
+check('minus attr reverses numerically', byReading({ a: 19.5, b: 19.25, c: -1 }, '-attr:reading'), ['a', 'b', 'c']);
+check('names still sort naturally', byReading({ a: 'room 10', b: 'room 2', c: 'room 1' }), ['c', 'b', 'a']);
+check('empty first, then numbers, then text, either way round', byReading({ a: 'off', b: 10, c: undefined, d: 9.5 }), [
+  'c',
+  'd',
+  'b',
+  'a',
+]);
+check(
+  'equal numbers written differently tie, so the next key decides',
+  ids(
+    resolveRegistryItems(valuesHass({ a: '1.0', b: 1, c: '0.5' }), {
+      domain: 'sensor',
+      sort: ['attr:reading', '-entity'],
+    }),
+  ),
+  ['sensor.c', 'sensor.b', 'sensor.a'],
+);
+
 check('a limit takes the first few', ids(resolveRegistryItems(hass, { entities: '*', limit: 2 })).length, 2);
 
 check(
