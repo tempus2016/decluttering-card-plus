@@ -3,6 +3,7 @@
  * copies a template is repeated over. Run with `npm test`.
  */
 const {
+  copyLabel,
   globMatches,
   isRegistrySource,
   resolveRegistryItems,
@@ -1159,4 +1160,46 @@ check(
   'a star in the middle does not match across nothing when the ends are wrong',
   resolveRegistryItems(hass, { entities: 'ight.*' }),
   [],
+);
+
+// The editor's "Matches N things right now" list names each copy by what it stands for.
+const labelsOf = (source, context) =>
+  resolveRegistryItems(hass, source, context).map((item, index) => copyLabel(item, index));
+check('an entity copy is listed by its entity id', labelsOf({ entities: 'light.bedside' }), ['light.bedside']);
+check('an area copy is listed by its name', labelsOf({ areas: 'kitchen' }), ['Kitchen']);
+check('an area with no name is listed by its id', copyLabel({ area_id: 'loft', area: '' }, 0), 'loft');
+check(
+  'a device copy is listed by its name, not its area, even with no area at all',
+  [
+    copyLabel(
+      { device_id: 'd1', device: 'Bedside lamp', name: 'Bedside lamp', area: 'Bedroom', area_id: 'bedroom' },
+      0,
+    ),
+    copyLabel({ device_id: 'd2', device: 'Garage hub', name: 'Garage hub', area: '', area_id: '' }, 1),
+    copyLabel({ device_id: 'd3', device: '', name: '', area: '', area_id: '' }, 2),
+  ],
+  ['Bedside lamp', 'Garage hub', 'd3'],
+);
+check('a resolved device copy is listed by its name', labelsOf({ devices: true }), ['lamp_device']);
+check('a floor copy is listed by its name', labelsOf({ floors: true }), ['Ground floor', 'Upstairs']);
+check('a label copy is listed by its name', labelsOf({ labels: 'night' }), ['Night light']);
+check(
+  'a view copy is listed by its title, or its path when it has none',
+  labelsOf({ views: true }, { views: [{ title: 'Home', path: 'home' }, { path: 'energy' }, {}] }),
+  ['Home', 'energy', '2'],
+);
+check(
+  "a template list's plain values are listed as themselves",
+  labelsOf({ template: '{{ x }}' }, { rendered: { '{{ x }}': { result: ['red', 7, 0] } } }),
+  ['red', '7', '0'],
+);
+check('a group_by copy is listed by the group name', labelsOf({ entities: 'light.*', group_by: 'area' }), [
+  'Bedroom',
+  'Kitchen',
+]);
+check('a range copy is listed by its position', labelsOf({ range: 3 }), ['1', '2', '3']);
+check(
+  'nothing to go on is never a blank line',
+  [copyLabel({}, 4), copyLabel({ item: '' }, 0), copyLabel({ name: '  ' }, 1)],
+  ['5', '1', '2'],
 );
