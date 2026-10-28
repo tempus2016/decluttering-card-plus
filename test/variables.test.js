@@ -1548,3 +1548,19 @@ check(
   diagnoseInstance([], { card: { name: '[[[ return entity.state ]]]', label: '[[[ return [[n|json]] ]]]' } }).missing,
   ['n'],
 );
+check(
+  "a variable only the card's for_each_from or on_error reads is not unused",
+  diagnoseInstance(
+    [{ room: 'Kitchen' }, { why: 'x' }, { nobody: 1 }],
+    { card: { type: 'tile', entity: '[[entity]]' } },
+    [{ entity: null }],
+    [{ area: '[[room]]' }, { type: 'markdown', content: '[[why]]' }],
+  ).unused,
+  ['nobody'],
+);
+check(
+  'and one the source reads but the card leaves unset is missing',
+  diagnoseInstance([], { card: { type: 'tile', entity: '[[entity]]' } }, [{ entity: null }], [{ area: '[[room]]' }])
+    .missing,
+  ['room'],
+);

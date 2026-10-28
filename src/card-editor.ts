@@ -888,7 +888,11 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       ...Object.keys(itemTemplatesOf(this._lovelace ?? getLovelaceConfig())),
     ];
     const repeated = supplied.map((name) => ({ [name]: null }));
-    const { missing, unused, required } = diagnoseInstance(this._config?.variables, template, repeated);
+    // The card's own for_each_from and on_error are filled in from its variables as well.
+    const { missing, unused, required } = diagnoseInstance(this._config?.variables, template, repeated, [
+      this._config?.for_each_from,
+      this._config?.on_error,
+    ]);
     const invalid = validateDeclared(this._config?.variables, template, this.hass);
     // A template can say which of its variables it cannot do without. Those are still not
     // errors that block a save - the template may be edited next - but they are the ones
