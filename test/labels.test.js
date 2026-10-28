@@ -3,7 +3,7 @@
  * areas and floors, but not labels), so labels.ts fetches it. Before it did, every label
  * showed by its id. Run with `npm test`.
  */
-const { check, report } = require('./harness');
+const { check } = require('./check');
 const { labelName, loadLabels, resetLabels } = require('../.test-build/labels.js');
 const { resolveRegistryItems, registryKey } = require('../.test-build/registry.js');
 const { applyTransform } = require('../.test-build/variables.js');
@@ -84,6 +84,4 @@ const withWS = {
   };
   await loadLabels(failing);
   check('a failed fetch leaves the ids, as before', labelName(failing, 'living_room_lights'), 'living_room_lights');
-
-  report();
 })();

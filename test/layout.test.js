@@ -12,7 +12,7 @@ const {
   LAZY_MARGIN,
 } = require('../.test-build/layout.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 check('without a minimum width the count is exactly what was asked for', columnsFor(300, 4), 4);
 
@@ -96,5 +96,3 @@ check(
   [LAZY_MIN_HEIGHT, LAZY_MARGIN, LAZY_EAGER],
   [56, '300px', 6],
 );
-
-report();

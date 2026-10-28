@@ -4,7 +4,7 @@
  */
 const { suggestVariables } = require('../.test-build/suggest.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 check('a card with nothing to vary is left alone', suggestVariables({ type: 'markdown', content: 'hello' }, []), {
   card: { type: 'markdown', content: 'hello' },
@@ -107,5 +107,3 @@ check(
   })(),
   true,
 );
-
-report();

@@ -6,7 +6,7 @@ const { tryPlaceholder, splitPlaceholder, kindOf } = require('../.test-build/pla
 
 const { placeholderRuns } = require('../.test-build/docs-dom.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const VARS = `
 entity: light.kitchen_ceiling
@@ -190,5 +190,3 @@ check(
     [true, { text: '[[x]]', placeholder: true }],
   );
 }
-
-report();

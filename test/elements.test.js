@@ -12,10 +12,21 @@
 const fs = require('fs');
 const path = require('path');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const SRC = path.join(__dirname, '..', 'src');
-const files = fs.readdirSync(SRC).filter((name) => name.endsWith('.ts'));
+// Every TypeScript file under src, subdirectories included - the editors are split into folders.
+const walk = (dir, prefix = '') =>
+  fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) =>
+      entry.isDirectory()
+        ? walk(path.join(dir, entry.name), prefix + entry.name + '/')
+        : entry.name.endsWith('.ts')
+          ? [prefix + entry.name]
+          : [],
+    );
+const files = walk(SRC);
 
 /** Every `mwc-` element named in a file: opening/closing tags and CSS selectors. */
 const mwcUses = (text) => {
@@ -34,10 +45,13 @@ check(
   [1, 1],
 );
 
-const card = fs.readFileSync(path.join(SRC, 'decluttering-card-plus.ts'), 'utf8');
+// The editors live in their own modules since the main file was split (idea 5).
+const editors = ['card-editor.ts', 'template-editor.ts']
+  .map((name) => fs.readFileSync(path.join(SRC, name), 'utf8'))
+  .join('\n');
 check(
   'the editors do draw buttons, so a clean result means something',
-  (card.match(/<ha-button/g) || []).length > 0,
+  (editors.match(/<ha-button/g) || []).length > 0,
   true,
 );
 
@@ -61,10 +75,11 @@ const tagCount = (tag) =>
   }, 0);
 check('ha-textfield is drawn in one place only, the helper', tagCount('ha-textfield'), 1);
 check('ha-input is drawn in one place only, the helper', tagCount('ha-input'), 1);
+const helperHome = files
+  .map((name) => fs.readFileSync(path.join(SRC, name), 'utf8'))
+  .find((text) => /function textField/.test(text));
 check(
   'that place picks whichever of the two the page has',
-  /function textField[\s\S]*?isDefinedHere\('ha-input'\)[\s\S]*?<ha-input[\s\S]*?<ha-textfield/.test(card),
+  /function textField[\s\S]*?isDefinedHere\('ha-input'\)[\s\S]*?<ha-input[\s\S]*?<ha-textfield/.test(helperHome || ''),
   true,
 );
-
-report();

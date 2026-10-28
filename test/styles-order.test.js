@@ -11,9 +11,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'decluttering-card-plus.ts'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'element.ts'), 'utf8');
 
 const styles = source.slice(source.indexOf('static get styles()'), source.indexOf('protected firstUpdated()'));
 
@@ -42,5 +42,3 @@ check('the hidden rule comes after the fit rule', hidden > fit, true);
 // A rule added after this one would take the display back, which is the mistake this
 // whole file exists to catch, so nothing may follow it.
 check('nothing follows the hidden rule', styles.indexOf(':host(', hidden + 1), -1);
-
-report();

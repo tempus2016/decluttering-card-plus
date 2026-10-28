@@ -19,7 +19,7 @@ const {
 const deepReplace = require('../.test-build/deep-replace.js').default;
 const { checkDashboard } = require('../.test-build/templates.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const warnings = [];
 console.warn = (m) => warnings.push(m);
@@ -214,5 +214,3 @@ check(
   }).unsetVariables,
   [],
 );
-
-report();

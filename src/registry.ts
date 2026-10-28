@@ -7,9 +7,10 @@
  * kitchen" and grow by itself.
  */
 
-import { categoriesOf, categoryRegistry, EntityCategory } from './categories';
+import { categoriesOf, EntityCategory } from './categories';
 import { TemplateConfig } from './types';
 import { labelRegistry } from './labels';
+import { registryIndex } from './registry-index';
 import { asHaText, CARRIES_TOKEN } from './variables';
 import { sourceTemplate, TemplateRender, templateList } from './template-source';
 
@@ -180,16 +181,14 @@ function matchesAny(values: (string | undefined | null)[], patterns: string[] | 
   return values.some((value) => matches(value, patterns));
 }
 
-function areaOf(hass: any, entity: any): any {
-  const areaId = entity?.area_id ?? hass?.devices?.[entity?.device_id]?.area_id;
-  return areaId ? hass?.areas?.[areaId] : undefined;
+// Both read the lookup table in registry-index.ts (idea 11), built once per registry and
+// shared with the resolvers, rather than walking entity, device and area per entity.
+function areaOf(hass: any, entityId: string): any {
+  return registryIndex(hass).areaOfEntity.get(entityId);
 }
 
-function labelsOf(hass: any, entity: any): string[] {
-  // A label is usually put on the device rather than on each of its entities, so both
-  // count - otherwise "everything labelled upstairs" would miss almost everything.
-  const device = hass?.devices?.[entity?.device_id];
-  return [...(entity?.labels ?? []), ...(device?.labels ?? [])];
+function labelsOf(hass: any, entityId: string): string[] {
+  return registryIndex(hass).labelsOfEntity.get(entityId) ?? [];
 }
 
 /** A label matches by its id or by the name shown in the interface. */
@@ -566,11 +565,11 @@ function entityMatches(hass: any, entityId: string, entity: any, source: Registr
   const stateClasses = asList(source.state_class);
   if (stateClasses && !matches(attributes?.state_class, stateClasses)) return false;
 
-  const area = areaOf(hass, entity);
+  const area = areaOf(hass, entityId);
   const areas = asList(source.area);
   if (areas && !matchesAny([area?.area_id, area?.name], areas)) return false;
   if (!floorMatches(hass, area, asList(source.floor))) return false;
-  if (!labelMatches(hass, labelsOf(hass, entity), asList(source.label))) return false;
+  if (!labelMatches(hass, labelsOf(hass, entityId), asList(source.label))) return false;
   const categories = asList(source.category);
   if (categories && !categoryMatching(entityId, categories)) return false;
   return true;
@@ -678,7 +677,7 @@ function entityItems(hass: any, source: RegistrySource): Record<string, any>[] {
 
 /** The variables one entity's copy is given - the same however the entity was found. */
 function entityItem(hass: any, entityId: string, entity: any, source: RegistrySource): Record<string, any> {
-  const area = areaOf(hass, entity);
+  const area = areaOf(hass, entityId);
   const item: Record<string, any> = {
     entity: entityId,
     name: nameOf(hass, entityId, entity),
@@ -873,14 +872,14 @@ function groupedItems(hass: any, items: Record<string, any>[], by: string): Reco
   };
 
   for (const item of items) {
-    const entity = hass?.entities?.[item.entity];
     if (by === 'domain') add(item.domain, item.domain, item);
     else if (by === 'area') add(item.area_id, item.area, item);
     else if (by === 'floor') {
-      const floorId = areaOf(hass, entity)?.floor_id;
-      add(floorId, floorId ? hass?.floors?.[floorId]?.name : undefined, item);
+      const area = areaOf(hass, item.entity);
+      const floor = area ? registryIndex(hass).floorOfArea.get(area.area_id) : undefined;
+      add(area?.floor_id, floor?.name, item);
     } else if (by === 'label') {
-      for (const labelId of labelsOf(hass, entity)) add(labelId, labelRegistry(hass)?.[labelId]?.name, item);
+      for (const labelId of labelsOf(hass, item.entity)) add(labelId, labelRegistry(hass)?.[labelId]?.name, item);
     }
   }
 
@@ -890,20 +889,4 @@ function groupedItems(hass: any, items: Record<string, any>[], by: string): Reco
   });
 }
 
-/**
- * What the resolved list depends on, for deciding whether to work it out again. hass is
- * replaced on every state change, many times a second, but these collections are replaced
- * only when the registry itself changes - so comparing them is the difference between
- * rebuilding a card when a lamp is added and rebuilding it when a lamp is switched on.
- */
-export function registryKey(hass: any): unknown[] {
-  // The label registry is fetched rather than carried on hass - see labels.ts - so it is part
-  // of the key: the fetch landing is what turns label ids into names on screen.
-  // Categories likewise, fetched by categories.ts for the cards that narrow by one.
-  return [hass?.entities, hass?.devices, hass?.areas, hass?.floors, labelRegistry(hass), categoryRegistry()];
-}
-
-/** Whether two registry keys describe the same registry, compared entry by entry. */
-export function sameRegistry(a: unknown[] | undefined, b: unknown[]): boolean {
-  return !!a && a.length === b.length && a.every((value, index) => value === b[index]);
-}
+export { registryKey, sameRegistry } from './registry-index';

@@ -5,7 +5,7 @@
  */
 const { scanDependencies, buildExport, validateImport, freeName } = require('../.test-build/share.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 /* --- scanDependencies: custom cards the recipient has to install --- */
 
@@ -379,5 +379,3 @@ check(
     [{ discussion: 1 }, {}],
   );
 }
-
-report();

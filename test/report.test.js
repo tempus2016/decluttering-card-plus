@@ -8,7 +8,7 @@ const deepReplace = require('../.test-build/deep-replace.js').default;
 const { newTrace, startExpansion, reportExpansion } = require('../.test-build/trace.js');
 const { redact, formatReport } = require('../.test-build/report.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const logged = [];
 console.warn = () => {};
@@ -465,5 +465,3 @@ check(
   check('its placeholders too', text.includes('| \\[\\[entity\\|exists\\]\\] | false |'), true);
   check('a secret among them is taken out', text.includes('swordfish'), false);
 }
-
-report();

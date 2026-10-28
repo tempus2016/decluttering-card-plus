@@ -30,6 +30,8 @@ export interface BuildTrace {
   dropped: string[];
   /** What substitution warned about in the console while building it. */
   warnings: string[];
+  /** The debug expansion the build belongs to, so its warnings can be found in the log by it. */
+  expansion?: string;
   /** Each item template a `with:` or `repeat:` filled in, and what went on inside it (#235). */
   items?: ItemTrace[];
   /** For an item template's fill: its own values and the defaults it declares, as each ended up. */

@@ -27,7 +27,7 @@ const {
 const { withoutStamps } = require('../.test-build/cycles.js');
 const { OWN_DEFAULTS } = require('../.test-build/variables.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 // Unresolved and refused placeholders warn as well, which is not what these tests are about.
 console.warn = () => {};
@@ -465,5 +465,4 @@ check('the card itself is a dot', formatPath([]), '.');
   check('a build the card has moved on from takes no more reports', ended.length, 0);
 
   Object.assign(console, saved);
-  report();
 })();

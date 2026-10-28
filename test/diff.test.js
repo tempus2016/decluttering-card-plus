@@ -4,7 +4,7 @@
  */
 const { lineDiff, withContext, hasChanges } = require('../.test-build/diff.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const kinds = (lines) =>
   lines.map((line) => (line.kind === 'skip' ? `~${line.count}` : `${line.kind[0]}:${line.text}`));
@@ -102,5 +102,3 @@ check(
 );
 
 check('no changes at all folds everything', kinds(withContext(lineDiff('a\nb\nc', 'a\nb\nc'))), ['~3']);
-
-report();

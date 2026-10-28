@@ -1,11 +1,14 @@
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
 import { BuildTrace } from './trace';
+import { compile, Piece, SITE_SOURCE } from './compiled';
+import { warn, WarningKind } from './warnings';
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import {
   answersUnset,
   applyTransform,
   forEachVariables,
+  HA_MARK,
   isStructureStep,
   normaliseVariables,
   REPEAT_STEP,
@@ -21,17 +24,14 @@ import {
   withoutOptional,
   isOptional,
   OPTIONAL,
-  OPTIONAL_SUFFIX,
   hasEscape,
-  HA_MARK,
   isFallback,
   isJsonNumber,
   PLACEHOLDER,
   resolveVariables,
-  restoreHaText,
   STATE_STEP,
+  restoreHaText,
   stateScope,
-  TRANSFORM_SUFFIX,
   unlistedState,
   unescapePlaceholders,
   withoutConditions,
@@ -184,10 +184,6 @@ function escapeForJsonString(value: string): string {
   return quoted.slice(1, quoted.length - 1);
 }
 
-function escapeForRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 // A placeholder standing as the whole JSON value takes the place of its quotes too, so it
 // can become any JSON. A string is the exception: it is left for the pass below to put
 // inside the quotes that are already there.
@@ -298,6 +294,25 @@ function noted(trace: BuildTrace | undefined, placeholder: string, out: string, 
   return out;
 }
 
+/*
+ * Every site a placeholder can stand at, found by one expression: a quote before and one
+ * after mean it is a whole value of its own, otherwise it is part of a longer string. The
+ * chain grammar is the closed one from variables.ts, so a chain with a step nobody knows
+ * matches nothing and the placeholder stays visible, exactly as before. Global, so it is
+ * only ever used through String.replace, which resets lastIndex for itself.
+ */
+const SITE = new RegExp(SITE_SOURCE, 'g');
+
+/** What one scan of the text finds at a site, as String.replace hands it over. */
+type SiteMatch = [
+  match: string,
+  lead: string | undefined,
+  name: string,
+  chain: string | undefined,
+  optional: string | undefined,
+  trail: string | undefined,
+];
+
 function substitutePass(
   jsonConfig: string,
   variableArray: VariablesConfig[],
@@ -311,34 +326,48 @@ function substitutePass(
   settle: (name: string) => unknown = (name) => values[name],
   // How a `with:` or `repeat:` chain is worked out (#227).
   expand?: (name: string, chain: string) => Expansion | undefined,
+  // The text already split at its sites, when this is the first pass over a compiled template (idea 3).
+  pieces?: Piece[],
   // The variables whose values are Home Assistant's, for the shield.
   haNames?: Set<string>,
   // What the text may still grow by, shared with every fill this build makes.
   budget?: { left: number },
 ): string {
-  let json = jsonConfig;
-  for (const variable of variableArray) {
-    // A single pass fully unrolls a self-doubling chain, so the size is checked before each
-    // variable is applied rather than only after the pass - and inside each replace as well,
-    // because one variable whose value holds two hundred placeholders grows the text two
-    // hundredfold in a single step, not twofold. Once what has been added would pass the
-    // ceiling, the matches still to come are left as written.
-    if (budget && budget.left <= 0) break;
-    if (limit !== undefined && json.length > limit) break;
-    const within = (match: string, out: string): string => {
-      if (!budget) return out;
-      const growth = out.length - match.length;
+  /*
+   * One scan of the text, each placeholder looked up by name (idea 2). Building two regular
+   * expressions per variable and scanning the whole text with each of them, as this used
+   * to, cost a 15-variable template thirty scans a pass; a name is compared as a string, so
+   * one with regex metacharacters in it needs no escaping either.
+   */
+  const byName = new Map<string, unknown>();
+  for (const variable of variableArray) byName.set(Object.keys(variable)[0], Object.values(variable)[0]);
+  // A ceiling on growth, checked inside each replacement: one variable whose value holds two
+  // hundred placeholders grows the text two hundredfold in a single step, not twofold. Once
+  // what has been added would pass the ceiling, the sites still to come are left as written.
+  // With a budget, the room is the build's as a whole, shared with every fill it makes.
+  if (budget && budget.left <= 0) return jsonConfig;
+  let room = limit === undefined ? Infinity : limit - jsonConfig.length;
+  const within = (match: string, out: string): string => {
+    const growth = out.length - match.length;
+    if (budget) {
       if (growth > budget.left) return match;
       budget.left -= growth;
       return out;
-    };
-    const name = Object.keys(variable)[0];
-    const key = escapeForRegExp(name);
-    const value = Object.values(variable)[0];
+    }
+    if (growth > room) return match;
+    room -= growth;
+    return out;
+  };
+
+  const site = (...found: SiteMatch): string => {
+    const [match, lead, name, rawTransform, rawOptional, trail] = found;
+    if (!byName.has(name)) return match;
+    const value = byName.get(name);
     // A registry copy's value is Home Assistant's; a style shields it as it does a resolver's.
     const fromHa = !!haNames?.has(name);
-    const wholeValue = new RegExp(`"\\[\\[${key}${TRANSFORM_SUFFIX}${OPTIONAL_SUFFIX}\\]\\]"`, 'gm');
-    const withinString = new RegExp(`\\[\\[${key}${TRANSFORM_SUFFIX}${OPTIONAL_SUFFIX}\\]\\]`, 'gm');
+    // The placeholder itself, without whichever quotes the scan took with it.
+    const inner = match.slice(lead ? 1 : 0, trail ? -1 : undefined);
+    const whole = !!lead && !!trail;
 
     // Every replacement goes through a function so that `$&`, `$1` and friends in a
     // variable's value are inserted literally rather than read as replacement patterns.
@@ -355,7 +384,7 @@ function substitutePass(
     // its own it does not say what - so each refusal is noted, to be reported once at the
     // end rather than on every pass over the same text.
     const refuse = (match: string, transform: string, why?: string, reason: RefusalReason = 'shape'): string => {
-      refused.set(`${Object.keys(variable)[0]}|${transform}`, { text: why ?? kindOf(value), reason });
+      refused.set(`${name}|${transform}`, { text: why ?? kindOf(value), reason });
       return match;
     };
 
@@ -376,7 +405,7 @@ function substitutePass(
        * end up, not as written: a resolver asked about the text with the brackets still in
        * it finds no such entity, and `exists` says no.
        */
-      const input = typeof value === 'string' && PLACEHOLDER.test(value) ? settle(Object.keys(variable)[0]) : value;
+      const input = typeof value === 'string' && PLACEHOLDER.test(value) ? settle(name) : value;
       const unlisted = unlistedState(transform, input, hass, values, read);
       if (unlisted !== undefined) {
         return refuse(match, written, localize('warn.state_unlisted', { entity: unlisted }), 'unlisted');
@@ -442,7 +471,7 @@ function substitutePass(
       // `with:` and `repeat:` build their answer from the variables rather than shaping
       // text, so they are settled here, before the chain machinery would refuse a mapping.
       if (expand && isStructureStep(transform.split('|')[0])) {
-        const outcome = expand(Object.keys(variable)[0], transform);
+        const outcome = expand(name, transform);
         if (outcome === undefined) return match;
         if ('refused' in outcome) return refuse(match, written as string, outcome.refused, 'shape');
         const out = outcome.value === undefined ? null : outcome.value;
@@ -467,14 +496,32 @@ function substitutePass(
       );
     };
 
-    json = json.replace(wholeValue, (match: string, rawTransform?: string, rawOptional?: string) =>
-      within(match, noted(trace, match.slice(1, -1), substitute(match, rawTransform, rawOptional, true), true)),
-    );
-    json = json.replace(withinString, (match: string, rawTransform?: string, rawOptional?: string) =>
-      within(match, noted(trace, match, substitute(match, rawTransform, rawOptional, false), false)),
-    );
+    /*
+     * A whole value first - a mapping, a number, a yes or a no goes in bare - and when that
+     * leaves it as written (a plain text value, or nothing to put there) the same site is
+     * read as part of a string, inside its quotes, as the second expression used to.
+     */
+    if (whole) {
+      const out = substitute(match, rawTransform, rawOptional, true);
+      if (out !== match) return within(match, noted(trace, inner, out, true));
+    }
+    const part = substitute(inner, rawTransform, rawOptional, false);
+    if (part === inner) return match;
+    return within(match, `${lead ?? ''}${noted(trace, inner, part, false)}${trail ?? ''}`);
+  };
+
+  if (pieces) {
+    // Already split: no scan at all, only the sites to fill.
+    let out = '';
+    for (const piece of pieces) {
+      out +=
+        typeof piece === 'string'
+          ? piece
+          : site(piece.text, piece.lead, piece.name, piece.chain, piece.optional, piece.trail);
+    }
+    return out;
   }
-  return json;
+  return jsonConfig.replace(SITE, (...found) => site(...(found.slice(0, 6) as SiteMatch)));
 }
 
 /*
@@ -678,14 +725,14 @@ function deepReplace(
   // What the console is told is also noted on the trace, for `debug: report` (#207) -
   // once per build, so a card building again still has the warning in its report even
   // when the set it keeps has heard it before.
-  const say = (message: string): void => {
+  const say = (message: string, kind: WarningKind = 'other'): void => {
     if (quiet === true) return;
     trace?.warnings.push(message);
     if (quiet instanceof Set) {
       if (quiet.has(message)) return;
       quiet.add(message);
     }
-    console.warn(message);
+    warn({ kind, message, template: templateName, expansion: trace?.expansion });
   };
   const variableArray = resolveVariables(variables, templateConfig);
   /*
@@ -877,8 +924,13 @@ function deepReplace(
     return outcome;
   };
 
+  // The template's content is the same object on every build, so its text and the sites in
+  // it come from the compiled form (idea 3); anything else - a value, a style string - is
+  // stringified here as it always was.
+  const built = content && typeof content === 'object' ? compile(content) : undefined;
+  let jsonConfig = built ? built.json : JSON.stringify(content);
+  let pieces = built?.pieces;
   const haNames = extras?.haNames;
-  let jsonConfig = JSON.stringify(content);
   // How much the text may still grow, counted across every fill this build makes.
   const limit = outputLimit(jsonConfig.length);
   const budget = extras?.budget ?? { left: limit - jsonConfig.length, fills: 0 };
@@ -902,7 +954,7 @@ function deepReplace(
       // Built inside a wrapper, so a style that is nothing but options nobody set is taken out
       // of the wrapper rather than left as an empty string - and is then put back as written
       // here, for the pass over the whole card to take out along with whatever held it.
-      const built = deepReplace(
+      const styled = deepReplace(
         variables,
         templateConfig,
         { style: value },
@@ -916,11 +968,15 @@ function deepReplace(
         true,
         { ...extras, budget },
       );
-      out[key] = built && typeof built === 'object' && 'style' in built ? built.style : value;
+      out[key] = styled && typeof styled === 'object' && 'style' in styled ? styled.style : value;
     }
     return out;
   };
-  if (shield === undefined && hasStyleKey(content)) jsonConfig = JSON.stringify(shieldStyles(content));
+  if (shield === undefined && hasStyleKey(content)) {
+    jsonConfig = JSON.stringify(shieldStyles(content));
+    // The compiled sites belong to the text as written, not to this one.
+    pieces = undefined;
+  }
 
   // What an `if:` reads: a variable's value as it will end up, worked out once per name.
   const readDepth = extras?.readDepth ?? 0;
@@ -994,9 +1050,13 @@ function deepReplace(
         shield,
         settle,
         expand,
+        pieces,
         haNames,
         budget,
       );
+      // The compiled sites describe the text as written, so only the very first pass can use
+      // them: a later pass, or a round after a fallback brought text in, has to scan (#235).
+      pieces = undefined;
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
@@ -1043,7 +1103,7 @@ function deepReplace(
     ]
       .filter(Boolean)
       .join(' ');
-    say(localize('warn.refused', { which: each.join(', '), why }));
+    say(localize('warn.refused', { which: each.join(', '), why }), 'refused');
   }
 
   // Said once, by the build that started the reading, however many fills and reads met it.
@@ -1080,7 +1140,7 @@ function deepReplace(
   const unlistedNames = unresolved.filter(asksState);
   if (unlistedNames.length) {
     const which = unlistedNames.map((name) => `[[${name}]]`).join(', ');
-    say(localize('warn.state_unlisted_unset', { which }));
+    say(localize('warn.state_unlisted_unset', { which }), 'state_unlisted');
   }
   const unset = unresolved.filter((inside) => !asksState(inside));
   if (unset.length) {
@@ -1088,7 +1148,7 @@ function deepReplace(
     const whose = templateName
       ? localize('warn.unresolved_template', { name: templateName })
       : localize('warn.unresolved_this');
-    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${unset[0]}` }));
+    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${unset[0]}` }), 'unset');
   }
 
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be

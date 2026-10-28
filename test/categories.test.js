@@ -3,7 +3,7 @@
  * hass.entities nor any registry hass carries, so categories.ts fetches them, and a repeat
  * can then ask for "every automation in Lighting". Run with `npm test`.
  */
-const { check, report } = require('./harness');
+const { check } = require('./check');
 const {
   buildCategoryRegistry,
   categoriesOf,
@@ -204,6 +204,4 @@ const ids = (items) => items.map((item) => item.entity);
   const failing = { ...hass, callWS: async () => Promise.reject(new Error('nope')) };
   await loadCategories(failing);
   check('a failed fetch leaves nothing cached, to try again later', categoryRegistry(), undefined);
-
-  report();
 })();

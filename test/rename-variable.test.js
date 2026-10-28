@@ -15,7 +15,7 @@ const {
   nameTakenIn,
 } = require('../.test-build/rename-variable.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 /* -------------------------------------------------------------------- names */
 
@@ -360,5 +360,3 @@ check(
   renameVariableInTemplate({ variables: { old: 'x', other: 1 }, card: { a: '[[old]]' } }, 'old', 'new'),
   { variables: { new: 'x', other: 1 }, card: { a: '[[new]]' } },
 );
-
-report();

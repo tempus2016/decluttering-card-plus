@@ -48,7 +48,7 @@ const {
   VARIABLE_TYPES,
 } = require('../.test-build/variables.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 /* ------------------------------------------------------------------ declarations */
 
@@ -1542,5 +1542,3 @@ check(
   usesResolver({ card: { name: 'x' } }, { inner: { item: '[[c|exists]]' } }),
   false,
 );
-
-report();

@@ -4,7 +4,7 @@
  */
 const { LIBRARY, libraryEntry, libraryNeeds } = require('../.test-build/library.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 check('there is a library to offer', LIBRARY.length > 0, true);
 
@@ -65,5 +65,3 @@ check(
     version: '1.16.0',
   });
 }
-
-report();

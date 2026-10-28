@@ -48,7 +48,7 @@ const {
   withPickedEntity,
 } = require('../.test-build/templates.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 check(
   'root decluttering_templates key',
@@ -1836,7 +1836,7 @@ check(
   [null, null],
 );
 
-// The borrowing checks are asynchronous and call report() when they settle, so anything
+// The borrowing checks are asynchronous and settle on their own promises, so anything
 // added after this point would run after the totals were printed.
 const library = {
   decluttering_defaults: { colour: 'library-colour', reach: 'everywhere' },
@@ -2225,8 +2225,43 @@ collectAllTemplates(hass, borrower).then((all) => {
           ],
         );
       }
-
-      report();
     });
   });
 });
+
+/* --------------------------------------------------- idea 1: one walk per dashboard config */
+{
+  // Reads of `decluttering_templates` count the walks: only collecting the raw templates
+  // reads it, while `views` is also read for the view's own defaults on every lookup.
+  let reads = 0;
+  const declared = {
+    x: { card: { type: 'markdown', content: '[[a]]' } },
+    child: { extends: 'x', card: { type: 'tile' } },
+  };
+  const ll = {
+    get decluttering_templates() {
+      reads += 1;
+      return declared;
+    },
+    views: [{ cards: [{ type: 'custom:decluttering-template-plus', template: 'walked', card: { type: 'tile' } }] }],
+  };
+  for (let i = 0; i < 50; i += 1) findTemplate(ll, 'x', 0);
+  check('fifty lookups walk the dashboard once', reads, 1);
+  check('and still find a template card inside a view', findTemplate(ll, 'walked', 0), {
+    type: 'custom:decluttering-template-plus',
+    template: 'walked',
+    card: { type: 'tile' },
+  });
+  check('and still merge extends:', findTemplate(ll, 'child', 0).card, { type: 'tile', content: '[[a]]' });
+  const other = {
+    get decluttering_templates() {
+      reads += 1;
+      return { x: { card: {} } };
+    },
+    views: [],
+  };
+  findTemplate(other, 'x', 0);
+  check('a different dashboard object is walked for itself', reads, 2);
+  collectTemplates(ll, 0, { type: 'custom:decluttering-template-plus', template: 'own', card: {} });
+  check("a template card's own unsaved definition bypasses the cache", reads, 3);
+}

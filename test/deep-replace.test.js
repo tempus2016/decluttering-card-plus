@@ -5,7 +5,7 @@
 const deepReplace = require('../.test-build/deep-replace.js').default;
 const { cssSafe } = require('../.test-build/deep-replace.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 // The substitution code warns about variables it cannot resolve, and one test is about
 // that warning, so console.warn is captured for the length of the run.
@@ -21,6 +21,18 @@ check('plain substitution', deepReplace([{ entity: 'sun.sun' }], {}, { type: 'ti
 check('default values', deepReplace(undefined, { default: [{ entity: 'sun.sun' }] }, { entity: '[[entity]]' }), {
   entity: 'sun.sun',
 });
+
+check(
+  'a variable name with regex metacharacters needs no escaping (idea 2)',
+  deepReplace([{ 'a.b+c': 'yes' }], {}, { v: '[[a.b+c]]', w: 'x [[a.b+c|upper]] y' }),
+  { v: 'yes', w: 'x YES y' },
+);
+
+check(
+  'a whole value next to another placeholder is read as part of a string (idea 2)',
+  deepReplace([{ a: 'one' }, { b: 'two' }], {}, { v: '[[a]][[b]]', w: '[[a]] [[b]]' }),
+  { v: 'onetwo', w: 'one two' },
+);
 
 /* --------------------------------------------------- template-local variables */
 
@@ -1944,6 +1956,11 @@ check(
       entities: [{ entity: 'light.a', name: 'Lamp' }],
     },
   );
+  check(
+    'with: an argument holding a placeholder of its own waits for it to be filled in',
+    run({ entities: ['[[row|with:entity=light.[[which]],name=Lamp]]'] }, [...vars, { which: 'a' }]),
+    { entities: [{ entity: 'light.a', name: 'Lamp' }] },
+  );
   check('with: a mapping variable, whose own placeholders are filled in too', run({ x: '[[greeting|with:hello]]' }), {
     x: 'Hello dstrohl, it is early',
   });
@@ -2194,4 +2211,3 @@ function newTrace235() {
     { l: [{ e: 'sensor.thing' }] },
   );
 }
-report();

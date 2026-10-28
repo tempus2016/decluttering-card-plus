@@ -6,10 +6,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const { localize } = require('../.test-build/localize.js');
+const { localize, registerLanguage, AVAILABLE_LANGUAGES } = require('../.test-build/localize.js');
 const { LIBRARY } = require('../.test-build/library.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const localesDir = path.join(__dirname, '..', 'src', 'locales');
 const en = JSON.parse(fs.readFileSync(path.join(localesDir, 'en.json'), 'utf8'));
@@ -20,6 +20,14 @@ const locales = fs
     code: path.basename(file, '.json'),
     strings: JSON.parse(fs.readFileSync(path.join(localesDir, file), 'utf8')),
   }));
+
+// The other languages are chunks loaded on demand in the browser; here they are put in place by hand.
+for (const { code, strings } of locales) registerLanguage(code, strings);
+check(
+  'every bundled language has a loader',
+  AVAILABLE_LANGUAGES.sort(),
+  ['en', ...locales.map((locale) => locale.code)].sort(),
+);
 
 /** The {placeholders} a sentence expects, sorted so the order they appear in is free. */
 function placeholders(sentence) {
@@ -119,5 +127,3 @@ check(
   const missing = [...used].filter((key) => !key.includes('${') && !(key in en));
   check('every key the source localizes exists in en.json', missing, []);
 }
-
-report();

@@ -34,9 +34,12 @@ and why it was done that way rather than the obvious other way.
 
 ## Tests
 
-The suite is plain Node — no framework, no runner, no watch mode. `test/harness.js` gives
-you `check(name, actual, expected)` and `report()`, and every suite is a list of `check`
-calls read top to bottom.
+The suite runs on Node's own test runner (`node --test`), with no framework on top.
+`test/check.js` gives you `check(name, actual, expected)`, one node:test test per call, and
+every suite is a list of `check` calls read top to bottom. Run one suite with
+`node --test test/<name>.test.js`, all of them with `npm test`, or filter by name with
+`node --test --test-name-pattern="<words>" "test/*.test.js"`. The modules the tests compile
+are listed in `tsconfig.test.json`; add yours there when you add a suite.
 
 Anything that can be a pure function should be, and pure functions get tests. The card's
 own behaviour in a browser is verified by hand against a real Home Assistant before release;
@@ -49,6 +52,23 @@ a real slide rather than a rounding difference. CI runs it on every pull request
 
 Write the test first when you can. On this project it has repeatedly caught the thing that
 was actually wrong rather than the thing that looked wrong.
+
+## Reading a stack trace
+
+`dist/decluttering-card-plus.js.map` is built and committed with the bundle, so an error in
+a browser console that points at a minified line can be read against the TypeScript: open the
+console's source panel with the map loaded, or paste the line and column into
+`npx source-map resolve dist/decluttering-card-plus.js.map <line> <column>`. A Home Assistant
+that got the card through HACS has only the bundle; copy the `.map` from the release beside
+it in `www/community/decluttering-card-plus/`, or load the page's resource from the release
+asset instead, and the browser picks it up.
+
+## The bundle has a budget
+
+`scripts/bundle-size.json` records the size the bundle shipped at; `npm run build` and CI
+fail when a build comes out more than 5% larger. Growth is fine when it buys something -
+record it with `node scripts/check-bundle-size.js --record`, commit the file in the same pull
+request, and say in the body what the bytes are for. A release records the size it ships.
 
 ## Translations
 

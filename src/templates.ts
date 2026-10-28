@@ -22,6 +22,7 @@ import { isRegistrySource, registryNames } from './registry';
 import { rebuildOnEntities } from './rebuild';
 import { localize } from './localize';
 import { isItemTemplate, placeholderHeads, structureNames } from './structure';
+import { warn } from './warnings';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -543,11 +544,13 @@ export function warnIfDeprecated(name: string | undefined, template: TemplateCon
   const message = deprecationOf(template);
   if (message === undefined || !name || deprecationsSaid.has(name)) return;
   deprecationsSaid.add(name);
-  console.warn(
-    message
+  warn({
+    kind: 'deprecated',
+    message: message
       ? localize('warn.deprecated_because', { template: name, message }, hass)
       : localize('warn.deprecated', { template: name }, hass),
-  );
+    template: name,
+  });
 }
 
 /* -------------------------------------------------------------------- group */
@@ -1040,6 +1043,35 @@ function withOwn(
   return templates;
 }
 
+/*
+ * The part of collecting templates that depends only on the dashboard - the walk for
+ * template cards, the merge of every `extends:` chain, the shared declarations folded in -
+ * worked out once per dashboard configuration and kept against it (idea 1). Every card on
+ * the page asks for its template in setConfig, and a dashboard of a hundred cards used to
+ * walk itself a hundred times. Home Assistant replaces the configuration object as a whole
+ * on every save, so the object is the key, and a WeakMap lets the old one go with it.
+ *
+ * A template card's own unsaved definition is not part of the dashboard, so a collection
+ * that includes one is worked out afresh: the edit being typed has to show at once. What is
+ * handed back is shared by every card, and treated as read-only everywhere it goes.
+ */
+const RESOLVED = new WeakMap<object, Record<string, TemplateConfig>>();
+
+function resolvedTemplates(
+  ll: LovelaceConfig | null | undefined,
+  own?: DeclutteringTemplateConfig,
+): Record<string, TemplateConfig> {
+  if (own || !ll || typeof ll !== 'object') {
+    return resolveExtends(withShared(withOwn(collectRawTemplates(ll), own), collectSharedDeclarations(ll)));
+  }
+  let found = RESOLVED.get(ll);
+  if (!found) {
+    found = resolveExtends(withShared(collectRawTemplates(ll), collectSharedDeclarations(ll)));
+    RESOLVED.set(ll, found);
+  }
+  return found;
+}
+
 /**
  * The same, with the dashboard's own shared values put underneath each template - which is
  * what a card on this dashboard is rendered from.
@@ -1050,7 +1082,7 @@ export function collectTemplates(
   own?: DeclutteringTemplateConfig,
   section?: number,
 ): Record<string, TemplateConfig> {
-  const templates = resolveExtends(withShared(withOwn(collectRawTemplates(ll), own), collectSharedDeclarations(ll)));
+  const templates = resolvedTemplates(ll, own);
   const here = collectViewDefaults(ll, view, section);
   const shared = collectDefaults(ll);
   const lets = [...placeLet(ll, view, section), ...dashboardLet(ll)];
@@ -1166,7 +1198,10 @@ function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<Lov
     // The original dashboard has nothing saved until somebody takes control of it, which
     // is how most installs start out: it has no templates, and that is all.
     if (err?.code === 'config_not_found') return null;
-    console.warn(`decluttering-card-plus: could not read the dashboard "${urlPath}":`, err?.message ?? err);
+    warn({
+      kind: 'other',
+      message: `decluttering-card-plus: could not read the dashboard "${urlPath}": ${err?.message ?? err}`,
+    });
     return null;
   }) as Promise<LovelaceConfig | null>;
 

@@ -13,7 +13,7 @@ const {
   COMMUNITY_CATEGORY,
 } = require('../.test-build/community.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const category = { slug: COMMUNITY_CATEGORY, name: 'Share your templates' };
 
@@ -871,6 +871,4 @@ function respond(status, body, headers = {}) {
       [undefined, undefined],
     );
   }
-
-  report();
 })();

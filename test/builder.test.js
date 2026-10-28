@@ -7,7 +7,7 @@ const { buildTemplates, collectCards } = require('../.test-build/builder.js');
 const deepReplace = require('../.test-build/deep-replace.js').default;
 const { load } = require('js-yaml');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 /*
  * The proof that matters: each card the builder writes, run through the card's own
@@ -365,5 +365,3 @@ check(
   buildTemplates(cards);
   check('a __proto__ key in a pasted card reaches no prototype', {}.polluted, undefined);
 }
-
-report();

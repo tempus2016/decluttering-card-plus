@@ -12,7 +12,7 @@ const {
   suggestTemplateName,
 } = require('../.test-build/similar.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 const tile = (entity, name, extra = {}) => ({ type: 'tile', entity, name, ...extra });
 
@@ -259,5 +259,3 @@ check(
   suggestTemplateName('tile', ['light_tile_card', 'light_tile_card_2'], [{ entity: 'light.a' }]),
   'light_tile_card_3',
 );
-
-report();

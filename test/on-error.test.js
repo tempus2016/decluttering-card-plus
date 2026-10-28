@@ -4,7 +4,7 @@
  */
 const { onErrorOf, customTags, undefinedElements } = require('../.test-build/on-error.js');
 
-const { check, report } = require('./harness');
+const { check } = require('./check');
 
 /* ---------------------------------------------------------------- which on_error */
 
@@ -83,5 +83,4 @@ function registry(defined, later = {}) {
     await undefinedElements(['late'], 200, registry([], { late: 10 })),
     [],
   );
-  report();
 })();
