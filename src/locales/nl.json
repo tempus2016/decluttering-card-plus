@@ -31,7 +31,7 @@
   "editor.for_each_label": "Herhalen voor elk",
   "editor.for_each_helper": "Eén kopie van het sjabloon per item. Voorbeeld: - entity: light.hal, name: Hal",
   "editor.for_each_from_label": "Herhalen voor alles wat Home Assistant kent",
-  "editor.for_each_from_helper": "Eén kopie per entiteit of ruimte, altijd actueel. Voorbeeld: domain: light, area: Keuken",
+  "editor.for_each_from_helper": "Eén kopie per entiteit, ruimte, apparaat, verdieping, label of weergave, altijd actueel. Voorbeeld: domain: light, area: Keuken",
   "editor.gap_label": "Ruimte tussen kopieën",
   "editor.gap_helper": "In pixels. Laat het weg voor de afstand die Home Assistant overal anders gebruikt",
   "editor.empty_label": "Toon in plaats daarvan als niets past",

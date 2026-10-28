@@ -31,7 +31,7 @@
   "editor.for_each_label": "Wiederholen für jedes",
   "editor.for_each_helper": "Eine Kopie der Vorlage pro Eintrag. Beispiel: - entity: light.flur, name: Flur",
   "editor.for_each_from_label": "Wiederholen für alles, was Home Assistant kennt",
-  "editor.for_each_from_helper": "Eine Kopie pro Entität oder Bereich, immer aktuell. Beispiel: domain: light, area: Küche",
+  "editor.for_each_from_helper": "Eine Kopie pro Entität, Bereich, Gerät, Etage, Label oder Ansicht, immer aktuell. Beispiel: domain: light, area: Küche",
   "editor.gap_label": "Abstand zwischen Kopien",
   "editor.gap_helper": "In Pixeln. Weglassen für den Abstand, den Home Assistant überall sonst verwendet",
   "editor.empty_label": "Stattdessen zeigen, wenn nichts passt",

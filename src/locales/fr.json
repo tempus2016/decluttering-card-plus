@@ -31,7 +31,7 @@
   "editor.for_each_label": "Répéter pour chaque",
   "editor.for_each_helper": "Une copie du modèle par élément. Exemple : - entity: light.hall, name: Hall",
   "editor.for_each_from_label": "Répéter pour chaque chose que Home Assistant connaît",
-  "editor.for_each_from_helper": "Une copie par entité ou par pièce, tenue à jour. Exemple : domain: light, area: Cuisine",
+  "editor.for_each_from_helper": "Une copie par entité, pièce, appareil, étage, étiquette ou vue, tenue à jour. Exemple : domain: light, area: Cuisine",
   "editor.gap_label": "Espace entre les copies",
   "editor.gap_helper": "En pixels. Laissez vide pour l'espacement que Home Assistant utilise partout ailleurs",
   "editor.empty_label": "Afficher à la place quand rien ne correspond",
