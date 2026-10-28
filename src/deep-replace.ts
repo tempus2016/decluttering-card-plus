@@ -11,6 +11,7 @@ import {
   HA_MARK,
   isStructureStep,
   normaliseVariables,
+  FLAT_STEP,
   REPEAT_STEP,
   stepName,
   CONSUMER_TYPES,
@@ -28,6 +29,7 @@ import {
   isFallback,
   isJsonNumber,
   PLACEHOLDER,
+  insideButtonCardJs,
   resolveVariables,
   STATE_STEP,
   restoreHaText,
@@ -39,15 +41,20 @@ import {
   yieldsList,
   yieldsNumber,
 } from './variables';
+import { closestStep, knownStep } from './closest';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // What a refusal says, and which way it happened: a transform was handed something it
 // cannot shape, Home Assistant had nothing to give, an `if:` did not hold, `json` was
-// written somewhere other than first, or `state` was asked of an entity the card does not
-// rebuild on. The reason carries the difference so the wording never has to - the wording
-// is translated.
-type RefusalReason = 'shape' | 'missing' | 'closed' | 'json' | 'unlisted';
+// written somewhere other than first, `state` was asked of an entity the card does not
+// rebuild on, a `map:` had no pair for the value, or a `with:` or `repeat:` could not fill
+// in. The reason carries the difference so the wording never has to - the wording is
+// translated.
+type RefusalReason = 'shape' | 'missing' | 'closed' | 'json' | 'unlisted' | 'map' | 'structure';
+
+// The lookup step, whose "no pair for this value" is told apart from Home Assistant having nothing.
+const MAP_STEP = 'map';
 
 interface Refusal {
   text: string;
@@ -239,6 +246,21 @@ export function cssSafe(text: string): string {
 }
 
 /*
+ * A card's `for_each_from:` filled in from its own variables and its template's, before it is
+ * looked up - the same as a `repeat:` source is (#309). A source with no placeholders is
+ * handed back as it was.
+ */
+export function fillSource(
+  source: unknown,
+  variables: VariablesConfig[] | undefined,
+  templateConfig: TemplateConfig | undefined,
+  hass?: any,
+): unknown {
+  if (!isRegistrySource(source) || !PLACEHOLDER.test(JSON.stringify(source))) return source;
+  return deepReplace(variables, templateConfig ?? ({} as TemplateConfig), source, undefined, hass, true);
+}
+
+/*
  * Every escape written out, except inside a card that will substitute again: what is handed
  * to a nested decluttering card - its `variables:` - is read as template code by that card,
  * and an escape unwrapped here would be live there. A friendly name of `[[zz?]]` passed down
@@ -415,6 +437,21 @@ function substitutePass(
       // A gap that an `or:` could not fill is still just a gap - nothing gives it a value -
       // so it is left to be reported as unset rather than blamed on Home Assistant.
       if (gap && transform.split('|').some(isFallback)) return match;
+      /*
+       * A `map:` with no pair for the value gives nothing too, and that is not Home
+       * Assistant's doing. Which step gave up is found by running the chain a step at a
+       * time - only on this path, where the placeholder is already being left.
+       */
+      const steps = transform.split('|');
+      for (let upTo = 1; upTo <= steps.length; upTo += 1) {
+        if (applyTransform(steps.slice(0, upTo).join('|'), input, hass, values, read, shield, fromHa) !== undefined) {
+          continue;
+        }
+        if (stepName(steps[upTo - 1]) !== MAP_STEP) break;
+        const before =
+          upTo === 1 ? input : applyTransform(steps.slice(0, upTo - 1).join('|'), input, hass, values, read);
+        return refuse(match, written, localize('warn.no_map_match', { value: before }), 'map');
+      }
       return refuse(match, written, localize('warn.nothing_for', { value }), 'missing');
     };
 
@@ -464,6 +501,13 @@ function substitutePass(
         if (!gateOpen(written, read)) return closed(match, written, optional, whole);
         transform = withoutConditions(written);
       }
+      // A mapping or list is a value, so a `default:` or `or:` before anything else has
+      // nothing to fill and comes off: `[[room|default:x]]` is the room, as `[[room]]` is.
+      if (transform && !isScalar) {
+        const steps = transform.split('|');
+        while (steps.length && isFallback(steps[0])) steps.shift();
+        transform = steps.join('|');
+      }
       if (!transform) {
         const plain = fromHa && shield && typeof value === 'string' ? shield(value) : value;
         return whole ? asWholeValue(plain, match) : asPartOfString(plain);
@@ -473,7 +517,7 @@ function substitutePass(
       if (expand && isStructureStep(transform.split('|')[0])) {
         const outcome = expand(name, transform);
         if (outcome === undefined) return match;
-        if ('refused' in outcome) return refuse(match, written as string, outcome.refused, 'shape');
+        if ('refused' in outcome) return refuse(match, written as string, outcome.refused, 'structure');
         const out = outcome.value === undefined ? null : outcome.value;
         // A fill that came out as nothing - its body an option that dropped - is a gap like
         // any other, so `[[row|with:...?]]` leaves its list rather than putting "" in (#235).
@@ -484,6 +528,9 @@ function substitutePass(
       const chain = transform;
       // `json` reads the variable's own value, so anywhere but first it has nothing to
       // work on - and without this it would be blamed on Home Assistant.
+      if (chain.split('|').includes(FLAT_STEP)) {
+        return refuse(match, written as string, localize('warn.flat_after_repeat'), 'shape');
+      }
       if (chain.split('|').lastIndexOf(JSON_STEP) > 0) {
         return refuse(match, written as string, localize('warn.json_not_first'), 'json');
       }
@@ -537,7 +584,8 @@ function unresolvedPlaceholders(json: string, refused: Map<string, Refusal>): st
   while (match) {
     const inside = match[1];
     // An optional one having no value is the point of it, not a mistake worth reporting.
-    if (!inside.startsWith(ESCAPE) && !refused.has(inside) && !isOptional(inside)) names.add(inside);
+    const reported = !inside.startsWith(ESCAPE) && !refused.has(inside) && !isOptional(inside);
+    if (reported && !insideButtonCardJs(json, match.index)) names.add(inside);
     match = everyPlaceholder.exec(json);
   }
   return [...names];
@@ -687,7 +735,7 @@ function noteLeftStanding(trace: BuildTrace, json: string, refused: Map<string, 
   while (match) {
     const placeholder = match[0];
     const inside = match[1];
-    if (!inside.startsWith(ESCAPE) && !trace.placeholders.has(placeholder)) {
+    if (!inside.startsWith(ESCAPE) && !trace.placeholders.has(placeholder) && !insideButtonCardJs(json, match.index)) {
       const refusal = refused.get(inside) ?? refused.get(withoutOptional(inside));
       const why = refusal
         ? localize('trace.left_refused', { why: refusal.text })
@@ -696,6 +744,66 @@ function noteLeftStanding(trace: BuildTrace, json: string, refused: Map<string, 
     }
     match = everyPlaceholder.exec(json);
   }
+}
+
+/*
+ * A variable whose value is a fill - `thing: '[[camera_entry|with:entity=camera.front]]'` -
+ * also offers the item template's own values, as they ended up for that fill:
+ * `[[thing.ent_exists]]`, or `if:thing.ent_exists`. The fill does its working out and the
+ * caller decides what to do with it (#235). Only the names something here asks for are
+ * worked out, each with the item template's body swapped for that one value.
+ */
+const FILL_VALUE = /^\[\[([A-Za-z0-9_-]+)\|with:(.*)\]\]$/;
+const DOTTED_ASK = /(?:\[\[!?|\|(?:if:!?|or:))([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)/g;
+
+function exposeFillValues(
+  variableArray: VariablesConfig[],
+  content: unknown,
+  itemTemplates: Record<string, TemplateConfig>,
+  build: (variables: VariablesConfig[], template: TemplateConfig, key: string) => unknown,
+  // The with: arguments filled in here first, as the pass that fills the fill would have.
+  settleText: (text: string) => unknown,
+): void {
+  if (!Object.keys(itemTemplates).length) return;
+  const values = variableValues(variableArray);
+  const text = JSON.stringify([content, variableArray]);
+  if (typeof text !== 'string' || !text.includes('.')) return;
+  const asked = new Set<string>();
+  for (let match = DOTTED_ASK.exec(text); match !== null; match = DOTTED_ASK.exec(text)) {
+    asked.add(`${match[1]}.${match[2]}`);
+  }
+  DOTTED_ASK.lastIndex = 0;
+  for (const dotted of asked) {
+    if (Object.prototype.hasOwnProperty.call(values, dotted)) continue;
+    const [name, key] = dotted.split('.');
+    const raw = values[name];
+    const fill = typeof raw === 'string' ? FILL_VALUE.exec(raw) : null;
+    if (!fill || !Object.prototype.hasOwnProperty.call(itemTemplates, fill[1])) continue;
+    const arg = fill[2].includes('[[') ? settleText(fill[2]) : fill[2];
+    if (typeof arg !== 'string' || arg.includes('[[')) continue;
+    const overlay = fillOverlay(arg, values);
+    if (!overlay) continue;
+    const value = build([...overlay, ...variableArray], itemTemplates[fill[1]], key);
+    // Nothing in the fill sets it: left alone, so it reads as unset like any other name.
+    if (value === undefined || value === `[[${key}]]`) continue;
+    variableArray.push({ [dotted]: value });
+  }
+}
+
+// The values a `with:` lays over, read the same way as where it is filled in.
+function fillOverlay(arg: string, values: Record<string, any>): VariablesConfig[] | undefined {
+  if (!arg) return [];
+  if (arg.includes('=')) {
+    const pairs: VariablesConfig[] = [];
+    for (const pair of arg.split(',')) {
+      const equals = pair.indexOf('=');
+      if (equals === -1) return undefined;
+      pairs.push({ [pair.slice(0, equals).trim()]: pair.slice(equals + 1) });
+    }
+    return pairs;
+  }
+  const mapping = values[arg];
+  return mapping && typeof mapping === 'object' && !Array.isArray(mapping) ? normaliseVariables(mapping) : undefined;
 }
 
 function deepReplace(
@@ -755,6 +863,33 @@ function deepReplace(
       variableArray.push({ [name]: (template as any)?.item });
     }
   }
+  exposeFillValues(
+    variableArray,
+    content,
+    itemTemplates,
+    (vars, template, key) =>
+      depth >= MAX_EXPAND_DEPTH
+        ? undefined
+        : deepReplace(
+            vars,
+            template,
+            `[[${key}]]`,
+            templateName,
+            hass,
+            true,
+            undefined,
+            depth + 1,
+            undefined,
+            shield,
+            true,
+            {
+              ...extras,
+              tooDeep: extras?.tooDeep,
+            },
+          ),
+    (text) =>
+      deepReplace(variableArray, {}, text, templateName, hass, true, undefined, depth + 1, undefined, shield, true),
+  );
   const values = variableValues(variableArray);
 
   /*
@@ -820,9 +955,32 @@ function deepReplace(
     const source = values[name];
     if (Array.isArray(source)) return { items: source, fromHa: false };
     if (isRegistrySource(source)) {
-      return { items: resolveRegistryItems(hass, source, extras?.context), fromHa: true };
+      return { items: resolveRegistryItems(hass, filledSource(name, source), extras?.context), fromHa: true };
     }
     return undefined;
+  };
+  /*
+   * A registry source is filled in from the variables before it is looked up, so a filter
+   * can be built from them - `entities: binary_sensor.[[name]]_*` - and a repeat inside
+   * another repeat's copy can filter by that copy's values (#309).
+   */
+  const filledSource = (name: string, source: unknown): unknown => {
+    const below = deeper(name, JSON.stringify(source));
+    if (!below) return source;
+    return deepReplace(
+      variableArray,
+      {},
+      source,
+      templateName,
+      hass,
+      true,
+      undefined,
+      depth,
+      undefined,
+      undefined,
+      false,
+      below,
+    );
   };
   // What a `with:` lays over the variables: `a=1,b=2` pairs read as text, or a mapping variable.
   const overlayOf = (arg: string): VariablesConfig[] | undefined => {
@@ -891,13 +1049,24 @@ function deepReplace(
     if (expansions.has(key)) return expansions.get(key);
     const outcome = ((): Expansion | undefined => {
       const [step, ...rest] = chain.split('|');
-      if (rest.length) return { refused: localize('warn.step_not_alone', { step: `${stepName(step)}:` }) };
+      const flat = rest.length === 1 && rest[0] === FLAT_STEP;
+      if (flat && stepName(step) !== REPEAT_STEP) return { refused: localize('warn.flat_after_repeat') };
+      if (rest.length && !flat) return { refused: localize('warn.step_not_alone', { step: `${stepName(step)}:` }) };
       if (depth >= MAX_EXPAND_DEPTH) return { refused: localize('warn.fills_itself', { name }) };
       const found = bodyOf(name);
       if (!found) return undefined;
       const kind = stepName(step);
       const arg = step.slice(kind.length + 1);
       if (kind === REPEAT_STEP) {
+        /*
+         * Inside a copy, a list its item does not have - `zones:` on one detection but not the
+         * next - is no copies rather than a placeholder left in the list (#311). At the card's
+         * own level a missing name is still a mistake worth showing.
+         */
+        if (arg && depth > 0 && values[arg] === undefined) {
+          trace?.dropped.push(localize('trace.repeat_missing', { placeholder: `[[${key}]]`, arg }));
+          return { value: [], splice: true };
+        }
         const listed = itemsOf(arg);
         if (!listed) return { refused: localize('warn.not_a_list_source', { arg: arg || '""' }) };
         if (budget.fills + listed.items.length > MAX_FILLS) {
@@ -905,9 +1074,17 @@ function deepReplace(
         }
         // A copy whose body dropped out - an item template gated on its own `if:...?` - leaves
         // the list rather than putting "" in its place, so a repeat can decide copy by copy (#235).
-        const copies = repeatOver(found, listed.items, listed.fromHa, `[[${key}]]`).filter(
-          (copy) => copy !== undefined && copy !== null && copy !== '',
-        );
+        const kept = (copy: unknown) => copy !== undefined && copy !== null && copy !== '';
+        const copies = repeatOver(found, listed.items, listed.fromHa, `[[${key}]]`).filter(kept);
+        // `|flat` lays a copy that is a list out in the outer list, one level deep (#311).
+        if (flat) {
+          const laid: unknown[] = [];
+          for (const copy of copies) {
+            if (Array.isArray(copy)) laid.push(...copy.filter(kept));
+            else laid.push(copy);
+          }
+          return { value: laid, splice: true };
+        }
         return { value: copies, splice: true };
       }
       if (budget.fills >= MAX_FILLS) return { refused: localize('warn.too_many_fills', { max: MAX_FILLS }) };
@@ -1100,10 +1277,12 @@ function deepReplace(
       reasons.has('closed') ? localize('warn.refused_condition') : '',
       reasons.has('json') ? localize('warn.refused_json') : '',
       reasons.has('unlisted') ? localize('warn.refused_unlisted') : '',
+      reasons.has('map') ? localize('warn.refused_map') : '',
+      // A `with:` or `repeat:` refusal already says in its own words what was wrong.
     ]
       .filter(Boolean)
       .join(' ');
-    say(localize('warn.refused', { which: each.join(', '), why }), 'refused');
+    say(localize('warn.refused', { which: each.join(', '), why }).replace(/\s+$/, ''), 'refused');
   }
 
   // Said once, by the build that started the reading, however many fills and reads met it.
@@ -1142,7 +1321,34 @@ function deepReplace(
     const which = unlistedNames.map((name) => `[[${name}]]`).join(', ');
     say(localize('warn.state_unlisted_unset', { which }), 'state_unlisted');
   }
-  const unset = unresolved.filter((inside) => !asksState(inside));
+  /*
+   * A chain with a word in it that is not a step never matches the placeholder grammar, so
+   * it is left standing however set its variable is. When the variable does have a value -
+   * or a `default:` or `or:` would give it one - the step is the thing to fix, and calling
+   * the variable unset sends the author looking in the wrong place.
+   */
+  const unknownSteps = new Map<string, string>();
+  for (const inside of unresolved) {
+    if (asksState(inside)) continue;
+    const [head, ...steps] = withoutOptional(inside).split('|');
+    const unknown = steps.find((step) => !knownStep(step));
+    if (unknown === undefined) continue;
+    const given = Object.prototype.hasOwnProperty.call(values, head) && read(head) !== undefined;
+    if (given || steps.some(isFallback)) unknownSteps.set(inside, unknown);
+  }
+  if (unknownSteps.size) {
+    const which = [...unknownSteps]
+      .map(([inside, step]) => {
+        const closest = closestStep(step);
+        return (
+          localize('warn.unknown_step_one', { placeholder: `[[${inside}]]`, step }) +
+          (closest ? localize('error.did_you_mean', { closest }) : '')
+        );
+      })
+      .join(' ');
+    say(localize('warn.unknown_step', { which }), 'other');
+  }
+  const unset = unresolved.filter((inside) => !asksState(inside) && !unknownSteps.has(inside));
   if (unset.length) {
     const which = unset.map((name) => `[[${name}]]`).join(', ');
     const whose = templateName

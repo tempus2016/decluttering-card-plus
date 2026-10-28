@@ -556,10 +556,34 @@ check('a star borrows from every dashboard there is', expandSources(['*'], ['gue
 ]);
 
 check(
-  'named sources keep their place ahead of the star, and are not fetched twice',
+  'named sources are merged after the star, so they win a clash, and are not fetched twice',
   expandSources(['holiday', '*'], ['guests', 'holiday']),
-  ['holiday', 'guests'],
+  ['guests', 'holiday'],
 );
+
+check(
+  'wherever the star is written, and in the order they were named',
+  expandSources(['b', '*', 'a'], ['a', 'b', 'c', 'lovelace']),
+  ['c', 'lovelace', 'b', 'a'],
+);
+
+/*
+ * Two dashboards both define tile. Named beside the star, star-shared has to win, even
+ * though the star's dashboards are sorted and star-zzz (and the original dashboard, last of
+ * all) would otherwise be merged after it.
+ */
+require('node:test')('a dashboard named beside the star wins a clash', async () => {
+  const starHass = {
+    callWS: (message) => {
+      if (message.type === 'lovelace/dashboards/list')
+        return Promise.resolve([{ url_path: 'star-zzz' }, { url_path: 'star-shared' }]);
+      const from = message.url_path ?? 'lovelace';
+      return Promise.resolve({ decluttering_templates: { tile: { card: { type: 'from-' + from } } } });
+    },
+  };
+  const all = await collectAllTemplates(starHass, { decluttering_templates_from: ['star-shared', '*'], views: [] });
+  require('node:assert/strict').deepEqual(all.tile.card, { type: 'from-star-shared' });
+});
 
 check('no star changes nothing', expandSources(['a', 'b'], ['guests']), ['a', 'b']);
 
@@ -2190,6 +2214,20 @@ collectAllTemplates(hass, borrower).then((all) => {
         const health = checkDashboard(ll);
         check('names a repeat: or with: supplies are not called unset', health.unsetVariables, []);
         check(
+          'nor a fill value read by dotted name (#235)',
+          checkDashboard({
+            decluttering_templates: {
+              probe: { default: [{ ok: '[[entity|exists]]' }], item: { entity: '[[entity]]' } },
+              card1: {
+                default: [{ p: '[[probe|with:entity=sensor.x]]' }],
+                card: { type: 'entities', entities: ['[[p|if:p.ok?]]'], title: '[[p.ok]]' },
+              },
+            },
+            views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'card1' }] }],
+          }).unsetVariables,
+          [],
+        );
+        check(
           'an item template used through a placeholder is not unused; a card template nobody uses still is',
           health.unusedTemplates,
           ['spare'],
@@ -2198,6 +2236,14 @@ collectAllTemplates(hass, borrower).then((all) => {
           'the template picker does not offer an item template',
           templatePickerOptions(ll.decluttering_templates).map((o) => o.value),
           ['rows', 'spare'],
+        );
+        check(
+          'a variable name is matched as written when reading dotted fill values, not as a pattern',
+          structureNames({
+            default: { 'p+': '[[probe|with:n=x]]' },
+            card: { a: '[[pp.ok]]', b: '[[p+.found]]' },
+          }).filter((name) => name.includes('.')),
+          ['p+.found'],
         );
         check(
           'structureNames reads pairs, a mapping variable and a registry source',

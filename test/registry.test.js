@@ -3,6 +3,7 @@
  * copies a template is repeated over. Run with `npm test`.
  */
 const {
+  copyLabel,
   globMatches,
   isRegistrySource,
   resolveRegistryItems,
@@ -451,6 +452,51 @@ check(
   ['mdi:sleep', undefined],
 );
 
+check(
+  'an area copy is overridden by its name too',
+  resolveRegistryItems(hass, { areas: true, overrides: { Bedroom: { icon: 'mdi:sleep' } } }).map((i) => i.icon),
+  ['mdi:sleep', undefined],
+);
+
+check(
+  'a device copy is overridden by its own id, not its area',
+  [
+    resolveRegistryItems(hass, { devices: true, overrides: { lamp_device: { icon: 'mdi:lamp' } } }).map((i) => i.icon),
+    resolveRegistryItems(hass, { devices: true, overrides: { bedroom: { icon: 'mdi:lamp' } } }).map((i) => i.icon),
+  ],
+  [['mdi:lamp'], [undefined]],
+);
+
+check(
+  'a floor copy is overridden by its id or name',
+  resolveRegistryItems(hass, { floors: true, overrides: { ground: { a: 1 }, Upstairs: { a: 2 } } }).map((i) => [
+    i.floor_id,
+    i.a,
+  ]),
+  [
+    ['ground', 1],
+    ['upstairs', 2],
+  ],
+);
+
+check(
+  'a label copy is overridden by its id or name',
+  resolveRegistryItems(hass, { labels: true, overrides: { night: { a: 1 }, Quiet: { a: 2 } } }).map((i) => [
+    i.label_id,
+    i.a,
+  ]),
+  [
+    ['night', 1],
+    ['quiet', 2],
+  ],
+);
+
+check(
+  'a group_by copy is overridden by its group',
+  resolveRegistryItems(hass, { domain: 'light', group_by: 'domain', overrides: { light: { a: 1 } } }).map((i) => i.a),
+  [1],
+);
+
 /* ------------------------------------------------------------------- group_by */
 
 check(
@@ -856,6 +902,43 @@ check(
   'sensor.hall',
 );
 
+// Numeric collation reads each digit run on its own, so 19.5 came before 19.25 (5 < 25)
+// and -2 before -10. Numbers are now compared as numbers, whether HA stores the attribute
+// as a number or as text.
+const valuesHass = (values) => ({
+  entities: Object.fromEntries(Object.keys(values).map((name) => [`sensor.${name}`, { entity_id: `sensor.${name}` }])),
+  areas: {},
+  states: Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [`sensor.${name}`, { attributes: { reading: value } }]),
+  ),
+});
+const byReading = (values, sort = 'attr:reading') =>
+  ids(resolveRegistryItems(valuesHass(values), { domain: 'sensor', sort })).map((id) => id.slice(7));
+
+check('sort attr puts 19.25 before 19.5', byReading({ a: 19.5, b: 19.25, c: 19 }), ['c', 'b', 'a']);
+check('the same when the attribute is text', byReading({ a: '19.5', b: '19.25', c: '19' }), ['c', 'b', 'a']);
+check('negatives sort below each other properly', byReading({ a: -2, b: -10, c: 0 }), ['b', 'a', 'c']);
+check('negative text too', byReading({ a: '-2', b: '-10', c: '3' }), ['b', 'a', 'c']);
+check('a bare leading point is a number', byReading({ a: '0.5', b: '.25', c: '1e-1' }), ['c', 'b', 'a']);
+check('minus attr reverses numerically', byReading({ a: 19.5, b: 19.25, c: -1 }, '-attr:reading'), ['a', 'b', 'c']);
+check('names still sort naturally', byReading({ a: 'room 10', b: 'room 2', c: 'room 1' }), ['c', 'b', 'a']);
+check('empty first, then numbers, then text, either way round', byReading({ a: 'off', b: 10, c: undefined, d: 9.5 }), [
+  'c',
+  'd',
+  'b',
+  'a',
+]);
+check(
+  'equal numbers written differently tie, so the next key decides',
+  ids(
+    resolveRegistryItems(valuesHass({ a: '1.0', b: 1, c: '0.5' }), {
+      domain: 'sensor',
+      sort: ['attr:reading', '-entity'],
+    }),
+  ),
+  ['sensor.c', 'sensor.b', 'sensor.a'],
+);
+
 check('a limit takes the first few', ids(resolveRegistryItems(hass, { entities: '*', limit: 2 })).length, 2);
 
 check(
@@ -1077,4 +1160,46 @@ check(
   'a star in the middle does not match across nothing when the ends are wrong',
   resolveRegistryItems(hass, { entities: 'ight.*' }),
   [],
+);
+
+// The editor's "Matches N things right now" list names each copy by what it stands for.
+const labelsOf = (source, context) =>
+  resolveRegistryItems(hass, source, context).map((item, index) => copyLabel(item, index));
+check('an entity copy is listed by its entity id', labelsOf({ entities: 'light.bedside' }), ['light.bedside']);
+check('an area copy is listed by its name', labelsOf({ areas: 'kitchen' }), ['Kitchen']);
+check('an area with no name is listed by its id', copyLabel({ area_id: 'loft', area: '' }, 0), 'loft');
+check(
+  'a device copy is listed by its name, not its area, even with no area at all',
+  [
+    copyLabel(
+      { device_id: 'd1', device: 'Bedside lamp', name: 'Bedside lamp', area: 'Bedroom', area_id: 'bedroom' },
+      0,
+    ),
+    copyLabel({ device_id: 'd2', device: 'Garage hub', name: 'Garage hub', area: '', area_id: '' }, 1),
+    copyLabel({ device_id: 'd3', device: '', name: '', area: '', area_id: '' }, 2),
+  ],
+  ['Bedside lamp', 'Garage hub', 'd3'],
+);
+check('a resolved device copy is listed by its name', labelsOf({ devices: true }), ['lamp_device']);
+check('a floor copy is listed by its name', labelsOf({ floors: true }), ['Ground floor', 'Upstairs']);
+check('a label copy is listed by its name', labelsOf({ labels: 'night' }), ['Night light']);
+check(
+  'a view copy is listed by its title, or its path when it has none',
+  labelsOf({ views: true }, { views: [{ title: 'Home', path: 'home' }, { path: 'energy' }, {}] }),
+  ['Home', 'energy', '2'],
+);
+check(
+  "a template list's plain values are listed as themselves",
+  labelsOf({ template: '{{ x }}' }, { rendered: { '{{ x }}': { result: ['red', 7, 0] } } }),
+  ['red', '7', '0'],
+);
+check('a group_by copy is listed by the group name', labelsOf({ entities: 'light.*', group_by: 'area' }), [
+  'Bedroom',
+  'Kitchen',
+]);
+check('a range copy is listed by its position', labelsOf({ range: 3 }), ['1', '2', '3']);
+check(
+  'nothing to go on is never a blank line',
+  [copyLabel({}, 4), copyLabel({ item: '' }, 0), copyLabel({ name: '  ' }, 1)],
+  ['5', '1', '2'],
 );

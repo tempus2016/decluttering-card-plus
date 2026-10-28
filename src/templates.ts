@@ -23,6 +23,9 @@ import { rebuildOnEntities } from './rebuild';
 import { localize } from './localize';
 import { isItemTemplate, placeholderHeads, structureNames } from './structure';
 import { warn } from './warnings';
+import { closestTemplate } from './closest';
+
+export { closestTemplate };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -1094,16 +1097,15 @@ export function collectTemplates(
 }
 
 /**
- * `'*'` in the sources list stands for every dashboard there is. Named sources keep
- * their place ahead of it - their templates win name clashes by being merged last - and
- * nothing is fetched twice.
+ * `'*'` in the sources list stands for every dashboard there is. A later source wins a
+ * name clash, so the star's dashboards go first and the ones named on purpose after them,
+ * in the order they were written: naming a dashboard beside the star is how you say its
+ * templates are the ones you want. Nothing is fetched twice.
  */
 export function expandSources(sources: string[], available: string[]): string[] {
   if (!sources.includes('*')) return sources;
   const named = sources.filter((source) => source !== '*');
-  const out = [...named];
-  for (const path of available) if (!out.includes(path)) out.push(path);
-  return out;
+  return [...available.filter((path) => !named.includes(path)), ...named];
 }
 
 let dashboardListCache: Promise<string[]> | null = null;
@@ -1431,49 +1433,6 @@ export function renameTemplate(ll: any, from: string, to: string): any {
     renamed.decluttering_templates = rebuilt;
   }
   return renamed;
-}
-
-/*
- * How many single-character edits turn one name into the other, capped: past a couple of
- * edits two names are not a typo of each other, and stopping early keeps a dashboard full
- * of templates cheap to check.
- */
-function editDistance(a: string, b: string, cap: number): number {
-  if (Math.abs(a.length - b.length) > cap) return cap + 1;
-  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i += 1) {
-    const row = [i];
-    for (let j = 1; j <= b.length; j += 1) {
-      row[j] = a[i - 1] === b[j - 1] ? previous[j - 1] : 1 + Math.min(previous[j - 1], previous[j], row[j - 1]);
-    }
-    if (Math.min(...row) > cap) return cap + 1;
-    previous = row;
-  }
-  return previous[b.length];
-}
-
-/**
- * The name somebody probably meant, out of the ones that exist. A missing template is
- * nearly always a typo or a rename, and the card already knows every name there is - so
- * saying "did you mean" turns a hunt through the dashboard into a glance.
- */
-export function closestTemplate(wanted: string, available: string[]): string | undefined {
-  if (!wanted) return undefined;
-  // Two edits on a short name, three on a long one: enough for a transposition and a
-  // missing letter, not enough to start pointing at unrelated templates.
-  const cap = wanted.length > 8 ? 3 : 2;
-
-  let best: string | undefined;
-  let bestScore = cap + 1;
-  for (const name of available) {
-    if (name === wanted) return undefined;
-    const score = editDistance(wanted.toLowerCase(), name.toLowerCase(), cap);
-    if (score < bestScore) {
-      bestScore = score;
-      best = name;
-    }
-  }
-  return bestScore <= cap ? best : undefined;
 }
 
 /** How that reads on the end of a "doesn't exist" message. */

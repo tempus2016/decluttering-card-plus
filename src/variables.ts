@@ -360,6 +360,17 @@ export function isOptional(inside: string): boolean {
 export const PLACEHOLDER = new RegExp(PLACEHOLDER_SOURCE);
 
 /*
+ * Whether a placeholder found at `index` is really the inside of button-card's `[[[ ... ]]]`:
+ * the grammar reads `[[[ return entity.state ]]]` as `[[ return entity.state ]]` with one
+ * bracket either side. That is the card's own JavaScript, not a variable nobody set, so the
+ * scans that report unset variables skip it. A real `[[name]]` written inside the JavaScript
+ * has a space or a quote before it, not a bracket, so it is still reported.
+ */
+export function insideButtonCardJs(text: string, index: number): boolean {
+  return index > 0 && text[index - 1] === '[';
+}
+
+/*
  * A placeholder can ask for its value in a different shape - `[[room|slug]]` alongside
  * `[[room]]` - which is what lets one variable serve both a name and the entity id built
  * from it. The set is deliberately closed: an unrecognised word after the bar is not a
@@ -492,6 +503,11 @@ const COUNT_STEP = 'count';
 
 const LIST_BARE_STEPS = [JOIN_STEP, SPLIT_STEP, FIRST_STEP, LAST_STEP, COUNT_STEP];
 
+// `repeat:...|flat` puts a copy that came out as a list into the outer list item by item,
+// so a repeat inside a repeat gives one list rather than a list of lists (#311). It is only
+// read straight after a `repeat:`.
+export const FLAT_STEP = 'flat';
+
 // The two that also take an argument: the separator.
 const LIST_PARAM_STEPS = [JOIN_STEP, SPLIT_STEP];
 
@@ -521,7 +537,8 @@ function itemText(item: unknown): string {
 /** Whether a chain starting with this step takes a mapping or a list whole, rather than as text. */
 export function takesStructure(step: string, value: unknown): boolean {
   if (step === JSON_STEP || step === BOOL_STEP) return true;
-  if (stepName(step) === CONTAINS_STEP) return Array.isArray(value);
+  // A list is asked whether it holds the item, a mapping whether it has the key.
+  if (stepName(step) === CONTAINS_STEP) return !!value && typeof value === 'object';
   // A mapping has a size, and nothing else a list step reads.
   return Array.isArray(value) ? isListStep(step) : step === COUNT_STEP;
 }
@@ -673,6 +690,7 @@ const TRANSFORM_NAMES = [
   EXISTS_STEP,
   ...NUMBER_BARE_STEPS,
   ...LIST_BARE_STEPS,
+  FLAT_STEP,
 ].join('|');
 
 /*
@@ -948,7 +966,13 @@ function resolve(step: string, entityId: string, hass: any): string | undefined 
     if (SENSITIVE_ATTRIBUTES.has(name)) return undefined;
     const attribute = hass?.states?.[entityId]?.attributes?.[name];
     if (attribute === undefined || attribute === null) return undefined;
-    const text = String(attribute);
+    // A list reads as the `join` step would write it, and a mapping as its JSON - String()
+    // would give "1,2" and "[object Object]".
+    const text = Array.isArray(attribute)
+      ? attribute.map(itemText).join(DEFAULT_JOIN)
+      : typeof attribute === 'object'
+        ? JSON.stringify(attribute)
+        : String(attribute);
     return CARRIES_TOKEN.test(text) ? undefined : asHaText(text);
   }
   const found = RESOLVERS[step]?.(entityId, hass);
@@ -1086,7 +1110,13 @@ export function applyTransform(
   // `json` is the one step that wants the value as it was rather than as text, so it is
   // read off the front before anything turns a mapping into "[object Object]".
   const takesJson = steps[0] === JSON_STEP;
-  let text: string | undefined = takesJson ? JSON.stringify(value) : value === undefined ? undefined : String(value);
+  // A mapping or a list that reaches a text step anyway is its JSON, never "[object Object]".
+  let text: string | undefined =
+    takesJson || (!!value && typeof value === 'object')
+      ? JSON.stringify(value)
+      : value === undefined
+        ? undefined
+        : String(value);
 
   /*
    * Whether there is anything to show, which is not the same as whether there is a value.
@@ -1159,9 +1189,13 @@ export function applyTransform(
     if (stepName(name) === CONTAINS_STEP) {
       const wanted = name.slice(CONTAINS_STEP.length + 1);
       const items = list ?? (Array.isArray(firstHand) ? firstHand : undefined);
+      // A mapping "contains" a key, the way a list contains an item.
+      const mapping = !items && !!firstHand && typeof firstHand === 'object' ? firstHand : undefined;
       const found = items
         ? items.some((item) => stripHaMarks(itemText(item)) === wanted)
-        : text !== undefined && !empty && stripHaMarks(text).includes(wanted);
+        : mapping
+          ? Object.prototype.hasOwnProperty.call(mapping, wanted)
+          : text !== undefined && !empty && stripHaMarks(text).includes(wanted);
       text = String(found);
       list = undefined;
       empty = false;
@@ -1336,6 +1370,10 @@ export function resolveFallback(
 
   const [name, ...steps] = withoutOptional(inside).split('|');
   if (!steps.some(answersUnset)) return undefined;
+  // A mapping or list is set, so ordinary substitution has had its turn: whatever it left,
+  // it left on purpose, and this pass would only write it out as text it was never meant to be.
+  const value = values[name];
+  if (value && typeof value === 'object' && !takesStructure(steps[0], value)) return undefined;
   return applyTransform(steps.join('|'), values[name], hass, values, read, shield);
 }
 
@@ -1686,7 +1724,7 @@ function placeholdersIn(value: unknown): string[] {
   while (match !== null) {
     // `[[room|slug]]` is a use of `room`, not of a variable called `room|slug`, and
     // `[[!room]]` is not a use of anything - it is the brackets, written out.
-    if (!match[1].startsWith(ESCAPE)) {
+    if (!match[1].startsWith(ESCAPE) && !insideButtonCardJs(json, match.index)) {
       const inside = withoutOptional(match[1]);
       names.push(inside.replace(TRANSFORM_TAIL, ''));
       // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing -
@@ -2142,6 +2180,7 @@ export const KNOWN_STEPS: string[] = [
     STATE_STEP,
     ...NUMBER_BARE_STEPS,
     ...LIST_BARE_STEPS,
+    FLAT_STEP,
     ...Object.keys(RESOLVERS),
   ]),
 ];

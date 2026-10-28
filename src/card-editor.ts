@@ -2,7 +2,7 @@ import { LitElement, html, TemplateResult, css, CSSResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringCardConfig, TemplateConfig, VariablesConfig, FormSchemaEntry } from './types';
-import deepReplace from './deep-replace';
+import deepReplace, { fillSource } from './deep-replace';
 import { structureNames } from './structure';
 import {
   collectTemplates,
@@ -39,7 +39,7 @@ import {
   normaliseVariables,
 } from './variables';
 import { exampleSets } from './examples';
-import { isRegistrySource, registryNames, resolveRegistryItems } from './registry';
+import { copyLabel, isRegistrySource, registryNames, resolveRegistryItems } from './registry';
 import { categoryRegistry, loadCategories, wantsCategories } from './categories';
 import { renderTemplateOnce, sourceTemplate, TemplateRender, templateList } from './template-source';
 import { findRepeatingCard, sectionPerCopy } from './strategy';
@@ -371,7 +371,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
             </ha-alert>`
       }
       ${this._renderSource(template)} ${this._renderStartFromExample(template)}
-      ${this._renderDiagnostics(template, readable)} ${this._renderMatches()}
+      ${this._renderDiagnostics(template, readable)} ${this._renderMatches(template)}
       <ha-form
         .hass=${this.hass}
         .data=${this._formData(declarations)}
@@ -661,13 +661,18 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     </p>`;
   }
 
+  // The card's for_each_from with its placeholders filled in, as the card fills it in (#309).
+  private _filledSource(templateConfig: TemplateConfig | undefined): unknown {
+    return fillSource(this._config?.for_each_from, this._config?.variables, templateConfig, this.hass);
+  }
+
   /*
    * A template source's copies can be mappings of anything, so the names they supply are
    * only known once it has rendered - read from what it rendered, when it has, so those
    * names are not reported as missing.
    */
-  private _renderedTemplateNames(): string[] {
-    const source = this._config?.for_each_from;
+  private _renderedTemplateNames(templateConfig: TemplateConfig): string[] {
+    const source = this._filledSource(templateConfig);
     const template = sourceTemplate(source);
     if (!this.hass || template === undefined) return [];
     if (!Object.prototype.hasOwnProperty.call(this._renderedTemplates, template)) return [];
@@ -693,9 +698,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
    * area name reads as "this card is broken" rather than "nothing matched that". Counting
    * here turns writing them into something you can see working.
    */
-  private _renderMatches(): TemplateResult {
-    const source = this._config?.for_each_from;
-    if (!this.hass || !isRegistrySource(source)) return html``;
+  private _renderMatches(templateConfig: TemplateConfig | undefined): TemplateResult {
+    if (!this.hass || !isRegistrySource(this._config?.for_each_from)) return html``;
+    const source = this._filledSource(templateConfig);
 
     // A category is only known once fetched, and the card fetches it for itself - the
     // editor has to as well, or every category filter would preview as matching nothing.
@@ -745,15 +750,6 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     // The names, not the whole mappings: it is a sanity check on the filters, not a data
     // dump, and a sweep of the house should not fill the dialog.
     const shown = matched.slice(0, MATCHES_SHOWN);
-    const label = (item: Record<string, unknown>): string =>
-      String(
-        item.entity ??
-          item.area_id ??
-          item.navigation_path ??
-          item.item ??
-          item.name ??
-          `${(item.total as number) ?? ''}`,
-      );
 
     return html`
       <ha-expansion-panel outlined>
@@ -766,7 +762,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         </span>
         <div class="matches">
           <ul>
-            ${shown.map((item) => html`<li>${label(item)}</li>`)}
+            ${shown.map((item, index) => html`<li>${copyLabel(item, index)}</li>`)}
           </ul>
           ${
             matched.length > shown.length
@@ -883,7 +879,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       ...forEachNames(this._config?.for_each),
       ...registryNames(this._config?.for_each_from),
       ...(isRegistrySource(this._config?.for_each_from) ? POSITION_NAMES : []),
-      ...this._renderedTemplateNames(),
+      ...this._renderedTemplateNames(template),
       // An entity the card rebuilds on stands for itself in a placeholder.
       ...rebuildOnEntities(this._config?.rebuild_on),
       // What the template's own `with:` and `repeat:` give the bodies they fill in, and the

@@ -3,7 +3,7 @@
  * Run with `npm test`, which transpiles the source into .test-build first.
  */
 const deepReplace = require('../.test-build/deep-replace.js').default;
-const { cssSafe } = require('../.test-build/deep-replace.js');
+const { cssSafe, fillSource } = require('../.test-build/deep-replace.js');
 
 const { check } = require('./check');
 
@@ -1567,6 +1567,89 @@ check(
   );
 }
 
+{
+  // #311: a repeat inside a repeat. Without |flat each outer copy that is a list stays one;
+  // with it the copies are laid out in one list. An item without the inner list gives none.
+  const detect = [
+    { detect_type: 'car', zones: ['front', 'street'] },
+    { detect_type: 'person', zones: ['front'] },
+    { detect_type: 'cat' },
+  ];
+  const vars = [
+    { detect_list: detect },
+    { zone_t: 'binary_sensor.[[item]]_[[detect_type]]' },
+    { per: ['[[zone_t|repeat:zones]]', 'binary_sensor.porch_[[detect_type]]'] },
+  ];
+  check(
+    'a nested repeat without flat keeps a list per copy',
+    deepReplace(vars, {}, { entities: '[[per|repeat:detect_list]]' }, undefined, undefined, true).entities,
+    [
+      ['binary_sensor.front_car', 'binary_sensor.street_car', 'binary_sensor.porch_car'],
+      ['binary_sensor.front_person', 'binary_sensor.porch_person'],
+      ['binary_sensor.porch_cat'],
+    ],
+  );
+  check(
+    'repeat:...|flat lays the copies out in one list, and a copy without the inner list adds none of it',
+    deepReplace(vars, {}, { entities: ['sensor.first', '[[per|repeat:detect_list|flat]]'] }, undefined, undefined, true)
+      .entities,
+    [
+      'sensor.first',
+      'binary_sensor.front_car',
+      'binary_sensor.street_car',
+      'binary_sensor.porch_car',
+      'binary_sensor.front_person',
+      'binary_sensor.porch_person',
+      'binary_sensor.porch_cat',
+    ],
+  );
+  check(
+    'flat leaves a copy that is not a list as it is, and only goes one level',
+    deepReplace(
+      [{ l: [{ v: 'a' }, { v: 'b' }] }, { body: '[[v]]' }, { pair: [['[[v]]']] }],
+      {},
+      { x: '[[body|repeat:l|flat]]', y: '[[pair|repeat:l|flat]]' },
+      undefined,
+      undefined,
+      true,
+    ),
+    { x: ['a', 'b'], y: [['a'], ['b']] },
+  );
+  const caught = [];
+  const saved = console.warn;
+  console.warn = (...m) => caught.push(m.join(' '));
+  check(
+    'at the card level a missing list is still left visible and warned about',
+    [deepReplace([{ zone_t: 'x' }], {}, { e: '[[zone_t|repeat:zones]]' }), caught.some((m) => m.includes('zones'))],
+    [{ e: '[[zone_t|repeat:zones]]' }, true],
+  );
+  caught.length = 0;
+  check(
+    'flat anywhere but after a repeat is refused and left visible',
+    [
+      deepReplace([{ a: 'x' }, { m: { k: 'v' } }], {}, { p: '[[a|flat]]', q: '[[m|with:k=1|flat]]' }),
+      caught.some((m) => m.includes('flat only works straight after a repeat:')),
+    ],
+    [{ p: '[[a|flat]]', q: '[[m|with:k=1|flat]]' }, true],
+  );
+  console.warn = saved;
+  const traced = { placeholders: new Map(), dropped: [], warnings: [] };
+  deepReplace(
+    [{ detect_list: [{ d: 'cat' }] }, { zone_t: '[[item]]' }, { per: ['[[zone_t|repeat:zones]]'] }],
+    {},
+    { e: '[[per|repeat:detect_list|flat]]' },
+    undefined,
+    undefined,
+    true,
+    undefined,
+    0,
+    traced,
+  );
+  check('the debug trace says why a copy gave nothing', traced.items[0].trace.dropped, [
+    '[[zone_t|repeat:zones]] gave nothing: this copy has no zones',
+  ]);
+}
+
 /* ------------------------------------------------------------ arithmetic */
 
 {
@@ -1838,6 +1921,71 @@ check(
   ),
   { a: true, b: true, c: false, d: false },
 );
+/* ------------------------- a mapping or a list through a fallback or a yes/no step */
+
+{
+  const vars = () => [{ m: { a: 1 } }, { l: ['a', 'b'] }, { e: 'light.x' }];
+  const listHass = {
+    states: { 'light.x': { state: 'on', attributes: { list_attr: [1, 2], obj_attr: { k: 'v' } } } },
+    entities: {},
+  };
+  const run = (card) => deepReplace(vars(), {}, card, undefined, listHass);
+  check(
+    'default: and or: on a set mapping or list leave the value as a plain placeholder would',
+    run({
+      a: '[[m|default:x]]',
+      b: '[[l|default:x]]',
+      c: 'm=[[m|default:x]] l=[[l|or:e]]',
+      d: '[[m|or:e]]',
+      e: '[[l|default:x|join]]',
+      f: '[[m]]',
+      g: 'm=[[m]] l=[[l]]',
+    }),
+    {
+      a: { a: 1 },
+      b: ['a', 'b'],
+      c: 'm={"a":1} l=["a","b"]',
+      d: { a: 1 },
+      e: 'a, b',
+      f: { a: 1 },
+      g: 'm={"a":1} l=["a","b"]',
+    },
+  );
+  check(
+    'contains: on a mapping asks whether it has that key',
+    run({ a: '[[m|contains:a]]', b: '[[m|contains:b]]', c: '[[m|contains:object]]', d: 'has [[m|contains:a]]' }),
+    { a: true, b: false, c: false, d: 'has true' },
+  );
+  check(
+    'exists, or a text step before a fallback, leaves a mapping or list as written',
+    run({ a: '[[m|exists]]', b: '[[l|exists]]', c: '[[m|upper|default:x]]', d: 'x [[l|slug|or:e]]' }),
+    { a: '[[m|exists]]', b: '[[l|exists]]', c: '[[m|upper|default:x]]', d: 'x [[l|slug|or:e]]' },
+  );
+  check(
+    'attr: joins a list attribute and writes a mapping attribute as its JSON',
+    run({ a: '[[e|attr:list_attr]]', b: '[[e|attr:obj_attr]]' }),
+    { a: '1, 2', b: '{"k":"v"}' },
+  );
+  check(
+    'nothing puts [object Object] into a card',
+    JSON.stringify(
+      run({
+        a: '[[m|default:x]]',
+        b: 'in [[m|default:x]]',
+        c: '[[m|or:e]]',
+        d: '[[m|contains:object]]',
+        e: '[[m|exists]]',
+        f: 'in [[m|exists]]',
+        g: '[[m|upper|default:x]]',
+        h: '[[e|attr:obj_attr]]',
+        i: '[[l|exists]]',
+        j: '[[l|lower|default:x]]',
+      }),
+    ).includes('object Object'),
+    false,
+  );
+}
+
 check(
   'find: gives where the text starts as a number, -1 when it is not there',
   deepReplace([{ id: 'camera_1_car' }], {}, { a: '[[id|find:car]]', b: '[[id|find:dog]]', c: 'at [[id|find:_]]' }),
@@ -2035,6 +2183,19 @@ check(
       x: { entity: 'e', name: 'n' },
     },
   );
+  // A with: or repeat: refusal says what went wrong in its own words, without the sentence
+  // about text transforms, which has nothing to do with it.
+  const said = [];
+  console.warn = (m) => said.push(m);
+  deepReplace(vars, {}, { content: '[[self|with:a=1]] [[row|repeat:nothere]] [[row|with:ids]]' }, 'tpl', hass227);
+  console.warn = realWarn;
+  check(
+    'a with: or repeat: refusal is not explained as a transform needing a scalar',
+    said.length > 0 &&
+      said.every((m) => !/A transform only shapes text/.test(m)) &&
+      said.some((m) => /fills itself/.test(m)),
+    true,
+  );
 }
 
 /* ------------------------- a value passed in its own right survives a lookup after or: */
@@ -2181,6 +2342,35 @@ check(
   );
 }
 
+{
+  const hass = { states: { 'sensor.thing': {} } };
+  const x = {
+    itemTemplates: {
+      t1: { default: [{ t_exists: '[[entity|exists]]' }], item: { entity: '[[entity]]' } },
+      t2: { default: [{ probe: '[[t1|with:entity=sensor.[[n]]]]' }], item: '[[probe|if:probe.t_exists?]]' },
+    },
+  };
+  const run = (v, content) =>
+    deepReplace(v, {}, content, 't', hass, true, undefined, 0, undefined, undefined, false, x);
+  check(
+    'a variable holding a fill offers the fill’s own values by dotted name',
+    run([{ a: '[[t1|with:entity=sensor.thing]]' }, { b: '[[t1|with:entity=sensor.nope]]' }], {
+      x: '[[a.t_exists]]',
+      y: '[[b.t_exists]]',
+      z: '[[b|if:b.t_exists?]]',
+      w: '[[a.unset]]',
+    }),
+    { x: true, y: false, w: '[[a.unset]]' },
+  );
+  check(
+    'and inside an item template, its with: arguments filled in first, in a repeat too',
+    run([{ ns: [{ n: 'thing' }, { n: 'nope' }] }], {
+      l: ['[[t2|with:n=thing?]]', '[[t2|with:n=nope?]]', '[[t2|repeat:ns]]'],
+    }),
+    { l: [{ entity: 'sensor.thing' }, { entity: 'sensor.thing' }] },
+  );
+}
+
 function newTrace235() {
   return { placeholders: new Map(), dropped: [], warnings: [] };
 }
@@ -2211,3 +2401,175 @@ function newTrace235() {
     { l: [{ e: 'sensor.thing' }] },
   );
 }
+// A repeat's registry source is filled in from the variables before it is looked up (#309).
+{
+  const hass = {
+    states: {
+      'binary_sensor.porch_car_occupancy': { state: 'on', attributes: { friendly_name: 'Porch car' } },
+      'binary_sensor.porch_person_occupancy': { state: 'off', attributes: { friendly_name: 'Porch person' } },
+      'light.a': { state: 'on', attributes: { friendly_name: 'Lamp A' } },
+      'light.b': { state: 'on', attributes: { friendly_name: 'Lamp B' } },
+    },
+    entities: {
+      'binary_sensor.porch_car_occupancy': { entity_id: 'binary_sensor.porch_car_occupancy', labels: [] },
+      'binary_sensor.porch_person_occupancy': { entity_id: 'binary_sensor.porch_person_occupancy', labels: [] },
+      'light.a': { entity_id: 'light.a', area_id: 'kitchen', labels: [] },
+      'light.b': { entity_id: 'light.b', area_id: 'living', labels: [] },
+    },
+    areas: {
+      kitchen: { area_id: 'kitchen', name: 'Kitchen' },
+      living: { area_id: 'living', name: 'Living' },
+    },
+    devices: {},
+  };
+  const run = (vars, content) =>
+    deepReplace(vars, {}, content, 't', hass, true, undefined, 0, undefined, undefined, false, {});
+  check(
+    'repeat: a registry source with placeholders in its filter (#309)',
+    run(
+      [
+        { name: 'porch' },
+        { kind: 'car' },
+        { src: { entities: 'binary_sensor.[[name]]_[[kind]]_occupancy' } },
+        { row: { entity: '[[entity]]' } },
+      ],
+      { rows: '[[row|repeat:src]]' },
+    ),
+    { rows: [{ entity: 'binary_sensor.porch_car_occupancy' }] },
+  );
+  check(
+    'repeat: a registry source whose filter is a variable that is itself a placeholder (#309)',
+    run(
+      [
+        { pattern: 'binary_sensor.[[name]]_*' },
+        { name: 'porch' },
+        { src: { entities: '[[pattern]]' } },
+        { row: '[[entity]]' },
+      ],
+      { rows: '[[row|repeat:src]]' },
+    ),
+    { rows: ['binary_sensor.porch_car_occupancy', 'binary_sensor.porch_person_occupancy'] },
+  );
+  check(
+    "repeat: inside another repeat's copy reads that copy's values in its source (#309)",
+    run(
+      [
+        { rooms: [{ room: 'Kitchen' }, { room: 'Living' }] },
+        { lights: { domain: 'light', area: '[[room]]' } },
+        { section: { title: '[[room]]', rows: '[[row|repeat:lights]]' } },
+        { row: '[[entity]]' },
+      ],
+      { sections: '[[section|repeat:rooms]]' },
+    ),
+    {
+      sections: [
+        { title: 'Kitchen', rows: ['light.a'] },
+        { title: 'Living', rows: ['light.b'] },
+      ],
+    },
+  );
+  check(
+    "a card's for_each_from is filled in from its variables and its template's defaults (#309)",
+    fillSource(
+      { entities: 'binary_sensor.[[name]]_[[kind]]_occupancy', exclude: ['[[skip]]'] },
+      [{ name: 'porch' }, { skip: 'x' }],
+      { default: [{ kind: 'car' }] },
+      hass,
+    ),
+    { entities: 'binary_sensor.porch_car_occupancy', exclude: ['x'] },
+  );
+  const plain = { domain: 'light' };
+  check(
+    'a for_each_from with no placeholders is handed back as it was (#309)',
+    fillSource(plain, [], {}, hass) === plain,
+    true,
+  );
+}
+
+/* ------------------------- console warnings say what actually went wrong */
+{
+  const said = [];
+  const capture = (fn) => {
+    said.length = 0;
+    console.warn = (m) => said.push(m);
+    const out = fn();
+    console.warn = realWarn;
+    return out;
+  };
+
+  check(
+    'a map: no pair matches leaves the placeholder',
+    capture(() => deepReplace([{ r: 'mid' }], {}, { c: '[[r|map:low=green,high=red]]' })),
+    { c: '[[r|map:low=green,high=red]]' },
+  );
+  check(
+    'and says no pair matched, suggesting *=, rather than blaming Home Assistant',
+    said.length === 1 && /mid/.test(said[0]) && /\*=/.test(said[0]) && !/Home Assistant|resolver/.test(said[0]),
+    true,
+  );
+
+  check(
+    'a set variable with an unknown step is left as written',
+    capture(() => deepReplace([{ room: 'Hall' }], {}, { n: '[[room|shout]]' })),
+    { n: '[[room|shout]]' },
+  );
+  check(
+    'and says the step is unknown, not that nothing gives the variable a value',
+    said.length === 1 && /"shout" is not a step/.test(said[0]) && !/nothing gives a value/.test(said[0]),
+    true,
+  );
+  capture(() => deepReplace([{ room: 'Hall' }], {}, { n: '[[room|Slug]]' }));
+  check(
+    'a misspelt step suggests the closest real one',
+    said.length === 1 && /Did you mean "slug"/.test(said[0]),
+    true,
+  );
+  capture(() => deepReplace([{ z: 'Z' }], {}, { n: '[[room|or:z|shout]]' }));
+  check(
+    'an unknown step on an unset variable with an or: is still the step',
+    said.length === 1 && /"shout" is not a step/.test(said[0]),
+    true,
+  );
+  capture(() => deepReplace([{ other: 1 }], {}, { n: '[[room|shout]]' }));
+  check(
+    'an unset variable is still reported as unset',
+    said.length === 1 && /nothing gives a value/.test(said[0]),
+    true,
+  );
+}
+
+/* ------------------------------------------- button-card's [[[ ]]] is not a variable */
+
+// `[[[ return ... ]]]` is button-card's JavaScript. The placeholder grammar reads its inside
+// as `[[ return ... ]]`, which used to be reported as a variable nothing sets - both with a
+// filled placeholder inside (the wiki's `[[name|json]]` pattern) and with none at all.
+console.warn = (m) => warnings.push(m);
+warnings.length = 0;
+check(
+  'button-card JavaScript quoting a name with json is filled',
+  deepReplace([{ name: `O'Brien "x"` }], {}, { name: '[[[ return [[name|json]] ]]]' }),
+  { name: `[[[ return "O'Brien \\"x\\"" ]]]` },
+);
+check('and says nothing about the JavaScript around it', warnings, []);
+
+warnings.length = 0;
+deepReplace([{ x: 1 }], {}, { name: '[[[ return entity.state ]]]', label: '[[[ if (x) return [a][0]; ]]]' });
+check('button-card JavaScript with no placeholder in it is quiet', warnings, []);
+
+const jsLeft = [];
+deepReplace([{ x: 1 }], {}, { name: '[[[ return entity.state ]]]' }, undefined, undefined, true, (n) =>
+  jsLeft.push(...n),
+);
+check('and is not handed on as unresolved (strict mode)', jsLeft, []);
+
+warnings.length = 0;
+deepReplace([{ x: 1 }], {}, { name: '[[[ return [[nope]] ]]]', label: "[[[ return '[[gone]]' ]]]" });
+check(
+  'an unset placeholder written inside the JavaScript is still reported',
+  warnings.length === 1 &&
+    /\[\[nope\]\]/.test(warnings[0]) &&
+    /\[\[gone\]\]/.test(warnings[0]) &&
+    !/return/.test(warnings[0]),
+  true,
+);
+console.warn = realWarn;
