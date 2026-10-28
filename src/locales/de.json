@@ -252,6 +252,7 @@
   "warn.read_too_deep": "decluttering-card-plus: {names} wird aus mehr als {depth} Ebenen anderer Werte gebildet und wurde daher halb fertig verwendet. Kürze die Kette der Werte, aus denen er entsteht.",
   "warn.too_many_fills": "mehr als {max} Kopien würden in dieser Karte ausgefüllt, der Rest bleibt weg",
   "warn.not_a_list_source": "{arg} ist weder eine Liste noch eine Registry-Quelle",
+  "warn.flat_after_repeat": "flat funktioniert nur direkt nach einem repeat:",
   "warn.not_a_mapping": "{arg} ist kein Mapping",
   "warn.condition_closed": "seine if:-Bedingung trifft nicht zu",
   "warn.json_not_first": "json kann nur der erste Schritt sein",
@@ -291,6 +292,7 @@
   "trace.left_refused": "bleibt wie geschrieben: {why}",
   "trace.dropped_option": "{path} ({placeholder} war leer)",
   "trace.dropped_block": "{path} (nichts mehr darin)",
+  "trace.repeat_missing": "{placeholder} ergab nichts: diese Kopie hat kein {arg}",
 
   "report.title": "Debug-Bericht von Decluttering Card Plus",
   "report.check": "Lies ihn, bevor du ihn irgendwo veröffentlichst: Passwörter, Token, IP-Adressen, E-Mail-Adressen und erkennbare Hostnamen wurden ersetzt, soweit die Karte sie erkennen konnte, aber sie kennt nicht jede Form davon, und Entitäts-IDs, Namen und alles andere stehen so da, wie sie sind.",

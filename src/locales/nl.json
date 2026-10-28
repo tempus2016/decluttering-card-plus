@@ -252,6 +252,7 @@
   "warn.read_too_deep": "decluttering-card-plus: {names} wordt opgebouwd uit meer dan {depth} niveaus andere waarden en is daarom half opgebouwd gebruikt. Maak de keten van waarden waaruit hij bestaat korter.",
   "warn.too_many_fills": "er zouden meer dan {max} kopieën in deze kaart worden ingevuld, de rest blijft weg",
   "warn.not_a_list_source": "{arg} is geen lijst en geen registerbron",
+  "warn.flat_after_repeat": "flat werkt alleen direct na een repeat:",
   "warn.not_a_mapping": "{arg} is geen mapping",
   "warn.condition_closed": "de if:-voorwaarde klopt niet",
   "warn.json_not_first": "json kan alleen de eerste stap zijn",
@@ -291,6 +292,7 @@
   "trace.left_refused": "blijft zoals geschreven: {why}",
   "trace.dropped_option": "{path} ({placeholder} was leeg)",
   "trace.dropped_block": "{path} (er bleef niets in over)",
+  "trace.repeat_missing": "{placeholder} gaf niets: deze kopie heeft geen {arg}",
 
   "report.title": "Debugrapport van Decluttering Card Plus",
   "report.check": "Lees het voordat je het ergens plaatst: wachtwoorden, tokens, IP-adressen, e-mailadressen en herkenbare hosts zijn vervangen waar de kaart ze kon herkennen, maar ze kent niet elke vorm ervan, en entiteit-id's, namen en al het andere staan er zoals ze zijn.",

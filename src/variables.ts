@@ -492,6 +492,11 @@ const COUNT_STEP = 'count';
 
 const LIST_BARE_STEPS = [JOIN_STEP, SPLIT_STEP, FIRST_STEP, LAST_STEP, COUNT_STEP];
 
+// `repeat:...|flat` puts a copy that came out as a list into the outer list item by item,
+// so a repeat inside a repeat gives one list rather than a list of lists (#311). It is only
+// read straight after a `repeat:`.
+export const FLAT_STEP = 'flat';
+
 // The two that also take an argument: the separator.
 const LIST_PARAM_STEPS = [JOIN_STEP, SPLIT_STEP];
 
@@ -673,6 +678,7 @@ const TRANSFORM_NAMES = [
   EXISTS_STEP,
   ...NUMBER_BARE_STEPS,
   ...LIST_BARE_STEPS,
+  FLAT_STEP,
 ].join('|');
 
 /*
@@ -2142,6 +2148,7 @@ export const KNOWN_STEPS: string[] = [
     STATE_STEP,
     ...NUMBER_BARE_STEPS,
     ...LIST_BARE_STEPS,
+    FLAT_STEP,
     ...Object.keys(RESOLVERS),
   ]),
 ];

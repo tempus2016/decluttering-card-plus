@@ -1,5 +1,6 @@
 import { TemplateConfig, VariablesConfig } from './types';
 import {
+  FLAT_STEP,
   normaliseVariables,
   POSITION_NAMES,
   REPEAT_STEP,
@@ -17,8 +18,9 @@ import { isRegistrySource, registryNames } from './registry';
  * template that repeats anything.
  */
 
-// A `with:` or `repeat:` placeholder: the name it fills in, which step, and the argument.
-const STRUCTURE_PLACEHOLDER = `\\[\\[([^|[\\]?]+)\\|(${WITH_STEP}|${REPEAT_STEP}):([^|\\]]*?)\\??\\]\\]`;
+// A `with:` or `repeat:` placeholder: the name it fills in, which step, and the argument -
+// a `repeat:` may end in `|flat` (#311).
+const STRUCTURE_PLACEHOLDER = `\\[\\[([^|[\\]?]+)\\|(${WITH_STEP}|${REPEAT_STEP}):([^|\\]]*?)(?:\\|${FLAT_STEP})?\\??\\]\\]`;
 
 /** The names the items of a written-out list set: a mapping's keys, or `item` and `entity`. */
 function itemNames(items: unknown[]): string[] {
