@@ -40,6 +40,16 @@ IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)]+)\)\s*$", re.M)
 # across lines - and the text between them stays as text.
 RAW_TAG = re.compile(r"</?\s*(?:meta|form|iframe|object|embed|base)\b[^>]*>", re.I)
 
+# A table row whose first cell opens with `code` documents that key, step or option, so it
+# gets an anchor of its own: a search result or the A to Z page can land on the row rather
+# than on the heading above a table forty rows long. The anchor is an empty span at the
+# start of the cell; the row is lit by `tr:has(:target)` in docs.css.
+FENCE = re.compile(r"^\s*(```|~~~)")
+TABLE_RULE = re.compile(r"^\s*\|?\s*:?-{3,}")
+SECTION = re.compile(r"^(#{2,4})\s+(.+?)\s*$")
+CODE = re.compile(r"`([^`]+)`")
+A_TO_Z = "A-to-Z"
+
 
 def front_matter(fields):
     """YAML is a superset of JSON for scalars, so json.dumps quotes these safely."""
@@ -67,6 +77,103 @@ def literal(text, name):
         print("broke an endraw tag spelt out in", name)
         text = ENDRAW.sub("{\u2060\\1", text)
     return "{% raw %}" + text + "{% endraw %}"
+
+
+def first_cell(line):
+    """The first cell of a markdown table row; a pipe escaped as \\| does not end it."""
+    return re.split(r"(?<!\\)\|", line.strip()[1:])[0].strip()
+
+
+def key_slug(code, taken):
+    slug = "k-" + (re.sub(r"[^a-z0-9_]+", "-", sort_key(code)[0]).strip("-") or "key")
+    n, base = 2, slug
+    while slug in taken:
+        slug, n = "{}-{}".format(base, n), n + 1
+    taken.add(slug)
+    return slug
+
+
+def plain_heading(text):
+    """A markdown heading as words: no version tag, no backticks, no emphasis."""
+    text = re.sub(r"\s*\*?\(v\d+\.\d+\.\d+\+?\)\*?\s*$", "", text)
+    return text.replace("`", "").replace("*", "").strip()
+
+
+def anchor_rows(text, page, found):
+    """
+    Give every key row an anchor (see FENCE above), and note it in `found` for the A to Z
+    page as (term, page, section, anchor). Tables inside a code fence are examples, not
+    tables, and the header row of a table names columns rather than keys.
+    """
+    out, taken, fenced, section = [], set(), False, ""
+    lines = text.split("\n")
+    for i, line in enumerate(lines):
+        if FENCE.match(line):
+            fenced = not fenced
+        heading = None if fenced else SECTION.match(line)
+        if heading:
+            section = plain_heading(heading.group(2))
+        is_row = not fenced and line.lstrip().startswith("|") and not TABLE_RULE.match(line)
+        is_header = is_row and i + 1 < len(lines) and TABLE_RULE.match(lines[i + 1])
+        if is_row and not is_header:
+            first = first_cell(line)
+            codes = [c.replace("\\|", "|").strip() for c in CODE.findall(first)] if first.startswith("`") else []
+            # A quoted example ('[[e|area]]') is a value someone wrote, not a key to look up.
+            codes = [c for c in codes if c and c[0] not in "'\""]
+            if codes:
+                anchor = key_slug(codes[0], taken)
+                cell_at = line.index("|") + 1
+                line = '{} <span class="key" id="{}"></span>{}'.format(line[:cell_at], anchor, line[cell_at:])
+                for code in codes:
+                    found.append((code, page, section, anchor))
+        out.append(line)
+    return "\n".join(out)
+
+
+def sort_key(term):
+    """`[[name|slug]]` files under S, `custom:decluttering-card-plus` under D."""
+    t = term.lower()
+    t = re.sub(r"^\[\[[a-z0-9_.!?]*\|?", "", t).replace("]]", "")
+    t = re.sub(r"^(custom:|\|)", "", t)
+    t = t.lstrip("-_:.[]|!?")
+    return (t or term.lower(), term.lower())
+
+
+def a_to_z(found, titles):
+    """The A to Z page: every key, step and option any page has a row for, with every
+    place it is described, built fresh from the pages on every publish."""
+    terms = {}
+    for term, page, section, anchor in found:
+        # A sentence (an error message, a line of YAML) or a bare number is something to
+        # search for, not a word to look up; those keep their anchors but stay off the list.
+        if page == "index" or " " in term or term.isdigit():
+            continue
+        where = terms.setdefault(term, [])
+        link = (titles.get(page, page), section, page, anchor)
+        if link not in where:
+            where.append(link)
+    lines = [
+        "# A to Z",
+        "",
+        "Every key, placeholder step and option the documentation describes, in one list. "
+        "Each entry links to every place it is covered: the reference row, and the page that "
+        "explains it with an example. Built from the pages themselves each time they are "
+        "published, so nothing here can fall behind.",
+        "",
+    ]
+    letter = None
+    for term in sorted(terms, key=sort_key):
+        first = sort_key(term)[0][:1].upper()
+        first = first if first.isalpha() else "#"
+        if first != letter:
+            letter = first
+            lines += ["", "## " + letter, ""]
+        places = " · ".join(
+            "[{}{}]({}.html#{})".format(title, " › " + section if section and section != title else "", page, anchor)
+            for title, section, page, anchor in terms[term]
+        )
+        lines.append("- `{}` — {}".format(term.replace("`", ""), places))
+    return "\n".join(lines) + "\n"
 
 
 def rewrite_links(text):
@@ -180,11 +287,17 @@ def drop_non_images(root):
 
 def main(root):
     drop_unpublishable(root)
+    found, titles = [], {}
     for name in sorted(os.listdir(root)):
         if not name.endswith(".md"):
             continue
         path = os.path.join(root, name)
         text = rewrite_links(strip_raw_tags(open(path, encoding="utf-8").read(), name))
+        if name != "_Sidebar.md":
+            page = "index" if name == "Home.md" else name[:-3]
+            text = anchor_rows(text, page, found)
+            title = HEADING.search(text)
+            titles[page] = plain_heading(title.group(1)) if title else page.replace("-", " ")
 
         # The sidebar becomes the navigation on every page rather than a page of its own.
         # Copied after the link rewrite, so its links point at .html too.
@@ -212,6 +325,13 @@ def main(root):
             front_matter({"title": title.group(1) if title else name[:-3].replace("-", " ")})
             + literal(text, name)
         )
+
+    # Written last, from what the pages above held. A wiki page of the same name would be
+    # replaced, which is why the name is one no wiki page should want.
+    open(os.path.join(root, A_TO_Z + ".md"), "w", encoding="utf-8").write(
+        front_matter({"title": "A to Z"}) + literal(a_to_z(found, titles), A_TO_Z)
+    )
+    print("A to Z:", len({t for t, *_ in found}), "terms")
 
     print("prepared", len([f for f in os.listdir(root) if f.endswith('.md')]), "pages")
 

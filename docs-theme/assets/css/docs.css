@@ -116,6 +116,53 @@ a:hover { text-decoration-thickness: 2px; }
 .topbar-link:hover { color: var(--ink); text-decoration: underline; }
 .jump { display: none; }
 
+/* ------------------------------------------------------------ search
+   The results hang under the box, over the page, rather than taking a page of their own:
+   most searches end in a click on the first result. */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.search { position: relative; display: flex; align-items: center; }
+.search[hidden] { display: none; }
+.search-input {
+  width: 15rem; height: 2.125rem;
+  padding: 0 2rem 0 .75rem;
+  font: inherit; font-size: .875rem; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 6px;
+  -webkit-appearance: none; appearance: none;
+}
+.search-input::placeholder { color: var(--ink-faint); opacity: 1; }
+.search-input:focus { outline: none; border-color: var(--amber); background: var(--surface); }
+.search-input::-webkit-search-cancel-button { display: none; }
+.search-key {
+  position: absolute; right: .5rem; pointer-events: none;
+  font-family: var(--mono); font-size: .75rem; line-height: 1; color: var(--ink-faint);
+  padding: .15rem .35rem; border: 1px solid var(--rule); border-radius: 4px;
+}
+.search-input:focus + .search-key, .search-input:not(:placeholder-shown) + .search-key { display: none; }
+.search-results {
+  position: absolute; top: calc(100% + .375rem); right: 0; z-index: 50;
+  width: min(34rem, calc(100vw - 2rem)); max-height: min(32rem, calc(100vh - 6rem)); overflow-y: auto;
+  margin: 0; padding: .375rem; list-style: none;
+  background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+  box-shadow: 0 12px 32px -12px rgb(0 0 0 / .35);
+}
+.search-results[hidden] { display: none; }
+.search-results li { margin: 0; }
+.search-results a {
+  display: block; padding: .5rem .625rem; border-radius: 5px;
+  color: var(--ink); text-decoration: none;
+}
+.search-results [aria-selected="true"] a, .search-results a:hover { background: var(--rule-soft); }
+.search-results [aria-selected="true"] a { box-shadow: inset 2px 0 0 var(--amber); }
+.search-name { font-family: var(--mono); font-size: .8125rem; font-weight: 500; color: var(--ink); }
+.search-fixed { padding: .375rem .625rem .5rem; font-size: .8125rem; color: var(--ink-soft); }
+.search-where { display: block; font-size: .875rem; font-weight: 500; line-height: 1.4; color: var(--link); }
+.search-text { display: block; margin-top: .15rem; font-size: .8125rem; line-height: 1.5; color: var(--ink-soft); }
+.search-results mark { background: none; color: inherit; font-weight: 600; box-shadow: inset 0 -2px 0 var(--amber); }
+.search-message { padding: .625rem; font-size: .8125rem; color: var(--ink-soft); }
+
 /* ------------------------------------------------------------ shell */
 .shell {
   display: grid;
@@ -230,6 +277,12 @@ th {
 td { padding: .625rem 1rem .625rem 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
 tr:last-child td { border-bottom: 0; }
 th:last-child, td:last-child { padding-right: 0; }
+/* A key row a search result or the A to Z page linked to: build.py puts an empty span with
+   the anchor in the row's first cell. The row is marked, not the span, because the row is
+   the thing being looked up. */
+td > .key:target { scroll-margin-top: 5rem; }
+tr:has(> td > .key:target) td { background: var(--rule-soft); }
+tr:has(> td > .key:target) td:first-child { box-shadow: inset 3px 0 0 var(--amber); padding-left: .625rem; }
 
 /* ------------------------------------------------------------ notes */
 blockquote {
@@ -430,6 +483,7 @@ blockquote > :last-child { margin-bottom: 0; }
   .nav { position: static; max-height: none; overflow: visible; order: 2; border-top: 1px solid var(--rule); padding: 1.75rem 0 3rem; }
   .content { order: 1; padding-bottom: 2rem; }
   .jump { display: inline; }
+  .search-input { width: 11rem; }
   .hero { padding-top: 2.25rem; }
   .thesis { grid-template-columns: 1fr; gap: 1rem; padding: 1rem; }
   .thesis-arrow { transform: rotate(90deg); }
@@ -440,4 +494,10 @@ blockquote > :last-child { margin-bottom: 0; }
   .topbar { padding: 0 1rem; gap: .75rem; }
   /* On the narrowest phones the name wraps the bar onto two lines; the mark is enough. */
   .brand-name { display: none; }
+  .topbar .spacer { display: none; }
+  .search { flex: 1; min-width: 0; }
+  .search-input { width: 100%; }
+  /* Under the bar's full width, not the box's, so a result has room for a line. */
+  .search { position: static; }
+  .search-results { left: .5rem; right: .5rem; width: auto; top: calc(var(--bar-h) - .25rem); }
 }
