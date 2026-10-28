@@ -32,6 +32,7 @@
     "src/rebuild.ts",
     "src/diff.ts",
     "src/lint.ts",
+    "src/closest.ts",
     "src/unread.ts",
     "src/undo.ts",
     "src/rename-variable.ts",
