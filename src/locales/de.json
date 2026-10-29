@@ -565,5 +565,12 @@
   "editor.matches_views_one": "eine Ansicht",
   "editor.matches_views_many": "Ansichten",
   "editor.matches_items_one": "ein Element",
-  "editor.matches_items_many": "Elemente"
+  "editor.matches_items_many": "Elemente",
+  "editor.preview.header": "Was sie baut",
+  "editor.preview.rendered": "Gerendert",
+  "editor.preview.yaml": "YAML",
+  "editor.preview.built_in": "In {time} aus {template} gebaut. Aktualisiert beim Tippen.",
+  "editor.preview.changed_hint": "Die vom letzten Schritt geänderte Zeile ist hervorgehoben.",
+  "editor.preview.copy": "Kopieren",
+  "editor.preview.copied": "Kopiert"
 }

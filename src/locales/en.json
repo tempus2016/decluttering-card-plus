@@ -565,5 +565,12 @@
   "editor.matches_views_one": "view",
   "editor.matches_views_many": "views",
   "editor.matches_items_one": "item",
-  "editor.matches_items_many": "items"
+  "editor.matches_items_many": "items",
+  "editor.preview.header": "What it builds",
+  "editor.preview.rendered": "Rendered",
+  "editor.preview.yaml": "YAML",
+  "editor.preview.built_in": "Built in {time} from {template}. Updates as you type.",
+  "editor.preview.changed_hint": "The line the last edit changed is highlighted.",
+  "editor.preview.copy": "Copy",
+  "editor.preview.copied": "Copied"
 }
