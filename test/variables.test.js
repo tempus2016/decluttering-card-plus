@@ -1572,6 +1572,11 @@ check(
   ['nobody'],
 );
 check(
+  'a card with neither a for_each_from nor an on_error is not missing a variable called "null,null"',
+  diagnoseInstance([], { card: { type: 'tile', entity: 'sun.sun' } }, [], [undefined, undefined]).missing,
+  [],
+);
+check(
   'a variable only an item template reads is not unused, nor is anything it reads called missing (#314)',
   diagnoseInstance(
     [{ entity: 'light.kitchen' }, { nobody: 1 }],

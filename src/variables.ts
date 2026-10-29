@@ -2067,8 +2067,14 @@ export function diagnoseInstance(
   // variables that default's own value goes on to use.
   const values = variableValues([...resolveVariables(variables, template), ...normaliseVariables(supplements)]);
   const used = reachable(template, values);
-  if (reads !== undefined) {
-    for (const name of reachable({ card: reads } as TemplateConfig, values)) if (!used.includes(name)) used.push(name);
+  /*
+   * Each part read on its own, and only the ones there are. A card with neither part passed
+   * `[undefined, undefined]`, whose JSON inside a list is `[[null,null]]` - which reads as a
+   * placeholder, and every such card was told a variable "null,null" had no value.
+   */
+  for (const part of Array.isArray(reads) ? reads : [reads]) {
+    if (part === undefined || part === null) continue;
+    for (const name of reachable({ card: part } as TemplateConfig, values)) if (!used.includes(name)) used.push(name);
   }
   const isUsed = new Set(used);
 
