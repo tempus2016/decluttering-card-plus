@@ -1,6 +1,6 @@
 import { DeclutteringCardConfig, DeclutteringTemplateConfig, TemplateConfig } from './types';
 import { collectTemplates, collectAllTemplates } from './templates';
-import { entitySuggestions, publishedStub, publishedTemplates } from './picker';
+import { entitySuggestions, moveToFront, publishedStub, publishedTemplates } from './picker';
 import { loadLabels } from './labels';
 import { loadCategories, wantsCategories } from './categories';
 import { getLovelaceConfig } from './utils';
@@ -133,7 +133,9 @@ function preloadSuggestionTemplates(tries = 0): void {
 }
 
 if (defineElement(CARD_TAG, DeclutteringCard)) {
-  customCards.push({
+  // First in the list, so the By entity tab offers the templates that match an entity
+  // before the other custom cards' suggestions (idea 22).
+  moveToFront(customCards, {
     type: CARD_TAG,
     documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Card Plus',
@@ -142,7 +144,7 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     getEntitySuggestion: (hass: any, entityId: string) => suggestionsFor(hass, entityId, 'card'),
   });
-  customBadges.push({
+  moveToFront(customBadges, {
     type: CARD_TAG,
     documentationURL: DOCUMENTATION_URL,
     name: 'Decluttering Card Plus',
