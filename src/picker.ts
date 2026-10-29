@@ -105,3 +105,15 @@ export function publishedTemplates(templates: Record<string, TemplateConfig>): P
   }
   return out;
 }
+
+/**
+ * Puts an entry at the front of a list, in place - the add-card dialog walks
+ * `window.customCards` in order, so the first entry's suggestions are the first the By
+ * entity tab shows (idea 22). An entry not in the list yet is added at the front.
+ */
+export function moveToFront<T>(list: T[], entry: T): T[] {
+  const at = list.indexOf(entry);
+  if (at >= 0) list.splice(at, 1);
+  list.unshift(entry);
+  return list;
+}
