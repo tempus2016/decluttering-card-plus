@@ -1234,7 +1234,8 @@ export async function collectAllTemplates(
   const declaredHere = collectSharedDeclarations(ll);
   const letsHere = [...placeLet(ll, view, section), ...dashboardLet(ll)];
   const borrowed: Record<string, TemplateConfig> = {};
-  for (const config of configs) {
+  const origins: Record<string, string> = {};
+  for (const [index, config] of configs.entries()) {
     /*
      * A borrowed template is read as written and then given both sets of shared values,
      * this dashboard's first: it goes on working where it lives, because the lender's are
@@ -1248,6 +1249,7 @@ export async function collectAllTemplates(
     const declarations = [...declaredHere, ...collectSharedDeclarations(config)];
     const lets = [...letsHere, ...dashboardLet(config)];
     for (const [name, template] of Object.entries(collectRawTemplates(config))) {
+      origins[name] = sources[index];
       borrowed[name] = withDefaults(
         withSharedDeclarations(withDeclarationList(template), declarations),
         viewValues,
@@ -1256,7 +1258,25 @@ export async function collectAllTemplates(
       );
     }
   }
+  recordBorrowed(origins, Object.keys(local));
   return resolveExtends({ ...borrowed, ...local });
+}
+
+/*
+ * Which dashboard each borrowed template came from, as of the last read - for the card
+ * editor's template picker, which groups borrowed templates under their dashboard (idea 21).
+ * A name this dashboard defines itself wins the clash and is not borrowed.
+ */
+const BORROWED_FROM = new Map<string, string>();
+
+export function recordBorrowed(origins: Record<string, string>, ownNames: Iterable<string>): void {
+  BORROWED_FROM.clear();
+  const own = new Set(ownNames);
+  for (const [name, source] of Object.entries(origins)) if (!own.has(name)) BORROWED_FROM.set(name, source);
+}
+
+export function borrowedFrom(name: string): string | undefined {
+  return BORROWED_FROM.get(name);
 }
 
 /** A single template from this dashboard, without going to the network. */

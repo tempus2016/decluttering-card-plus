@@ -572,5 +572,12 @@
   "editor.preview.built_in": "Built in {time} from {template}. Updates as you type.",
   "editor.preview.changed_hint": "The line the last edit changed is highlighted.",
   "editor.preview.copy": "Copy",
-  "editor.preview.copied": "Copied"
+  "editor.preview.copied": "Copied",
+  "editor.link.edit_template": "Edit the template",
+  "editor.link.open_dashboard": "Open the other dashboard",
+  "editor.link.raw_editor": "Change it in the raw configuration editor, from the dashboard menu.",
+  "editor.link.cannot_open": "The template card sits inside another card, so it has to be opened from there.",
+  "editor.link.resume": "You left this card to edit {template}. Your unsaved changes were kept.",
+  "editor.link.resume_button": "Bring them back",
+  "editor.link.discard_button": "Discard them"
 }

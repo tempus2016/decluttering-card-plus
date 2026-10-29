@@ -19,6 +19,7 @@ import {
   withPickedEntity,
   deprecationOf,
   itemTemplatesOf,
+  borrowedFrom,
 } from './templates';
 import {
   diagnoseInstance,
@@ -61,6 +62,14 @@ import {
 } from './card-editor/advanced';
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { buildTime, previewLines, PreviewLine, previewModes, PreviewMode } from './card-editor/result-preview';
+import {
+  cardAtPath,
+  dashboardHref,
+  ReturnTicket,
+  stashReturn,
+  takeReturn,
+  templateCardPath,
+} from './card-editor/template-link';
 import { holdUndo } from './undo';
 import {
   currentViewIndex,
@@ -192,6 +201,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         color: var(--secondary-text-color);
         font-size: 0.9em;
       }
+      .hint a {
+        color: var(--primary-color);
+      }
       ha-alert {
         display: block;
         margin-bottom: 8px;
@@ -288,6 +300,14 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         gap: 8px;
         flex-wrap: wrap;
       }
+      .edit-template {
+        margin-left: 6px;
+      }
+      ha-alert .actions {
+        margin-top: 8px;
+        display: flex;
+        gap: 8px;
+      }
     `;
   }
 
@@ -311,6 +331,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _copied = false;
   private _lastYaml?: string;
   private _markedLines: PreviewLine[] = [];
+  @state() private _cannotOpen = false;
+  // Idea 20: unsaved changes left when this card was closed to edit its template.
+  @state() private _resume?: ReturnTicket;
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
@@ -357,7 +380,11 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
 
   public setConfig(config: DeclutteringCardConfig): void {
     // The first config is the card as the dashboard has it saved; every later one is an edit.
-    this._openedWith ??= config;
+    if (!this._openedWith) {
+      this._openedWith = config;
+      // Idea 20: this card was left to edit its template; its unsaved changes come back.
+      this._resume = takeReturn(config);
+    }
     this._config = config;
   }
 
@@ -467,8 +494,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
               }
             </ha-alert>`
       }
-      ${this._renderResult(template)} ${this._renderSource(template)} ${this._renderStartFromExample(template)}
-      ${this._renderDiagnostics(template, readable)} ${this._renderMatches(template)}
+      ${this._renderResume()} ${this._renderResult(template)} ${this._renderSource(template)}
+      ${this._renderStartFromExample(template)} ${this._renderDiagnostics(template, readable)}
+      ${this._renderMatches(template)}
       <ha-form
         .hass=${this.hass}
         .data=${this._formData(declarations)}
@@ -856,6 +884,106 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     });
   }
 
+  /* ------------------------------------------------------------ idea 20: the way to the template and back */
+
+  private _renderResume(): TemplateResult {
+    const ticket = this._resume;
+    if (!ticket) return html``;
+    return html`<ha-alert alert-type="info">
+      ${localize('editor.link.resume', { template: ticket.template }, this.hass)}
+      <div class="actions">
+        <ha-button
+          @click=${(): void => {
+            this._resume = undefined;
+            fireEvent(this, 'config-changed', { config: ticket.config as DeclutteringCardConfig });
+          }}
+        >
+          ${localize('editor.link.resume_button', undefined, this.hass)}
+        </ha-button>
+        <ha-button
+          @click=${(): void => {
+            this._resume = undefined;
+          }}
+        >
+          ${localize('editor.link.discard_button', undefined, this.hass)}
+        </ha-button>
+      </div>
+    </ha-alert>`;
+  }
+
+  /*
+   * Closes this dialog and opens the template card's. Home Assistant edits one card at a
+   * time, so the card's unsaved changes are kept and offered again when it is opened next.
+   */
+  private _openTemplate(name: string): void {
+    const panel = getLovelacePanel();
+    const path = templateCardPath(panel?.config ?? this._lovelace, name);
+    if (!panel || !path) {
+      this._cannotOpen = true;
+      return;
+    }
+    if (this._config) {
+      stashReturn({
+        config: this._config as Record<string, unknown>,
+        openedWith: this._openedWith as Record<string, unknown> | undefined,
+        template: name,
+      });
+    }
+    const original = cardAtPath(panel.config, path);
+    const root = document.querySelector('home-assistant') ?? document.body;
+    const open = (): void => {
+      fireEvent(root as HTMLElement, 'show-dialog', {
+        dialogTag: 'hui-dialog-edit-card',
+        dialogImport: () => Promise.resolve(),
+        dialogParams: {
+          lovelaceConfig: panel.config,
+          // Home Assistant 2025 and later edit a card by its config and a saver for it.
+          cardConfig: original,
+          saveCardConfig: (config: Record<string, unknown>) =>
+            panel.saveConfig(original ? replaceCard(panel.config, original, config) : panel.config),
+          // Earlier ones by its path on the dashboard.
+          saveConfig: (config: unknown) => panel.saveConfig(config),
+          path,
+        },
+      });
+    };
+    /*
+     * One edit dialog at a time: it has to be closed before it is shown again, and with
+     * unsaved changes closing first asks whether to leave - so the template opens once the
+     * dialog says it has closed, and not at all if the answer was to stay (round 1, B6).
+     */
+    const dialog = editDialogOf(this) as
+      | (Element & {
+          closeDialog?: () => boolean | void;
+          _discardDirtyStateChanges?: () => void;
+          _dirty?: boolean;
+        })
+      | undefined;
+    if (!dialog) {
+      open();
+      return;
+    }
+    /*
+     * The unsaved change is already kept for "Bring them back", so the dialog has nothing to
+     * ask about: without this Home Assistant 2026.7's dialog stops on "Stay or leave?" and
+     * the template never opens (round 2, idea 20). Older dialogs kept the flag as _dirty.
+     */
+    if (this._config) {
+      dialog._discardDirtyStateChanges?.();
+      if ('_dirty' in dialog) dialog._dirty = false;
+    }
+    let opened = false;
+    const once = (): void => {
+      if (opened) return;
+      opened = true;
+      setTimeout(open, 0);
+    };
+    dialog.addEventListener('dialog-closed', once, { once: true });
+    const closedNow = dialog.closeDialog?.();
+    // A dialog that closed without saying so - an older one - is not waited on for ever.
+    if (closedNow !== false) setTimeout(once, 400);
+  }
+
   /*
    * A repeat inside one card stays inside that card's section, however wide the screen.
    * Offered only for a card sitting straight in a section of an ordinary sections view, as
@@ -949,10 +1077,24 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
 
     const location = findTemplateLocation(this._lovelace, name);
     if (!location) {
-      return html`<p class="hint">${localize('editor.source_borrowed', undefined, this.hass)}</p>`;
+      // Borrowed: the dashboard it comes from is where it is edited (idea 20).
+      const from = borrowedFrom(name);
+      return html`<p class="hint">
+        ${localize('editor.source_borrowed', undefined, this.hass)}
+        ${
+          from
+            ? html`<a href=${dashboardHref(from)} target="_blank" rel="noreferrer"
+                >${localize('editor.link.open_dashboard', undefined, this.hass)}</a
+              >`
+            : html``
+        }
+      </p>`;
     }
     if (location.declared || !location.view) {
-      return html`<p class="hint">${localize('editor.source_declared', undefined, this.hass)}</p>`;
+      return html`<p class="hint">
+        ${localize('editor.source_declared', undefined, this.hass)}
+        ${localize('editor.link.raw_editor', undefined, this.hass)}
+      </p>`;
     }
 
     const { view } = location;
@@ -964,6 +1106,16 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       ${before}<a href=${`${dashboard}/${view.path || view.index}`} target="_blank" rel="noreferrer"
         >${view.title || view.path || localize('editor.untitled_view', undefined, this.hass)}</a
       >${after}
+      <a
+        href="#"
+        class="edit-template"
+        @click=${(ev: Event): void => {
+          ev.preventDefault();
+          this._openTemplate(name);
+        }}
+        >${localize('editor.link.edit_template', undefined, this.hass)}</a
+      >
+      ${this._cannotOpen ? html`<br />${localize('editor.link.cannot_open', undefined, this.hass)}` : html``}
     </p>`;
   }
 

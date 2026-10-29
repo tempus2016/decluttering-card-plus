@@ -572,5 +572,12 @@
   "editor.preview.built_in": "Construido en {time} desde {template}. Se actualiza mientras escribes.",
   "editor.preview.changed_hint": "La línea que cambió la última edición está resaltada.",
   "editor.preview.copy": "Copiar",
-  "editor.preview.copied": "Copiado"
+  "editor.preview.copied": "Copiado",
+  "editor.link.edit_template": "Editar la plantilla",
+  "editor.link.open_dashboard": "Abrir el otro panel",
+  "editor.link.raw_editor": "Cámbiala en el editor de configuración sin procesar, desde el menú del panel.",
+  "editor.link.cannot_open": "La tarjeta de plantilla está dentro de otra tarjeta, así que hay que abrirla desde allí.",
+  "editor.link.resume": "Dejaste esta tarjeta para editar {template}. Tus cambios sin guardar se conservaron.",
+  "editor.link.resume_button": "Recuperarlos",
+  "editor.link.discard_button": "Descartarlos"
 }

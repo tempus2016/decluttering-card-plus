@@ -572,5 +572,12 @@
   "editor.preview.built_in": "In {time} gebouwd uit {template}. Werkt bij terwijl je typt.",
   "editor.preview.changed_hint": "De regel die de laatste bewerking veranderde is gemarkeerd.",
   "editor.preview.copy": "Kopiëren",
-  "editor.preview.copied": "Gekopieerd"
+  "editor.preview.copied": "Gekopieerd",
+  "editor.link.edit_template": "Sjabloon bewerken",
+  "editor.link.open_dashboard": "Open het andere dashboard",
+  "editor.link.raw_editor": "Wijzig het in de ruwe configuratie-editor, via het dashboardmenu.",
+  "editor.link.cannot_open": "De sjabloonkaart zit in een andere kaart en moet daar geopend worden.",
+  "editor.link.resume": "Je verliet deze kaart om {template} te bewerken. Je niet-opgeslagen wijzigingen zijn bewaard.",
+  "editor.link.resume_button": "Terughalen",
+  "editor.link.discard_button": "Weggooien"
 }
