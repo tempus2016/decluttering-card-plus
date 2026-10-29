@@ -565,5 +565,12 @@
   "editor.matches_views_one": "une vue",
   "editor.matches_views_many": "vues",
   "editor.matches_items_one": "un élément",
-  "editor.matches_items_many": "éléments"
+  "editor.matches_items_many": "éléments",
+  "editor.preview.header": "Ce qu'elle construit",
+  "editor.preview.rendered": "Rendu",
+  "editor.preview.yaml": "YAML",
+  "editor.preview.built_in": "Construit en {time} depuis {template}. Se met à jour pendant la saisie.",
+  "editor.preview.changed_hint": "La ligne modifiée par la dernière édition est surlignée.",
+  "editor.preview.copy": "Copier",
+  "editor.preview.copied": "Copié"
 }

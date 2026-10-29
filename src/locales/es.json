@@ -565,5 +565,12 @@
   "editor.matches_views_one": "una vista",
   "editor.matches_views_many": "vistas",
   "editor.matches_items_one": "un elemento",
-  "editor.matches_items_many": "elementos"
+  "editor.matches_items_many": "elementos",
+  "editor.preview.header": "Lo que construye",
+  "editor.preview.rendered": "Renderizado",
+  "editor.preview.yaml": "YAML",
+  "editor.preview.built_in": "Construido en {time} desde {template}. Se actualiza mientras escribes.",
+  "editor.preview.changed_hint": "La línea que cambió la última edición está resaltada.",
+  "editor.preview.copy": "Copiar",
+  "editor.preview.copied": "Copiado"
 }

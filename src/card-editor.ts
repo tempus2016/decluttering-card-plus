@@ -45,7 +45,8 @@ import { copyLabel, isRegistrySource, registryNames, resolveRegistryItems } from
 import { categoryRegistry, loadCategories, wantsCategories } from './categories';
 import { renderTemplateOnce, sourceTemplate, TemplateRender, templateList } from './template-source';
 import { findRepeatingCard, sectionPerCopy } from './strategy';
-import { getLovelaceConfig, getLovelacePanel } from './utils';
+import { copyText, getLovelaceConfig, getLovelacePanel } from './utils';
+import { toYaml } from './yaml';
 import { localize, onLanguageLoaded } from './localize';
 import { rebuildOnEntities } from './rebuild';
 import {
@@ -59,6 +60,7 @@ import {
   OnErrorMode,
 } from './card-editor/advanced';
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
+import { buildTime, previewLines, PreviewLine, previewModes, PreviewMode } from './card-editor/result-preview';
 import { holdUndo } from './undo';
 import {
   currentViewIndex,
@@ -222,6 +224,70 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       .advanced-body {
         padding: 8px 8px 0;
       }
+      .preview {
+        border: 1px solid var(--divider-color);
+        border-radius: 12px;
+        padding: 12px 16px;
+        margin: 0 0 16px;
+        background: var(--card-background-color);
+      }
+      .preview-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0 0 10px;
+      }
+      .preview-title {
+        flex: 1;
+        font-weight: 500;
+      }
+      .segmented {
+        display: inline-flex;
+        border: 1px solid var(--divider-color);
+        border-radius: 18px;
+        overflow: hidden;
+      }
+      .segmented button {
+        border: 0;
+        background: transparent;
+        color: var(--secondary-text-color);
+        font: inherit;
+        padding: 6px 14px;
+        cursor: pointer;
+      }
+      .segmented button.on {
+        background: rgba(var(--rgb-primary-color), 0.12);
+        color: var(--primary-color);
+        font-weight: 500;
+      }
+      .rendered {
+        margin: 0 0 8px;
+      }
+      pre.yaml {
+        margin: 0 0 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--secondary-background-color);
+        font-family: var(--ha-font-family-code, monospace);
+        font-size: 12.5px;
+        line-height: 1.5;
+        overflow: auto;
+        max-height: 320px;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      pre.yaml .l {
+        display: block;
+        white-space: pre;
+      }
+      pre.yaml .l.changed {
+        background: rgba(var(--rgb-accent-color, 255, 152, 0), 0.18);
+      }
+      .preview-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
     `;
   }
 
@@ -240,6 +306,11 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   // Idea 14: "a card of my choosing" chosen but no card picked yet - nothing to write, so
   // the choice lives here until the slot is filled (round 1, B2).
   @state() private _onErrorMode?: OnErrorMode;
+  // Idea 19: how the result is shown, and the lines the last edit changed.
+  @state() private _previewMode: PreviewMode = 'yaml';
+  @state() private _copied = false;
+  private _lastYaml?: string;
+  private _markedLines: PreviewLine[] = [];
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
@@ -396,7 +467,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
               }
             </ha-alert>`
       }
-      ${this._renderSource(template)} ${this._renderStartFromExample(template)}
+      ${this._renderResult(template)} ${this._renderSource(template)} ${this._renderStartFromExample(template)}
       ${this._renderDiagnostics(template, readable)} ${this._renderMatches(template)}
       <ha-form
         .hass=${this.hass}
@@ -408,7 +479,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         @value-changed=${this._valueChanged}
       ></ha-form>
       ${this._renderCardVariables(declarations)} ${this._renderEmptySlot(repeatable)} ${this._renderAdvanced()}
-      ${this._renderResult(template)} ${this._renderSectionPerCopy()}
+      ${this._renderSectionPerCopy()}
       <decluttering-card-plus-health .hass=${this.hass} .lovelace=${this._lovelace}></decluttering-card-plus-health>
     `;
   }
@@ -588,6 +659,29 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     })}`;
   }
 
+  /*
+   * The copies a registry repeat would build, for the preview (round 1, B5): the first one
+   * stands for all of them, as for a hand-written list. Nothing until a Jinja source has
+   * rendered, and nothing when the source cannot be read - the matches line says why.
+   */
+  private _registryItemsForPreview(): unknown[] | undefined {
+    const source = this._config?.for_each_from;
+    if (!this.hass || !isRegistrySource(source)) return undefined;
+    const template = sourceTemplate(source);
+    if (template !== undefined && !Object.prototype.hasOwnProperty.call(this._renderedTemplates, template)) {
+      return undefined;
+    }
+    try {
+      const matched = resolveRegistryItems(this.hass, source, {
+        ...sourceContext(this._lovelace),
+        rendered: this._renderedTemplates,
+      });
+      return matched.length ? matched : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   private _cardVariableChanged(name: string, ev?: CustomEvent): void {
     ev?.stopPropagation();
     const value = ev?.detail?.config;
@@ -609,7 +703,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     if (!this._config) return html``;
     // for_each renders the same template once per item, so one copy stands for all of
     // them - showing every copy would bury the thing you opened this to look at.
-    const items = forEachItems(this._config.for_each);
+    const items = forEachItems(this._config.for_each) ?? this._registryItemsForPreview();
     let variables = items?.length
       ? forEachVariables(items[0], this._config.variables, 0, items.length)
       : this._config.variables;
@@ -637,13 +731,33 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     const content = thingContent(template);
 
     let resolved: unknown;
+    const started = performance.now();
     try {
       // Quietly: the editor re-renders on every keystroke, and the card itself already
       // says what it could not resolve when it renders for real.
       // A state the card rebuilds on is read as it stands now, as the card itself would.
       const scoped = withStateScope(this.hass, rebuildOnEntities(this._config.rebuild_on));
+      // With the dashboard's item templates, as the card has them, so a `with:` or `repeat:`
+      // of one is filled in here too rather than shown as written.
+      const ll = this._lovelace ?? getLovelaceConfig();
       resolved = applyOverride(
-        deepReplace(variables, template, content, templateName, scoped, true),
+        deepReplace(
+          variables,
+          template,
+          content,
+          templateName,
+          scoped,
+          true,
+          undefined,
+          0,
+          undefined,
+          undefined,
+          false,
+          {
+            itemTemplates: itemTemplatesOf(ll),
+            context: sourceContext(ll),
+          },
+        ),
         this._config,
         thingType,
       );
@@ -652,24 +766,78 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         ${localize('editor.result_error', { error: String(err) }, this.hass)}
       </ha-alert>`;
     }
+    const finished = performance.now();
 
     const copies = items?.length ? localize('editor.result_copies', { total: items.length }, this.hass) : '';
     // Translated whole, then split so the [[name]] in the middle can be set in code.
     const [hintBefore, hintAfter] = splitAt(localize('editor.result_hint', { kind: thingType }, this.hass), '[[name]]');
 
+    /*
+     * Idea 19: live, at the top, as the card or as YAML with the line the last edit changed
+     * lit. The marks are kept until the next change, so a state update does not wipe them.
+     */
+    const yaml = toYaml(resolved);
+    if (yaml !== this._lastYaml) {
+      this._markedLines = previewLines(this._lastYaml, yaml);
+      this._lastYaml = yaml;
+    }
+    const modes = previewModes(thingType);
+    const mode: PreviewMode = modes.includes(this._previewMode) ? this._previewMode : 'yaml';
+    const canEject =
+      !items?.length && !isRegistrySource(this._config.for_each_from) && resolved && typeof resolved === 'object';
+
     return html`
-      <ha-expansion-panel outlined>
-        <span slot="header">${localize('editor.result_header', undefined, this.hass)}${copies}</span>
-        <div class="result">
-          <p class="hint">${hintBefore}<code>[[name]]</code>${hintAfter}</p>
-          <ha-yaml-editor .hass=${this.hass} .defaultValue=${resolved} read-only></ha-yaml-editor>
+      <div class="preview">
+        <div class="preview-head">
+          <span class="preview-title">${localize('editor.preview.header', undefined, this.hass)}${copies}</span>
+          ${
+            modes.length > 1
+              ? html`<div class="segmented" role="group">
+                  ${modes.map(
+                    (each) =>
+                      html`<button
+                        type="button"
+                        class=${each === mode ? 'on' : ''}
+                        aria-pressed=${each === mode ? 'true' : 'false'}
+                        @click=${(): void => {
+                          this._previewMode = each;
+                        }}
+                      >
+                        ${localize(`editor.preview.${each}`, undefined, this.hass)}
+                      </button>`,
+                  )}
+                </div>`
+              : html``
+          }
+        </div>
+        ${
+          mode === 'rendered'
+            ? html`<div class="rendered">
+                <hui-card .hass=${this.hass} .config=${resolved} .preview=${true}></hui-card>
+              </div>`
+            : html`<pre class="yaml">
+${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed' : ''}">${line.text}</span>`)}</pre>`
+        }
+        <p class="hint">
+          ${localize('editor.preview.built_in', { time: buildTime(started, finished), template: templateName ?? '' }, this.hass)}
+          ${mode === 'yaml' ? localize('editor.preview.changed_hint', undefined, this.hass) : ''}
+        </p>
+        <p class="hint">${hintBefore}<code>[[name]]</code>${hintAfter}</p>
+        <div class="preview-actions">
+          ${
+            mode === 'yaml'
+              ? html`<ha-button @click=${(): void => this._copyYaml(yaml)}>
+                  ${localize(this._copied ? 'editor.preview.copied' : 'editor.preview.copy', undefined, this.hass)}
+                </ha-button>`
+              : html``
+          }
           ${
             /*
              * Leaving should be as clean as arriving: the card becomes exactly what it
              * builds, and the template is out of its life. Only for a single copy - a
              * repeat ejecting to a pile of cards is the template earning its keep.
              */
-            !items?.length && !isRegistrySource(this._config.for_each_from) && resolved && typeof resolved === 'object'
+            canEject
               ? html`
                   <ha-button @click=${(): void => this._eject(resolved)}>
                     ${localize(this._ejectPending ? 'editor.eject_confirm' : 'editor.eject', undefined, this.hass)}
@@ -678,8 +846,14 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
               : html``
           }
         </div>
-      </ha-expansion-panel>
+      </div>
     `;
+  }
+  private _copyYaml(yaml: string): void {
+    void copyText(yaml).then((ok) => {
+      this._copied = ok;
+      if (ok) setTimeout(() => (this._copied = false), 1500);
+    });
   }
 
   /*

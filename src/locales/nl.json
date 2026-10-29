@@ -565,5 +565,12 @@
   "editor.matches_views_one": "één weergave",
   "editor.matches_views_many": "weergaven",
   "editor.matches_items_one": "één item",
-  "editor.matches_items_many": "items"
+  "editor.matches_items_many": "items",
+  "editor.preview.header": "Wat hij bouwt",
+  "editor.preview.rendered": "Weergave",
+  "editor.preview.yaml": "YAML",
+  "editor.preview.built_in": "In {time} gebouwd uit {template}. Werkt bij terwijl je typt.",
+  "editor.preview.changed_hint": "De regel die de laatste bewerking veranderde is gemarkeerd.",
+  "editor.preview.copy": "Kopiëren",
+  "editor.preview.copied": "Gekopieerd"
 }
