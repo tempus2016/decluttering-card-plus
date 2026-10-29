@@ -20,7 +20,8 @@ import { isRegistrySource, registryNames } from './registry';
 
 // A `with:` or `repeat:` placeholder: the name it fills in, which step, and the argument -
 // a `repeat:` may end in `|flat` (#311).
-const STRUCTURE_PLACEHOLDER = `\\[\\[([^|[\\]?]+)\\|(${WITH_STEP}|${REPEAT_STEP}):([^|\\]]*?)(?:\\|${FLAT_STEP})?\\??\\]\\]`;
+// Either may stand bare (#314), which gives the argument as "".
+const STRUCTURE_PLACEHOLDER = `\\[\\[([^|[\\]?]+)\\|(${WITH_STEP}|${REPEAT_STEP})(?::([^|\\]]*?))?(?:\\|${FLAT_STEP})?\\??\\]\\]`;
 
 /** The names the items of a written-out list set: a mapping's keys, or `item` and `entity`. */
 function itemNames(items: unknown[]): string[] {
@@ -45,12 +46,12 @@ function itemNames(items: unknown[]): string[] {
  */
 export function structureNames(template: TemplateConfig | undefined, extra?: VariablesConfig[]): string[] {
   const json = JSON.stringify(template ?? {});
-  if (typeof json !== 'string' || (!json.includes(`|${WITH_STEP}:`) && !json.includes(`|${REPEAT_STEP}:`))) return [];
+  if (typeof json !== 'string' || (!json.includes(`|${WITH_STEP}`) && !json.includes(`|${REPEAT_STEP}`))) return [];
   const values = variableValues([...normaliseVariables(extra), ...resolveVariables(undefined, template)]);
   const names = new Set<string>();
   const pattern = new RegExp(STRUCTURE_PLACEHOLDER, 'g');
   for (let match = pattern.exec(json); match !== null; match = pattern.exec(json)) {
-    const [, , step, arg] = match;
+    const [, , step, arg = ''] = match;
     if (step === WITH_STEP) {
       if (arg.includes('=')) {
         for (const pair of arg.split(',')) {

@@ -2152,6 +2152,51 @@ check(
   const run = (content, v = vars, x = extras) =>
     deepReplace(v, {}, content, 'tpl', hass227, true, undefined, 0, undefined, undefined, false, x);
 
+  // Bare `with` and `repeat` (#314).
+  const own = {
+    itemTemplates: {
+      ...extras.itemTemplates,
+      listed: { for_each: '[[list_in]]', item: { entity: '[[entity]]', name: '[[name]]' } },
+      written: { for_each: [{ name: 'One' }, { name: 'Two' }], item: '[[name]] [[index]]/[[count]]' },
+      found: { for_each_from: { domain: '[[search_domain]]' }, item: { entity: '[[entity]]' } },
+      none: { item: '[[name]]' },
+    },
+  };
+  check(
+    'a bare with fills the body from the variables already there (#314)',
+    run({ a: '[[row|with]]', b: '[[row|with:]]' }, [...vars, { entity: 'light.a' }, { name: 'Lamp' }]),
+    { a: { entity: 'light.a', name: 'Lamp' }, b: { entity: 'light.a', name: 'Lamp' } },
+  );
+  check(
+    "a bare repeat runs over the item template's own for_each, filled from the variables (#314)",
+    run(
+      { entities: ['[[listed|repeat]]', { type: 'divider' }], rows: '[[written|repeat]]' },
+      [
+        ...vars,
+        {
+          list_in: [
+            { entity: 'light.a', name: 'A' },
+            { entity: 'light.b', name: 'B' },
+          ],
+        },
+      ],
+      own,
+    ),
+    {
+      entities: [{ entity: 'light.a', name: 'A' }, { entity: 'light.b', name: 'B' }, { type: 'divider' }],
+      rows: ['One 1/2', 'Two 2/2'],
+    },
+  );
+  check(
+    "a bare repeat runs over the item template's own for_each_from (#314)",
+    run({ entities: '[[found|repeat]]' }, [...vars, { search_domain: 'light' }], own),
+    { entities: run({ e: '[[rowa|repeat:lights]]' }).e.map(({ entity }) => ({ entity })) },
+  );
+  check(
+    'a bare repeat on a body with no source of its own is left showing',
+    run({ a: '[[none|repeat]]', b: '[[row|repeat]]' }, vars, own),
+    { a: '[[none|repeat]]', b: '[[row|repeat]]' },
+  );
   check(
     'with: fills a mapping variable in with literal pairs',
     run({ entities: ['[[row|with:entity=light.a,name=Lamp]]'] }),
