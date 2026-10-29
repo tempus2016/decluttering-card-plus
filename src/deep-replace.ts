@@ -5,6 +5,7 @@ import { compile, Piece, SITE_SOURCE } from './compiled';
 import { warn, WarningKind } from './warnings';
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import {
+  forEachItems,
   answersUnset,
   applyTransform,
   forEachVariables,
@@ -978,6 +979,39 @@ function deepReplace(
     return undefined;
   };
   /*
+   * What a bare `[[row|repeat]]` runs over (#314): the item template's own `for_each` - a list,
+   * or a placeholder that fills to one - or its `for_each_from`, filled in from the variables
+   * and its own defaults the way a named source is.
+   */
+  const ownItemsOf = (name: string, template: TemplateConfig): { items: unknown[]; fromHa: boolean } | undefined => {
+    const own = (raw: unknown): unknown => {
+      const below = deeper(name, JSON.stringify(raw));
+      if (!below) return raw;
+      return deepReplace(
+        variableArray,
+        template,
+        raw,
+        templateName,
+        hass,
+        true,
+        undefined,
+        depth,
+        undefined,
+        undefined,
+        false,
+        below,
+      );
+    };
+    if (template.for_each_from !== undefined) {
+      const source = own(template.for_each_from);
+      if (!isRegistrySource(source)) return undefined;
+      return { items: resolveRegistryItems(hass, source, extras?.context), fromHa: true };
+    }
+    if (template.for_each === undefined) return undefined;
+    const items = forEachItems(own(template.for_each));
+    return items ? { items, fromHa: false } : undefined;
+  };
+  /*
    * A registry source is filled in from the variables before it is looked up, so a filter
    * can be built from them - `entities: binary_sensor.[[name]]_*` - and a repeat inside
    * another repeat's copy can filter by that copy's values (#309).
@@ -1085,7 +1119,7 @@ function deepReplace(
           trace?.dropped.push(localize('trace.repeat_missing', { placeholder: `[[${key}]]`, arg }));
           return { value: [], splice: true };
         }
-        const listed = itemsOf(arg);
+        const listed = arg ? itemsOf(arg) : ownItemsOf(name, found.template);
         if (!listed) return { refused: localize('warn.not_a_list_source', { arg: arg || '""' }) };
         if (budget.fills + listed.items.length > MAX_FILLS) {
           return { refused: localize('warn.too_many_fills', { max: MAX_FILLS }) };

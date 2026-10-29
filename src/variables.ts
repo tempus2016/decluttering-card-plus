@@ -1065,9 +1065,10 @@ const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, C
  * waits for `[[offset]]` to be substituted and then reads the number it became, rather than
  * swallowing half of it as an argument that is not one. A `with:` or `repeat:` argument
  * does too: `with:entity=light.[[which]]` was otherwise cut off at the inner brackets.
+ * Those two may also stand bare (#314): a `with` laying nothing over the variables, a
+ * `repeat` over the item template's own `for_each` or `for_each_from`.
  */
-const BRACKETLESS_STEPS = [...NUMBER_PARAM_STEPS, ...STRUCTURE_PARAM_STEPS];
-const PARAM_STEP = `(?:(?:${PARAM_PREFIXES.join('|')}):${TEXT_ARG}|(?:${BRACKETLESS_STEPS.join('|')}):[^|\\][]*)`;
+const PARAM_STEP = `(?:(?:${PARAM_PREFIXES.join('|')}):${TEXT_ARG}|(?:${NUMBER_PARAM_STEPS.join('|')}):[^|\\][]*|(?:${STRUCTURE_PARAM_STEPS.join('|')})(?::[^|\\][]*)?)`;
 
 /** The parameterised transform a step asks for, or undefined when it is not one. */
 function paramTransform(
@@ -1866,7 +1867,7 @@ function usesStep(
  * those fill in, and so on. A step inside one ends up in the card as surely as one written
  * in the template itself, so whether the card has to build again reads them too (#235).
  */
-function itemTemplatesReached(
+export function itemTemplatesReached(
   template: TemplateConfig | undefined,
   itemTemplates: Record<string, TemplateConfig> | undefined,
 ): TemplateConfig[] {
@@ -2056,6 +2057,10 @@ export function diagnoseInstance(
   // Parts of the card outside the template that are filled in from its variables too: its
   // for_each_from and its own on_error card. What they read is used, and missing if unset.
   reads?: unknown,
+  // The item templates the template fills in (#314). What they read counts as used, so a
+  // bare `[[row|with]]` drawing on the card's own variables does not call them unused - but
+  // never as missing, since a `with:` or a repeat's items may be what gives those names.
+  bodies?: unknown[],
 ): { missing: string[]; unused: string[]; required: string[] } {
   // Supplements go after full resolution, so they only fill names nothing else defines.
   // Folded in earlier, a supplement would shadow a declared default and hide the
@@ -2070,7 +2075,10 @@ export function diagnoseInstance(
   // What the card wrote, not the dotted names derived from its mappings - and a mapping
   // reached only through one of its keys (`[[room.light]]`) is still used.
   const passed = ownVariables(variables);
-  const reached = (name: string): boolean => isUsed.has(name) || used.some((each) => each.startsWith(name + '.'));
+  const readByBodies = new Set<string>();
+  for (const body of bodies ?? []) for (const name of placeholdersIn(body)) readByBodies.add(name);
+  const reached = (name: string): boolean =>
+    isUsed.has(name) || readByBodies.has(name) || used.some((each) => each.startsWith(name + '.'));
   const unused: string[] = [];
   for (const entry of passed) {
     const name = firstKey(entry);
@@ -2218,6 +2226,8 @@ export const KNOWN_STEPS: string[] = [
     EXISTS_STEP,
     IF_EXISTS_STEP,
     STATE_STEP,
+    // Bare, as `[[row|with]]` and `[[row|repeat]]` (#314); with an argument they are below.
+    ...STRUCTURE_PARAM_STEPS,
     ...NUMBER_BARE_STEPS,
     ...LIST_BARE_STEPS,
     FLAT_STEP,

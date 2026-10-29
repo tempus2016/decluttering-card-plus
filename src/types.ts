@@ -92,6 +92,10 @@ export interface TemplateConfig {
    * once per item. Takes `default:`, `let:` and `variables:` like any template.
    */
   item?: unknown;
+  /** For an item template: what a bare `[[name|repeat]]` repeats over - a list, or a placeholder that fills to one. */
+  for_each?: unknown;
+  /** For an item template: the registry source a bare `[[name|repeat]]` repeats over. */
+  for_each_from?: unknown;
   card?: any;
   row?: any;
   element?: any;

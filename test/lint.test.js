@@ -76,6 +76,11 @@ check(
   [],
 );
 check(
+  'a bare with and repeat are known steps (#314)',
+  lint({ default: [{ row: { a: 1 } }], card: { a: '[[row|with]]', b: ['[[row|repeat]]', '[[row|repeat|flat]]'] } }),
+  [],
+);
+check(
   'the #210 steps are known, and a turned-round if: names its variable',
   lint({
     default: [{ room: 'x' }, { mode: 'a' }],

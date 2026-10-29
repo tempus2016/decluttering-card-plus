@@ -1572,6 +1572,17 @@ check(
   ['nobody'],
 );
 check(
+  'a variable only an item template reads is not unused, nor is anything it reads called missing (#314)',
+  diagnoseInstance(
+    [{ entity: 'light.kitchen' }, { nobody: 1 }],
+    { card: { type: 'entities', entities: ['[[row|with]]'] } },
+    [{ row: null }],
+    undefined,
+    [{ item: { entity: '[[entity]]', name: '[[name]]' } }],
+  ),
+  { missing: [], unused: ['nobody'], required: [] },
+);
+check(
   'and one the source reads but the card leaves unset is missing',
   diagnoseInstance([], { card: { type: 'tile', entity: '[[entity]]' } }, [{ entity: null }], [{ area: '[[room]]' }])
     .missing,
