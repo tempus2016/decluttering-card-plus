@@ -133,6 +133,9 @@ export interface FormSchemaEntry {
   name: string;
   label?: string;
   helper?: string;
+  /** A Home Assistant selector, as ha-form reads it. */
+  selector?: Record<string, unknown>;
+  required?: boolean;
 }
 
 export type LovelaceThing = LovelaceCard | LovelaceElement | LovelaceRow;

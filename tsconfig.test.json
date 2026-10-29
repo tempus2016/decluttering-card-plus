@@ -48,6 +48,7 @@
     "src/warnings.ts",
     "src/compiled.ts",
     "src/registry-index.ts",
-    "src/card-editor/summarise.ts"
+    "src/card-editor/summarise.ts",
+    "src/card-editor/advanced.ts"
   ]
 }

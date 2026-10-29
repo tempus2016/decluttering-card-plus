@@ -48,6 +48,16 @@ import { findRepeatingCard, sectionPerCopy } from './strategy';
 import { getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize, onLanguageLoaded } from './localize';
 import { rebuildOnEntities } from './rebuild';
+import {
+  advancedCount,
+  advancedData,
+  advancedSchema,
+  AdvancedData,
+  applyAdvanced,
+  onErrorCard,
+  withOnErrorCard,
+  OnErrorMode,
+} from './card-editor/advanced';
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { holdUndo } from './undo';
 import {
@@ -204,6 +214,14 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       .examples {
         margin-bottom: 8px;
       }
+      .advanced .count {
+        color: var(--secondary-text-color);
+        font-size: 0.85em;
+        margin-left: 8px;
+      }
+      .advanced-body {
+        padding: 8px 8px 0;
+      }
     `;
   }
 
@@ -219,6 +237,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _ejectPending = false;
   @state() private _sectionsPending = false;
   @state() private _sectionsError?: string;
+  // Idea 14: "a card of my choosing" chosen but no card picked yet - nothing to write, so
+  // the choice lives here until the slot is filled (round 1, B2).
+  @state() private _onErrorMode?: OnErrorMode;
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
@@ -386,10 +407,83 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
       ></ha-form>
-      ${this._renderCardVariables(declarations)} ${this._renderEmptySlot(repeatable)} ${this._renderResult(template)}
-      ${this._renderSectionPerCopy()}
+      ${this._renderCardVariables(declarations)} ${this._renderEmptySlot(repeatable)} ${this._renderAdvanced()}
+      ${this._renderResult(template)} ${this._renderSectionPerCopy()}
       <decluttering-card-plus-health .hass=${this.hass} .lovelace=${this._lovelace}></decluttering-card-plus-health>
     `;
+  }
+
+  /*
+   * Idea 14: the settings that were YAML-only, in one expandable at the bottom. Collapsed by
+   * default, so a card that uses none of them looks exactly as it did; the summary says how
+   * many are set so a card with a style or a fallback shows it without opening.
+   */
+  private _renderAdvanced(): TemplateResult {
+    if (!this._config) return html``;
+    const count = advancedCount(this._config);
+    const written = advancedData(this._config);
+    // The chosen mode wins over what is written while the fallback card is still unpicked.
+    const data =
+      this._onErrorMode && written.on_error_mode !== 'card'
+        ? { ...written, on_error_mode: this._onErrorMode }
+        : written;
+    if (written.on_error_mode === 'card' && this._onErrorMode) this._onErrorMode = undefined;
+    const fallback = onErrorCard(this._config);
+    const CardSlot = unsafeStatic(CARD_SLOT_TAG);
+    return html`
+      <ha-expansion-panel outlined class="advanced">
+        <span slot="header">
+          ${localize('editor.advanced.header', undefined, this.hass)}
+          <span class="count">
+            ${
+              count === 0
+                ? ''
+                : count === 1
+                  ? localize('editor.advanced.count_one', undefined, this.hass)
+                  : localize('editor.advanced.count_many', { count }, this.hass)
+            }
+          </span>
+        </span>
+        <div class="advanced-body">
+          <ha-form
+            .hass=${this.hass}
+            .data=${data}
+            .schema=${advancedSchema(this.hass)}
+            .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+            .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+            @value-changed=${this._advancedChanged}
+          ></ha-form>
+          ${
+            data.on_error_mode === 'card'
+              ? staticHtml`<${CardSlot}
+                  .hass=${this.hass}
+                  .lovelace=${this._lovelace}
+                  .value=${fallback}
+                  .label=${localize('editor.advanced.fallback_label', undefined, this.hass)}
+                  .emptyHint=${localize('editor.advanced.fallback_hint', undefined, this.hass)}
+                  @value-changed=${this._fallbackChanged}
+                ></${CardSlot}>`
+              : html``
+          }
+        </div>
+      </ha-expansion-panel>
+    `;
+  }
+
+  private _advancedChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    if (!this._config) return;
+    const value = ev.detail.value as AdvancedData;
+    // "A card of my choosing" writes nothing until a card is picked; remember it was chosen.
+    this._onErrorMode = value.on_error_mode === 'card' && !onErrorCard(this._config) ? 'card' : undefined;
+    fireEvent(this, 'config-changed', { config: applyAdvanced(this._config, value) });
+  }
+
+  private _fallbackChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    if (!this._config) return;
+    if (ev.detail.value) this._onErrorMode = undefined;
+    fireEvent(this, 'config-changed', { config: withOnErrorCard(this._config, ev.detail.value) });
   }
 
   /*
