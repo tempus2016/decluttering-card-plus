@@ -845,8 +845,15 @@ export function stateAllowed(hass: any, entityId: string): boolean {
 const DEFAULT_PREFIX = 'default:';
 const OR_PREFIX = 'or:';
 
+/*
+ * A text step's argument may hold a single `[` (`replace:[:(`), but not a placeholder's `[[`:
+ * `suffix:_[[type]]_occupancy` waits for `[[type]]` the same way, where it used to stop at the
+ * first `]` and leave `_[[type` as the argument.
+ */
+const TEXT_ARG = `(?:[^|\\][]|\\[(?!\\[))*`;
+
 // Anything but a bar or a bracket, so `default:Living Room` reads as it is written.
-const DEFAULT_STEP = `${DEFAULT_PREFIX}[^|\\]]*`;
+const DEFAULT_STEP = `${DEFAULT_PREFIX}${TEXT_ARG}`;
 const OR_STEP = `${OR_PREFIX}[A-Za-z0-9_-]+`;
 
 /** Whether a step supplies a value rather than reshaping one. */
@@ -872,7 +879,7 @@ export function orTarget(step: string): string | undefined {
  */
 const IF_PREFIX = 'if:';
 
-const IF_STEP = `${IF_PREFIX}!?[A-Za-z0-9_.-]+(?:!?=[^|\\]]*)?`;
+const IF_STEP = `${IF_PREFIX}!?[A-Za-z0-9_.-]+(?:!?=${TEXT_ARG})?`;
 
 /** An `if:` step taken apart: the variable it reads, the text it compares with, and whether it is turned round. */
 function parseCondition(step: string): { name: string; text?: string; negated: boolean } {
@@ -1052,7 +1059,7 @@ const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, C
  * does too: `with:entity=light.[[which]]` was otherwise cut off at the inner brackets.
  */
 const BRACKETLESS_STEPS = [...NUMBER_PARAM_STEPS, ...STRUCTURE_PARAM_STEPS];
-const PARAM_STEP = `(?:(?:${PARAM_PREFIXES.join('|')}):[^|\\]]*|(?:${BRACKETLESS_STEPS.join('|')}):[^|\\][]*)`;
+const PARAM_STEP = `(?:(?:${PARAM_PREFIXES.join('|')}):${TEXT_ARG}|(?:${BRACKETLESS_STEPS.join('|')}):[^|\\][]*)`;
 
 /** The parameterised transform a step asks for, or undefined when it is not one. */
 function paramTransform(

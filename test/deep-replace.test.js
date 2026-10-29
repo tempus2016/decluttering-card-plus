@@ -2572,4 +2572,22 @@ check(
     !/return/.test(warnings[0]),
   true,
 );
+// A placeholder inside a text step's argument is filled in first, rather than the step
+// stopping at its first ] and leaving `_[[type` as the argument.
+check(
+  'a placeholder inside a text step argument is filled in first',
+  deepReplace(
+    [{ camera: 'front', type: 'car', a: 'x[y', x: 'on', want: 'on' }],
+    {},
+    {
+      s: '[[camera|prefix:binary_sensor.|suffix:_[[type]]_occupancy]]',
+      r: '[[camera|replace:front:[[type]]]]',
+      d: '[[nope|default:[[type]] park]]',
+      i: '[[camera|if:x=[[want]]]]',
+      b: '[[a|replace:[:(]]',
+    },
+  ),
+  { s: 'binary_sensor.front_car_occupancy', r: 'car', d: 'car park', i: 'front', b: 'x(y' },
+);
+
 console.warn = realWarn;
