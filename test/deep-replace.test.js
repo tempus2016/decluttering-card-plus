@@ -1908,6 +1908,61 @@ check(
   { b: 'binary_sensor.attic_motion' },
 );
 check(
+  'if_exists keeps an entity Home Assistant knows and is a gap for one it does not (#313)',
+  deepReplace(
+    [{ hall: 'binary_sensor.hall_motion', attic: 'binary_sensor.attic_motion' }],
+    {},
+    {
+      a: '[[hall|if_exists]]',
+      b: '[[attic|if_exists?]]',
+      c: '[[attic|if_exists|default:none]]',
+      d: '[[unset|if_exists?]]',
+      e: '[[attic|if_exists|or:hall]]',
+      f: ['[[hall|if_exists?]]', '[[attic|if_exists?]]'],
+    },
+    undefined,
+    known,
+  ),
+  { a: 'binary_sensor.hall_motion', c: 'none', e: 'binary_sensor.hall_motion', f: ['binary_sensor.hall_motion'] },
+);
+check(
+  'if_exists reads the value the steps before it made',
+  deepReplace(
+    [{ room: 'Hall' }],
+    {},
+    { a: '[[room|lower|prefix:binary_sensor.|suffix:_motion|if_exists?]]', b: '[[room|prefix:light.|if_exists?]]' },
+    undefined,
+    known,
+  ),
+  { a: 'binary_sensor.hall_motion' },
+);
+{
+  const said = [];
+  const saved = console.warn;
+  console.warn = (m) => said.push(m);
+  const out = deepReplace(
+    [{ attic: 'binary_sensor.attic_motion' }],
+    {},
+    { a: ['[[attic|if_exists?]]'], b: '[[attic|upper|lower|if_exists]]' },
+    't',
+    known,
+  );
+  console.warn = saved;
+  check('an optional if_exists that finds nothing drops out without a warning', out, {
+    b: '[[attic|upper|lower|if_exists]]',
+  });
+  check(
+    'one that stays names the entity id it looked for',
+    said.length === 1 && said[0].includes('"binary_sensor.attic_motion"'),
+    true,
+  );
+}
+check(
+  'if_exists with no Home Assistant to ask is a gap, not a guess',
+  deepReplace([{ m: 'binary_sensor.hall_motion' }], {}, { a: '[[m|if_exists|default:wait]]' }),
+  { a: 'wait' },
+);
+check(
   'contains: finds text in text, and a whole item in a list',
   deepReplace(
     [{ name: 'Outdoor Lights' }, { tags: ['Outdoor', 'Garden'] }, { labels: 'Outdoors, Garden' }],

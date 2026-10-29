@@ -9,6 +9,7 @@ import {
   applyTransform,
   forEachVariables,
   HA_MARK,
+  IF_EXISTS_STEP,
   isStructureStep,
   normaliseVariables,
   FLAT_STEP,
@@ -416,7 +417,13 @@ function substitutePass(
      * in its place, so the placeholder stays visible and says why, exactly as a transform
      * refusing a mapping does.
      */
-    const shaped = (match: string, transform: string, wrap: (text: string) => string, written = transform): string => {
+    const shaped = (
+      match: string,
+      transform: string,
+      wrap: (text: string) => string,
+      written = transform,
+      optional?: string,
+    ): string => {
       /*
        * Asked first, before a `default:` further along can paper over it: a state the card
        * does not rebuild on would be right once and then never change, which is worse than
@@ -446,6 +453,16 @@ function substitutePass(
       for (let upTo = 1; upTo <= steps.length; upTo += 1) {
         if (applyTransform(steps.slice(0, upTo).join('|'), input, hass, values, read, shield, fromHa) !== undefined) {
           continue;
+        }
+        /*
+         * An `if_exists` that found no such entity is a gap the way a closed `if:` is (#313):
+         * an optional placeholder drops out quietly, and one that stays names the entity id
+         * it looked for rather than the variable it started from.
+         */
+        if (steps[upTo - 1] === IF_EXISTS_STEP) {
+          if (optional) return match;
+          const id = upTo === 1 ? input : applyTransform(steps.slice(0, upTo - 1).join('|'), input, hass, values, read);
+          return refuse(match, written, localize('warn.nothing_for', { value: id }), 'missing');
         }
         if (stepName(steps[upTo - 1]) !== MAP_STEP) break;
         const before =
@@ -540,6 +557,7 @@ function substitutePass(
         chain,
         whole ? (text) => asShapedWholeValue(text, chain) : escapeForJsonString,
         written as string,
+        optional,
       );
     };
 

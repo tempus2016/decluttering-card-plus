@@ -811,6 +811,19 @@ check(
   true,
 );
 check(
+  'and so does one on the outer placeholder of a nested one, optional or not',
+  [
+    usesResolver({ card: { e: ['[[room|prefix:binary_sensor.|suffix:_[[kind]]|if_exists?]]'] } }),
+    usesResolver({ card: { e: '[[room|suffix:_[[kind]]|exists]]' } }),
+  ],
+  [true, true],
+);
+check(
+  'if_exists counts, so it is built again once Home Assistant can answer (#313)',
+  usesResolver({ card: { entity: '[[motion|if_exists?]]' } }),
+  true,
+);
+check(
   'so does one in a default:',
   usesResolver({ default: [{ label: '[[entity|friendly_name]]' }], card: { name: '[[label]]' } }),
   true,

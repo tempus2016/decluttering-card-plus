@@ -436,6 +436,13 @@ export function truthy(value: unknown): boolean {
 export const EXISTS_STEP = 'exists';
 const CONTAINS_STEP = 'contains';
 
+/*
+ * `if_exists` (#313) keeps an entity id only while Home Assistant knows the entity, and is a
+ * gap otherwise - so `[[sensor|if_exists?]]` drops out and `[[sensor|if_exists|default:none]]`
+ * stands in, without a second variable holding `[[sensor|exists]]` for an `if:` to read.
+ */
+export const IF_EXISTS_STEP = 'if_exists';
+
 /** Whether a step answers yes or no. */
 function isYesNoStep(step: string): boolean {
   return step === BOOL_STEP || step === EXISTS_STEP || stepName(step) === CONTAINS_STEP;
@@ -687,6 +694,7 @@ const TRANSFORM_NAMES = [
   ...Object.keys(TRANSFORMS),
   JSON_STEP,
   BOOL_STEP,
+  IF_EXISTS_STEP,
   EXISTS_STEP,
   ...NUMBER_BARE_STEPS,
   ...LIST_BARE_STEPS,
@@ -1190,6 +1198,23 @@ export function applyTransform(
       text = known === undefined ? undefined : String(known);
       list = undefined;
       empty = text === undefined;
+      continue;
+    }
+
+    if (name === IF_EXISTS_STEP) {
+      // The value stays as it was when Home Assistant has it. Anything else is a gap - nothing
+      // set, a mapping, an unknown entity, and no Home Assistant yet to ask, which is built
+      // again once there is one.
+      const id = list ? undefined : index === 0 && !takesJson ? value : text;
+      const known =
+        !empty && id !== undefined && id !== null && typeof id !== 'object'
+          ? entityExists(stripHaMarks(String(id)), hass)
+          : false;
+      if (known !== true) {
+        text = undefined;
+        list = undefined;
+        empty = true;
+      }
       continue;
     }
 
@@ -1830,7 +1855,8 @@ function usesStep(
    * do here: a false yes only costs a build when the registry arrives.
    */
   const unescaped = json.replace(new RegExp(`\\[\\[\\${ESCAPE}[^[\\]]*\\]\\]`, 'g'), '');
-  const steps = /\|([a-z_]+)(?=[|\]:])/g;
+  // A step may end the chain with the optional marker after it: `|if_exists?]]`.
+  const steps = /\|([a-z_]+)(?=[|\]:?])/g;
   for (let step = steps.exec(unescaped); step !== null; step = steps.exec(unescaped)) if (wanted(step[1])) return true;
   return false;
 }
@@ -1875,7 +1901,7 @@ export function usesResolver(
   // A `repeat:` over a registry source reads it too, and has to follow it the same way.
   return usesStep(
     template,
-    (step) => isResolver(step) || step === EXISTS_STEP || stepName(step) === REPEAT_STEP,
+    (step) => isResolver(step) || step === EXISTS_STEP || step === IF_EXISTS_STEP || stepName(step) === REPEAT_STEP,
     itemTemplates,
   );
 }
@@ -2190,6 +2216,7 @@ export const KNOWN_STEPS: string[] = [
     JSON_STEP,
     BOOL_STEP,
     EXISTS_STEP,
+    IF_EXISTS_STEP,
     STATE_STEP,
     ...NUMBER_BARE_STEPS,
     ...LIST_BARE_STEPS,

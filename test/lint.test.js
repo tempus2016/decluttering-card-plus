@@ -71,6 +71,11 @@ check(
   ['warning lint.unknown_step {"step":"slgu","placeholder":"[[room|slgu]]","closest":"slug"} @card.name'],
 );
 check(
+  'if_exists is a known step (#313)',
+  lint({ default: [{ room: 'x' }], card: { name: '[[room|if_exists|default:none]]' } }),
+  [],
+);
+check(
   'the #210 steps are known, and a turned-round if: names its variable',
   lint({
     default: [{ room: 'x' }, { mode: 'a' }],
