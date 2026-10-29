@@ -572,5 +572,12 @@
   "editor.preview.built_in": "Construit en {time} depuis {template}. Se met à jour pendant la saisie.",
   "editor.preview.changed_hint": "La ligne modifiée par la dernière édition est surlignée.",
   "editor.preview.copy": "Copier",
-  "editor.preview.copied": "Copié"
+  "editor.preview.copied": "Copié",
+  "editor.link.edit_template": "Modifier le modèle",
+  "editor.link.open_dashboard": "Ouvrir l'autre tableau de bord",
+  "editor.link.raw_editor": "Modifiez-le dans l'éditeur de configuration brute, depuis le menu du tableau de bord.",
+  "editor.link.cannot_open": "La carte modèle se trouve dans une autre carte ; elle s'ouvre depuis celle-ci.",
+  "editor.link.resume": "Vous avez quitté cette carte pour modifier {template}. Vos changements non enregistrés ont été gardés.",
+  "editor.link.resume_button": "Les récupérer",
+  "editor.link.discard_button": "Les abandonner"
 }

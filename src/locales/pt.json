@@ -572,5 +572,12 @@
   "editor.preview.built_in": "Construído em {time} a partir de {template}. Atualiza enquanto escreve.",
   "editor.preview.changed_hint": "A linha que a última edição mudou está realçada.",
   "editor.preview.copy": "Copiar",
-  "editor.preview.copied": "Copiado"
+  "editor.preview.copied": "Copiado",
+  "editor.link.edit_template": "Editar o modelo",
+  "editor.link.open_dashboard": "Abrir o outro painel",
+  "editor.link.raw_editor": "Altere-o no editor de configuração em bruto, a partir do menu do painel.",
+  "editor.link.cannot_open": "O cartão de modelo está dentro de outro cartão, por isso abre-se a partir daí.",
+  "editor.link.resume": "Saiu deste cartão para editar {template}. As suas alterações por guardar foram mantidas.",
+  "editor.link.resume_button": "Recuperá-las",
+  "editor.link.discard_button": "Descartá-las"
 }

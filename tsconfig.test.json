@@ -50,6 +50,7 @@
     "src/registry-index.ts",
     "src/card-editor/summarise.ts",
     "src/card-editor/advanced.ts",
-    "src/card-editor/result-preview.ts"
+    "src/card-editor/result-preview.ts",
+    "src/card-editor/template-link.ts"
   ]
 }

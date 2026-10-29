@@ -572,5 +572,12 @@
   "editor.preview.built_in": "In {time} aus {template} gebaut. Aktualisiert beim Tippen.",
   "editor.preview.changed_hint": "Die vom letzten Schritt geänderte Zeile ist hervorgehoben.",
   "editor.preview.copy": "Kopieren",
-  "editor.preview.copied": "Kopiert"
+  "editor.preview.copied": "Kopiert",
+  "editor.link.edit_template": "Vorlage bearbeiten",
+  "editor.link.open_dashboard": "Das andere Dashboard öffnen",
+  "editor.link.raw_editor": "Im Roh-Konfigurationseditor ändern, über das Dashboard-Menü.",
+  "editor.link.cannot_open": "Die Vorlagenkarte steckt in einer anderen Karte und muss von dort geöffnet werden.",
+  "editor.link.resume": "Du hast diese Karte verlassen, um {template} zu bearbeiten. Deine ungespeicherten Änderungen wurden behalten.",
+  "editor.link.resume_button": "Zurückholen",
+  "editor.link.discard_button": "Verwerfen"
 }
