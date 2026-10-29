@@ -67,18 +67,40 @@ function templateSection(made: BuiltTemplate): HTMLElement {
     );
     section.appendChild(note);
   }
+  return section;
+}
+
+/*
+ * What to paste, once for everything: the templates, and the paste itself with each
+ * copied card swapped for the decluttering card that draws it. Stacks, grids and views
+ * come back as they went in, so the second block replaces the first one whole.
+ */
+function pasteSection(result: BuilderResult): HTMLElement {
+  const section = el('section', undefined, 'builder-result');
+  section.appendChild(el('h2', 'What to paste'));
+  if (result.dashboard) {
+    section.appendChild(
+      codeBlock(
+        'Your dashboard',
+        'Open the dashboard, then Edit dashboard, the three dots, Raw configuration editor. Replace everything there with this. The templates are already at the top.',
+        result.pastedYaml as string,
+      ),
+    );
+    return section;
+  }
+  const one = result.templates.length === 1;
   section.appendChild(
     codeBlock(
-      '1. The template',
+      one ? '1. The template' : '1. The templates',
       'Add this to the top of the dashboard in the raw configuration editor, or to the template library dashboard. If decluttering_templates: is already there, add only the lines under it.',
-      made.templateYaml,
+      result.templatesYaml as string,
     ),
   );
   section.appendChild(
     codeBlock(
       '2. Your cards',
-      'Put these where the cards you pasted were, in the same order. Each one draws the card it replaces.',
-      made.cardsYaml,
+      'Replace what you pasted with this. It is the same cards, stacks and layout, with each copy swapped for the card that draws it.',
+      result.pastedYaml as string,
     ),
   );
   return section;
@@ -149,6 +171,7 @@ function render(output: HTMLElement, result: BuilderResult): void {
       : `Found ${result.found} cards and made ${result.templates.length} ${result.templates.length === 1 ? 'template' : 'templates'}.`;
   output.appendChild(el('p', summary, 'builder-summary'));
   result.templates.forEach((made) => output.appendChild(templateSection(made)));
+  if (result.templates.length) output.appendChild(pasteSection(result));
   if (result.leftOut.length) {
     const section = el('section', undefined, 'builder-result');
     section.appendChild(el('h2', result.templates.length ? 'Left as they are' : 'Why not'));
