@@ -365,3 +365,156 @@ check(
   buildTemplates(cards);
   check('a __proto__ key in a pasted card reaches no prototype', {}.polluted, undefined);
 }
+
+/* ------------------------------------------------- the whole paste back, cards swapped */
+
+// Every decluttering card in a rewritten paste expanded with the templates: what was pasted.
+function expand(node, templates) {
+  if (Array.isArray(node)) return node.map((each) => expand(each, templates));
+  if (!node || typeof node !== 'object') return node;
+  if (node.type === 'custom:decluttering-card-plus') {
+    const body = deepReplace(node.variables, {}, templates[node.template].card);
+    const layout = { ...node };
+    for (const key of ['type', 'template', 'variables']) delete layout[key];
+    return { ...body, ...layout };
+  }
+  return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, expand(value, templates)]));
+}
+
+{
+  const pasted = `type: horizontal-stack
+cards:
+  - type: custom:mini-graph-card
+    name: Temperature
+    line_color: red
+    icon: mdi:thermometer
+    entities:
+      - sensor.babys_room_temperature
+  - type: custom:mini-graph-card
+    name: Humidity
+    line_color: blue
+    entities:
+      - sensor.babys_room_humidity
+`;
+  const result = buildTemplates(pasted);
+  const back = load(result.pastedYaml);
+  check('a pasted stack comes back as the stack', back.type, 'horizontal-stack');
+  check(
+    'with its cards swapped for decluttering cards',
+    back.cards.map((card) => card.type),
+    ['custom:decluttering-card-plus', 'custom:decluttering-card-plus'],
+  );
+  check(
+    'which draw exactly what was pasted',
+    expand(back, load(result.templatesYaml).decluttering_templates),
+    load(pasted),
+  );
+  check('a stack is not a dashboard', result.dashboard, false);
+}
+
+{
+  const pasted = `- type: tile
+  entity: light.a
+  name: A
+- type: entities
+  title: Lights
+  entities:
+    - light.a
+- type: grid
+  cards:
+    - type: tile
+      entity: light.b
+      name: B
+    - type: button
+      entity: switch.c
+    - type: button
+      entity: switch.d
+      grid_options:
+        columns: 6
+`;
+  const result = buildTemplates(pasted);
+  const back = load(result.pastedYaml);
+  check('two templates from one paste', result.templates.length, 2);
+  check(
+    'and both are in the one templates block',
+    Object.keys(load(result.templatesYaml).decluttering_templates).sort(),
+    result.templates.map((made) => made.name).sort(),
+  );
+  check('a card that is no copy is left in place as it was', back[1], load(pasted)[1]);
+  check('the card it sits beside is swapped where it sits', back[0].type, 'custom:decluttering-card-plus');
+  check('a layout key stays on the decluttering card', back[2].cards[2].grid_options, { columns: 6 });
+  check(
+    'the whole paste draws what was pasted',
+    expand(back, load(result.templatesYaml).decluttering_templates),
+    load(pasted),
+  );
+}
+
+{
+  const pasted = `title: Home
+decluttering_templates:
+  tile_card:
+    card:
+      type: tile
+      entity: '[[entity]]'
+views:
+  - title: Lights
+    sections:
+      - type: grid
+        cards:
+          - type: tile
+            entity: light.a
+            name: A
+          - type: tile
+            entity: light.b
+            name: B
+          - type: custom:decluttering-card-plus
+            template: tile_card
+            variables:
+              - entity: light.c
+`;
+  const result = buildTemplates(pasted);
+  const back = load(result.pastedYaml);
+  check('a whole dashboard is said to be one', result.dashboard, true);
+  const names = Object.keys(back.decluttering_templates);
+  check('its own templates are kept', names.includes('tile_card'), true);
+  check('a new template takes a name of its own', names.length, 2);
+  check('the templates are the first thing in it', Object.keys(back)[0], 'decluttering_templates');
+  check('the rest of the dashboard is kept', back.title, 'Home');
+  check(
+    'and a card that already used a template is left alone',
+    back.views[0].sections[0].cards[2],
+    load(pasted).views[0].sections[0].cards[2],
+  );
+  check(
+    'the dashboard draws what was pasted',
+    expand(back.views, back.decluttering_templates),
+    expand(load(pasted).views, load(pasted).decluttering_templates),
+  );
+}
+
+{
+  const pasted = `type: tile
+entity: light.a
+name: A
+---
+type: tile
+entity: light.b
+name: B
+`;
+  const back = buildTemplates(pasted)
+    .pastedYaml.split('---\n')
+    .map((doc) => load(doc));
+  check('two documents come back as two', back.length, 2);
+  check(
+    'each swapped',
+    back.map((card) => card.type),
+    ['custom:decluttering-card-plus', 'custom:decluttering-card-plus'],
+  );
+}
+
+check(
+  'with nothing made there is nothing to paste',
+  buildTemplates('- type: tile\n  entity: light.a\n').pastedYaml,
+  undefined,
+);

@@ -75,6 +75,15 @@ export interface BuilderResult {
   found: number;
   templates: BuiltTemplate[];
   leftOut: LeftOut[];
+  /** Every template made, under one `decluttering_templates:`. */
+  templatesYaml?: string;
+  /**
+   * Everything that was pasted, as it was, with each card that became a template swapped
+   * for the decluttering card that draws it - stacks, grids, views and all.
+   */
+  pastedYaml?: string;
+  /** The paste was a whole dashboard, so `pastedYaml` holds the templates too and is all there is to paste. */
+  dashboard?: boolean;
 }
 
 function isView(node: any): boolean {
@@ -303,12 +312,22 @@ export function buildTemplates(text: string): BuilderResult {
     // The biggest sets first: those are the ones a template saves the most on.
     .sort((a, b) => b.length - a.length || a[0] - b[0]);
 
+  // A pasted dashboard may have templates already; a new one must not take their names.
   const taken: string[] = [];
+  for (const doc of documents as any[])
+    if (isDashboard(doc) && doc.decluttering_templates && typeof doc.decluttering_templates === 'object')
+      taken.push(...Object.keys(doc.decluttering_templates));
+  const replacements = new Map<any, any>();
+  const madeTemplates: Record<string, unknown> = {};
   const templates: BuiltTemplate[] = useful.map((group) => {
     const members = group.map((index) => cards[index]);
     const name = suggestTemplateName(members[0].type, taken, members);
     taken.push(name);
     const made = makeTemplate(members);
+    const examples = made.variables.slice(0, MAX_EXAMPLES).map(valuesOf);
+    madeTemplates[name] = { card: made.card, examples };
+    const standIns = made.variables.map((variables, at) => similarReplacement(name, variables, layoutOf(members[at])));
+    members.forEach((member, at) => replacements.set(member, standIns[at]));
     return {
       name,
       type: members[0].type,
@@ -317,12 +336,10 @@ export function buildTemplates(text: string): BuilderResult {
       optional: made.optional,
       templateYaml: toYaml({
         decluttering_templates: {
-          [name]: { card: made.card, examples: made.variables.slice(0, MAX_EXAMPLES).map(valuesOf) },
+          [name]: { card: made.card, examples },
         },
       }),
-      cardsYaml: toYaml(
-        made.variables.map((variables, at) => similarReplacement(name, variables, layoutOf(members[at]))),
-      ),
+      cardsYaml: toYaml(standIns),
     };
   });
 
@@ -337,7 +354,37 @@ export function buildTemplates(text: string): BuilderResult {
     }
   }
 
-  return { found: all.length, templates, leftOut };
+  if (!templates.length) return { found: all.length, templates, leftOut };
+
+  const dashboard = documents.length === 1 && isDashboard(documents[0]);
+  const rewritten = documents.map((doc) => swapCards(doc, replacements));
+  if (dashboard) {
+    const { decluttering_templates: before, ...rest } = rewritten[0] as any;
+    rewritten[0] = { decluttering_templates: { ...(before ?? {}), ...madeTemplates }, ...rest };
+  }
+  return {
+    found: all.length,
+    templates,
+    leftOut,
+    templatesYaml: toYaml({ decluttering_templates: madeTemplates }),
+    pastedYaml: rewritten.map(toYaml).join('---\n'),
+    dashboard,
+  };
+}
+
+const isDashboard = (doc: any): boolean => !!doc && typeof doc === 'object' && Array.isArray(doc.views);
+
+/** A copy of what was pasted with each card in `replacements` swapped for its stand-in. */
+function swapCards(node: any, replacements: Map<any, any>): any {
+  if (replacements.has(node)) return replacements.get(node);
+  if (Array.isArray(node)) return node.map((each) => swapCards(each, replacements));
+  if (!node || typeof node !== 'object') return node;
+  const copy: Record<string, unknown> = {};
+  for (const key of Object.keys(node)) {
+    if (isInherited(key)) continue;
+    copy[key] = swapCards(node[key], replacements);
+  }
+  return copy;
 }
 
 export { MAX_DIFFERING };
