@@ -1,4 +1,5 @@
 import { LitElement, html, TemplateResult, css, CSSResult } from 'lit';
+import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringCardConfig, TemplateConfig, VariablesConfig, FormSchemaEntry } from './types';
@@ -47,6 +48,7 @@ import { findRepeatingCard, sectionPerCopy } from './strategy';
 import { getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize, onLanguageLoaded } from './localize';
 import { rebuildOnEntities } from './rebuild';
+import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { holdUndo } from './undo';
 import {
   currentViewIndex,
@@ -65,6 +67,14 @@ import {
 // Declared variables get their own form field, and the prefix keeps a variable called
 // "template" from colliding with the field that chooses the template.
 const VARIABLE_FIELD_PREFIX = 'variable:';
+
+/** What a repeat source matches, as the matches line names it: entities, areas, views ... */
+function matchedWhat(source: unknown, count: number, hass: unknown): string {
+  const keys = ['areas', 'devices', 'floors', 'labels', 'views', 'entities'];
+  const written = (source && typeof source === 'object' ? source : {}) as Record<string, unknown>;
+  const kind = keys.find((key) => written[key] !== undefined) ?? 'items';
+  return localize(`editor.matches_${kind}_${count === 1 ? 'one' : 'many'}`, undefined, hass as undefined);
+}
 
 // How many matches the editor lists before it stops. Enough to see the filter is right,
 // few enough that a sweep of the whole house does not fill the dialog.
@@ -94,12 +104,6 @@ function repeatSchema(): unknown[] {
       label: localize('editor.gap_label'),
       helper: localize('editor.gap_helper'),
       selector: { number: { min: 0, max: 64, mode: 'box' } },
-    },
-    {
-      name: 'empty',
-      label: localize('editor.empty_label'),
-      helper: localize('editor.empty_helper'),
-      selector: { object: {} },
     },
     {
       name: 'columns',
@@ -382,9 +386,42 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
       ></ha-form>
-      ${this._renderCardVariables(declarations)} ${this._renderResult(template)} ${this._renderSectionPerCopy()}
+      ${this._renderCardVariables(declarations)} ${this._renderEmptySlot(repeatable)} ${this._renderResult(template)}
+      ${this._renderSectionPerCopy()}
       <decluttering-card-plus-health .hass=${this.hass} .lovelace=${this._lovelace}></decluttering-card-plus-health>
     `;
+  }
+
+  /*
+   * Idea 17: the card shown when a repeat matches nothing was a box of YAML. It is a slot
+   * now, with Home Assistant's own card picker behind it, and writes `empty:` as before.
+   */
+  private _renderEmptySlot(repeatable: boolean): TemplateResult {
+    if (!this._config || !repeatable) return html``;
+    // Only a card that repeats has a "nothing matched" to show instead (round 1 note).
+    const repeats =
+      this._config.for_each !== undefined ||
+      this._config.for_each_from !== undefined ||
+      this._config.empty !== undefined;
+    if (!repeats) return html``;
+    const CardSlot = unsafeStatic(CARD_SLOT_TAG);
+    const empty = this._config.empty;
+    return staticHtml`<${CardSlot}
+      .hass=${this.hass}
+      .lovelace=${this._lovelace}
+      .value=${empty && typeof empty === 'object' ? empty : undefined}
+      .label=${localize('editor.empty_label', undefined, this.hass)}
+      .emptyHint=${localize('editor.empty_slot_hint', undefined, this.hass)}
+      @value-changed=${this._emptyChanged}
+    ></${CardSlot}>`;
+  }
+
+  private _emptyChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    if (!this._config) return;
+    const config = { ...this._config } as DeclutteringCardConfig;
+    setOrDelete(config, 'empty', ev.detail.value);
+    fireEvent(this, 'config-changed', { config });
   }
 
   /*
@@ -757,8 +794,12 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         <span slot="header">
           ${
             matched.length === 1
-              ? localize('editor.matches_header_one', undefined, this.hass)
-              : localize('editor.matches_header_many', { count: matched.length }, this.hass)
+              ? localize('editor.matches_header_one', { what: matchedWhat(source, 1, this.hass) }, this.hass)
+              : localize(
+                  'editor.matches_header_many',
+                  { count: matched.length, what: matchedWhat(source, matched.length, this.hass) },
+                  this.hass,
+                )
           }
         </span>
         <div class="matches">
@@ -854,7 +895,6 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     if (this._config?.for_each_from !== undefined) data.for_each_from = this._config.for_each_from;
     if (this._config?.columns !== undefined) data.columns = this._config.columns;
     if (this._config?.min_column_width !== undefined) data.min_column_width = this._config.min_column_width;
-    if (this._config?.empty !== undefined) data.empty = this._config.empty;
     if (this._config?.gap !== undefined) data.gap = this._config.gap;
     if (this._config?.fit !== undefined) data.fit = this._config.fit;
     if (this._config?.lazy !== undefined) data.lazy = this._config.lazy;
@@ -1009,7 +1049,6 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     setOrDelete(config, 'for_each_from', data.for_each_from);
     setOrDelete(config, 'columns', data.columns);
     setOrDelete(config, 'min_column_width', data.min_column_width);
-    setOrDelete(config, 'empty', data.empty);
     setOrDelete(config, 'gap', data.gap);
     // Off is the default, so switching it off takes the key out rather than writing false.
     setOrDelete(config, 'lazy', data.lazy === true ? true : undefined);
