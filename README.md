@@ -95,13 +95,15 @@ here.
 - [List entries][wiki-list-entries] — `with:` and `repeat:` fill a block of config into a
   card's own lists, where a nested card cannot go.
 - [Sharing templates between dashboards][wiki-sharing-between], or from one library
-  dashboard to all of them, plus templates [shared by other people][discussions-share].
+  dashboard to all of them, plus templates [shared by other people][discussions-share],
+  carrying their author, licence, requirements and the questions to ask on install.
 - Templates built on templates with `extends:`, and one-off tweaks with a card's own
   `card:` block laid over what its template builds.
 - [Visibility][wiki-visibility] and [styling][wiki-styling] inside a template.
 - [Visual editors][wiki-editors] that show what a card builds, where a template is used,
   rename a template or a variable everywhere, turn existing cards into a template, and keep
-  the last 20 deleted or replaced templates to restore.
+  the last 20 deleted or replaced templates to restore. Variables are edited as rows, with
+  help beside each field, and a template can show or hide its fields depending on the others.
 - A health panel for missing templates, unset variables and unused templates, and
   `debug: report` to write up what a card built, ready to paste into an issue.
 
