@@ -124,6 +124,13 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
   .library ha-button {
     margin-top: 8px;
   }
+  .share .about > * + *::before {
+    content: ' · ';
+  }
+  .share .readme {
+    display: block;
+    padding: 0 16px 8px;
+  }
   .share .installed {
     margin: 0 0 8px;
     padding-left: 20px;

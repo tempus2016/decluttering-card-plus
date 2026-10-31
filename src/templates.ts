@@ -647,8 +647,11 @@ function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): Template
  * and the values it is shown working with. Both are about the template that wrote them, so
  * a child does not take them from its parent - a template built on a deprecated one is new,
  * not deprecated, and a parent's examples were never checked against the child's content.
+ * The sharing details - who wrote it, its licence, its links, its readme, what belongs with
+ * it - are the same kind of thing. What it needs and asks for on install is not: a child
+ * builds what its parent builds, so it needs the same.
  */
-const NOT_INHERITED = ['deprecated', 'examples'];
+const NOT_INHERITED = ['deprecated', 'examples', 'author', 'license', 'help', 'homepage', 'readme', 'related'];
 
 /**
  * The templates one names in `extends:`, as a list - one name, or several written as a
