@@ -423,6 +423,7 @@
   "lint.after_default": "{placeholder}: \"{step}\" nunca llega a actuar, porque el default: anterior siempre rellena el hueco. Pon or: primero y default: al final.",
   "lint.target_unknown": "{placeholder} lee \"{name}\", que esta plantilla nunca declara, no le da un valor predeterminado ni lo usa en ningún otro sitio.",
   "lint.undeclared": "Se leen aquí pero no están declaradas ni tienen valor predeterminado, así que cada tarjeta tiene que darles valor: {names}.",
+  "lint.editor_hide_unknown": "\"{name}\" no es una parte del editor de la tarjeta que se pueda ocultar, así que no se oculta nada. Admite repeat, extras, fit, advanced o uno de los ajustes avanzados por su nombre.",
   "lint.where": " (en {path})",
   "tools.health_unread": "Tarjetas que usan \"{template}\" en {view} y pasan \"{name}\", que la plantilla nunca lee: {count}.",
   "tools.health_unread_for_each": " Está en un elemento del for_each de la tarjeta.",

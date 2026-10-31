@@ -423,6 +423,7 @@
   "lint.after_default": "{placeholder}: \"{step}\" kommt nie zum Zug, weil das default: davor die Lücke immer füllt. Schreib or: zuerst und default: zuletzt.",
   "lint.target_unknown": "{placeholder} liest \"{name}\", das diese Vorlage nirgends deklariert, mit einem Standardwert versieht oder sonst verwendet.",
   "lint.undeclared": "Hier gelesen, aber weder deklariert noch mit einem Standardwert versehen, also muss jede Karte sie setzen: {names}.",
+  "lint.editor_hide_unknown": "\"{name}\" ist kein Teil des Karten-Editors, der sich ausblenden lässt, daher wird dafür nichts ausgeblendet. Möglich sind repeat, extras, fit, advanced oder eine der erweiterten Einstellungen beim Namen.",
   "lint.where": " (bei {path})",
   "tools.health_unread": "Karten mit \"{template}\" auf {view}, die \"{name}\" übergeben, was die Vorlage nie liest: {count}.",
   "tools.health_unread_for_each": " Es steht in einem Eintrag von for_each der Karte.",

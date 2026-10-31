@@ -423,6 +423,7 @@
   "lint.after_default": "{placeholder}: \"{step}\" nunca chega a ser usado, porque o default: antes dele preenche sempre o vazio. Põe or: primeiro e default: no fim.",
   "lint.target_unknown": "{placeholder} lê \"{name}\", que este modelo nunca declara, não lhe dá um valor predefinido nem o usa em mais lado nenhum.",
   "lint.undeclared": "Lidas aqui mas sem declaração nem valor predefinido, por isso cada cartão tem de as definir: {names}.",
+  "lint.editor_hide_unknown": "\"{name}\" não é uma parte do editor do cartão que possa ser ocultada, por isso nada é ocultado. Aceita repeat, extras, fit, advanced ou uma das definições avançadas pelo nome.",
   "lint.where": " (em {path})",
   "tools.health_unread": "Cartões que usam \"{template}\" em {view} e passam \"{name}\", que o modelo nunca lê: {count}.",
   "tools.health_unread_for_each": " Está num item do for_each do cartão.",

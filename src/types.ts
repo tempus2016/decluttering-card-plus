@@ -72,6 +72,8 @@ export interface TemplateConfig {
   on_error?: 'hide' | Record<string, unknown>;
   /** Which entities Home Assistant's add-card dialog offers this template for. */
   suggest_for?: unknown;
+  /** Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field. */
+  editor_hide?: string | string[];
   /** The template this one builds on: its content underneath, this one's last word on top.
    *  A list builds on several, left to right, each later one over the ones before. */
   extends?: string | string[];

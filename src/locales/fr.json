@@ -423,6 +423,7 @@
   "lint.after_default": "{placeholder} : « {step} » n'a jamais son tour, car le default: qui le précède comble toujours le vide. Mettez or: en premier et default: en dernier.",
   "lint.target_unknown": "{placeholder} lit « {name} », que ce modèle ne déclare jamais, ne dote d'aucune valeur par défaut et n'utilise nulle part ailleurs.",
   "lint.undeclared": "Lues ici mais ni déclarées ni dotées d'une valeur par défaut, chaque carte doit donc les définir : {names}.",
+  "lint.editor_hide_unknown": "« {name} » n'est pas une partie de l'éditeur de carte qui peut être masquée, donc rien n'est masqué. Les valeurs possibles sont repeat, extras, fit, advanced ou l'un des réglages avancés par son nom.",
   "lint.where": " (à {path})",
   "tools.health_unread": "Cartes utilisant « {template} » sur {view} qui transmettent « {name} », que le modèle ne lit jamais : {count}.",
   "tools.health_unread_for_each": " Il est défini dans un élément du for_each de la carte.",
