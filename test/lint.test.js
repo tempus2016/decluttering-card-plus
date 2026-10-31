@@ -294,3 +294,19 @@ check(
     ['lint.undeclared', undefined],
   ],
 );
+
+check(
+  'a condition on a key inside a declared variable is fine: choose selector (#346)',
+  lint({
+    variables: [{ name: 'dims', selector: { choose: { choices: { Ratio: { selector: { text: {} } } } } } }],
+    default: [{ x: 1 }, { ratio_block: '[[x|if:dims.active_choice=Ratio|if:dims.Ratio?]]' }],
+    card: { d: '[[dims.chosen|if:dims.active_choice=Dimensions|or:ratio_block?]]' },
+  }),
+  [],
+);
+
+check(
+  'a dotted target under a name nothing gives is still a warning (#346)',
+  lint({ default: [{ name: 'x' }], card: { a: '[[name|if:nope.key]]' } }),
+  ['warning lint.target_unknown {"name":"nope.key","placeholder":"[[name|if:nope.key]]"} @card.a'],
+);

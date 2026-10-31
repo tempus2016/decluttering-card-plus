@@ -189,8 +189,13 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
   const defined = new Set([...definedNames(template), ...known, ...POSITION_NAMES, ...structureNames(template)]);
   const findings = [...scan.findings];
 
+  // `[[room.light]]` reaches into `room`, so a condition on `room.light` names something real
+  // once `room` is - a choose selector's `dims.active_choice` most of all (#346).
+  const isKnown = (name: string): boolean => defined.has(name) || scan.heads.has(name);
+  const reachable = (name: string): boolean =>
+    isKnown(name) || name.split('.').some((_, i, parts) => i > 0 && isKnown(parts.slice(0, i).join('.')));
   for (const target of scan.targets) {
-    if (defined.has(target.name) || scan.heads.has(target.name)) continue;
+    if (reachable(target.name)) continue;
     const closest = closestTemplate(target.name, [...defined, ...scan.heads.keys()]);
     findings.push({
       level: 'warning',
