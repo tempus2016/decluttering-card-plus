@@ -694,5 +694,10 @@
   "placeholder_tool.kind_mapping": "a mapping",
   "placeholder_tool.kind_null": "null",
   "placeholder_tool.kind_unresolved": "left as written, with a warning in the console",
-  "placeholder_tool.kind_removed": "the option is taken out"
+  "placeholder_tool.kind_removed": "the option is taken out",
+  "help.button": "Help for {key}",
+  "help.loading": "Fetching the wiki's words for {key}…",
+  "help.not_in_index": "The wiki has no paragraph keyed to {key} yet, or the docs site could not be reached. The page is still a click away.",
+  "help.open_page": "Open the wiki page",
+  "help.esc": "Esc closes"
 }

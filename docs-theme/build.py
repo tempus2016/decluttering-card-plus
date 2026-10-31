@@ -287,6 +287,13 @@ def drop_non_images(root):
 
 def main(root):
     drop_unpublishable(root)
+    # The editors' field-level help (idea 61) is read off the pages before they are reshaped.
+    try:
+        import help_index
+
+        help_index.main(root)
+    except Exception as err:  # noqa: BLE001 - a missing help index must not stop the site
+        print("help index skipped:", err)
     found, titles = [], {}
     for name in sorted(os.listdir(root)):
         if not name.endswith(".md"):

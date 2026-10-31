@@ -55,6 +55,7 @@
     "src/card-editor/template-link.ts",
     "src/declarations-rows.ts",
     "src/example-labels.ts",
-    "src/placeholders.ts"
+    "src/placeholders.ts",
+    "src/help.ts"
   ]
 }
