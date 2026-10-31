@@ -4,6 +4,7 @@ import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'cu
 import { DeclutteringTemplateConfig, TemplateConfig, FormSchemaEntry } from './types';
 import { suggestVariables } from './suggest';
 import {
+  collectSharedDeclarations,
   collectTemplates,
   collectUsages,
   listPlainCards,
@@ -39,6 +40,7 @@ import {
 import { THING_STUBS, DRAG_PATH, textField, loadRowEditor, saveDashboardWith } from './template-editor/common';
 import { TEMPLATE_EDITOR_STYLES } from './template-editor/styles';
 import './template-editor/share-tab';
+import './template-editor/declarations';
 import './template-editor/usages-tab';
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
@@ -93,7 +95,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   // Shared instances, built on first use so they speak the user's language - a fresh
   // schema object per render would mark every field dirty for no reason.
   private static _describeSchema?: unknown[];
-  private static _variablesSchema?: unknown[];
+  private static _defaultsSchema?: unknown[];
 
   /** Describe: the template's name, kind, description and category. */
   private static describeSchema(): unknown[] {
@@ -134,15 +136,9 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     return DeclutteringTemplateEditor._describeSchema;
   }
 
-  /** The declarations, and the defaults for values nobody declared. */
-  private static variablesSchema(): unknown[] {
-    DeclutteringTemplateEditor._variablesSchema ??= [
-      {
-        name: 'variables',
-        label: localize('template_editor.declarations_label'),
-        helper: localize('template_editor.declarations_helper'),
-        selector: { object: {} },
-      },
+  /** The defaults, for values nobody declared. */
+  private static defaultsSchema(): unknown[] {
+    DeclutteringTemplateEditor._defaultsSchema ??= [
       {
         name: 'default',
         label: localize('template_editor.defaults_label'),
@@ -150,7 +146,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
         selector: { object: {} },
       },
     ];
-    return DeclutteringTemplateEditor._variablesSchema;
+    return DeclutteringTemplateEditor._defaultsSchema;
   }
 
   public setConfig(config: DeclutteringTemplateConfig): void {
@@ -180,7 +176,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
       category: this._config.category,
     };
     // `defaults:` is read as `default:`, so the field shows the two folded together.
-    const variablesData = { variables: this._config.variables, default: templateDefaults(this._config) };
+    const defaultsData = { default: templateDefaults(this._config) };
     const declared = getDeclarations(this._config).length;
 
     return html`
@@ -236,16 +232,23 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                 >
                 <div class="panel">
                   ${this._renderDiagnostics()} ${this._renderExamplePicker()}
+                  ${error.variables ? html`<ha-alert alert-type="error">${error.variables}</ha-alert>` : html``}
+                  <decluttering-declarations-editor
+                    .hass=${this.hass}
+                    .variables=${this._config.variables}
+                    .shared=${collectSharedDeclarations(this._savedLovelace)}
+                    @value-changed=${this._declarationsChanged}
+                  ></decluttering-declarations-editor>
                   <ha-form
                     .hass=${this.hass}
-                    .data=${variablesData}
-                    .schema=${DeclutteringTemplateEditor.variablesSchema()}
+                    .data=${defaultsData}
+                    .schema=${DeclutteringTemplateEditor.defaultsSchema()}
                     .error=${error}
                     .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
                     .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
-                    @value-changed=${this._variablesChanged}
+                    @value-changed=${this._defaultsChanged}
                   ></ha-form>
-                  ${this._renderOrder()} ${this._renderLint()} ${this._renderSuggest(data.thingType === 'card')}
+                  ${this._renderLint()} ${this._renderSuggest(data.thingType === 'card')}
                 </div>
               </ha-expansion-panel>
               <ha-expansion-panel outlined>
@@ -422,27 +425,6 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   }
 
   /*
-   * A declaration's place in the list is its place in the form every card using the
-   * template gets, so changing the order meant hand-editing the YAML underneath - the very
-   * thing the visual editor is for.
-   */
-  private _renderOrder(): TemplateResult {
-    const declarations = getDeclarations(this._config);
-    if (declarations.length < 2) return html``;
-
-    return html`
-      <div class="order">
-        <p class="hint">${localize('template_editor.order_hint', undefined, this.hass)}</p>
-        ${this._renderSortable(
-          'variables',
-          declarations.map((declaration) => ({ label: declaration.label ?? declaration.name, name: declaration.name })),
-          (from, to) => this._move(from, to),
-        )}
-      </div>
-    `;
-  }
-
-  /*
    * A list that can be put in order by dragging, and by the arrows beside each item for a
    * keyboard, or a touch screen that will not drag. `list` keeps a drag from one list
    * landing in another.
@@ -497,13 +479,6 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
         )}
       </ul>
     `;
-  }
-
-  private _move(from: number, to: number): void {
-    const declarations = getDeclarations(this._config);
-    const moved = moveItem(declarations, from, to);
-    if (moved === declarations) return;
-    this._fireConfigChanged({ ...(this._config as DeclutteringTemplateConfig), variables: moved });
   }
 
   /*
@@ -894,8 +869,16 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     this._fireConfigChanged(config);
   }
 
-  /** The Variables panel: the declarations and the defaults. */
-  private _variablesChanged(ev: CustomEvent): void {
+  /** The declarations editor wrote a new `variables:`, in the shape it read. */
+  private _declarationsChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    if (!this._config) return;
+    const config = { ...this._config };
+    setOrDelete(config, 'variables', ev.detail.value);
+    this._fireConfigChanged(config);
+  }
+
+  private _defaultsChanged(ev: CustomEvent): void {
     if (!this._config) return;
     const data = ev.detail.value;
     const config = { ...this._config, default: data.default };
@@ -911,7 +894,6 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
         delete config.defaults;
       }
     }
-    setOrDelete(config, 'variables', data.variables);
     this._fireConfigChanged(config);
   }
 

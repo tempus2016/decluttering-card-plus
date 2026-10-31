@@ -151,8 +151,13 @@ export interface FormSchemaEntry {
   name: string;
   label?: string;
   helper?: string;
-  /** A Home Assistant selector, as ha-form reads it. */
+  /** A Home Assistant selector, as ha-form reads it, when the entry is a field. */
   selector?: Record<string, unknown>;
+  /** `grid` or `expandable`, when the entry lays other entries out. */
+  type?: string;
+  schema?: FormSchemaEntry[];
+  title?: string;
+  column_min_width?: string;
   required?: boolean;
 }
 
