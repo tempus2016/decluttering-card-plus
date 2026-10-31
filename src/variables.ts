@@ -1816,10 +1816,27 @@ export function variableValues(variableArray: VariablesConfig[] | VariablesConfi
 function placeholdersIn(value: unknown): string[] {
   if (value === undefined) return [];
   const names: string[] = [];
-  const json = JSON.stringify(value);
+  let json = JSON.stringify(value);
   if (typeof json !== 'string') return names;
   // A fresh regex each time: a shared global one carries lastIndex between calls.
   const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
+  /*
+   * A placeholder inside another's step argument (`[[room|default:[[light]]]]`) is filled in
+   * first, and only then is the outer one read. So once a pass has found the inner ones,
+   * they are blanked out and the text is read again for the outer ones.
+   */
+  for (let pass = 0; pass < 8; pass++) {
+    const before = names.length;
+    scanPlaceholders(json, pattern, names);
+    const blanked = json.replace(pattern, (whole, inner: string) => (inner.startsWith(ESCAPE) ? whole : '_'));
+    if (blanked === json || names.length === before) break;
+    json = blanked;
+  }
+  return names;
+}
+
+function scanPlaceholders(json: string, pattern: RegExp, names: string[]): void {
+  pattern.lastIndex = 0;
   let match = pattern.exec(json);
   while (match !== null) {
     // `[[room|slug]]` is a use of `room`, not of a variable called `room|slug`, and
@@ -1836,7 +1853,6 @@ function placeholdersIn(value: unknown): string[] {
     }
     match = pattern.exec(json);
   }
-  return names;
 }
 
 function contentOf(template: TemplateConfig | undefined): unknown[] {

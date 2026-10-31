@@ -295,6 +295,15 @@ check(
 );
 
 check(
+  'a placeholder whose step argument holds another is used, and so is the inner one',
+  diagnoseTemplate({
+    variables: [{ name: 'room' }, { name: 'light' }],
+    card: { name: '[[room|default:[[light|friendly_name]]]]' },
+  }),
+  { unused: [], duplicated: [], contradictory: [] },
+);
+
+check(
   'a name defined both as a declaration and in the default list is reported',
   diagnoseTemplate({
     variables: [{ name: 'colour', default: 'red' }],
