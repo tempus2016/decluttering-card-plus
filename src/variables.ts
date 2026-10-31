@@ -2177,7 +2177,11 @@ export function diagnoseTemplate(template: TemplateConfig | undefined): {
   contradictory: string[];
 } {
   const declarations = getDeclarations(template);
-  const isUsed = new Set(usedVariables(template));
+  const used = usedVariables(template);
+  const isUsed = new Set(used);
+  // A mapping reached only through one of its keys (`[[dims.chosen]]`) is used too (#346).
+  for (const name of used)
+    for (let at = name.indexOf('.'); at > 0; at = name.indexOf('.', at + 1)) isUsed.add(name.slice(0, at));
   const inDefaultList = new Set(defaultList(template).map(firstKey));
 
   const unused: string[] = [];

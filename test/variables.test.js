@@ -286,6 +286,15 @@ check(
 );
 
 check(
+  'a mapping read only through one of its keys is not called unused (#346)',
+  diagnoseTemplate({
+    variables: [{ name: 'dims' }, { name: 'room' }],
+    card: { icon: '[[dims.chosen|if:dims.active_choice=Dimensions]]', name: '[[room.light.name]]' },
+  }),
+  { unused: [], duplicated: [], contradictory: [] },
+);
+
+check(
   'a name defined both as a declaration and in the default list is reported',
   diagnoseTemplate({
     variables: [{ name: 'colour', default: 'red' }],
