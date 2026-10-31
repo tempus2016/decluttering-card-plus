@@ -2721,4 +2721,33 @@ check(
   console.warn = realWarn;
 }
 
+// A default that only points at a mapping is that mapping, so a `default:` or `or:` after it
+// has nothing to fill, as it would not for the mapping itself, and it goes in whole (#346).
+check(
+  'a default pointing at a mapping stays a mapping before or: and default:',
+  deepReplace(
+    [{ v: 'x', o: { k: 1 } }],
+    {
+      defaults: {
+        obj: { a: '[[v]]', b: 'static' },
+        one: '[[obj]]',
+        two: '[[one|if:v=x]]',
+        var: '[[o]]',
+      },
+    },
+    {
+      or: '[[one|or:nope]]',
+      def: '[[one|default:1]]',
+      chain: '[[two|if:v=x|or:nope?]]',
+      v: '[[var|or:nope]]',
+    },
+  ),
+  {
+    or: { a: 'x', b: 'static' },
+    def: { a: 'x', b: 'static' },
+    chain: { a: 'x', b: 'static' },
+    v: { k: 1 },
+  },
+);
+
 console.warn = realWarn;

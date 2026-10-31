@@ -402,6 +402,11 @@ function substitutePass(
     // mapping itself, `bool` asks whether there is anything in it, and the list steps read
     // a list as one - so a chain starting with any of those is allowed through.
     const isScalar = value === null || typeof value !== 'object';
+    const pointsAtStructure = (): boolean => {
+      if (typeof value !== 'string' || !PLACEHOLDER.test(value)) return false;
+      const settled = settle(name);
+      return settled !== null && typeof settled === 'object';
+    };
     const transformable = (transform?: string): boolean =>
       isScalar || takesStructure((transform ?? '').split('|')[0], value);
     // A placeholder left visible is the deliberate signal that something is wrong, but on
@@ -521,7 +526,9 @@ function substitutePass(
       }
       // A mapping or list is a value, so a `default:` or `or:` before anything else has
       // nothing to fill and comes off: `[[room|default:x]]` is the room, as `[[room]]` is.
-      if (transform && !isScalar) {
+      // A value that only points at one - `one: '[[obj]]'` - is the mapping too, once it is
+      // settled, so the same goes for it rather than `or:` turning it into its JSON (#346).
+      if (transform && (!isScalar || pointsAtStructure())) {
         const steps = transform.split('|');
         while (steps.length && isFallback(steps[0])) steps.shift();
         transform = steps.join('|');
