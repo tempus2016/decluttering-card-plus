@@ -167,8 +167,14 @@ export function splitPlaceholder(expression: string): { name: string; steps: str
   return { name: parts[0], steps: parts.slice(1), optional };
 }
 
-function build(variables: any[], expression: string, unset: Set<string>): { value: unknown; removed: boolean } {
-  const out = deepReplace(variables, {}, { value: expression }, undefined, HOUSE, true, (names) =>
+function build(
+  variables: any[],
+  expression: string,
+  unset: Set<string>,
+  template: any = {},
+  hass: any = HOUSE,
+): { value: unknown; removed: boolean } {
+  const out = deepReplace(variables, template, { value: expression }, template?.template, hass, true, (names) =>
     // Named as the placeholder was written; the variable is what comes before any step.
     names.forEach((name) => unset.add(name.split('|')[0].replace(/\?$/, ''))),
   );
@@ -188,10 +194,23 @@ export function tryPlaceholder(variablesText: string, expression: string): Playg
   } catch (err) {
     return { error: (err as Error).message, steps: [], whole: { value: undefined, kind: 'unresolved' }, unset: [] };
   }
+  return run(variables, expression, {}, HOUSE);
+}
 
+/**
+ * The same tool inside the template editor (idea 28): the template's own `let:` and defaults
+ * apply, the variables are an example's or a card's, and the steps that ask Home Assistant
+ * ask the real one. `withStateScope` is not applied: in the editor every state may be read,
+ * the way the Result preview reads it.
+ */
+export function tryPlaceholderIn(template: any, variables: any[], expression: string, hass: any): PlaygroundResult {
+  return run(variables, expression, template ?? {}, hass ?? HOUSE);
+}
+
+function run(variables: any[], expression: string, template: any, hass: any): PlaygroundResult {
   const unset = new Set<string>();
-  const whole = result(build(variables, expression, unset));
-  const inText = build(variables, `<${expression}>`, new Set());
+  const whole = result(build(variables, expression, unset, template, hass));
+  const inText = build(variables, `<${expression}>`, new Set(), template, hass);
   const steps: StepResult[] = [];
   const split = splitPlaceholder(expression);
   if (split && split.steps.length) {
@@ -201,7 +220,7 @@ export function tryPlaceholder(variablesText: string, expression: string): Playg
       steps.push({
         written,
         step: count === 0 ? split.name : split.steps[count - 1],
-        ...result(build(variables, written, new Set())),
+        ...result(build(variables, written, new Set(), template, hass)),
       });
     }
   }
