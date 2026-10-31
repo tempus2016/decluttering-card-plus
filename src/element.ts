@@ -209,6 +209,11 @@ export abstract class DeclutteringElement extends LitElement {
   // Set when the last build kept quiet about unset variables because the section, which
   // may well give them, was not known yet - see _placeUnsettled.
   protected _builtQuietly = false;
+  // Set while a card builds before the library dashboard has been read (#343): its values
+  // may fill what this build leaves unset, so the build keeps quiet about them, and says
+  // whether it left anything, for the card to build again once the library is in.
+  protected _libraryUnsettled = false;
+  protected _missedBeforeLibrary = false;
   // What the builds of one config have said in the console, so building it again says only
   // what is new - see _saidFor.
   private _said?: { config: unknown; messages: Set<string> };
@@ -518,6 +523,7 @@ export abstract class DeclutteringElement extends LitElement {
     const started = performance.now();
     const quiet = !!instance && this._placeUnsettled;
     this._builtQuietly = quiet;
+    const hush = quiet || (!!instance && this._libraryUnsettled);
     const built = applyOverride(
       deepReplace(
         variables,
@@ -525,7 +531,7 @@ export abstract class DeclutteringElement extends LitElement {
         content,
         templateName,
         this._buildHass,
-        quiet || this._saidFor(instance ?? templateConfig),
+        hush || this._saidFor(instance ?? templateConfig),
         (names) => unresolved.push(...names),
         0,
         trace,
@@ -548,7 +554,8 @@ export abstract class DeclutteringElement extends LitElement {
     }
     this._setResolved(thingType, this._withGridOptions(thingType, built), styles, inherited);
     // Strict is held to the build on the page too, which knows the section.
-    if (!quiet) this._refuseIfStrict(unresolved);
+    this._missedBeforeLibrary = !!instance && this._libraryUnsettled && unresolved.length > 0;
+    if (!hush) this._refuseIfStrict(unresolved);
   }
 
   // The health panel's note of this build: which template, the card's own name, how many copies, how long.
@@ -964,6 +971,8 @@ export abstract class DeclutteringElement extends LitElement {
     // As for a single card: kept quiet until the section is known.
     const quiet = this._placeUnsettled;
     this._builtQuietly = quiet;
+    const hush = quiet || this._libraryUnsettled;
+    let missed = false;
     const cards = wanted.map(({ item, name, template, entity }, index) => {
       // Underneath everything the copy sets: the entity its template was picked by, when
       // that came from the fallback template rather than the copy - see pickTemplate.
@@ -993,8 +1002,12 @@ export abstract class DeclutteringElement extends LitElement {
           thingContent(template),
           name,
           this._buildHass,
-          quiet || this._saidFor(config),
-          undefined,
+          hush || this._saidFor(config),
+          this._libraryUnsettled
+            ? (names: string[]) => {
+                if (names.length) missed = true;
+              }
+            : undefined,
           0,
           trace,
           undefined,
@@ -1019,6 +1032,7 @@ export abstract class DeclutteringElement extends LitElement {
       const chained = picker ? withChain(built, chainWith(this._openTemplates, name)) : built;
       return withInherited(chained, () => this._handDown(variables, template, name));
     });
+    this._missedBeforeLibrary = missed;
     this._noteBuild(config.template, config, cards.length, started);
     if (this._trace) this._logBuild(started, sections, templateConfig);
 
