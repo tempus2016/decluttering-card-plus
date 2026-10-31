@@ -2690,4 +2690,35 @@ check(
   { s: 'binary_sensor.front_car_occupancy', r: 'car', d: 'car park', i: 'front', b: 'x(y' },
 );
 
+// A with: or repeat: naming no item template says that, not that a variable is unset (#349).
+{
+  const x = { itemTemplates: { camera_entry: { item: { entity: '[[camera]]' } } } };
+  const build = (content, v = [{ camera: 'camera.front' }]) =>
+    deepReplace(v, {}, content, 'tpl', undefined, false, undefined, 0, undefined, undefined, false, x);
+  console.warn = (m) => warnings.push(m);
+  warnings.length = 0;
+  check(
+    'a with: on a name with no item template is left as written (#349)',
+    build({ row: '[[camera_entri|with:camera=camera.back]]', ok: '[[camera_entry|with:camera=camera.back]]' }),
+    { row: '[[camera_entri|with:camera=camera.back]]', ok: { entity: 'camera.back' } },
+  );
+  check(
+    'and says the item template is missing, not that nothing gives it a value (#349)',
+    warnings.length === 1 &&
+      /no item template called camera_entri here/.test(warnings[0]) &&
+      !/nothing gives a value/.test(warnings[0]),
+    true,
+  );
+  warnings.length = 0;
+  build({ rows: ['[[nowhere|repeat:list]]'], name: '[[unset]]' }, [{ list: [1, 2] }]);
+  check(
+    'a repeat: is told apart the same way, and a plain unset name keeps its own warning (#349)',
+    warnings.length === 2 &&
+      warnings.some((m) => /no item template called nowhere here/.test(m) && !/\[\[unset\]\]/.test(m)) &&
+      warnings.some((m) => /\[\[unset\]\], which nothing gives a value to/.test(m) && !/nowhere/.test(m)),
+    true,
+  );
+  console.warn = realWarn;
+}
+
 console.warn = realWarn;

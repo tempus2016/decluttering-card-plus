@@ -76,6 +76,12 @@ check('a placeholder nothing sets says so', traced([{ other: 1 }], {}, { name: '
 });
 
 check(
+  'a with: on a name that is no item template says so (#349)',
+  traced([{ other: 1 }], {}, { row: '[[camera_entri|with:a=1]]' }).placeholders,
+  { '[[camera_entri|with:a=1]]': 'there is no item template called camera_entri here, so it is left as written' },
+);
+
+check(
   'an optional placeholder with nothing says it is taken out',
   traced([{ other: 1 }], {}, { name: '[[missing?]]' }).placeholders,
   { '[[missing?]]': 'nothing, so the option is taken out' },

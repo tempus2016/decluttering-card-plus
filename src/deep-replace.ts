@@ -748,7 +748,23 @@ function hasFallback(jsonConfig: string): boolean {
  * nothing and is about to be taken out, a refused one says what refused it, and anything else
  * is a name nothing sets. Escaped ones are meant to be there, so they are not mentioned.
  */
-function noteLeftStanding(trace: BuildTrace, json: string, refused: Map<string, Refusal>): void {
+/*
+ * A `with:` or `repeat:` whose name is neither an item template nor a variable here (#349).
+ * Left standing it looks like any unset name, but what is missing is the template, and
+ * saying so sends the author to the right place: the name, the `item:` body, the dashboard.
+ */
+function missingItemTemplate(inside: string, known: (name: string) => boolean): string | undefined {
+  const [head, step] = withoutOptional(inside).split('|');
+  if (step === undefined || !isStructureStep(step) || known(head)) return undefined;
+  return head;
+}
+
+function noteLeftStanding(
+  trace: BuildTrace,
+  json: string,
+  refused: Map<string, Refusal>,
+  known: (name: string) => boolean,
+): void {
   const everyPlaceholder = new RegExp(PLACEHOLDER.source, 'g');
   let match = everyPlaceholder.exec(json);
   while (match) {
@@ -756,9 +772,12 @@ function noteLeftStanding(trace: BuildTrace, json: string, refused: Map<string, 
     const inside = match[1];
     if (!inside.startsWith(ESCAPE) && !trace.placeholders.has(placeholder) && !insideButtonCardJs(json, match.index)) {
       const refusal = refused.get(inside) ?? refused.get(withoutOptional(inside));
+      const missing = refusal ? undefined : missingItemTemplate(inside, known);
       const why = refusal
         ? localize('trace.left_refused', { why: refusal.text })
-        : localize(isOptional(inside) ? 'trace.left_empty' : 'trace.left_unset');
+        : missing !== undefined
+          ? localize('trace.left_no_item_template', { name: missing })
+          : localize(isOptional(inside) ? 'trace.left_empty' : 'trace.left_unset');
       trace.placeholders.set(placeholder, why);
     }
     match = everyPlaceholder.exec(json);
@@ -1341,7 +1360,8 @@ function deepReplace(
   if (!extras?.tooDeep && tooDeep.size) {
     say(localize('warn.read_too_deep', { names: [...tooDeep].join(', '), depth: MAX_CONDITION_DEPTH }));
   }
-  if (trace) noteLeftStanding(trace, jsonConfig, refused);
+  const known = (name: string): boolean => Object.prototype.hasOwnProperty.call(values, name);
+  if (trace) noteLeftStanding(trace, jsonConfig, refused, known);
   // A traced fill notes its values as they ended up, `exists` and `if:` answers and all.
   if (trace && noteValues) {
     trace.values = new Map();
@@ -1400,7 +1420,20 @@ function deepReplace(
       .join(' ');
     say(localize('warn.unknown_step', { which }), 'other');
   }
-  const unset = unresolved.filter((inside) => !asksState(inside) && !unknownSteps.has(inside));
+  const noTemplate = unresolved.filter(
+    (inside) => !asksState(inside) && !unknownSteps.has(inside) && missingItemTemplate(inside, known) !== undefined,
+  );
+  if (noTemplate.length) {
+    const which = noTemplate.map((name) => `[[${name}]]`).join(', ');
+    const names = [...new Set(noTemplate.map((inside) => missingItemTemplate(inside, known)))].join(', ');
+    const whose = templateName
+      ? localize('warn.unresolved_template', { name: templateName })
+      : localize('warn.unresolved_this');
+    say(localize('warn.no_item_template', { whose, which, names }), 'unset');
+  }
+  const unset = unresolved.filter(
+    (inside) => !asksState(inside) && !unknownSteps.has(inside) && !noTemplate.includes(inside),
+  );
   if (unset.length) {
     const which = unset.map((name) => `[[${name}]]`).join(', ');
     const whose = templateName
