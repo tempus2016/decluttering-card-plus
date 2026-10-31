@@ -694,5 +694,10 @@
   "placeholder_tool.kind_mapping": "eine Zuordnung",
   "placeholder_tool.kind_null": "null",
   "placeholder_tool.kind_unresolved": "bleibt wie geschrieben, mit einer Warnung in der Konsole",
-  "placeholder_tool.kind_removed": "die Option wird entfernt"
+  "placeholder_tool.kind_removed": "die Option wird entfernt",
+  "help.button": "Hilfe zu {key}",
+  "help.loading": "Die Worte des Wikis zu {key} werden geholt…",
+  "help.not_in_index": "Das Wiki hat noch keinen Absatz zu {key}, oder die Dokumentationsseite war nicht erreichbar. Die Seite ist trotzdem einen Klick entfernt.",
+  "help.open_page": "Wiki-Seite öffnen",
+  "help.esc": "Esc schließt"
 }

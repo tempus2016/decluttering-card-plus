@@ -35,6 +35,7 @@ import './template-editor/share-tab';
 import './template-editor/declarations';
 import './template-editor/example-strip';
 import './template-editor/placeholder-tool';
+import './template-editor/help-icon';
 import './template-editor/usages-tab';
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
@@ -215,14 +216,24 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                 <span slot="header">${localize('template_editor.panel_describe', undefined, this.hass)}</span>
                 <div class="panel">
                   ${this._renderInUse()}
-                  <ha-form
-                    .hass=${this.hass}
-                    .data=${data}
-                    .schema=${DeclutteringTemplateEditor.describeSchema()}
-                    .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-                    .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
-                    @value-changed=${this._describeChanged}
-                  ></ha-form>
+                  ${(DeclutteringTemplateEditor.describeSchema() as FormSchemaEntry[]).map(
+                    (entry) => html`
+                      <div class="field-row">
+                        <ha-form
+                          .hass=${this.hass}
+                          .data=${data}
+                          .schema=${[entry]}
+                          .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+                          .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+                          @value-changed=${this._describeChanged}
+                        ></ha-form>
+                        <decluttering-help
+                          .hass=${this.hass}
+                          key=${entry.name === 'thingType' ? 'type' : entry.name}
+                        ></decluttering-help>
+                      </div>
+                    `,
+                  )}
                 </div>
               </ha-expansion-panel>
               <ha-expansion-panel outlined expanded>
@@ -233,21 +244,27 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                 <div class="panel">
                   ${this._renderDiagnostics()}
                   ${error.variables ? html`<ha-alert alert-type="error">${error.variables}</ha-alert>` : html``}
+                  <div class="field-row help-only">
+                    <decluttering-help .hass=${this.hass} key="variables"></decluttering-help>
+                  </div>
                   <decluttering-declarations-editor
                     .hass=${this.hass}
                     .variables=${this._config.variables}
                     .shared=${collectSharedDeclarations(this._savedLovelace)}
                     @value-changed=${this._declarationsChanged}
                   ></decluttering-declarations-editor>
-                  <ha-form
-                    .hass=${this.hass}
-                    .data=${defaultsData}
-                    .schema=${DeclutteringTemplateEditor.defaultsSchema()}
-                    .error=${error}
-                    .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-                    .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
-                    @value-changed=${this._defaultsChanged}
-                  ></ha-form>
+                  <div class="field-row">
+                    <ha-form
+                      .hass=${this.hass}
+                      .data=${defaultsData}
+                      .schema=${DeclutteringTemplateEditor.defaultsSchema()}
+                      .error=${error}
+                      .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+                      .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+                      @value-changed=${this._defaultsChanged}
+                    ></ha-form>
+                    <decluttering-help .hass=${this.hass} key="default"></decluttering-help>
+                  </div>
                   ${this._renderLint()} ${this._renderSuggest(data.thingType === 'card')}
                 </div>
               </ha-expansion-panel>
@@ -811,7 +828,15 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   /** The Describe panel: name, kind, description, category. */
   private _describeChanged(ev: CustomEvent): void {
     if (!this._config) return;
-    const data = ev.detail.value;
+    // Each field is its own form (so a help icon can sit beside it), so the event carries
+    // one field; the rest is read off the template as it stands.
+    const data = {
+      template: this._config.template,
+      thingType: getThingType(this._config) ?? 'card',
+      description: this._config.description,
+      category: this._config.category,
+      ...(ev.detail.value as Record<string, unknown>),
+    };
     const config = { ...this._config, template: data.template };
     // Unlike the stubs below, these replace whatever is already there rather than only
     // filling in what is absent.

@@ -188,4 +188,26 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
     color: var(--secondary-text-color);
     font-size: 0.9em;
   }
+
+  /* A field with its help icon beside it, at the end of the line (idea 61). */
+  .field-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .field-row > ha-form {
+    flex: 1;
+    min-width: 0;
+  }
+  .field-row > decluttering-help {
+    flex: none;
+    margin-top: 14px;
+  }
+  .field-row.help-only {
+    justify-content: flex-end;
+    margin: -4px 0 4px;
+  }
+  .field-row.help-only > decluttering-help {
+    margin-top: 0;
+  }
 `;

@@ -694,5 +694,10 @@
   "placeholder_tool.kind_mapping": "une table",
   "placeholder_tool.kind_null": "nul",
   "placeholder_tool.kind_unresolved": "laissé tel quel, avec un avertissement dans la console",
-  "placeholder_tool.kind_removed": "l'option est retirée"
+  "placeholder_tool.kind_removed": "l'option est retirée",
+  "help.button": "Aide sur {key}",
+  "help.loading": "Récupération des mots du wiki pour {key}…",
+  "help.not_in_index": "Le wiki n'a pas encore de paragraphe pour {key}, ou le site de documentation est injoignable. La page reste à un clic.",
+  "help.open_page": "Ouvrir la page du wiki",
+  "help.esc": "Échap ferme"
 }

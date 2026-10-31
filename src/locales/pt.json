@@ -694,5 +694,10 @@
   "placeholder_tool.kind_mapping": "um mapeamento",
   "placeholder_tool.kind_null": "nulo",
   "placeholder_tool.kind_unresolved": "fica como escrito, com um aviso na consola",
-  "placeholder_tool.kind_removed": "a opção é removida"
+  "placeholder_tool.kind_removed": "a opção é removida",
+  "help.button": "Ajuda sobre {key}",
+  "help.loading": "A obter as palavras da wiki sobre {key}…",
+  "help.not_in_index": "A wiki ainda não tem um parágrafo para {key}, ou o site de documentação não estava acessível. A página continua a um clique.",
+  "help.open_page": "Abrir a página da wiki",
+  "help.esc": "Esc fecha"
 }

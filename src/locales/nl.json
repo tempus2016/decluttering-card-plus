@@ -694,5 +694,10 @@
   "placeholder_tool.kind_mapping": "een mapping",
   "placeholder_tool.kind_null": "null",
   "placeholder_tool.kind_unresolved": "blijft zoals geschreven, met een waarschuwing in de console",
-  "placeholder_tool.kind_removed": "de optie wordt weggelaten"
+  "placeholder_tool.kind_removed": "de optie wordt weggelaten",
+  "help.button": "Hulp bij {key}",
+  "help.loading": "De woorden van de wiki over {key} worden opgehaald…",
+  "help.not_in_index": "De wiki heeft nog geen alinea voor {key}, of de documentatiesite was niet bereikbaar. De pagina is nog steeds één klik verwijderd.",
+  "help.open_page": "Wikipagina openen",
+  "help.esc": "Esc sluit"
 }
