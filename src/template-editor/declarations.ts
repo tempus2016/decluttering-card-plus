@@ -68,15 +68,19 @@ const DEFAULT_AS_OBJECT = (hass?: HomeAssistant): FormSchemaEntry => ({
   selector: { object: {} },
 });
 
+// mdi:dots-horizontal, so More settings is not a second down arrow beside Move down.
+const MORE_PATH =
+  'M16,12A2,2 0 0,1 18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12M10,12A2,2 0 0,1 12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12M4,12A2,2 0 0,1 6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12Z';
+
 /** The fields the open row shows, by its type. */
 function extraSchema(row: DeclRow, hass?: HomeAssistant): FormSchemaEntry[] {
   const type = rowType(row);
+  const description: FormSchemaEntry = {
+    name: 'description',
+    label: localize('declarations.description', undefined, hass),
+    selector: { text: { multiline: true } },
+  };
   const common: FormSchemaEntry[] = [
-    {
-      name: 'description',
-      label: localize('declarations.description', undefined, hass),
-      selector: { text: { multiline: true } },
-    },
     { name: 'group', label: localize('declarations.group', undefined, hass), selector: { text: {} } },
   ];
   const byType: FormSchemaEntry[] =
@@ -123,7 +127,16 @@ function extraSchema(row: DeclRow, hass?: HomeAssistant): FormSchemaEntry[] {
     type === 'card'
       ? []
       : [{ name: 'pattern', label: localize('declarations.pattern', undefined, hass), selector: { text: {} } }];
-  return [{ name: '', type: 'grid', column_min_width: '160px', schema: [...common, ...byType, ...pattern] }];
+  // Allowed values written without a type still need a field, or the rows could never change them.
+  const allowed: FormSchemaEntry[] =
+    type !== 'select' && row.allowed !== undefined
+      ? [{ name: 'allowed', label: localize('declarations.allowed', undefined, hass), selector: { text: {} } }]
+      : [];
+  // The description gets the whole width: in a grid column its label is cut off.
+  return [
+    description,
+    { name: '', type: 'grid', column_min_width: '260px', schema: [...common, ...byType, ...allowed, ...pattern] },
+  ];
 }
 
 // Lists written as text, one value per comma.
@@ -329,7 +342,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
             ></ha-form>
             <div class="buttons">
               <ha-icon-button
-                .path=${'M7,10L12,15L17,10H7Z'}
+                .path=${MORE_PATH}
                 .label=${localize(this._open === row.name ? 'declarations.less' : 'declarations.more', undefined, this.hass)}
                 @click=${(): void => {
                   this._open = this._open === row.name ? undefined : row.name;
