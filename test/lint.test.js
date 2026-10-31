@@ -318,3 +318,37 @@ check(
   ['warning lint.editor_hide_unknown {"name":"advnced","closest":"advanced"} @editor_hide'],
 );
 check('editor_hide with known names says nothing', lint({ editor_hide: 'repeat', card: { type: 'tile' } }), []);
+
+/* ------------------------------------------------------------------ show_if / hide_if (#347) */
+
+check(
+  'show_if and hide_if naming declared variables say nothing',
+  lint({
+    variables: [
+      { name: 'kind', default: 'Frigate' },
+      { name: 'zones', show_if: 'kind=Frigate', hide_if: ['!kind', 'if:kind!=Frigate'] },
+    ],
+    card: { type: 'tile', name: '[[kind]] [[zones]]' },
+  }),
+  [],
+);
+
+check(
+  'a show_if naming a variable nobody defines is called out, with the closest',
+  lint({
+    variables: [{ name: 'use_zones' }, { name: 'prefix', show_if: 'use_zone' }],
+    card: { type: 'tile', name: '[[use_zones]] [[prefix]]' },
+  }),
+  [
+    'warning lint.target_unknown {"name":"use_zone","placeholder":"show_if: use_zone","closest":"use_zones"} @variables[1].show_if',
+  ],
+);
+
+check(
+  'a placeholder written as a hide_if is not a condition, and says what is',
+  lint({
+    variables: [{ name: 'normal' }, { name: 'prefix', hide_if: ['[[normal]]'] }],
+    card: { type: 'tile', name: '[[normal]] [[prefix]]' },
+  }),
+  ['warning lint.condition_malformed {"key":"hide_if","condition":"[[normal]]"} @variables[1].hide_if'],
+);
