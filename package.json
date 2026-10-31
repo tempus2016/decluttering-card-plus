@@ -1,6 +1,6 @@
 {
   "name": "decluttering-card-plus",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Card templates for Home Assistant dashboards: reusable cards, badges, rows and views with variables",
   "main": "dist/decluttering-card-plus.js",
   "scripts": {
