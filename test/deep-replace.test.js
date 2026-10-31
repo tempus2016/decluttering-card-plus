@@ -369,8 +369,6 @@ warnings.length = 0;
 deepReplace([{ nothing: null }], {}, { a: '[[nothing|upper]]' });
 check('null is a scalar, so it transforms and stays silent', warnings.length, 0);
 
-console.warn = realWarn;
-
 check(
   'a transform on a mapping or list is left unsubstituted, as a visible mistake',
   deepReplace([{ tap: { action: 'toggle' } }], {}, { a: 'x [[tap]]', b: 'x [[tap|lower]]', c: '[[tap|lower]]' }),
@@ -2795,5 +2793,73 @@ check(
     in_text: 'x [[nope|or:fo]]',
   },
 );
+
+console.warn = realWarn;
+
+/* --------------------------------------------------- choose selector: .chosen (#346) */
+
+{
+  const both = { active_choice: 'Dimensions', Dimensions: { aspect_ratio_mode: 'natural' }, Ratio: '16:9' };
+  check(
+    'name.chosen is the value of the picked choice, as structure (#346)',
+    deepReplace([{ dims: both }], {}, { dimensions: '[[dims.chosen]]' }),
+    { dimensions: { aspect_ratio_mode: 'natural' } },
+  );
+  check(
+    'name.chosen follows active_choice when both fields are filled in (#346)',
+    deepReplace([{ dims: { ...both, active_choice: 'Ratio' } }], {}, { r: '[[dims.chosen]]' }),
+    { r: '16:9' },
+  );
+  check(
+    'the picked mapping can be reached into through name.chosen (#346)',
+    deepReplace([{ dims: both }], {}, { m: '[[dims.chosen.aspect_ratio_mode]]' }),
+    { m: 'natural' },
+  );
+  check(
+    'name.chosen with ? drops the key when the picked field was left empty (#346)',
+    deepReplace(
+      [{ dims: { active_choice: 'Ratio', Dimensions: { a: 1 } } }],
+      {},
+      { t: 'x', dimensions: '[[dims.chosen?]]' },
+    ),
+    { t: 'x' },
+  );
+  check(
+    'a choice actually called chosen keeps its own value (#346)',
+    deepReplace([{ dims: { active_choice: 'other', chosen: 'mine', other: 'theirs' } }], {}, { v: '[[dims.chosen]]' }),
+    { v: 'mine' },
+  );
+  check(
+    'a mapping without active_choice gets no chosen name (#346)',
+    deepReplace([{ room: { light: 'light.a' } }], {}, { v: '[[room.chosen?]]', w: 'k' }),
+    { w: 'k' },
+  );
+  check(
+    'dstrohl template: chosen with if:/or: covers all three cases (#346)',
+    [
+      { active_choice: 'Dimensions', Dimensions: { aspect_ratio_mode: 'natural' }, Ratio: '4:3' },
+      { active_choice: 'Ratio', Dimensions: { aspect_ratio_mode: 'natural' }, Ratio: '4:3' },
+      { active_choice: 'Ratio', Dimensions: { aspect_ratio_mode: 'natural' } },
+      { active_choice: 'Dimensions' },
+    ].map((dims) =>
+      deepReplace(
+        [{ dims }],
+        {
+          default: [
+            { ratio_dim_block: { aspect_ratio_mode: 'static', aspect_ratio: '[[dims.Ratio]]' } },
+            { ratio_block: '[[ratio_dim_block|if:dims.active_choice=Ratio|if:dims.Ratio?]]' },
+          ],
+        },
+        { type: 'x', dimensions: '[[dims.chosen|if:dims.active_choice=Dimensions|or:ratio_block?]]' },
+      ),
+    ),
+    [
+      { type: 'x', dimensions: { aspect_ratio_mode: 'natural' } },
+      { type: 'x', dimensions: { aspect_ratio_mode: 'static', aspect_ratio: '4:3' } },
+      { type: 'x' },
+      { type: 'x' },
+    ],
+  );
+}
 
 console.warn = realWarn;

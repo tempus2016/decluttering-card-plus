@@ -1451,6 +1451,22 @@ function addDotted(name: string, value: unknown, entries: VariablesConfig[], dep
     entries.push({ [dotted]: inner });
     addDotted(dotted, inner, entries, depth + 1);
   }
+  addChosen(name, value as Record<string, unknown>, entries, depth);
+}
+
+/*
+ * HA's `choose` selector saves every field the user filled in, plus `active_choice` naming
+ * the one picked (discussion #346). `[[name.chosen]]` is that one's value, so a template
+ * does not need an `if:` chain on active_choice to pull it out. A choice the user actually
+ * called `chosen` keeps its own name; nothing is added when the picked field is missing.
+ */
+function addChosen(name: string, value: Record<string, unknown>, entries: VariablesConfig[], depth: number): void {
+  const picked = value.active_choice;
+  if (typeof picked !== 'string' || picked === 'active_choice' || 'chosen' in value) return;
+  if (!Object.prototype.hasOwnProperty.call(value, picked)) return;
+  const dotted = `${name}.chosen`;
+  entries.push({ [dotted]: value[picked] });
+  addDotted(dotted, value[picked], entries, depth + 1);
 }
 
 /**
