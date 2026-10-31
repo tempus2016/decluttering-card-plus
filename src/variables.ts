@@ -1249,7 +1249,8 @@ export function applyTransform(
       if (empty) {
         const or = orTarget(name);
         const fallback = or === undefined ? name.slice(DEFAULT_PREFIX.length) : values?.[or];
-        // A mapping cannot stand in as text; `[[a|or:b]]` supplies words, not structure.
+        // A mapping cannot stand in as text; `[[a|or:b]]` supplies words, not structure. As
+        // the whole value it can, and deep-replace's structureStandIn puts it in before this.
         const usable = fallback !== undefined && fallback !== null && typeof fallback !== 'object';
         text = usable ? String(fallback) : undefined;
         list = undefined;
