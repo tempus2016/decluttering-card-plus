@@ -17,6 +17,7 @@ import {
   getTemplateSources,
   mayBorrowTemplates,
   misplacedOverrides,
+  parentsOf,
   BY_DOMAIN_KEY,
   byDomainOf,
   pickTemplate,
@@ -257,7 +258,14 @@ export class DeclutteringCard extends DeclutteringElement {
       this._chooseByDomain(ll, config, place);
       return;
     }
-    const templateConfig = findTemplate(ll, config.template, place.view, place.section);
+    const found = findTemplate(ll, config.template, place.view, place.section);
+    /*
+     * An `extends` still standing means a parent is not on this dashboard, and it may be on
+     * one this dashboard borrows from - the library dashboard, most often (#343). Built now,
+     * the card would be the child alone, so it waits for the fetch the way a template that
+     * is not here at all does. With nowhere to borrow from it is built as written, as ever.
+     */
+    const templateConfig = found && parentsOf(found).length && mayBorrowTemplates(ll) ? null : found;
     /*
      * setConfig runs before hass is ever set, and a card that reads states has none to read
      * yet - built now, every `|state` would be left in brackets and complained about, only
@@ -427,7 +435,9 @@ export class DeclutteringCard extends DeclutteringElement {
   ): void {
     const local = collectTemplates(ll, place.view, undefined, place.section);
     const named = [config.template, ...Object.values(byDomainOf(config) ?? {})].filter(Boolean) as string[];
-    if (named.every((name) => local[name] !== undefined) || !mayBorrowTemplates(ll)) {
+    // A template here whose parent is not (#343) needs the borrowed ones as much as a missing one.
+    const ready = (name: string): boolean => local[name] !== undefined && !parentsOf(local[name]).length;
+    if (named.every(ready) || !mayBorrowTemplates(ll)) {
       this._pendingConfig = undefined;
       this._applyByDomain(local, config);
       return;
