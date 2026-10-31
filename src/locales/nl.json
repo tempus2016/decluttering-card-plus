@@ -548,6 +548,8 @@
   "template_editor.panel_tools": "Hulpmiddelen",
   "template_editor.category_label": "Categorie",
   "template_editor.category_helper": "Groepeert sjablonen in de kiezer, voor dashboards met veel sjablonen.",
+  "template_editor.examples_pass": "{passes} van {total} slagen",
+  "template_editor.example_add": "De waarden van de voorvertoning als voorbeeld toevoegen",
   "share.download": "Downloaden",
   "share.import_file": "Bestand openen",
   "share.trash_header": "Verwijderde en vervangen sjablonen",

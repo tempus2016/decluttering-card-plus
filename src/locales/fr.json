@@ -548,6 +548,8 @@
   "template_editor.panel_tools": "Outils",
   "template_editor.category_label": "Catégorie",
   "template_editor.category_helper": "Regroupe les modèles dans le sélecteur, pour les tableaux de bord qui en ont beaucoup.",
+  "template_editor.examples_pass": "{passes} sur {total} passent",
+  "template_editor.example_add": "Ajouter les valeurs de l'aperçu comme exemple",
   "share.download": "Télécharger",
   "share.import_file": "Ouvrir un fichier",
   "share.trash_header": "Modèles supprimés et remplacés",

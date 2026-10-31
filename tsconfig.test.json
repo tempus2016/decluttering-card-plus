@@ -53,6 +53,7 @@
     "src/card-editor/advanced.ts",
     "src/card-editor/result-preview.ts",
     "src/card-editor/template-link.ts",
-    "src/declarations-rows.ts"
+    "src/declarations-rows.ts",
+    "src/example-labels.ts"
   ]
 }
