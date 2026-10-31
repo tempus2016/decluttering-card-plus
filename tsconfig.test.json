@@ -27,6 +27,7 @@
     "src/trace.ts",
     "src/picker.ts",
     "src/community.ts",
+    "src/sharing.ts",
     "src/examples.ts",
     "src/on-error.ts",
     "src/rebuild.ts",

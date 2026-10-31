@@ -1,6 +1,7 @@
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE, parentsOf, templatesNamedBy } from './templates';
 import { localize } from './localize';
 import { DEFAULTS_ALIAS, templateDefaults } from './variables';
+import { shareInfo, unquotedVersions } from './sharing';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -12,7 +13,24 @@ const THING_KEYS = ['card', 'badge', 'row', 'element', 'group'];
 
 // Read order for the exported YAML: what the template is, then what it takes, then what
 // it draws. Whatever is left over follows, so nothing is silently dropped.
-const EXPORT_KEY_ORDER = ['type', 'template', 'description', 'variables', 'default', ...THING_KEYS, 'style'];
+// The sharing details (#345) sit with the description, where whoever reads it looks first.
+const EXPORT_KEY_ORDER = [
+  'type',
+  'template',
+  'description',
+  'author',
+  'license',
+  'help',
+  'homepage',
+  'readme',
+  'requires',
+  'setup',
+  'related',
+  'variables',
+  'default',
+  ...THING_KEYS,
+  'style',
+];
 
 export interface Dependencies {
   /** Custom card types the recipient has to install before the template will render. */
@@ -90,16 +108,29 @@ export function buildExport(
   if (templates) {
     const includes: Record<string, any> = {};
     const queue = [...templateRefs];
+    /*
+     * The templates it names under `related:` go too, and theirs in turn, though nothing calls
+     * them: that is what the list is for. One that is not here is not missing anything this
+     * template needs, so it goes unsaid.
+     */
+    const self = config?.template;
+    const related = new Set(shareInfo(config).related.filter((each) => each !== self));
+    queue.push(...related);
     while (queue.length) {
       const name = queue.shift() as string;
       if (name in includes) continue;
       const found = templates[name];
       if (!found) {
-        missing.push(name);
+        if (!related.has(name)) missing.push(name);
         continue;
       }
       includes[name] = withoutSource(found);
       queue.push(...scanDependencies(found).templateRefs);
+      for (const each of shareInfo(found).related) {
+        if (each === self || related.has(each)) continue;
+        related.add(each);
+        queue.push(each);
+      }
     }
     if (Object.keys(includes).length) payload.includes = includes;
   } else {
@@ -111,6 +142,8 @@ export function buildExport(
   if (missing.length) {
     notes.push(localize('share.uses_other_templates', { names: missing.join(', ') }));
   }
+  const unquoted = unquotedVersions(config);
+  if (unquoted.length) notes.push(localize('share.version_unquoted', { keys: unquoted.join(', ') }));
 
   return { payload, notes };
 }

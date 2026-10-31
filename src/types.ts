@@ -74,6 +74,22 @@ export interface TemplateConfig {
   suggest_for?: unknown;
   /** Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field. */
   editor_hide?: string | string[];
+  /** Who wrote it: a name, or `name`/`github`/`email`/`url`. For sharing; not inherited. */
+  author?: string | Record<string, string>;
+  /** The licence it is shared under. Not inherited. */
+  license?: string;
+  /** A page or post explaining it. Not inherited. */
+  help?: string;
+  /** Where it lives, and where newer versions are. Not inherited. */
+  homepage?: string;
+  /** Markdown shown before it is installed. Not inherited. */
+  readme?: string;
+  /** Templates that belong with this one without it calling them; they travel with it. Not inherited. */
+  related?: string | string[];
+  /** Integrations, entities, custom cards and versions it needs, checked before installing. */
+  requires?: Record<string, unknown>;
+  /** Variables to ask for when it is installed, written into its defaults. */
+  setup?: string | string[];
   /** The template this one builds on: its content underneath, this one's last word on top.
    *  A list builds on several, left to right, each later one over the ones before. */
   extends?: string | string[];

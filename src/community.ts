@@ -14,6 +14,7 @@ import { load } from 'js-yaml';
 import deepReplace from './deep-replace';
 import { isRegistrySource } from './registry';
 import { scanDependencies, validateImport } from './share';
+import { withoutSharing } from './sharing';
 import { CONSUMER_TYPES } from './templates';
 import { TemplateConfig, VariablesConfig } from './types';
 
@@ -497,7 +498,8 @@ export function communityRisks(
     Object.values(node).forEach((each) => walk(each, own));
   };
 
-  const templates = [entry.template, ...Object.values(entry.includes)];
+  // What a template says about itself (#345) is not what it does: its links are not fetched.
+  const templates = [entry.template, ...Object.values(entry.includes)].map(withoutSharing);
   walk(templates, undefined);
   for (const template of templates) walk(withOwnDefaults(template), undefined);
   return { actions: [...actions].sort(), urls: [...urls].sort(), embeds, scripts, placeholders, overlay };

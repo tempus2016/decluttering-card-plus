@@ -35,12 +35,29 @@ import {
 import { TrashEntry, loadTrash, restoreTemplate, saveTrash, withoutEntry } from '../trash';
 import { copyText, getLovelaceConfig, getLovelacePanel } from '../utils';
 import { localize } from '../localize';
+import { getDeclarations } from '../variables';
 import { VERSION } from '../version';
 import { renderDiffWithFull } from '../diff-view';
+import {
+  SharingForm,
+  Unmet,
+  applySharingForm,
+  authorLine,
+  ownDefault,
+  setupVariables,
+  shareInfo,
+  sharingFormData,
+  surroundingsOf,
+  unmetRequirements,
+  withSetup,
+} from '../sharing';
 import { readDashboard } from '../undo';
 import { rewriteDashboards, saverFor } from '../shared';
 import { isDefinedHere, anyRisk, newRisks, SECOND_PRESS_MS, saveDashboardWith } from './common';
 import { TEMPLATE_EDITOR_STYLES } from './styles';
+
+// The sharing-details fields that need a line of explanation under them.
+const DETAIL_HELPERS = ['readme', 'related', 'setup', 'requires_entities', 'requires_homeassistant', 'requires_card'];
 
 export class DeclutteringTemplateShareTab extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
@@ -128,6 +145,10 @@ export class DeclutteringTemplateShareTab extends LitElement {
 
   @state() private _postCopyState: '' | 'done' | 'failed' = '';
 
+  // What was typed for the variables a template asks for on install (`setup:`), by name.
+  // Cleared whenever a different post is picked or something new is pasted.
+  @state() private _setupValues: Record<string, string> = {};
+
   // Installed shared templates checked against the list: nothing until the button is pressed.
   @state() private _updates?: SharedUpdate[];
 
@@ -166,6 +187,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
 
     return html`
       <div class="share">
+        ${this._renderDetails()}
         <h3>${localize('share.export_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.export_hint', undefined, this.hass)}</p>
         ${notes.map((note) => html`<ha-alert alert-type="info">${note}</ha-alert>`)}
@@ -210,6 +232,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
           ${localize('share.import_file', undefined, this.hass)}
         </ha-button>
         ${this._importErrors.map((error) => html`<ha-alert alert-type="error">${error}</ha-alert>`)}
+        ${this._renderImportDetails()}
         ${
           this._importClash
             ? html`<ha-alert alert-type="warning">
@@ -240,6 +263,76 @@ export class DeclutteringTemplateShareTab extends LitElement {
         ${this._toolError ? html`<ha-alert alert-type="error">${this._toolError}</ha-alert>` : html``}
       </div>
     `;
+  }
+
+  /*
+   * The sharing details (#345) as a form, so they can be written without YAML. Folded away
+   * until wanted: most templates are never shared. Lists offer what is here - this
+   * dashboard's templates, this template's variables, the integrations Home Assistant has
+   * loaded, the custom cards this browser knows - and take anything typed as well.
+   */
+  private _renderDetails(): TemplateResult {
+    const config = this._config as DeclutteringTemplateConfig;
+    const data = sharingFormData(config);
+    const options = (values: string[]): { value: string; label: string }[] =>
+      [...new Set(values)].sort().map((value) => ({ value, label: value }));
+    const list = (values: string[]): Record<string, unknown> => ({
+      select: { multiple: true, custom_value: true, options: options(values) },
+    });
+    const templates = Object.keys(collectTemplates(this._savedLovelace)).filter((name) => name !== config.template);
+    const variables = [...getDeclarations(config).map((each) => each.name), ...(data.setup ?? [])];
+    const integrations = (Array.isArray(this.hass?.config?.components) ? this.hass.config.components : []).filter(
+      (each: string) => !each.includes('.'),
+    );
+    const cards = ((window as unknown as { customCards?: { type?: unknown }[] }).customCards ?? [])
+      .map((each) => each.type)
+      .filter((each): each is string => typeof each === 'string');
+    const field = (name: keyof SharingForm, selector: Record<string, unknown>): Record<string, unknown> => ({
+      name,
+      selector,
+    });
+    const schema = [
+      field('author_name', { text: {} }),
+      field('author_github', { text: {} }),
+      field('author_email', { text: {} }),
+      field('author_url', { text: { type: 'url' } }),
+      field('license', { text: {} }),
+      field('help', { text: { type: 'url' } }),
+      field('homepage', { text: { type: 'url' } }),
+      field('readme', { text: { multiline: true } }),
+      field('related', list(templates)),
+      field('setup', list(variables)),
+      field('requires_integrations', list(integrations)),
+      field('requires_entities', list([])),
+      field('requires_custom_cards', list(cards)),
+      field('requires_homeassistant', { text: {} }),
+      field('requires_card', { text: {} }),
+    ];
+    return html`
+      <ha-expansion-panel outlined class="details">
+        <span slot="header">${localize('share.details_header', undefined, this.hass)}</span>
+        <p class="hint">${localize('share.details_hint', undefined, this.hass)}</p>
+        <ha-form
+          .hass=${this.hass}
+          .data=${data}
+          .schema=${schema}
+          .computeLabel=${(each: { name: string }): string => localize(`share.details_${each.name}`, undefined, this.hass)}
+          .computeHelper=${(each: { name: string }): string =>
+            DETAIL_HELPERS.includes(each.name)
+              ? localize(`share.details_${each.name}_helper`, undefined, this.hass)
+              : ''}
+          @value-changed=${this._detailsChanged}
+        ></ha-form>
+      </ha-expansion-panel>
+    `;
+  }
+
+  private _detailsChanged(ev: CustomEvent): void {
+    // The tab writes the template itself; the editor's own settings handler must not see this.
+    ev.stopPropagation();
+    if (!this._config) return;
+    const updated = applySharingForm(this._config, ev.detail.value as SharingForm);
+    this._fireConfigChanged(updated as DeclutteringTemplateConfig);
   }
 
   /*
@@ -323,6 +416,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
                     >${localize('share.community_open', undefined, this.hass)}</a
                   >
                 </p>
+                ${this._renderAbout(entry.template)}
                 ${
                   brings.length
                     ? html`<p class="hint">
@@ -330,6 +424,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
                       </p>`
                     : html``
                 }
+                ${this._renderUnmet([entry.template, ...Object.values(entry.includes)])}
                 ${
                   /*
                    * Only the custom cards this browser does not have: the ones it has need
@@ -346,6 +441,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
                     : html``
                 }
                 ${risks && anyRisk(risks) ? this._renderRisks(risks, 'share.community_risks') : html``}
+                ${this._renderSetup([entry.template, ...Object.values(entry.includes)])}
                 <ha-expansion-panel outlined expanded>
                   <span slot="header">${localize('share.library_preview', undefined, this.hass)}</span>
                   ${keyed(
@@ -407,6 +503,137 @@ export class DeclutteringTemplateShareTab extends LitElement {
         </ha-button>
       </div>
     `;
+  }
+
+  /*
+   * What a template says about itself for sharing (#345): who wrote it, its licence, where to
+   * read more, and its readme. For a post the author is whatever the YAML says, so it is shown
+   * as a credit under the post's own line, which names the account that really posted it.
+   */
+  private _renderAbout(template: unknown): TemplateResult {
+    const info = shareInfo(template);
+    const credit = authorLine(info.author);
+    const authorLink =
+      info.author?.url ?? (info.author?.github ? `https://github.com/${info.author.github}` : undefined);
+    const links = [
+      info.help ? { url: info.help, label: localize('share.about_help', undefined, this.hass) } : undefined,
+      info.homepage ? { url: info.homepage, label: localize('share.about_homepage', undefined, this.hass) } : undefined,
+    ].filter((each): each is { url: string; label: string } => !!each);
+    if (!credit && !info.license && !links.length && !info.readme) return html``;
+    return html`
+      ${
+        credit || info.license || links.length
+          ? html`<p class="hint about">
+              ${
+                credit
+                  ? html`<span
+                      >${localize('share.about_author', undefined, this.hass)}
+                      ${
+                        authorLink
+                          ? html`<a href=${authorLink} target="_blank" rel="noopener noreferrer">${credit}</a>`
+                          : credit
+                      }</span
+                    >`
+                  : html``
+              }
+              ${info.license ? html`<span>${localize('share.about_license', { license: info.license }, this.hass)}</span>` : html``}
+              ${links.map((link) => html`<a href=${link.url} target="_blank" rel="noopener noreferrer">${link.label}</a>`)}
+            </p>`
+          : html``
+      }
+      ${
+        info.readme
+          ? html`<ha-expansion-panel outlined>
+              <span slot="header">${localize('share.about_readme', undefined, this.hass)}</span>
+              <ha-markdown class="readme" .content=${info.readme}></ha-markdown>
+            </ha-expansion-panel>`
+          : html``
+      }
+    `;
+  }
+
+  /*
+   * What the templates say they need (`requires:`) that this Home Assistant does not have:
+   * integrations, entities, custom cards, versions. Said before installing and never in the
+   * way of it, as with the custom cards the scan finds - a card the scan already names as
+   * missing is not named twice.
+   */
+  private _renderUnmet(templates: unknown[]): TemplateResult {
+    const present = templates.filter((each) => each !== undefined);
+    const scanned = new Set(missingCustomCards(present, isDefinedHere));
+    const unmet = unmetRequirements(present, surroundingsOf(this.hass, VERSION, isDefinedHere)).filter(
+      (each) => !(each.kind === 'custom_card' && !each.message && each.any.every((tag) => scanned.has(tag))),
+    );
+    if (!unmet.length) return html``;
+    return html`<ha-alert alert-type="warning" .title=${localize('share.requires_header', undefined, this.hass)}>
+      <ul class="risks">
+        ${unmet.map((each) => html`<li>${this._unmetLine(each)}</li>`)}
+      </ul>
+      ${localize('share.requires_hint', undefined, this.hass)}
+    </ha-alert>`;
+  }
+
+  private _unmetLine(unmet: Unmet): string {
+    const or = localize('share.requires_or', undefined, this.hass);
+    const line = localize(
+      `share.requires_${unmet.kind}`,
+      { names: unmet.any.join(or), want: unmet.any[0], have: unmet.have ?? '?' },
+      this.hass,
+    );
+    return unmet.message ? `${line}: ${unmet.message}` : line;
+  }
+
+  /*
+   * The variables the templates ask for on install (`setup:`) - a Frigate address, say - as
+   * text boxes filled with what the template has now. What is typed goes into the template's
+   * defaults as it is installed, so every card using it starts with the right value.
+   */
+  private _renderSetup(templates: unknown[]): TemplateResult {
+    const present = templates.filter((each) => each !== undefined);
+    const asked = setupVariables(present);
+    if (!asked.length) return html``;
+    const current = (name: string): string => {
+      if (name in this._setupValues) return this._setupValues[name];
+      for (const template of present) {
+        const found = ownDefault(template, name);
+        if (found !== undefined) return found;
+      }
+      return '';
+    };
+    return html`
+      <h4>${localize('share.setup_header', undefined, this.hass)}</h4>
+      <p class="hint">${localize('share.setup_hint', undefined, this.hass)}</p>
+      <ha-form
+        .hass=${this.hass}
+        .data=${asked.reduce((data: Record<string, string>, name) => ({ ...data, [name]: current(name) }), {})}
+        .schema=${asked.map((name) => ({ name, selector: { text: {} } }))}
+        .computeLabel=${(schema: { name: string }): string => schema.name}
+        @value-changed=${this._setupChanged}
+      ></ha-form>
+    `;
+  }
+
+  private _setupChanged(ev: CustomEvent): void {
+    // Not part of the card's configuration, so it must not reach the settings handler.
+    ev.stopPropagation();
+    const values: Record<string, string> = {};
+    for (const [name, value] of Object.entries((ev.detail.value ?? {}) as Record<string, unknown>)) {
+      values[name] = value === undefined || value === null ? '' : String(value);
+    }
+    this._setupValues = values;
+  }
+
+  /*
+   * What the installed copy has for each variable its template asks for on install, so an
+   * update keeps the values typed then instead of putting the post's back.
+   */
+  private _keptSetup(installed: unknown): Record<string, string> {
+    const kept: Record<string, string> = {};
+    for (const name of shareInfo(installed).setup) {
+      const value = ownDefault(installed, name);
+      if (value !== undefined) kept[name] = value;
+    }
+    return kept;
   }
 
   /*
@@ -489,6 +716,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     const picked = Number((ev.detail.value as { entry?: string }).entry);
     this._communitySelected = Number.isFinite(picked) && picked > 0 ? picked : undefined;
     this._installPending = undefined;
+    this._setupValues = {};
   }
 
   /*
@@ -520,9 +748,9 @@ export class DeclutteringTemplateShareTab extends LitElement {
         .filter(([each]) => !existing.includes(each))
         .map(([each, template]): [string, Record<string, unknown>] => [
           each,
-          stampedTemplate(template, communitySource(entry, each)),
+          stampedTemplate(withSetup(template, this._setupValues), communitySource(entry, each)),
         ]),
-      [name, stampedTemplate(entry.template, communitySource(entry, entry.name))],
+      [name, stampedTemplate(withSetup(entry.template, this._setupValues), communitySource(entry, entry.name))],
     ];
     const here = findTemplateLocation(panel?.config ?? this.lovelace, this._config?.template ?? '');
     const view = here?.view?.index ?? 0;
@@ -546,7 +774,10 @@ export class DeclutteringTemplateShareTab extends LitElement {
         ),
       'community_install',
     );
-    if (saved) this._installPending = undefined;
+    if (saved) {
+      this._installPending = undefined;
+      this._setupValues = {};
+    }
   }
 
   /*
@@ -621,7 +852,8 @@ export class DeclutteringTemplateShareTab extends LitElement {
    * has not already said yes to, and the whole list when nothing is new but something is there.
    */
   private _renderUpdate(name: string, installed: TemplateConfig, update: SharedUpdate): TemplateResult {
-    const latest = update.latest as Record<string, unknown>;
+    // The values typed for its setup variables at install stay; the rest is the post's.
+    const latest = withSetup(update.latest as Record<string, unknown>, this._keptSetup(installed));
     // Where it came from is bookkeeping, and differs by definition - it is not what changed.
     const bare = (template: Record<string, unknown>): Record<string, unknown> => {
       const copy = { ...template };
@@ -637,7 +869,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     const armed = this._updatePending === name;
     return html`
       <p class="hint">${localize('share.installed_compare', undefined, this.hass)}</p>
-      ${renderDiffWithFull(was, now, this.hass)} ${this._renderMissingCards([latest])}
+      ${renderDiffWithFull(was, now, this.hass)} ${this._renderMissingCards([latest])} ${this._renderUnmet([latest])}
       ${
         anyRisk(added)
           ? this._renderRisks(added, 'share.installed_risks_new')
@@ -1013,6 +1245,22 @@ export class DeclutteringTemplateShareTab extends LitElement {
     this._trashPending = undefined;
   }
 
+  /*
+   * A paste that reads as a template gets what a shared post gets before it goes in: who
+   * wrote it, what it needs that is not here, and the values it asks for.
+   */
+  private _renderImportDetails(): TemplateResult {
+    const value = this._importValue;
+    if (!this._importParses || !value || typeof value !== 'object' || Array.isArray(value)) return html``;
+    if (!withinBudget(value)) return html``;
+    const includes =
+      value.includes && typeof value.includes === 'object' && !Array.isArray(value.includes)
+        ? Object.values(value.includes)
+        : [];
+    const templates = [value, ...includes];
+    return html`${this._renderAbout(value)} ${this._renderUnmet(templates)} ${this._renderSetup(templates)}`;
+  }
+
   private _importChanged(ev: CustomEvent): void {
     ev.stopPropagation();
     this._importValue = ev.detail.value;
@@ -1020,6 +1268,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     this._importErrors = [];
     this._importClash = undefined;
     this._importRisks = undefined;
+    this._setupValues = {};
   }
 
   /*
@@ -1085,7 +1334,22 @@ export class DeclutteringTemplateShareTab extends LitElement {
      * `source:` stamp in it would point Check for updates at a post of the paster's choosing,
      * so it comes off the template and off everything it carries before any of it is kept.
      */
-    const value = withoutSources(this._importValue);
+    const pasted = withoutSources(this._importValue);
+    // The values typed for what it asks on install go into its defaults, and those of what it carries.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const value: any = withSetup(pasted, this._setupValues);
+    if (value.includes && typeof value.includes === 'object' && !Array.isArray(value.includes)) {
+      value.includes = Object.entries(value.includes).reduce(
+        (all: Record<string, unknown>, [each, template]) => ({
+          ...all,
+          [each]:
+            template && typeof template === 'object' && !Array.isArray(template)
+              ? withSetup(template as Record<string, unknown>, this._setupValues)
+              : template,
+        }),
+        {},
+      );
+    }
     /*
      * A bundle carries the templates this one uses under `includes:`. The ones this
      * dashboard does not have yet land in decluttering_templates, so the imported
@@ -1116,6 +1380,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     this._fireConfigChanged(applied);
     this._importClash = undefined;
     this._importRisks = undefined;
+    this._setupValues = {};
     this.dispatchEvent(new CustomEvent('select-tab', { detail: 'settings', bubbles: true, composed: true }));
   }
 }
