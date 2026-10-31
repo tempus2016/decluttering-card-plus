@@ -8,6 +8,7 @@ import {
   forEachItems,
   answersUnset,
   applyTransform,
+  isEmptyMapping,
   forEachVariables,
   HA_MARK,
   IF_EXISTS_STEP,
@@ -482,10 +483,12 @@ function substitutePass(
     /*
      * An optional placeholder given nothing to say is left exactly as it was written, so
      * that the pass at the end can take the whole option out. Empty means unset, null or
-     * the empty string - a zero and a false are values, and stay.
+     * the empty string - a zero and a false are values, and stay. An empty mapping is empty
+     * too, for `?` alone: an object field left blank saves `{}`, and the key should go just
+     * as it does for a blank text field (#346).
      */
     const gap = value === undefined || value === null || value === '';
-    const emptyOptional = (optional?: string): boolean => !!optional && gap;
+    const emptyOptional = (optional?: string): boolean => !!optional && (gap || isEmptyMapping(value));
 
     /*
      * A transform argument runs to the closing brackets, so it swallows a trailing `?`

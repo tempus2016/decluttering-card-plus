@@ -2862,4 +2862,27 @@ console.warn = realWarn;
   );
 }
 
+/* --------------------------------------------------- ? and an empty mapping (#346) */
+
+check(
+  'with ?, an empty mapping drops the key like empty text (#346)',
+  deepReplace([{ x: {} }], {}, { a: 1, k: '[[x?]]', s: 'pre [[x?]] post' }),
+  { a: 1, s: 'pre  post' },
+);
+check(
+  'with ?, an empty mapping lets or: and default: stand in, like empty text (#346)',
+  deepReplace([{ x: {} }, { y: 'Hall' }], {}, { k: '[[x|or:y?]]', d: '[[x|default:none?]]' }),
+  { k: 'Hall', d: 'none' },
+);
+check(
+  'without ?, an empty mapping is still a value (#346)',
+  deepReplace([{ x: {} }], {}, { k: '[[x]]', d: '[[x|default:none]]' }),
+  { k: {}, d: {} },
+);
+check(
+  'a choose object field left blank drops the key (#346)',
+  deepReplace([{ dims: { active_choice: 'Dimensions', Dimensions: {} } }], {}, { a: 1, k: '[[dims.Dimensions?]]' }),
+  { a: 1 },
+);
+
 console.warn = realWarn;
