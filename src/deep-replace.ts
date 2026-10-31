@@ -502,8 +502,14 @@ function substitutePass(
      * saying why, because the variable is set and the brackets alone would suggest not.
      */
     const closed = (match: string, chain: string, optional: string | undefined, whole: boolean): string => {
-      if (optional) return match;
       const text = applyTransform(chain, undefined, hass, values, read, shield);
+      // An optional one with nothing to stand in is left for the pruning pass. One with a
+      // stand-in gets it here: the fallback pass after would not, as it leaves a mapping-valued
+      // variable alone without asking whether a condition closed it (#346).
+      if (optional) {
+        if (text === undefined || text === '') return match;
+        return whole ? asShapedWholeValue(text, chain) : escapeForJsonString(text);
+      }
       if (text === undefined) return refuse(match, chain, localize('warn.condition_closed'), 'closed');
       return whole ? asShapedWholeValue(text, chain) : escapeForJsonString(text);
     };
