@@ -7,6 +7,7 @@ const {
   collectAllTemplates,
   collectDefaults,
   collectTemplates,
+  setLibraryForTest,
   getTemplateSources,
   hasSectionDefaults,
   isTemplateCardType,
@@ -1860,6 +1861,55 @@ check(
   [null, null],
 );
 
+// The library dashboard's decluttering_defaults and decluttering_variables reach the templates
+// on every other dashboard (#343), underneath everything that dashboard says itself.
+setLibraryForTest({
+  decluttering_defaults: { colour: 'library', size: 'library-size' },
+  decluttering_variables: [
+    { name: 'size', description: 'from the library', default: 'library-declared' },
+    { name: 'colour', description: 'library colour' },
+  ],
+  views: [],
+});
+const usesLibrary = {
+  decluttering_defaults: { colour: 'here' },
+  decluttering_variables: [{ name: 'colour', description: 'this dashboard' }],
+  decluttering_templates: {
+    tile: { variables: [{ name: 'size' }, { name: 'colour' }], default: { own: 'mine' }, card: { type: 'tile' } },
+  },
+  views: [],
+};
+const libraryTile = collectTemplates(usesLibrary).tile;
+check("a template here takes the library defaults, under its own and this dashboard's", libraryTile.default, [
+  { own: 'mine' },
+  { colour: 'here' },
+  { colour: 'library' },
+  { size: 'library-size' },
+]);
+check(
+  "and the library declaration of a name it declares, under this dashboard's",
+  libraryTile.variables.map((each) => [each.name, each.description, each.default]),
+  [
+    ['size', 'from the library', 'library-declared'],
+    ['colour', 'this dashboard', undefined],
+  ],
+);
+check('the card still wins over the library', variableValues(resolveVariables([{ size: 'card' }], libraryTile)), {
+  size: 'card',
+  own: 'mine',
+  colour: 'here',
+});
+check(
+  'a library value fills what nothing else does',
+  variableValues(resolveVariables([], libraryTile)).size,
+  'library-declared',
+);
+setLibraryForTest(undefined);
+check('before the library has been read there is nothing from it', collectTemplates(usesLibrary).tile.default, [
+  { own: 'mine' },
+  { colour: 'here' },
+]);
+
 // The borrowing checks are asynchronous and settle on their own promises, so anything
 // added after this point would run after the totals were printed.
 const library = {
@@ -1911,17 +1961,30 @@ collectAllTemplates(hass, borrower).then((all) => {
 
 collectAllTemplates(hass, borrower).then((all) => {
   const badge = all.shared_badge;
-  check('a borrowed template keeps its own default first, then the borrower, then the lender', badge.default, [
-    { own: 'template-own' },
-    { colour: 'amber' },
-    { colour: 'green' },
-    { shape: 'lender-shape' },
-  ]);
+  check(
+    'a borrowed template keeps its own default first, then the borrower, then the lender, then the library',
+    badge.default,
+    [
+      { own: 'template-own' },
+      { colour: 'amber' },
+      { colour: 'green' },
+      { shape: 'lender-shape' },
+      { colour: 'library-colour' },
+      { reach: 'everywhere' },
+    ],
+  );
 
   check(
     "a borrowed template gets this dashboard's decluttering_let first, then the lender's",
     variableValues(resolveVariables([{ clash: 'card' }], badge)),
-    { clash: 'borrower', lent: 'lender-let', own: 'template-own', colour: 'amber', shape: 'lender-shape' },
+    {
+      clash: 'borrower',
+      lent: 'lender-let',
+      own: 'template-own',
+      colour: 'amber',
+      shape: 'lender-shape',
+      reach: 'everywhere',
+    },
   );
 
   /* ---------------------------------------------------------------- health */

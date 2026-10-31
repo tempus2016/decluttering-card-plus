@@ -1086,13 +1086,16 @@ export function collectTemplates(
   section?: number,
 ): Record<string, TemplateConfig> {
   const templates = resolvedTemplates(ll, own);
+  const library = libraryShares();
   const here = collectViewDefaults(ll, view, section);
-  const shared = collectDefaults(ll);
+  const shared = [...collectDefaults(ll), ...library.defaults];
   const lets = [...placeLet(ll, view, section), ...dashboardLet(ll)];
-  if (!here.length && !shared.length && !lets.length) return templates;
+  if (!here.length && !shared.length && !lets.length && !library.declarations.length) return templates;
 
   const out: Record<string, TemplateConfig> = Object.create(null);
-  for (const [name, template] of Object.entries(templates)) out[name] = withDefaults(template, here, shared, lets);
+  for (const [name, template] of Object.entries(templates)) {
+    out[name] = withDefaults(withSharedDeclarations(template, library.declarations), here, shared, lets);
+  }
   return out;
 }
 
@@ -1188,6 +1191,44 @@ function watchForSavedDashboards(hass: any): void {
   }, 'lovelace_updated');
 }
 
+/*
+ * The library dashboard as last read, kept where a card building in setConfig can reach it
+ * without waiting (#343). Undefined until the first read comes back; null when there is
+ * no library. A save to the library is picked up by the next read, and this keeps the old
+ * copy until then rather than leaving cards in between with nothing.
+ */
+let libraryConfig: LovelaceConfig | null | undefined;
+
+/** Whether the library dashboard has been read yet on this page, or has nothing to read. */
+export function libraryKnown(): boolean {
+  return libraryConfig !== undefined || onLibraryDashboard();
+}
+
+/*
+ * The decluttering_defaults and decluttering_variables the library dashboard gives every
+ * template on every other dashboard (#343). They sit under everything else - the card, the
+ * view, the template and the template's own dashboard all win - so they only ever fill a
+ * name nothing else does. On the library itself they are already its own.
+ */
+export function libraryShares(): { defaults: VariablesConfig[]; declarations: VariableDeclaration[] } {
+  if (!libraryConfig || onLibraryDashboard()) return { defaults: [], declarations: [] };
+  return { defaults: collectDefaults(libraryConfig), declarations: collectSharedDeclarations(libraryConfig) };
+}
+
+/** Reads the library dashboard, once a page, and says whether it gives anything to everyone. */
+export function loadLibrary(hass: HomeAssistant): Promise<boolean> {
+  if (onLibraryDashboard()) return Promise.resolve(false);
+  return fetchDashboardConfig(hass, LIBRARY_DASHBOARD).then(() => {
+    const shares = libraryShares();
+    return shares.defaults.length > 0 || shares.declarations.length > 0;
+  });
+}
+
+/** For the tests: as if the library had been read and said this. */
+export function setLibraryForTest(config: LovelaceConfig | null | undefined): void {
+  libraryConfig = config;
+}
+
 function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<LovelaceConfig | null> {
   watchForSavedDashboards(hass);
   const cached = configCache.get(urlPath);
@@ -1206,6 +1247,11 @@ function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<Lov
     });
     return null;
   }) as Promise<LovelaceConfig | null>;
+  if (urlPath === LIBRARY_DASHBOARD) {
+    void request.then((config) => {
+      libraryConfig = config;
+    });
+  }
 
   configCache.set(urlPath, request);
   return request;
@@ -1222,13 +1268,14 @@ export async function collectAllTemplates(
   own?: DeclutteringTemplateConfig,
   section?: number,
 ): Promise<Record<string, TemplateConfig>> {
-  const local = collectTemplates(ll, view, own, section);
   let sources = getTemplateSources(ll);
-  if (!hass || !mayBorrowTemplates(ll)) return local;
+  if (!hass || !mayBorrowTemplates(ll)) return collectTemplates(ll, view, own, section);
   if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
   sources = withLibrary(sources);
 
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
+  // Collected once the library has been read, so this dashboard's own templates have its values.
+  const local = collectTemplates(ll, view, own, section);
   const viewValues = collectViewDefaults(ll, view, section);
   const here = collectDefaults(ll);
   const declaredHere = collectSharedDeclarations(ll);
@@ -1243,10 +1290,17 @@ export async function collectAllTemplates(
      * here. Reading it raw is what puts them in that order - collectTemplates would have
      * folded the lender's in already, ahead of ours.
      */
-    const shared = [...here, ...collectDefaults(config)];
+    // The library's values go under a template from any other dashboard too (#343), last of
+    // all; on the library's own templates they are the lender's and already there.
+    const fromLibrary = sources[index] === LIBRARY_DASHBOARD ? undefined : libraryOf(configs, sources);
+    const shared = [...here, ...collectDefaults(config), ...collectDefaults(fromLibrary)];
     // Shared declarations travel the same way, this dashboard's ahead of the lender's - and
     // so does a decluttering_let, the lender's still reaching its own templates underneath.
-    const declarations = [...declaredHere, ...collectSharedDeclarations(config)];
+    const declarations = [
+      ...declaredHere,
+      ...collectSharedDeclarations(config),
+      ...collectSharedDeclarations(fromLibrary),
+    ];
     const lets = [...letsHere, ...dashboardLet(config)];
     for (const [name, template] of Object.entries(collectRawTemplates(config))) {
       origins[name] = sources[index];
@@ -1260,6 +1314,12 @@ export async function collectAllTemplates(
   }
   recordBorrowed(origins, Object.keys(local));
   return resolveExtends({ ...borrowed, ...local });
+}
+
+/** The library dashboard among the ones just read, if it was one of them. */
+function libraryOf(configs: (LovelaceConfig | null)[], sources: string[]): LovelaceConfig | null | undefined {
+  const at = sources.indexOf(LIBRARY_DASHBOARD);
+  return at === -1 ? undefined : configs[at];
 }
 
 /*

@@ -15,6 +15,8 @@ import {
   findTemplate,
   findTemplateAnywhere,
   getTemplateSources,
+  libraryKnown,
+  loadLibrary,
   mayBorrowTemplates,
   misplacedOverrides,
   parentsOf,
@@ -278,6 +280,7 @@ export class DeclutteringCard extends DeclutteringElement {
     }
     if (templateConfig) {
       this._pendingConfig = undefined;
+      this._noteLibrary(ll);
       this._applyTemplate(templateConfig, config);
       return;
     }
@@ -439,6 +442,7 @@ export class DeclutteringCard extends DeclutteringElement {
     const ready = (name: string): boolean => local[name] !== undefined && !parentsOf(local[name]).length;
     if (named.every(ready) || !mayBorrowTemplates(ll)) {
       this._pendingConfig = undefined;
+      this._noteLibrary(ll);
       this._applyByDomain(local, config);
       return;
     }
@@ -772,11 +776,35 @@ export class DeclutteringCard extends DeclutteringElement {
     }
   }
 
+  /*
+   * A card whose template is on its own dashboard builds at once, without waiting for the
+   * library dashboard, whose decluttering_defaults and decluttering_variables reach it too
+   * (#343). Waiting would hold up every card on every dashboard for a library most installs
+   * do not have, so it builds now - quiet about anything it leaves unset - and builds once
+   * more when the library turns out to give something, or the build left a name unset that
+   * it has to speak up about. After the first read the library is known and nothing waits.
+   */
+  private _noteLibrary(ll: LovelaceConfig): void {
+    this._libraryUnsettled = !libraryKnown() && mayBorrowTemplates(ll);
+    this._missedBeforeLibrary = false;
+  }
+
+  private _catchUpWithLibrary(hass: HomeAssistant): void {
+    if (!this._libraryUnsettled) return;
+    this._libraryUnsettled = false;
+    loadLibrary(hass)
+      .then((gives) => {
+        if (gives || this._missedBeforeLibrary) this._rebuild();
+      })
+      .catch(() => undefined);
+  }
+
   protected hassAvailable(hass: HomeAssistant): void {
     watchForTrash(hass);
     trashHass(hass);
     const config = this._pendingConfig;
     if (!config) {
+      this._catchUpWithLibrary(hass);
       this._watchRebuildOn(hass);
       this._resolveFromRegistry(hass);
       this._rebuildForResolvers(hass);
@@ -785,6 +813,8 @@ export class DeclutteringCard extends DeclutteringElement {
       return;
     }
     this._pendingConfig = undefined;
+    // Built from a read that took the library in, so there is nothing to catch up with.
+    this._libraryUnsettled = false;
 
     const ll = getLovelaceConfig();
     const place = this._place(ll);
