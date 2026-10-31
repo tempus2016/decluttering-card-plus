@@ -2750,4 +2750,22 @@ check(
   },
 );
 
+// An `if:` that does not hold makes a mapping a gap like any other, so an `or:` or `default:`
+// after it still fills an optional placeholder rather than the key being dropped (#346).
+check(
+  'a closed if: on a mapping still reaches the stand-in when optional',
+  deepReplace(
+    [{ o: { k: 1 }, c: 'no', f: 'fb' }],
+    { defaults: { fo: { z: 1 }, p: '[[fo]]' } },
+    {
+      or: '[[o|if:c=yes|or:f?]]',
+      or_pointer: '[[o|if:c=yes|or:p?]]',
+      def: '[[o|if:c=yes|default:z?]]',
+      open: '[[o|if:c=no|or:f?]]',
+      gone: '[[o|if:c=yes|or:nope?]]',
+    },
+  ),
+  { or: 'fb', or_pointer: { z: 1 }, def: 'z', open: { k: 1 } },
+);
+
 console.warn = realWarn;
