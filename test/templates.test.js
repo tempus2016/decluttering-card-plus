@@ -1884,6 +1884,26 @@ collectAllTemplates(hass, { views: [] }).then((all) => {
   ]);
 });
 
+// A template here built on one from the library (#343): this dashboard alone leaves its
+// `extends` standing - which is what tells the card to wait - and the borrowed read folds it.
+const extendsLibrary = {
+  decluttering_templates: { local_child: { extends: 'library_only', card: { title: 'here' } } },
+  views: [],
+};
+check(
+  'a template extending a library one is left unresolved by this dashboard alone',
+  parentsOf(findTemplate(extendsLibrary, 'local_child')),
+  ['library_only'],
+);
+collectAllTemplates(hass, extendsLibrary).then((all) => {
+  check('and is folded onto its library parent once the library is read', all.local_child.card, {
+    type: 'markdown',
+    content: '[[reach]]',
+    title: 'here',
+  });
+  check('with no extends left standing', parentsOf(all.local_child), []);
+});
+
 collectAllTemplates(hass, borrower).then((all) => {
   check('a dashboard named on purpose beats the library', all.shared_badge.card, { type: 'markdown' });
   check('and the library still fills in what it does not have', !!all.library_only, true);
