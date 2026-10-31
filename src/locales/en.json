@@ -548,6 +548,8 @@
   "template_editor.panel_tools": "Tools",
   "template_editor.category_label": "Category",
   "template_editor.category_helper": "Groups templates in the picker, for dashboards with many.",
+  "template_editor.examples_pass": "{passes} of {total} pass",
+  "template_editor.example_add": "Add the preview's values as an example",
   "share.download": "Download",
   "share.import_file": "Open a file",
   "share.trash_header": "Deleted and replaced templates",

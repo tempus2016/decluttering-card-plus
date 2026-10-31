@@ -548,6 +548,8 @@
   "template_editor.panel_tools": "Werkzeuge",
   "template_editor.category_label": "Kategorie",
   "template_editor.category_helper": "Gruppiert Vorlagen in der Auswahl, für Dashboards mit vielen.",
+  "template_editor.examples_pass": "{passes} von {total} bestehen",
+  "template_editor.example_add": "Die Werte der Vorschau als Beispiel hinzufügen",
   "share.download": "Herunterladen",
   "share.import_file": "Datei öffnen",
   "share.trash_header": "Gelöschte und ersetzte Vorlagen",

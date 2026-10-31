@@ -548,6 +548,8 @@
   "template_editor.panel_tools": "Herramientas",
   "template_editor.category_label": "Categoría",
   "template_editor.category_helper": "Agrupa plantillas en el selector, para paneles con muchas.",
+  "template_editor.examples_pass": "{passes} de {total} pasan",
+  "template_editor.example_add": "Añadir los valores de la vista previa como ejemplo",
   "share.download": "Descargar",
   "share.import_file": "Abrir un archivo",
   "share.trash_header": "Plantillas eliminadas y sustituidas",

@@ -25,22 +25,15 @@ import {
   templateDefaults,
   VariableDeclaration,
 } from './variables';
-import { exampleSets } from './examples';
 import { getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize, onLanguageLoaded } from './localize';
 import { definedNames, lintTemplate } from './lint';
-import {
-  PREVIEW_EXAMPLE_EVENT,
-  getThingType,
-  isVariablesShape,
-  loadCardEditorPicker,
-  previewExamples,
-  setOrDelete,
-} from './shared';
+import { getThingType, isVariablesShape, loadCardEditorPicker, setOrDelete } from './shared';
 import { THING_STUBS, DRAG_PATH, textField, loadRowEditor, saveDashboardWith } from './template-editor/common';
 import { TEMPLATE_EDITOR_STYLES } from './template-editor/styles';
 import './template-editor/share-tab';
 import './template-editor/declarations';
+import './template-editor/example-strip';
 import './template-editor/usages-tab';
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
@@ -208,6 +201,12 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
           ${localize('template_editor.tab_share', undefined, this.hass)}
         </ha-tab-group-tab>
       </ha-tab-group>
+      <decluttering-example-strip
+        .hass=${this.hass}
+        .lovelace=${this._savedLovelace}
+        .config=${this._config}
+        @config-changed=${this._childConfigChanged}
+      ></decluttering-example-strip>
       ${
         this._selectedTab === 'settings'
           ? html`
@@ -231,7 +230,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                   <small>${localize('declarations.count', { count: declared }, this.hass)}</small></span
                 >
                 <div class="panel">
-                  ${this._renderDiagnostics()} ${this._renderExamplePicker()}
+                  ${this._renderDiagnostics()}
                   ${error.variables ? html`<ha-alert alert-type="error">${error.variables}</ha-alert>` : html``}
                   <decluttering-declarations-editor
                     .hass=${this.hass}
@@ -346,55 +345,6 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
           : html``
       }
     `;
-  }
-
-  /*
-   * A template with `examples:` can be previewed with any of them, which is how its author
-   * sees the light and the cover version side by side without making two cards. Nothing
-   * is saved: the pick only changes what the preview is drawn with.
-   */
-  private _renderExamplePicker(): TemplateResult {
-    const name = this._config?.template;
-    const sets = exampleSets(this._config);
-    if (!name || !sets.length) return html``;
-    const chosen = previewExamples.get(name);
-    return html`
-      <ha-form
-        .hass=${this.hass}
-        .data=${{ example: chosen === undefined || chosen >= sets.length ? '' : String(chosen) }}
-        .schema=${[
-          {
-            name: 'example',
-            selector: {
-              select: {
-                mode: 'dropdown',
-                options: [
-                  { value: '', label: localize('template_editor.preview_defaults', undefined, this.hass) },
-                  ...sets.map((_, index) => ({
-                    value: String(index),
-                    label: localize('template_editor.example_n', { number: index + 1 }, this.hass),
-                  })),
-                ],
-              },
-            },
-          },
-        ]}
-        .computeLabel=${(): string => localize('template_editor.preview_example_label', undefined, this.hass)}
-        @value-changed=${this._previewExamplePicked}
-      ></ha-form>
-    `;
-  }
-
-  private _previewExamplePicked(ev: CustomEvent): void {
-    // Not part of the template's configuration, so it must not reach the settings handler.
-    ev.stopPropagation();
-    const name = this._config?.template;
-    if (!name) return;
-    const picked = (ev.detail.value as { example?: string }).example;
-    if (picked === undefined || picked === '') previewExamples.delete(name);
-    else previewExamples.set(name, Number(picked));
-    window.dispatchEvent(new CustomEvent(PREVIEW_EXAMPLE_EVENT, { detail: { template: name } }));
-    this.requestUpdate();
   }
 
   /*
@@ -895,6 +845,12 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
       }
     }
     this._fireConfigChanged(config);
+  }
+
+  /** A child that rewrote the whole template - the example strip adding an example. */
+  private _childConfigChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    this._fireConfigChanged(ev.detail.config);
   }
 
   private _cardChanged(ev: CustomEvent): void {

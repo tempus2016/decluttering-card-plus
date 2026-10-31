@@ -548,6 +548,8 @@
   "template_editor.panel_tools": "Ferramentas",
   "template_editor.category_label": "Categoria",
   "template_editor.category_helper": "Agrupa modelos no seletor, para painéis com muitos.",
+  "template_editor.examples_pass": "{passes} de {total} passam",
+  "template_editor.example_add": "Adicionar os valores da pré-visualização como exemplo",
   "share.download": "Transferir",
   "share.import_file": "Abrir um ficheiro",
   "share.trash_header": "Modelos apagados e substituídos",
