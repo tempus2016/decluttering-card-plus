@@ -1393,6 +1393,11 @@ export function unlistedState(
  * do in exactly that case, so it is worked out separately once ordinary substitution has run out
  * of things to replace.
  */
+/** A mapping with nothing in it, which is what an object field left blank saves. */
+export function isEmptyMapping(value: unknown): boolean {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && !Object.keys(value).length;
+}
+
 export function resolveFallback(
   inside: string,
   values: Record<string, any>,
@@ -1407,6 +1412,11 @@ export function resolveFallback(
   // A mapping or list is set, so ordinary substitution has had its turn: whatever it left,
   // it left on purpose, and this pass would only write it out as text it was never meant to be.
   const value = values[name];
+  // With `?`, a mapping with nothing in it is a blank field, missing like empty text, so a
+  // `default:` or `or:` stands in for it the same way (#346).
+  if (isOptional(inside) && isEmptyMapping(value)) {
+    return applyTransform(steps.join('|'), undefined, hass, values, read, shield);
+  }
   if (value && typeof value === 'object' && !takesStructure(steps[0], value)) return undefined;
   return applyTransform(steps.join('|'), values[name], hass, values, read, shield);
 }
