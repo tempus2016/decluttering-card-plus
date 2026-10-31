@@ -34,6 +34,7 @@ import { TEMPLATE_EDITOR_STYLES } from './template-editor/styles';
 import './template-editor/share-tab';
 import './template-editor/declarations';
 import './template-editor/example-strip';
+import './template-editor/placeholder-tool';
 import './template-editor/usages-tab';
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
@@ -252,7 +253,14 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
               </ha-expansion-panel>
               <ha-expansion-panel outlined>
                 <span slot="header">${localize('template_editor.panel_tools', undefined, this.hass)}</span>
-                <div class="panel">${this._renderPromote()} ${this._renderGroupOrder()} ${this._renderDeclutter()}</div>
+                <div class="panel">
+                  ${this._renderPromote()} ${this._renderGroupOrder()} ${this._renderDeclutter()}
+                  <decluttering-placeholder-tool
+                    .hass=${this.hass}
+                    .lovelace=${this._savedLovelace}
+                    .config=${this._config}
+                  ></decluttering-placeholder-tool>
+                </div>
               </ha-expansion-panel>
             `
           : this._selectedTab === 'card'
