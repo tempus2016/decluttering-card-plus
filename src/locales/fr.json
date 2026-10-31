@@ -543,6 +543,11 @@
   "template_editor.promote_name_invalid": "« {name} » ne peut pas être un nom de variable : utilisez uniquement des lettres, des chiffres, _ et -.",
   "template_editor.promote_name_taken": "Le modèle a déjà une variable nommée « {name} ».",
   "template_editor.promote_gone": "Ce réglage n'est plus dans le modèle. Choisissez-le à nouveau.",
+  "template_editor.panel_describe": "Décrire",
+  "template_editor.panel_variables": "Variables",
+  "template_editor.panel_tools": "Outils",
+  "template_editor.category_label": "Catégorie",
+  "template_editor.category_helper": "Regroupe les modèles dans le sélecteur, pour les tableaux de bord qui en ont beaucoup.",
   "share.download": "Télécharger",
   "share.import_file": "Ouvrir un fichier",
   "share.trash_header": "Modèles supprimés et remplacés",
@@ -624,5 +629,6 @@
   "editor.link.cannot_open": "La carte modèle se trouve dans une autre carte ; elle s'ouvre depuis celle-ci.",
   "editor.link.resume": "Vous avez quitté cette carte pour modifier {template}. Vos changements non enregistrés ont été gardés.",
   "editor.link.resume_button": "Les récupérer",
-  "editor.link.discard_button": "Les abandonner"
+  "editor.link.discard_button": "Les abandonner",
+  "declarations.count": "{count} déclarées"
 }

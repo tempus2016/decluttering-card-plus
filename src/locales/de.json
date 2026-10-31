@@ -543,6 +543,11 @@
   "template_editor.promote_name_invalid": "„{name}“ kann kein Variablenname sein: nur Buchstaben, Ziffern, _ und - verwenden.",
   "template_editor.promote_name_taken": "Die Vorlage hat bereits eine Variable namens „{name}“.",
   "template_editor.promote_gone": "Diese Einstellung ist nicht mehr in der Vorlage. Wähle sie erneut.",
+  "template_editor.panel_describe": "Beschreiben",
+  "template_editor.panel_variables": "Variablen",
+  "template_editor.panel_tools": "Werkzeuge",
+  "template_editor.category_label": "Kategorie",
+  "template_editor.category_helper": "Gruppiert Vorlagen in der Auswahl, für Dashboards mit vielen.",
   "share.download": "Herunterladen",
   "share.import_file": "Datei öffnen",
   "share.trash_header": "Gelöschte und ersetzte Vorlagen",
@@ -624,5 +629,6 @@
   "editor.link.cannot_open": "Die Vorlagenkarte steckt in einer anderen Karte und muss von dort geöffnet werden.",
   "editor.link.resume": "Du hast diese Karte verlassen, um {template} zu bearbeiten. Deine ungespeicherten Änderungen wurden behalten.",
   "editor.link.resume_button": "Zurückholen",
-  "editor.link.discard_button": "Verwerfen"
+  "editor.link.discard_button": "Verwerfen",
+  "declarations.count": "{count} deklariert"
 }

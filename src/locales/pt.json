@@ -543,6 +543,11 @@
   "template_editor.promote_name_invalid": "\"{name}\" não pode ser um nome de variável: use apenas letras, algarismos, _ e -.",
   "template_editor.promote_name_taken": "O modelo já tem uma variável chamada \"{name}\".",
   "template_editor.promote_gone": "Essa definição já não está no modelo. Escolha-a de novo.",
+  "template_editor.panel_describe": "Descrever",
+  "template_editor.panel_variables": "Variáveis",
+  "template_editor.panel_tools": "Ferramentas",
+  "template_editor.category_label": "Categoria",
+  "template_editor.category_helper": "Agrupa modelos no seletor, para painéis com muitos.",
   "share.download": "Transferir",
   "share.import_file": "Abrir um ficheiro",
   "share.trash_header": "Modelos apagados e substituídos",
@@ -624,5 +629,6 @@
   "editor.link.cannot_open": "O cartão de modelo está dentro de outro cartão, por isso abre-se a partir daí.",
   "editor.link.resume": "Saiu deste cartão para editar {template}. As suas alterações por guardar foram mantidas.",
   "editor.link.resume_button": "Recuperá-las",
-  "editor.link.discard_button": "Descartá-las"
+  "editor.link.discard_button": "Descartá-las",
+  "declarations.count": "{count} declaradas"
 }

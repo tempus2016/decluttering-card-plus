@@ -3,6 +3,20 @@ import { DeclutteringElement } from '../element';
 
 /* The one stylesheet the template editor and its tabs share. */
 export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
+  /* The Settings tab's three panels (idea 32). */
+  ha-expansion-panel {
+    display: block;
+    margin-bottom: 12px;
+  }
+  ha-expansion-panel small {
+    color: var(--secondary-text-color);
+    font-weight: 400;
+    margin-left: 6px;
+  }
+  .panel {
+    padding: 12px 4px 4px;
+  }
+
   ${DeclutteringElement.styles}
   ha-tab-group {
     display: block;

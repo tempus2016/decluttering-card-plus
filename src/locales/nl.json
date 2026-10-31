@@ -543,6 +543,11 @@
   "template_editor.promote_name_invalid": "\"{name}\" kan geen variabelenaam zijn: gebruik alleen letters, cijfers, _ en -.",
   "template_editor.promote_name_taken": "De sjabloon heeft al een variabele die \"{name}\" heet.",
   "template_editor.promote_gone": "Die instelling staat niet meer in de sjabloon. Kies hem opnieuw.",
+  "template_editor.panel_describe": "Beschrijven",
+  "template_editor.panel_variables": "Variabelen",
+  "template_editor.panel_tools": "Hulpmiddelen",
+  "template_editor.category_label": "Categorie",
+  "template_editor.category_helper": "Groepeert sjablonen in de kiezer, voor dashboards met veel sjablonen.",
   "share.download": "Downloaden",
   "share.import_file": "Bestand openen",
   "share.trash_header": "Verwijderde en vervangen sjablonen",
@@ -624,5 +629,6 @@
   "editor.link.cannot_open": "De sjabloonkaart zit in een andere kaart en moet daar geopend worden.",
   "editor.link.resume": "Je verliet deze kaart om {template} te bewerken. Je niet-opgeslagen wijzigingen zijn bewaard.",
   "editor.link.resume_button": "Terughalen",
-  "editor.link.discard_button": "Weggooien"
+  "editor.link.discard_button": "Weggooien",
+  "declarations.count": "{count} gedeclareerd"
 }
