@@ -27,6 +27,8 @@ import {
   validateDeclared,
   declarationSelector,
   groupDeclarations,
+  declarationShown,
+  resolveVariables,
   isCardDeclaration,
   forEachItems,
   forEachNames,
@@ -439,6 +441,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
 
     const template = this._templates[this._config.template];
     const declarations = getDeclarations(template);
+    // Fields whose show_if or hide_if says they are not wanted with the values as they stand (#347).
+    const hiddenNames = this._hiddenNames(template, declarations);
+    const shown = declarations.filter((declaration) => !hiddenNames.has(declaration.name));
     const readable = isVariablesShape(this._config.variables);
     // The same gate _setForEach applies, so the editor never offers a repeat the card
     // would refuse to render - except while a for_each is set, which must stay visible
@@ -505,13 +510,13 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       <ha-form
         .hass=${this.hass}
         .data=${data}
-        .schema=${this._formSchema(declarations, repeatable && !hidden.repeat, hidden)}
+        .schema=${this._formSchema(shown, repeatable && !hidden.repeat, hidden)}
         .error=${error}
         .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
         .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
       ></ha-form>
-      ${this._renderCardVariables(declarations)} ${this._renderEmptySlot(repeatable)} ${this._renderAdvanced(hidden)}
+      ${this._renderCardVariables(shown)} ${this._renderEmptySlot(repeatable)} ${this._renderAdvanced(hidden)}
       ${this._renderSectionPerCopy()}
       <decluttering-card-plus-health .hass=${this.hass} .lovelace=${this._lovelace}></decluttering-card-plus-health>
     `;
@@ -1247,6 +1252,25 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   }
 
   /*
+   * The declared variables the editor leaves out for now (#347), read against every value
+   * the card will build with - its own, then the view's, then the template's defaults - so
+   * a switch left at its default counts as set. Nothing about a hidden variable changes:
+   * a value it was given stays, and it is back the moment its condition says so.
+   */
+  private _hiddenNames(template: TemplateConfig | undefined, declarations: VariableDeclaration[]): Set<string> {
+    const hidden = new Set<string>();
+    if (!declarations.some((declaration) => declaration.show_if !== undefined || declaration.hide_if !== undefined)) {
+      return hidden;
+    }
+    const values = variableValues(resolveVariables(this._config?.variables, template));
+    const read = (name: string): unknown => values[name];
+    for (const declaration of declarations) {
+      if (!declarationShown(declaration, read)) hidden.add(declaration.name);
+    }
+    return hidden;
+  }
+
+  /*
    * A template that describes its variables gets a real control for each one, and a box
    * underneath for anything else the card sets. A template that does not is edited the
    * way it always has been, through that box alone.
@@ -1302,7 +1326,18 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const data: Record<string, unknown> = { template: this._config?.template };
     this._shownAs = new Map();
     for (const declaration of declarations) {
-      if (!(declaration.name in values)) continue;
+      if (!(declaration.name in values)) {
+        /*
+         * An unset switch would be drawn off whatever its default says, so a `default: true`
+         * looked off while the card - and any show_if reading it (#347) - took it as on. It
+         * is drawn as its default instead, and still sets nothing unless it is moved.
+         */
+        if (typeof declaration.default === 'boolean' && 'boolean' in (declarationSelector(declaration) as object)) {
+          this._shownAs.set(declaration.name, { shown: declaration.default, written: undefined });
+          data[VARIABLE_FIELD_PREFIX + declaration.name] = declaration.default;
+        }
+        continue;
+      }
       const value = values[declaration.name];
       /*
        * A toggle shows anything that is not empty as on, so a typed boolean holding a word
@@ -1372,7 +1407,13 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     // A template can say which of its variables it cannot do without. Those are still not
     // errors that block a save - the template may be edited next - but they are the ones
     // worth reading first, so they are separated out and coloured accordingly.
-    const optional = missing.filter((name) => !required.includes(name));
+    // A field the template hides is one it says it has no use for just now, so its being
+    // unset is not worth a word - but a value it still holds is, since it still goes in.
+    const hidden = this._hiddenNames(template, getDeclarations(template));
+    const needed = required.filter((name) => !hidden.has(name));
+    const optional = missing.filter((name) => !required.includes(name) && !hidden.has(name));
+    const own = new Set(ownVariables(this._config?.variables).map(variableName));
+    const hiddenButSet = [...hidden].filter((name) => own.has(name));
     /*
      * A card that has given up its box has nothing left for the style option to paint on:
      * the rules still exist, they just have no element with a size to apply to. Easily
@@ -1410,11 +1451,22 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
           : html``
       }
       ${
-        required.length
+        hiddenButSet.length
+          ? html`<ha-alert alert-type="warning">
+              ${localize(
+                hiddenButSet.length === 1 ? 'editor.hidden_but_set_one' : 'editor.hidden_but_set_many',
+                { names: hiddenButSet.join(', ') },
+                this.hass,
+              )}
+            </ha-alert>`
+          : html``
+      }
+      ${
+        needed.length
           ? html`<ha-alert alert-type="error">
               ${localize(
-                required.length === 1 ? 'editor.required_one' : 'editor.required_many',
-                { names: required.join(', ') },
+                needed.length === 1 ? 'editor.required_one' : 'editor.required_many',
+                { names: needed.join(', ') },
                 this.hass,
               )}
             </ha-alert>`

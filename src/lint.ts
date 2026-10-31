@@ -3,10 +3,12 @@ import {
   conditionTarget,
   ESCAPE,
   getDeclarations,
+  isWellFormedCondition,
   normaliseVariables,
   POSITION_NAMES,
   templateDefaults,
   variableName,
+  visibilityConditions,
 } from './variables';
 import { closestTemplate, closestStep, knownStep } from './closest';
 
@@ -184,6 +186,25 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
   }
   getDeclarations(template).forEach((declaration, index) => {
     if (declaration.default !== undefined) walk(declaration.default, `variables[${index}].default`, scan);
+    // show_if and hide_if (#347) are `if:` conditions without the `if:`, not placeholders.
+    for (const key of ['show_if', 'hide_if'] as const) {
+      const path = `variables[${index}].${key}`;
+      for (const step of visibilityConditions(declaration, key)) {
+        const written = step.slice('if:'.length);
+        if (!isWellFormedCondition(step)) {
+          scan.findings.push({
+            level: 'warning',
+            key: 'lint.condition_malformed',
+            params: { key, condition: written },
+            path,
+          });
+          continue;
+        }
+        const name = conditionTarget(step);
+        // A dotted name reads a key of a mapping variable, which is what has to exist.
+        if (name) scan.targets.push({ name: name.split('.')[0], placeholder: `${key}: ${written}`, path });
+      }
+    }
   });
 
   // A name a `with:` or `repeat:` gives the body it fills in is set, one copy at a time.

@@ -1593,3 +1593,52 @@ check(
     .missing,
   ['room'],
 );
+
+/* ------------------------------------------------------------------ show_if / hide_if (#347) */
+
+{
+  const { declarationShown, visibilityConditions } = require('../.test-build/variables.js');
+  const reader = (values) => (name) => values[name];
+
+  check(
+    'show_if and hide_if read one condition or a list, with or without if:',
+    [
+      visibilityConditions({ name: 'a', show_if: 'kind=Frigate' }, 'show_if'),
+      visibilityConditions({ name: 'a', hide_if: ['normal', 'if:!zones', ''] }, 'hide_if'),
+      visibilityConditions({ name: 'a' }, 'show_if'),
+    ],
+    [['if:kind=Frigate'], ['if:normal', 'if:!zones'], []],
+  );
+
+  check('a declaration with neither is always shown', declarationShown({ name: 'a' }, reader({})), true);
+
+  check(
+    'show_if shows while any one of its conditions holds',
+    [
+      declarationShown({ name: 'a', show_if: ['kind=Frigate', 'zones'] }, reader({ kind: 'HA', zones: true })),
+      declarationShown({ name: 'a', show_if: ['kind=Frigate', 'zones'] }, reader({ kind: 'HA', zones: 'off' })),
+      declarationShown({ name: 'a', show_if: 'kind!=HA' }, reader({})),
+    ],
+    [true, false, true],
+  );
+
+  check(
+    'hide_if hides while any one holds, and with both the field has to pass both',
+    [
+      declarationShown({ name: 'a', hide_if: ['normal', '!zones'] }, reader({ normal: false, zones: true })),
+      declarationShown({ name: 'a', hide_if: ['normal', '!zones'] }, reader({ normal: 'yes', zones: true })),
+      declarationShown({ name: 'a', show_if: 'zones', hide_if: 'normal' }, reader({ zones: true, normal: true })),
+      declarationShown({ name: 'a', show_if: 'zones', hide_if: 'normal' }, reader({ zones: true, normal: false })),
+    ],
+    [true, false, false, true],
+  );
+
+  check(
+    'a condition the editor cannot read is passed over, so a typo never hides a field for good',
+    [
+      declarationShown({ name: 'a', show_if: '[[zones]]' }, reader({ zones: false })),
+      declarationShown({ name: 'a', show_if: ['[[zones]]', 'kind=x'] }, reader({ kind: 'y' })),
+    ],
+    [true, false],
+  );
+}

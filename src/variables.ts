@@ -38,6 +38,10 @@ export interface VariableDeclaration {
   unit?: string;
   /** `type: text`: a box with room for more than one line. */
   multiline?: boolean;
+  /** Shows the field in the card editor only while one of these holds - `if:` conditions, written without the `if:`. */
+  show_if?: string | string[];
+  /** Hides the field in the card editor while any of these holds. */
+  hide_if?: string | string[];
 }
 
 /**
@@ -70,6 +74,42 @@ export function groupDeclarations(
     bucket.declarations.push(declaration);
   }
   return buckets.filter((each) => each.declarations.length > 0);
+}
+
+/*
+ * A declaration can say when its field is worth showing (#347): `show_if:` and `hide_if:`
+ * take the conditions an `if:` step does - `name`, `!name`, `name=text`, `name!=text` -
+ * one or a list. Any one `show_if` holding shows the field, any one `hide_if` holding hides
+ * it, and with both written it has to pass both. It is the editor's business only: a hidden
+ * variable keeps its value and its default, and the card builds exactly as it would.
+ */
+type VisibilityKey = 'show_if' | 'hide_if';
+
+/** The conditions under one of a declaration's visibility keys, as `if:` steps. A leading `if:` is allowed and not doubled. */
+export function visibilityConditions(declaration: VariableDeclaration, key: VisibilityKey): string[] {
+  const written = declaration[key];
+  const list = Array.isArray(written) ? written : written === undefined || written === null ? [] : [written];
+  return list
+    .filter((each) => typeof each === 'string' || typeof each === 'number' || typeof each === 'boolean')
+    .map((each) => String(each).trim())
+    .filter((each) => each !== '')
+    .map((each) => (isCondition(each) ? each : IF_PREFIX + each));
+}
+
+/** Whether a condition, written as an `if:` step, is one an `if:` can read. */
+export function isWellFormedCondition(step: string): boolean {
+  return new RegExp(`^${IF_STEP}$`).test(step);
+}
+
+/** Whether the card editor shows a declaration's field, given a way to read what each variable will be. */
+export function declarationShown(declaration: VariableDeclaration, read: (name: string) => unknown): boolean {
+  // One the editor cannot read is passed over, as if it were not written - template lint says
+  // what is wrong with it - so a typo never hides a field for good.
+  const holds = (step: string): boolean => conditionHolds(step, read);
+  const show = visibilityConditions(declaration, 'show_if').filter(isWellFormedCondition);
+  const hide = visibilityConditions(declaration, 'hide_if').filter(isWellFormedCondition);
+  if (show.length && !show.some(holds)) return false;
+  return !hide.some(holds);
 }
 
 /*
