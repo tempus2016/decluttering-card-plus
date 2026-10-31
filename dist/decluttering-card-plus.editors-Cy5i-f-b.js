@@ -1,4 +1,4 @@
-import{b as e,O as t,r as i,a as s,l as a,c as n,_ as o,n as r,d as l,i as c,e as d,f as h,g as p,h as u,j as m,k as f,o as g,m as _,p as v,q as y,t as b,s as $,u as w,v as x,w as k,x as A,y as j,z as S,A as O,B as C,C as E,D as T,E as P,F as N,G as I,H as L,I as F,J as M,K as q,L as V,M as D,N as z,P as R,Q as H,R as U,S as W,T as K,U as B,W as Y,X as J,Y as G,Z,$ as Q,a0 as X,a1 as ee,a2 as te,a3 as ie,a4 as se,a5 as ae,a6 as ne,a7 as oe,a8 as re,a9 as le,aa as ce,ab as de,ac as he,ad as pe,ae as ue,af as me,ag as fe,ah as ge,ai as _e,aj as ve,ak as ye,al as be,am as $e,an as we,ao as xe,ap as ke,aq as Ae,ar as je,as as Se,at as Oe,au as Ce,av as Ee,aw as Te,ax as Pe,ay as Ne,az as Ie,aA as Le,aB as Fe,aC as Me,aD as qe,aE as Ve,aF as De,aG as ze,aH as Re,aI as He,aJ as Ue,aK as We,aL as Ke,aM as Be,aN as Ye,aO as Je,aP as Ge,aQ as Ze,aR as Qe,aS as Xe,aT as et,aU as tt,V as it,aV as st,aW as at,aX as nt,aY as ot,aZ as rt,a_ as lt,a$ as ct,b0 as dt,b1 as ht,b2 as pt,b3 as ut,b4 as mt,b5 as ft,b6 as gt,b7 as _t,b8 as vt,b9 as yt,ba as bt,bb as $t,bc as wt,bd as xt,be as kt,bf as At,bg as jt,bh as St,bi as Ot,bj as Ct,bk as Et,bl as Tt,bm as Pt,bn as Nt,bo as It,bp as Lt,bq as Ft,br as Mt,bs as qt,bt as Vt,bu as Dt,bv as zt,bw as Rt,bx as Ht,by as Ut,bz as Wt,bA as Kt}from"./decluttering-card-plus.core-B-6aJs6R.js";
+import{b as e,O as t,r as i,a as s,l as a,c as n,_ as o,n as r,d as l,i as c,e as d,f as h,g as p,h as u,j as m,k as f,o as g,m as _,p as v,q as y,t as b,s as $,u as w,v as x,w as k,x as A,y as j,z as S,A as O,B as C,C as E,D as T,E as P,F as N,G as I,H as L,I as F,J as M,K as q,L as V,M as D,N as z,P as R,Q as H,R as U,S as W,T as K,U as B,W as Y,X as J,Y as G,Z,$ as Q,a0 as X,a1 as ee,a2 as te,a3 as ie,a4 as se,a5 as ae,a6 as ne,a7 as oe,a8 as re,a9 as le,aa as ce,ab as de,ac as he,ad as pe,ae as ue,af as me,ag as fe,ah as ge,ai as _e,aj as ve,ak as ye,al as be,am as $e,an as we,ao as xe,ap as ke,aq as Ae,ar as je,as as Se,at as Oe,au as Ce,av as Ee,aw as Te,ax as Pe,ay as Ne,az as Ie,aA as Le,aB as Fe,aC as Me,aD as qe,aE as Ve,aF as De,aG as ze,aH as Re,aI as He,aJ as Ue,aK as We,aL as Ke,aM as Be,aN as Ye,aO as Je,aP as Ge,aQ as Ze,aR as Qe,aS as Xe,aT as et,aU as tt,V as it,aV as st,aW as at,aX as nt,aY as ot,aZ as rt,a_ as lt,a$ as ct,b0 as dt,b1 as ht,b2 as pt,b3 as ut,b4 as mt,b5 as ft,b6 as gt,b7 as _t,b8 as vt,b9 as yt,ba as bt,bb as $t,bc as wt,bd as xt,be as kt,bf as At,bg as jt,bh as St,bi as Ot,bj as Ct,bk as Et,bl as Tt,bm as Pt,bn as Nt,bo as It,bp as Lt,bq as Ft,br as Mt,bs as qt,bt as Vt,bu as Dt,bv as zt,bw as Rt,bx as Ht,by as Ut,bz as Wt,bA as Kt}from"./decluttering-card-plus.core-OxXqF3_H.js";
 /**
  * @license
  * Copyright 2020 Google LLC
@@ -1257,8 +1257,11 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
       }
       td.code {
         font-family: var(--ha-font-family-code, monospace);
-        white-space: pre-wrap;
         word-break: break-word;
+      }
+      /* Only the value keeps its spaces: on the cell, the template's own indent showed too. */
+      td.code .value {
+        white-space: pre-wrap;
       }
       td.gap {
         color: var(--secondary-text-color);
@@ -1313,7 +1316,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
           <tr class=${"unresolved"===i.whole.kind?"bad":""}>
             <td class="code">${a("placeholder_tool.result",void 0,this.hass)}</td>
             <td class="code ${"unresolved"===i.whole.kind?"bad":""}">
-              ${this._shown(i.whole.value,i.whole.kind)}
+              <span class="value">${this._shown(i.whole.value,i.whole.kind)}</span>
             </td>
             <td class="from">${a(`placeholder_tool.kind_${i.whole.kind}`,void 0,this.hass)}</td>
           </tr>
@@ -1323,7 +1326,9 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
     `}_renderStep(t,i,s,n){const o="unresolved"===t.kind&&(-1===s||i===s),r=void 0===t.value||""===t.value||"removed"===t.kind,l=0===i?n.unset.includes(t.step)?a("placeholder_tool.from_unset",void 0,this.hass):a("placeholder_tool.from_variables",void 0,this.hass):o?a("placeholder_tool.from_refused",void 0,this.hass):"";return e`<tr class=${o?"bad":""}>
       <td class="code">${t.step}</td>
       <td class="code ${o?"bad":r?"gap":""}">
-        ${r&&!o?a("placeholder_tool.nothing",void 0,this.hass):this._shown(t.value,t.kind)}
+        <span class="value"
+          >${r&&!o?a("placeholder_tool.nothing",void 0,this.hass):this._shown(t.value,t.kind)}</span
+        >
       </td>
       <td class="from">${l}</td>
     </tr>`}_shown(e,t){return"removed"===t?a("placeholder_tool.removed",void 0,this.hass):void 0===e?"":"string"==typeof e?e:JSON.stringify(e)}_picked(e){e.stopPropagation();const t=e.detail.value.placeholder;this._expression="string"==typeof t?t:""}_addStep(e,t){let i=e.trim()||"[[]]";const s=i.endsWith("?]]");i=i.replace(/\??\]\]$/,"");const a=i.slice(2),n=""===a?t:`${a}|${t}`;this._expression=`[[${n}${s?"?":""}]]`}}o([r({attribute:!1})],ll.prototype,"hass",void 0),o([r({attribute:!1})],ll.prototype,"lovelace",void 0),o([r({attribute:!1})],ll.prototype,"config",void 0),o([l()],ll.prototype,"_expression",void 0),o([l()],ll.prototype,"_more",void 0);const cl="decluttering-placeholder-tool";customElements.get(cl)||customElements.define(cl,ll);const dl="https://tempus2016.github.io/decluttering-card-plus/",hl=`${dl}help-index.json`,pl={template:"Defining-Templates.html",type:"Defining-Templates.html",description:"Defining-Templates.html",category:"Defining-Templates.html",variables:"Describing-Variables.html",default:"Variables.html",defaults:"Variables.html",let:"Variables.html",extends:"Defining-Templates.html",examples:"Describing-Variables.html",for_each:"Repeating-a-Template.html",for_each_from:"Repeating-a-Template.html",columns:"Repeating-a-Template.html",min_column_width:"Repeating-a-Template.html",gap:"Styling.html",empty:"Repeating-a-Template.html",lazy:"Repeating-a-Template.html",style:"Styling.html",grid_options:"Styling.html",on_error:"Using-Templates.html",rebuild_on:"Using-Templates.html",debug:"Troubleshooting.html",strict:"Using-Templates.html",fit:"Styling.html",group:"Cards.html",publish:"Using-Templates.html",suggest_for:"Using-Templates.html",visibility:"Visibility.html"};let ul;function ml(e=fetch){return null!=ul||(ul=e(hl,{cache:"force-cache"}).then(async e=>{if(!e.ok)return{};return function(e){const t={};if(!e||"object"!=typeof e)return t;for(const[i,s]of Object.entries(e)){if(!s||"object"!=typeof s)continue;const e=s;"string"==typeof e.page&&"string"==typeof e.text&&"string"==typeof e.url&&(e.url.startsWith(dl)&&(t[i]=Object.assign(Object.assign({key:i,page:e.page,heading:"string"==typeof e.heading?e.heading:"",text:e.text},"string"==typeof e.yaml?{yaml:e.yaml}:{}),{url:e.url})))}return t}(await e.json())}).catch(()=>({}))),ul}class fl extends c{constructor(){super(...arguments),this.key="",this._open=!1,this._loaded=!1}static get styles(){return d`
@@ -1919,4 +1924,4 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
               </ul>
             `:e``}
     `}}o([r({attribute:!1})],Kl.prototype,"hass",void 0),o([r({attribute:!1})],Kl.prototype,"lovelace",void 0),o([l()],Kl.prototype,"_borrowed",void 0),Ht(Ut,ji),Ht(Wt,Wl),Ht(Kt,Kl);export{ji as DeclutteringCardEditor,Kl as DeclutteringHealthPanel,Wl as DeclutteringTemplateEditor};
-//# sourceMappingURL=decluttering-card-plus.editors-Ckn3IwQK.js.map
+//# sourceMappingURL=decluttering-card-plus.editors-Cy5i-f-b.js.map

@@ -77,8 +77,11 @@ export class DeclutteringPlaceholderTool extends LitElement {
       }
       td.code {
         font-family: var(--ha-font-family-code, monospace);
-        white-space: pre-wrap;
         word-break: break-word;
+      }
+      /* Only the value keeps its spaces: on the cell, the template's own indent showed too. */
+      td.code .value {
+        white-space: pre-wrap;
       }
       td.gap {
         color: var(--secondary-text-color);
@@ -193,7 +196,7 @@ export class DeclutteringPlaceholderTool extends LitElement {
           <tr class=${result.whole.kind === 'unresolved' ? 'bad' : ''}>
             <td class="code">${localize('placeholder_tool.result', undefined, this.hass)}</td>
             <td class="code ${result.whole.kind === 'unresolved' ? 'bad' : ''}">
-              ${this._shown(result.whole.value, result.whole.kind)}
+              <span class="value">${this._shown(result.whole.value, result.whole.kind)}</span>
             </td>
             <td class="from">${localize(`placeholder_tool.kind_${result.whole.kind}`, undefined, this.hass)}</td>
           </tr>
@@ -217,7 +220,9 @@ export class DeclutteringPlaceholderTool extends LitElement {
     return html`<tr class=${bad ? 'bad' : ''}>
       <td class="code">${row.step}</td>
       <td class="code ${bad ? 'bad' : gap ? 'gap' : ''}">
-        ${gap && !bad ? localize('placeholder_tool.nothing', undefined, this.hass) : this._shown(row.value, row.kind)}
+        <span class="value"
+          >${gap && !bad ? localize('placeholder_tool.nothing', undefined, this.hass) : this._shown(row.value, row.kind)}</span
+        >
       </td>
       <td class="from">${from}</td>
     </tr>`;
