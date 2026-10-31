@@ -423,6 +423,7 @@
   "lint.after_default": "{placeholder}: \"{step}\" never gets a turn, because the default: before it always fills the gap. Put or: first and default: last.",
   "lint.target_unknown": "{placeholder} reads \"{name}\", which this template never declares, gives a default or uses anywhere else.",
   "lint.undeclared": "Read here but neither declared nor given a default, so every card has to set them: {names}.",
+  "lint.editor_hide_unknown": "\"{name}\" is not a part of the card editor that can be hidden, so nothing is hidden for it. It takes repeat, extras, fit, advanced, or one of the Advanced settings by name.",
   "lint.where": " (at {path})",
   "tools.health_unread": "Cards using \"{template}\" on {view} that pass \"{name}\", which the template never reads: {count}.",
   "tools.health_unread_for_each": " It is set in an item of the card's for_each.",

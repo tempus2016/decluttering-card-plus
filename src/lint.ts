@@ -12,6 +12,7 @@ import { closestTemplate, closestStep, knownStep } from './closest';
 
 export { closestStep, knownStep };
 import { structureNames } from './structure';
+import { unknownHidden } from './card-editor/hide';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -218,6 +219,11 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
       },
       path: undeclared.length > 1 ? '' : undeclared[0][1],
     });
+  }
+
+  // A part of the editor named wrong is never hidden, and nothing else would say so.
+  for (const unknown of unknownHidden(template)) {
+    findings.push({ level: 'warning', key: 'lint.editor_hide_unknown', params: { ...unknown }, path: 'editor_hide' });
   }
 
   // The same mistake written twice in one place is one thing to fix.

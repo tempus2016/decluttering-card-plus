@@ -310,3 +310,11 @@ check(
   lint({ default: [{ name: 'x' }], card: { a: '[[name|if:nope.key]]' } }),
   ['warning lint.target_unknown {"name":"nope.key","placeholder":"[[name|if:nope.key]]"} @card.a'],
 );
+
+// #344: a part of the card editor named wrong in editor_hide: is never hidden.
+check(
+  'editor_hide names the editor does not know are flagged',
+  lint({ editor_hide: ['repeat', 'advnced'], card: { type: 'tile' } }),
+  ['warning lint.editor_hide_unknown {"name":"advnced","closest":"advanced"} @editor_hide'],
+);
+check('editor_hide with known names says nothing', lint({ editor_hide: 'repeat', card: { type: 'tile' } }), []);

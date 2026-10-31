@@ -423,6 +423,7 @@
   "lint.after_default": "{placeholder}: \"{step}\" komt nooit aan de beurt, omdat de default: ervoor het gat altijd opvult. Zet or: eerst en default: als laatste.",
   "lint.target_unknown": "{placeholder} leest \"{name}\", dat dit sjabloon nergens declareert, geen standaardwaarde geeft en nergens anders gebruikt.",
   "lint.undeclared": "Hier gelezen maar niet gedeclareerd en zonder standaardwaarde, dus elke kaart moet ze zetten: {names}.",
+  "lint.editor_hide_unknown": "\"{name}\" is geen onderdeel van de kaarteditor dat verborgen kan worden, dus er wordt niets verborgen. Mogelijk zijn repeat, extras, fit, advanced of een van de geavanceerde instellingen bij naam.",
   "lint.where": " (bij {path})",
   "tools.health_unread": "Kaarten met \"{template}\" op {view} die \"{name}\" doorgeven, wat het sjabloon nooit leest: {count}.",
   "tools.health_unread_for_each": " Het staat in een item van for_each van de kaart.",

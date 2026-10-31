@@ -60,6 +60,7 @@ import {
   withOnErrorCard,
   OnErrorMode,
 } from './card-editor/advanced';
+import { EditorHidden, editorHidden, withoutFields } from './card-editor/hide';
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { buildTime, previewLines, PreviewLine, previewModes, PreviewMode } from './card-editor/result-preview';
 import {
@@ -449,6 +450,10 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       this._config.for_each !== undefined ||
       this._config.for_each_from !== undefined;
 
+    const data = this._formData(declarations);
+    // What the template says its editor can do without (#344), kept while the card uses it.
+    const hidden = editorHidden(template, this._config, (data as { extras?: unknown[] }).extras);
+
     const error: Record<string, string | string[]> = {};
     // Templates borrowed from another dashboard are still on their way, so do not accuse
     // the user of a bad name until they have arrived.
@@ -499,14 +504,14 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       ${this._renderMatches(template)}
       <ha-form
         .hass=${this.hass}
-        .data=${this._formData(declarations)}
-        .schema=${this._formSchema(declarations, repeatable)}
+        .data=${data}
+        .schema=${this._formSchema(declarations, repeatable && !hidden.repeat, hidden)}
         .error=${error}
         .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
         .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
       ></ha-form>
-      ${this._renderCardVariables(declarations)} ${this._renderEmptySlot(repeatable)} ${this._renderAdvanced()}
+      ${this._renderCardVariables(declarations)} ${this._renderEmptySlot(repeatable)} ${this._renderAdvanced(hidden)}
       ${this._renderSectionPerCopy()}
       <decluttering-card-plus-health .hass=${this.hass} .lovelace=${this._lovelace}></decluttering-card-plus-health>
     `;
@@ -517,8 +522,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
    * default, so a card that uses none of them looks exactly as it did; the summary says how
    * many are set so a card with a style or a fallback shows it without opening.
    */
-  private _renderAdvanced(): TemplateResult {
-    if (!this._config) return html``;
+  private _renderAdvanced(hidden: EditorHidden): TemplateResult {
+    if (!this._config || hidden.advanced) return html``;
     const count = advancedCount(this._config);
     const written = advancedData(this._config);
     // The chosen mode wins over what is written while the fallback card is still unpicked.
@@ -547,7 +552,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
           <ha-form
             .hass=${this.hass}
             .data=${data}
-            .schema=${advancedSchema(this.hass)}
+            .schema=${withoutFields(advancedSchema(this.hass), hidden.advancedFields)}
             .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
             .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
             @value-changed=${this._advancedChanged}
@@ -1246,10 +1251,12 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
    * underneath for anything else the card sets. A template that does not is edited the
    * way it always has been, through that box alone.
    */
-  private _formSchema(declarations: VariableDeclaration[], repeatable: boolean): unknown[] {
+  private _formSchema(declarations: VariableDeclaration[], repeatable: boolean, hidden: EditorHidden): unknown[] {
     const repeat = repeatable ? repeatSchema() : [];
+    const fit = hidden.fit ? [] : fitSchema();
 
-    if (!declarations.length) return [...this._schema, ...repeat, ...fitSchema()];
+    // With nothing described, the variables field is the only way to set any, so it stays.
+    if (!declarations.length) return [...this._schema, ...repeat, ...fit];
 
     const field = (declaration: VariableDeclaration): Record<string, unknown> => ({
       name: VARIABLE_FIELD_PREFIX + declaration.name,
@@ -1272,14 +1279,18 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     return [
       this._schema[0],
       ...grouped,
-      {
-        name: 'extras',
-        label: localize('editor.extras_label', undefined, this.hass),
-        helper: localize('editor.extras_helper', undefined, this.hass),
-        selector: { object: {} },
-      },
+      ...(hidden.extras
+        ? []
+        : [
+            {
+              name: 'extras',
+              label: localize('editor.extras_label', undefined, this.hass),
+              helper: localize('editor.extras_helper', undefined, this.hass),
+              selector: { object: {} },
+            },
+          ]),
       ...repeat,
-      ...fitSchema(),
+      ...fit,
     ];
   }
 
