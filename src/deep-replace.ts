@@ -29,6 +29,7 @@ import {
   OPTIONAL,
   hasEscape,
   isFallback,
+  orTarget,
   isJsonNumber,
   PLACEHOLDER,
   insideButtonCardJs,
@@ -502,6 +503,8 @@ function substitutePass(
      * saying why, because the variable is set and the brackets alone would suggest not.
      */
     const closed = (match: string, chain: string, optional: string | undefined, whole: boolean): string => {
+      const structure = whole ? structureStandIn(chain, undefined, values, hass, read, shield) : undefined;
+      if (structure !== undefined) return structure;
       const text = applyTransform(chain, undefined, hass, values, read, shield);
       // An optional one with nothing to stand in is left for the pruning pass. One with a
       // stand-in gets it here: the fallback pass after would not, as it leaves a mapping-valued
@@ -566,6 +569,11 @@ function substitutePass(
         return refuse(match, written as string, localize('warn.json_not_first'), 'json');
       }
       if (!transformable(chain)) return refuse(match, written as string);
+      if (whole) {
+        const input = typeof value === 'string' && PLACEHOLDER.test(value) ? settle(name) : value;
+        const standIn = structureStandIn(chain, input, values, hass, read, shield);
+        if (standIn !== undefined) return standIn;
+      }
       return shaped(
         match,
         chain,
@@ -700,6 +708,29 @@ function pruneEmptyOptions(value: any, dropped?: string[]): any {
 }
 
 /*
+ * An `or:` naming a mapping or a list, at the end of a placeholder that is the whole value,
+ * stands in with it whole: the placeholder becomes that variable's own, which the next pass
+ * puts in as the structure it is. Inside a string a mapping still cannot stand in as words,
+ * so only the whole-value callers ask. Undefined when anything before the `or:` gives a value.
+ */
+function structureStandIn(
+  chain: string,
+  value: unknown,
+  values: Record<string, any>,
+  hass?: any,
+  read?: (name: string) => unknown,
+  shield?: (text: string) => string,
+): string | undefined {
+  const steps = chain.split('|');
+  const or = orTarget(steps[steps.length - 1]);
+  if (or === undefined) return undefined;
+  const target = values[or];
+  if (!target || typeof target !== 'object') return undefined;
+  const before = applyTransform(steps.slice(0, -1).join('|') || undefined, value, hass, values, read, shield);
+  return before === undefined || before === '' ? JSON.stringify(`[[${or}]]`) : undefined;
+}
+
+/*
  * Placeholders that say what to do when nothing sets them. Ordinary substitution only ever
  * looks at variables that exist, so `[[room|default:Somewhere]]` with no `room` anywhere is
  * never even reached by it - this pass is what gives those their turn, once everything that
@@ -730,6 +761,11 @@ function fallbackPass(
   // The whole value first, so a stand-in replaces the quotes around it too rather than
   // landing inside them twice.
   json = json.replace(/"\[\[([^[\]]+)\]\]"/g, (match: string, inside: string) => {
+    const [name, ...steps] = withoutOptional(inside).split('|');
+    const structure = steps.length
+      ? structureStandIn(steps.join('|'), values[name], values, hass, read, shield)
+      : undefined;
+    if (structure !== undefined) return noted(trace, `[[${inside}]]`, structure, true);
     const text = standIn(inside);
     if (text === undefined) return match;
     return noted(

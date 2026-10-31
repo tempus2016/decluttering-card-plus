@@ -2768,4 +2768,32 @@ check(
   { or: 'fb', or_pointer: { z: 1 }, def: 'z', open: { k: 1 } },
 );
 
+// An `or:` naming a mapping or a list stands in with it whole, when the placeholder is the whole
+// value: it goes in as the structure it is. Inside a string it still cannot stand in as words.
+check(
+  'or: naming a mapping or a list stands in with it as a whole value',
+  deepReplace(
+    [{ o: { k: '[[v]]' }, l: [1, 2], c: 'no', v: 'x', s: 'set', blank: '' }],
+    { defaults: { fo: { z: 1 } } },
+    {
+      unset: '[[nope|or:fo]]',
+      empty: '[[blank|or:o]]',
+      list: '[[nope|or:l]]',
+      closed: '[[s|if:c=yes|or:o]]',
+      kept: '[[s|or:fo]]',
+      chained: '[[nope|or:blank|or:fo]]',
+      in_text: 'x [[nope|or:fo]]',
+    },
+  ),
+  {
+    unset: { z: 1 },
+    empty: { k: 'x' },
+    list: [1, 2],
+    closed: { k: 'x' },
+    kept: 'set',
+    chained: { z: 1 },
+    in_text: 'x [[nope|or:fo]]',
+  },
+);
+
 console.warn = realWarn;
