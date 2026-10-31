@@ -543,6 +543,11 @@
   "template_editor.promote_name_invalid": "\"{name}\" cannot be a variable name: use letters, digits, _ and - only.",
   "template_editor.promote_name_taken": "The template already has a variable called \"{name}\".",
   "template_editor.promote_gone": "That setting is not in the template any more. Pick it again.",
+  "template_editor.panel_describe": "Describe",
+  "template_editor.panel_variables": "Variables",
+  "template_editor.panel_tools": "Tools",
+  "template_editor.category_label": "Category",
+  "template_editor.category_helper": "Groups templates in the picker, for dashboards with many.",
   "share.download": "Download",
   "share.import_file": "Open a file",
   "share.trash_header": "Deleted and replaced templates",
@@ -624,5 +629,6 @@
   "editor.link.cannot_open": "The template card sits inside another card, so it has to be opened from there.",
   "editor.link.resume": "You left this card to edit {template}. Your unsaved changes were kept.",
   "editor.link.resume_button": "Bring them back",
-  "editor.link.discard_button": "Discard them"
+  "editor.link.discard_button": "Discard them",
+  "declarations.count": "{count} declared"
 }

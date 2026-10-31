@@ -90,12 +90,14 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
 
   private _loadedElements = false;
 
-  // One shared instance, built on first use so it speaks the user's language - a fresh
+  // Shared instances, built on first use so they speak the user's language - a fresh
   // schema object per render would mark every field dirty for no reason.
-  private static _schema?: unknown[];
+  private static _describeSchema?: unknown[];
+  private static _variablesSchema?: unknown[];
 
-  private static schema(): unknown[] {
-    DeclutteringTemplateEditor._schema ??= [
+  /** Describe: the template's name, kind, description and category. */
+  private static describeSchema(): unknown[] {
+    DeclutteringTemplateEditor._describeSchema ??= [
       {
         name: 'template',
         label: localize('template_editor.template_label'),
@@ -123,6 +125,19 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
         selector: { text: { multiline: true } },
       },
       {
+        name: 'category',
+        label: localize('template_editor.category_label'),
+        helper: localize('template_editor.category_helper'),
+        selector: { text: {} },
+      },
+    ];
+    return DeclutteringTemplateEditor._describeSchema;
+  }
+
+  /** The declarations, and the defaults for values nobody declared. */
+  private static variablesSchema(): unknown[] {
+    DeclutteringTemplateEditor._variablesSchema ??= [
+      {
         name: 'variables',
         label: localize('template_editor.declarations_label'),
         helper: localize('template_editor.declarations_helper'),
@@ -135,7 +150,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
         selector: { object: {} },
       },
     ];
-    return DeclutteringTemplateEditor._schema;
+    return DeclutteringTemplateEditor._variablesSchema;
   }
 
   public setConfig(config: DeclutteringTemplateConfig): void {
@@ -162,10 +177,11 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
       template: this._config.template,
       thingType: getThingType(this._config) ?? 'card',
       description: this._config.description,
-      variables: this._config.variables,
-      // `defaults:` is read as `default:`, so the field shows the two folded together.
-      default: templateDefaults(this._config),
+      category: this._config.category,
     };
+    // `defaults:` is read as `default:`, so the field shows the two folded together.
+    const variablesData = { variables: this._config.variables, default: templateDefaults(this._config) };
+    const declared = getDeclarations(this._config).length;
 
     return html`
       <ha-tab-group .active=${this._selectedTab} @click=${this._activateTab}>
@@ -199,19 +215,43 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
       ${
         this._selectedTab === 'settings'
           ? html`
-              ${this._renderInUse()} ${this._renderDiagnostics()} ${this._renderExamplePicker()}
-              ${this._renderSuggest(data.thingType === 'card')} ${this._renderPromote()} ${this._renderOrder()}
-              ${this._renderGroupOrder()}
-              <ha-form
-                .hass=${this.hass}
-                .data=${data}
-                .schema=${DeclutteringTemplateEditor.schema()}
-                .error=${error}
-                .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-                .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
-                @value-changed=${this._valueChanged}
-              ></ha-form>
-              ${this._renderLint()} ${this._renderDeclutter()}
+              <ha-expansion-panel outlined expanded>
+                <span slot="header">${localize('template_editor.panel_describe', undefined, this.hass)}</span>
+                <div class="panel">
+                  ${this._renderInUse()}
+                  <ha-form
+                    .hass=${this.hass}
+                    .data=${data}
+                    .schema=${DeclutteringTemplateEditor.describeSchema()}
+                    .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+                    .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+                    @value-changed=${this._describeChanged}
+                  ></ha-form>
+                </div>
+              </ha-expansion-panel>
+              <ha-expansion-panel outlined expanded>
+                <span slot="header"
+                  >${localize('template_editor.panel_variables', undefined, this.hass)}
+                  <small>${localize('declarations.count', { count: declared }, this.hass)}</small></span
+                >
+                <div class="panel">
+                  ${this._renderDiagnostics()} ${this._renderExamplePicker()}
+                  <ha-form
+                    .hass=${this.hass}
+                    .data=${variablesData}
+                    .schema=${DeclutteringTemplateEditor.variablesSchema()}
+                    .error=${error}
+                    .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+                    .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+                    @value-changed=${this._variablesChanged}
+                  ></ha-form>
+                  ${this._renderOrder()} ${this._renderLint()} ${this._renderSuggest(data.thingType === 'card')}
+                </div>
+              </ha-expansion-panel>
+              <ha-expansion-panel outlined>
+                <span slot="header">${localize('template_editor.panel_tools', undefined, this.hass)}</span>
+                <div class="panel">${this._renderPromote()} ${this._renderGroupOrder()} ${this._renderDeclutter()}</div>
+              </ha-expansion-panel>
             `
           : this._selectedTab === 'card'
             ? html`
@@ -835,10 +875,30 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     if (panel) this._selectedTab = panel;
   }
 
-  private _valueChanged(ev: CustomEvent): void {
+  /** The Describe panel: name, kind, description, category. */
+  private _describeChanged(ev: CustomEvent): void {
     if (!this._config) return;
     const data = ev.detail.value;
-    const config = { ...this._config, template: data.template, default: data.default };
+    const config = { ...this._config, template: data.template };
+    // Unlike the stubs below, these replace whatever is already there rather than only
+    // filling in what is absent.
+    setOrDelete(config, 'description', data.description);
+    setOrDelete(config, 'category', data.category);
+    // A group is a card template's body too, so it stays while the type stays a card - without
+    // this, editing any setting gave the group a starter card beside it and broke the template.
+    const keepsGroup = config.group !== undefined && data.thingType === 'card';
+    if (!keepsGroup) delete config.group;
+    for (const [thingType, stub] of Object.entries(THING_STUBS)) {
+      DeclutteringTemplateEditor.stubMember(!keepsGroup && data.thingType === thingType, config, thingType, stub);
+    }
+    this._fireConfigChanged(config);
+  }
+
+  /** The Variables panel: the declarations and the defaults. */
+  private _variablesChanged(ev: CustomEvent): void {
+    if (!this._config) return;
+    const data = ev.detail.value;
+    const config = { ...this._config, default: data.default };
     /*
      * The field shows `default:` and `defaults:` folded together. Left alone, both stay as
      * they were written; edited, what it now holds is the whole list, so it goes back under
@@ -851,17 +911,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
         delete config.defaults;
       }
     }
-    // Unlike the stubs below, these replace whatever is already there rather than only
-    // filling in what is absent.
-    setOrDelete(config, 'description', data.description);
     setOrDelete(config, 'variables', data.variables);
-    // A group is a card template's body too, so it stays while the type stays a card - without
-    // this, editing any setting gave the group a starter card beside it and broke the template.
-    const keepsGroup = config.group !== undefined && data.thingType === 'card';
-    if (!keepsGroup) delete config.group;
-    for (const [thingType, stub] of Object.entries(THING_STUBS)) {
-      DeclutteringTemplateEditor.stubMember(!keepsGroup && data.thingType === thingType, config, thingType, stub);
-    }
     this._fireConfigChanged(config);
   }
 

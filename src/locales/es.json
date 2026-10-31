@@ -543,6 +543,11 @@
   "template_editor.promote_name_invalid": "«{name}» no puede ser un nombre de variable: usa solo letras, dígitos, _ y -.",
   "template_editor.promote_name_taken": "La plantilla ya tiene una variable llamada «{name}».",
   "template_editor.promote_gone": "Ese ajuste ya no está en la plantilla. Elígelo de nuevo.",
+  "template_editor.panel_describe": "Describir",
+  "template_editor.panel_variables": "Variables",
+  "template_editor.panel_tools": "Herramientas",
+  "template_editor.category_label": "Categoría",
+  "template_editor.category_helper": "Agrupa plantillas en el selector, para paneles con muchas.",
   "share.download": "Descargar",
   "share.import_file": "Abrir un archivo",
   "share.trash_header": "Plantillas eliminadas y sustituidas",
@@ -624,5 +629,6 @@
   "editor.link.cannot_open": "La tarjeta de plantilla está dentro de otra tarjeta, así que hay que abrirla desde allí.",
   "editor.link.resume": "Dejaste esta tarjeta para editar {template}. Tus cambios sin guardar se conservaron.",
   "editor.link.resume_button": "Recuperarlos",
-  "editor.link.discard_button": "Descartarlos"
+  "editor.link.discard_button": "Descartarlos",
+  "declarations.count": "{count} declaradas"
 }
