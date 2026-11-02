@@ -15,8 +15,8 @@ import {
   findTemplate,
   findTemplateAnywhere,
   getTemplateSources,
-  libraryKnown,
-  loadLibrary,
+  borrowedKnown,
+  loadBorrowed,
   mayBorrowTemplates,
   misplacedOverrides,
   parentsOf,
@@ -784,15 +784,17 @@ export class DeclutteringCard extends DeclutteringElement {
    * more when the library turns out to give something, or the build left a name unset that
    * it has to speak up about. After the first read the library is known and nothing waits.
    */
+  // Every dashboard this one borrows from counts, not just the library: an item template
+  // can live on any of them (#375), and a card built before they are read has missed it.
   private _noteLibrary(ll: LovelaceConfig): void {
-    this._libraryUnsettled = !libraryKnown() && mayBorrowTemplates(ll);
+    this._libraryUnsettled = !borrowedKnown(ll) && mayBorrowTemplates(ll);
     this._missedBeforeLibrary = false;
   }
 
   private _catchUpWithLibrary(hass: HomeAssistant): void {
     if (!this._libraryUnsettled) return;
     this._libraryUnsettled = false;
-    loadLibrary(hass)
+    loadBorrowed(hass, getLovelaceConfig())
       .then((gives) => {
         if (gives || this._missedBeforeLibrary) this._rebuild();
       })

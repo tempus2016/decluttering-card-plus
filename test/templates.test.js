@@ -2394,3 +2394,99 @@ collectAllTemplates(hass, borrower).then((all) => {
   collectTemplates(ll, 0, { type: 'custom:decluttering-template-plus', template: 'own', card: {} });
   check("a template card's own unsaved definition bypasses the cache", reads, 3);
 }
+
+/*
+ * #375: item templates kept on the library dashboard, or on one named in
+ * decluttering_templates_from, are found from any other dashboard. This one's own win a
+ * clash, then the dashboards named on purpose, then the library.
+ */
+{
+  const {
+    itemTemplatesOf,
+    borrowedKnown,
+    loadBorrowed,
+    setReadDashboardForTest,
+  } = require('../.test-build/templates.js');
+  const fill = require('../.test-build/deep-replace.js').default;
+  const library = {
+    decluttering_templates: {
+      test_item: { item: { foo: 'bar' } },
+      clash: { item: { from: 'library' } },
+      base: { item: { a: 1, b: 2 } },
+      test_tmp: { card: [{ type: 'markdown', items: '[[test_item|with]]' }] },
+    },
+    views: [],
+  };
+  const page = { views: [] };
+
+  setLibraryForTest(undefined);
+  check('before the library is read it has nothing to lend', 'test_item' in itemTemplatesOf(page), false);
+  check('and the page knows it is still waiting', borrowedKnown(page), false);
+
+  setLibraryForTest(library);
+  check('a library item template is found from another dashboard', itemTemplatesOf(page).test_item, {
+    item: { foo: 'bar' },
+  });
+  check('a card template is not an item template', 'test_tmp' in itemTemplatesOf(page), false);
+  check('with the library read, a page borrowing nothing else is settled', borrowedKnown(page), true);
+  check(
+    "the reporter's template now fills in on another dashboard",
+    fill(
+      [],
+      {},
+      library.decluttering_templates.test_tmp.card,
+      'test_tmp',
+      undefined,
+      true,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      {
+        itemTemplates: itemTemplatesOf(page),
+      },
+    ),
+    [{ type: 'markdown', items: { foo: 'bar' } }],
+  );
+
+  const own = { decluttering_templates: { clash: { item: { from: 'own' } } }, views: [] };
+  check("this dashboard's own item template wins over the library's", itemTemplatesOf(own).clash, {
+    item: { from: 'own' },
+  });
+
+  const child = {
+    decluttering_templates: { kid: { extends: 'base', item: { b: 3 } } },
+    views: [],
+  };
+  check('extends: reaches a parent item template on the library', itemTemplatesOf(child).kid.item, { a: 1, b: 3 });
+
+  const borrower = { decluttering_templates_from: 'rooms', views: [] };
+  setReadDashboardForTest('rooms', undefined);
+  check('a named source not read yet leaves the page waiting', borrowedKnown(borrower), false);
+  setReadDashboardForTest('rooms', {
+    decluttering_templates: { clash: { item: { from: 'rooms' } }, row: { item: { r: 1 } } },
+    views: [],
+  });
+  check('a named source lends its item templates', itemTemplatesOf(borrower).row, { item: { r: 1 } });
+  check('and beats the library on a clash', itemTemplatesOf(borrower).clash, { item: { from: 'rooms' } });
+  check('the library still lends what nobody else has', itemTemplatesOf(borrower).test_item, {
+    item: { foo: 'bar' },
+  });
+  check('once read, the page is settled', borrowedKnown(borrower), true);
+
+  require('node:test')('loadBorrowed reads every named source as well as the library (#375)', async () => {
+    const asked = [];
+    const hass = {
+      callWS: (message) => {
+        asked.push(message.url_path ?? 'lovelace');
+        return Promise.resolve({ decluttering_templates: { far: { item: { x: 1 } } }, views: [] });
+      },
+    };
+    const far = { decluttering_templates_from: ['far-away'], views: [] };
+    await loadBorrowed(hass, far);
+    require('node:assert/strict').ok(asked.includes('far-away'));
+    require('node:assert/strict').deepEqual(itemTemplatesOf(far).far, { item: { x: 1 } });
+    require('node:assert/strict').equal(borrowedKnown(far), true);
+  });
+}

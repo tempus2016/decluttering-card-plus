@@ -980,20 +980,31 @@ export function collectRawTemplates(ll: LovelaceConfig | null | undefined): Reco
  * SPIKE #227: the dashboard's item templates - a template with an `item:` body rather than
  * a card, badge or section - which `with:` and `repeat:` fill in by name. Worked out once
  * per dashboard configuration, since every card on the page asks on every build.
+ *
+ * The dashboards this one borrows from lend theirs too (#375): the library dashboard and
+ * any named in decluttering_templates_from, in the order they are merged for templates -
+ * a later one wins a name clash, and this dashboard's own win over all of them. A build is
+ * synchronous, so only the borrowed dashboards already read are seen; a card waits for
+ * them the way it waits for the library, and is built again once they arrive.
  */
-const ITEM_TEMPLATES = new WeakMap<object, Record<string, TemplateConfig>>();
+const ITEM_TEMPLATES = new WeakMap<object, { version: number; found: Record<string, TemplateConfig> }>();
 export function itemTemplatesOf(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
   if (!ll || typeof ll !== 'object') return {};
-  let found = ITEM_TEMPLATES.get(ll);
-  if (!found) {
-    found = Object.create(null) as Record<string, TemplateConfig>;
-    // extends: first (#233), so a child picks up its parent's item: - list edits and all -
-    // and one written with nothing but extends: is an item template too.
-    for (const [name, template] of Object.entries(resolveExtends(collectRawTemplates(ll)))) {
-      if (template && typeof template === 'object' && 'item' in template) found[name] = template;
-    }
-    ITEM_TEMPLATES.set(ll, found);
+  const cached = ITEM_TEMPLATES.get(ll);
+  if (cached && cached.version === readVersion) return cached.found;
+  const merged: Record<string, TemplateConfig> = Object.create(null);
+  for (const source of borrowedSources(ll)) {
+    const config = readConfigs.get(source);
+    if (config && config !== ll) Object.assign(merged, collectRawTemplates(config));
   }
+  Object.assign(merged, collectRawTemplates(ll));
+  const found = Object.create(null) as Record<string, TemplateConfig>;
+  // extends: first (#233), so a child picks up its parent's item: - list edits and all -
+  // and one written with nothing but extends: is an item template too.
+  for (const [name, template] of Object.entries(resolveExtends(merged))) {
+    if (template && typeof template === 'object' && 'item' in template) found[name] = template;
+  }
+  ITEM_TEMPLATES.set(ll, { version: readVersion, found });
   return found;
 }
 
@@ -1128,6 +1139,10 @@ export function fetchDashboardPaths(hass: HomeAssistant): Promise<string[]> {
         .concat('lovelace'),
     )
     .catch(() => []) as Promise<string[]>;
+  void dashboardListCache.then((paths) => {
+    dashboardPaths = paths;
+    readVersion += 1;
+  });
   return dashboardListCache;
 }
 
@@ -1164,6 +1179,45 @@ export function withLibrary(sources: string[], onLibrary = onLibraryDashboard())
 // Fetching another dashboard is a round trip, and a dashboard full of templated cards would
 // otherwise make one per card, so each is fetched once and kept.
 const configCache = new Map<string, Promise<LovelaceConfig | null>>();
+
+/*
+ * Every borrowed dashboard as last read, by url path, for what has to be answered without
+ * waiting - a card's item templates (#375). Kept across a save the way the library is, so
+ * cards building in between still have the old copy; the version moves whenever one lands.
+ */
+const readConfigs = new Map<string, LovelaceConfig | null>();
+let readVersion = 0;
+// Every dashboard's url path once the list has come back, for expanding `'*'` without waiting.
+let dashboardPaths: string[] | undefined;
+
+/** The dashboards this one borrows from, in merge order, `'*'` expanded as far as is known. */
+function borrowedSources(ll: LovelaceConfig | null | undefined): string[] {
+  let sources = getTemplateSources(ll);
+  if (sources.includes('*')) sources = expandSources(sources, dashboardPaths ?? []);
+  return withLibrary(sources);
+}
+
+/** Whether every dashboard this one borrows from has been read yet on this page. */
+export function borrowedKnown(ll: LovelaceConfig | null | undefined): boolean {
+  if (getTemplateSources(ll).includes('*') && dashboardPaths === undefined) return false;
+  return borrowedSources(ll).every((source) =>
+    source === LIBRARY_DASHBOARD ? libraryKnown() : readConfigs.has(source),
+  );
+}
+
+/**
+ * Reads the library and every dashboard this one names to borrow from, and says whether
+ * the library gives anything to everyone - which is what a card waiting on them needs.
+ */
+export async function loadBorrowed(hass: HomeAssistant, ll: LovelaceConfig | null | undefined): Promise<boolean> {
+  let sources = getTemplateSources(ll).filter((source) => source !== LIBRARY_DASHBOARD);
+  if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
+  const [gives] = await Promise.all([
+    loadLibrary(hass),
+    ...sources.map((source) => fetchDashboardConfig(hass, source)),
+  ]);
+  return gives;
+}
 
 /**
  * The cache keys a change to one dashboard invalidates. The original dashboard has no
@@ -1230,6 +1284,16 @@ export function loadLibrary(hass: HomeAssistant): Promise<boolean> {
 /** For the tests: as if the library had been read and said this. */
 export function setLibraryForTest(config: LovelaceConfig | null | undefined): void {
   libraryConfig = config;
+  if (config === undefined) readConfigs.delete(LIBRARY_DASHBOARD);
+  else readConfigs.set(LIBRARY_DASHBOARD, config);
+  readVersion += 1;
+}
+
+/** For the tests: as if another dashboard had been read and said this. */
+export function setReadDashboardForTest(urlPath: string, config: LovelaceConfig | null | undefined): void {
+  if (config === undefined) readConfigs.delete(urlPath);
+  else readConfigs.set(urlPath, config);
+  readVersion += 1;
 }
 
 function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<LovelaceConfig | null> {
@@ -1250,11 +1314,11 @@ function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<Lov
     });
     return null;
   }) as Promise<LovelaceConfig | null>;
-  if (urlPath === LIBRARY_DASHBOARD) {
-    void request.then((config) => {
-      libraryConfig = config;
-    });
-  }
+  void request.then((config) => {
+    if (urlPath === LIBRARY_DASHBOARD) libraryConfig = config;
+    readConfigs.set(urlPath, config);
+    readVersion += 1;
+  });
 
   configCache.set(urlPath, request);
   return request;
