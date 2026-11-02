@@ -852,6 +852,7 @@ function noteLeftStanding(
           ? localize('trace.left_no_item_template', { name: missing })
           : localize(isOptional(inside) ? 'trace.left_empty' : 'trace.left_unset');
       trace.placeholders.set(placeholder, why);
+      (trace.left ??= new Set()).add(placeholder);
     }
     match = everyPlaceholder.exec(json);
   }

@@ -8,6 +8,7 @@ const {
   newTrace,
   variableRows,
   describeSection,
+  workOutRows,
   headline,
   handedDownNames,
   wantsTrace,
@@ -206,12 +207,116 @@ check('nothing is handed down without inherit_variables', handedDownNames({ vari
   const { trace } = traced([{ name: 'Hall' }, { tap: { action: 'toggle' } }], {}, { a: '[[name]]', b: '[[tap]]' });
   const described = describeSection({ variables: variableRows([{ name: 'Hall' }], {}), trace, built: {} });
   check('the variables table is in plain words', described.variables, [
-    { variable: 'name', value: 'Hall', from: 'this card' },
+    { variable: 'name', value: 'Hall', from: 'this card', 'worked out to': 'Hall', how: '' },
   ]);
   check('a mapping is shown as its JSON in the table', described.placeholders[1], {
     placeholder: '[[tap]]',
     became: '{"action":"toggle"}',
   });
+}
+
+/* ---------------------------------------------------------- worked out (#376) */
+
+{
+  // The chain from the report on #376: a name built from a name built from a resolver.
+  const template = {
+    default: [
+      { fr_camera: 'camera.[[frigate_name|lower]]' },
+      { fr_name: '[[fr_camera|object_id]]' },
+      { cam_id: '[[fr_name]]_sub' },
+      { unused: '[[fr_name]]-[[nobody]]' },
+      { icons: { hd: 'mdi:hd', sd: '[[fr_name]]' } },
+    ],
+  };
+  const variables = [{ frigate_name: 'FrontPorch' }];
+  const { trace, built } = traced(variables, template, {
+    id: '[[cam_id]]',
+    icons: '[[icons]]',
+    gone: '[[missing?]]',
+    stays: '[[nobody]]',
+  });
+  check('the build itself came out right', built.id, 'frontporch_sub');
+  const rows = describeSection({ variables: variableRows(variables, template), trace, built }).variables;
+  const row = (name) => rows.find((entry) => entry.variable === name);
+  check('a chain of names is followed to the end', row('cam_id')['worked out to'], 'frontporch_sub');
+  check(
+    'each step of the chain is listed, in the order it was taken',
+    row('cam_id').how,
+    '[[fr_name]] → [[fr_camera|object_id]]; [[fr_camera|object_id]] → frontporch',
+  );
+  check(
+    'a name the build only reached through a resolver is not worked out from the build alone',
+    row('fr_camera')['worked out to'],
+    'camera.[[frigate_name|lower]]',
+  );
+
+  // The second, quiet build asks for every name, so each one is worked out.
+  const worked = workOutRows(variableRows(variables, template), (content, probe) =>
+    deepReplace(variables, template, content, 'test', undefined, true, undefined, 0, probe),
+  );
+  const probed = describeSection({ variables: worked, trace, built }).variables;
+  const probedRow = (name) => probed.find((entry) => entry.variable === name);
+  check(
+    'the quiet build works out a name the card only met inside a resolver',
+    probedRow('fr_camera')['worked out to'],
+    'camera.frontporch',
+  );
+  check('with its step', probedRow('fr_camera').how, '[[frigate_name|lower]] → frontporch');
+  check('a name the card never used is worked out too', probedRow('unused')['worked out to'], 'frontporch-[[nobody]]');
+  check('a mapping comes back as a mapping', probedRow('icons')['worked out to'], '{"hd":"mdi:hd","sd":"frontporch"}');
+  const emptied = workOutRows([{ variable: 'gone', value: '[[missing?]]', from: 'card' }], (content, probe) =>
+    deepReplace([{ gone: '[[missing?]]' }], {}, content, 'test', undefined, true, undefined, 0, probe),
+  );
+  check('one that comes to nothing says so', emptied[0].worked.value, '(nothing)');
+  check(
+    'a build that throws leaves the rows as they were',
+    workOutRows([{ variable: 'a', value: 1, from: 'card' }], () => {
+      throw new Error('no');
+    }),
+    [{ variable: 'a', value: 1, from: 'card' }],
+  );
+  check('a value with nothing in it to work out is itself, with no steps', row('frigate_name'), {
+    variable: 'frigate_name',
+    value: 'FrontPorch',
+    from: 'this card',
+    'worked out to': 'FrontPorch',
+    how: '',
+  });
+  check('a placeholder nothing sets keeps its place', row('unused')['worked out to'], 'frontporch-[[nobody]]');
+  check(
+    'and the step says why',
+    row('unused').how.endsWith('[[nobody]] → nothing sets it, so it is left as written'),
+    true,
+  );
+  check('a mapping is worked out inside', row('icons')['worked out to'], '{"hd":"mdi:hd","sd":"frontporch"}');
+}
+
+{
+  // Two names that read each other: the table stops, rather than the report never arriving.
+  const trace = newTrace();
+  trace.placeholders.set('[[a]]', '[[b]]');
+  trace.placeholders.set('[[b]]', '[[a]]');
+  const rows = describeSection({ variables: [{ variable: 'a', value: '[[b]]', from: 'card' }], trace, built: {} });
+  check('names that read each other do not go round for ever', typeof rows.variables[0]['worked out to'], 'string');
+  check('and each step is listed once', rows.variables[0].how, '[[b]] → [[a]]; [[a]] → [[b]]');
+}
+
+{
+  // A whole placeholder that became a list or a number keeps its kind.
+  const trace = newTrace();
+  trace.placeholders.set('[[rooms]]', ['hall', 'study']);
+  trace.placeholders.set('[[count]]', 3);
+  const rows = describeSection({
+    variables: [
+      { variable: 'list', value: '[[rooms]]', from: 'card' },
+      { variable: 'n', value: '[[count]]', from: 'card' },
+    ],
+    trace,
+    built: {},
+  }).variables;
+  check('a whole placeholder that became a list is that list', rows[0]['worked out to'], '["hall","study"]');
+  check('and the step calls it a list rather than spelling it out', rows[0].how, '[[rooms]] → (a list)');
+  check('a whole placeholder that became a number is that number', rows[1]['worked out to'], 3);
 }
 
 check(

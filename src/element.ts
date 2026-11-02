@@ -51,6 +51,8 @@ import {
   TraceSection,
   traceLabel,
   variableRows,
+  VariableRow,
+  workOutRows,
   withTrace,
 } from './trace';
 import {
@@ -548,7 +550,18 @@ export abstract class DeclutteringElement extends LitElement {
     if (trace) {
       this._logBuild(
         started,
-        [{ variables: variableRows(variables, templateConfig, this._handedDown), trace, built: withoutStamps(built) }],
+        [
+          {
+            variables: this._workedRows(
+              variableRows(variables, templateConfig, this._handedDown),
+              variables,
+              templateConfig,
+              templateName,
+            ),
+            trace,
+            built: withoutStamps(built),
+          },
+        ],
         templateConfig,
       );
     }
@@ -566,6 +579,38 @@ export abstract class DeclutteringElement extends LitElement {
       copies,
       ms: performance.now() - started,
     });
+  }
+
+  // What each variable in a logged build worked out to, by a second build that says nothing (#376).
+  private _workedRows(
+    rows: VariableRow[],
+    variables: Parameters<typeof deepReplace>[0],
+    template: TemplateConfig,
+    templateName: string | undefined,
+    haNames?: Set<string>,
+  ): VariableRow[] {
+    return workOutRows(
+      rows,
+      (content, trace) =>
+        deepReplace(
+          variables,
+          template,
+          content,
+          templateName,
+          this._buildHass,
+          true,
+          undefined,
+          0,
+          trace,
+          undefined,
+          false,
+          {
+            ...this._buildExtras(),
+            ...(haNames ? { haNames } : {}),
+          },
+        ),
+      this._hass,
+    );
   }
 
   private _logBuild(started: number, sections: TraceSection[], templateConfig: TemplateConfig): void {
@@ -1022,7 +1067,13 @@ export abstract class DeclutteringElement extends LitElement {
         const copy = localize('trace.copy', { number: index + 1, count: wanted.length }, this._hass);
         sections.push({
           label: copyName ? `${copy}: "${copyName}"` : copy,
-          variables: variableRows(variables, template, this._handedDown, repeated),
+          variables: this._workedRows(
+            variableRows(variables, template, this._handedDown, repeated),
+            variables,
+            template,
+            name,
+            haNames,
+          ),
           trace,
           built: withoutStamps(built),
         });

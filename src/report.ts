@@ -179,7 +179,13 @@ function secretValues(reports: TraceReport[]): string[] {
   };
   for (const report of reports) {
     for (const section of report.sections) {
-      for (const row of section.variables) add(row.value, SECRET_NAME.test(row.variable));
+      for (const row of section.variables) {
+        add(row.value, SECRET_NAME.test(row.variable));
+        add(row.worked?.value, SECRET_NAME.test(row.variable));
+        for (const [placeholder, became] of row.worked?.steps ?? []) {
+          add(became, SECRET_NAME.test(placeholderName(placeholder)));
+        }
+      }
       addTrace(section.trace);
     }
   }
@@ -326,9 +332,19 @@ function buildSection(report: TraceReport, { line, block, title, redacting }: Wr
     if (section.label) lines.push(`### ${line(section.label)}`, '');
     // A variable called `password` is the likeliest place for one, and its value sits in a
     // table cell of its own - as does what each of its placeholders became.
-    const variables = section.variables.map((row) =>
-      redacting && SECRET_NAME.test(row.variable) ? { ...row, value: '<redacted>' } : row,
-    );
+    // What one worked out to says the secret again, and so does a step through one (#376).
+    const variables = section.variables.map((row) => {
+      if (!redacting) return row;
+      if (SECRET_NAME.test(row.variable)) {
+        return { ...row, value: '<redacted>', ...(row.worked ? { worked: { value: '<redacted>', steps: [] } } : {}) };
+      }
+      if (!row.worked) return row;
+      const steps = row.worked.steps.map(([placeholder, became]): [string, string] => [
+        placeholder,
+        SECRET_NAME.test(placeholderName(placeholder)) ? '<redacted>' : became,
+      ]);
+      return { ...row, worked: { ...row.worked, steps } };
+    });
     const placeholders = placeholdersOf(section.trace);
     const described = describeSection({ ...section, variables, trace: { ...section.trace, placeholders } }, hass);
     lines.push(`**${t('trace.variables')}**`, '');

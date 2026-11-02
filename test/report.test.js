@@ -107,6 +107,56 @@ const text = formatReport({
   neverBuilt: ['cards[2]'],
 });
 
+/* ---------------------------------------------------------- worked out (#376) */
+
+{
+  const worked = {
+    label: '"cam"',
+    chain: [],
+    ms: 1,
+    sections: [
+      section(
+        [
+          {
+            variable: 'cam_id',
+            value: '[[fr_name]]_sub',
+            from: 'default',
+            worked: { value: 'front_sub', steps: [['[[fr_name]]', 'front']] },
+          },
+          {
+            variable: 'api_password',
+            value: '[[base]]',
+            from: 'card',
+            worked: { value: 'sw0rdfish99', steps: [['[[base]]', 'sw0rdfish99']] },
+          },
+          {
+            variable: 'login',
+            value: 'u:[[api_password]]',
+            from: 'card',
+            worked: { value: 'u:sw0rdfish99', steps: [['[[api_password]]', 'sw0rdfish99']] },
+          },
+        ],
+        {},
+      ),
+    ],
+  };
+  const out = formatReport({ context: { version: '2.6.0' }, reports: [worked] });
+  check(
+    'the variables table says what each worked out to, and how',
+    out.includes('| cam\\_id | \\[\\[fr\\_name\\]\\]\\_sub | default: | front\\_sub | \\[\\[fr\\_name\\]\\] → front |'),
+    true,
+  );
+  check('a secret worked out from a placeholder is still taken out', out.includes('sw0rdfish99'), false);
+  check('and a step through a secret says so', out.includes('\\[\\[api\\_password\\]\\] → `<redacted>`'), true);
+  const alone = formatReport({
+    context: { version: '2.6.0' },
+    reports: [{ ...worked, sections: [section([worked.sections[0].variables[2]], {})] }],
+  });
+  check('a secret only met as a step is taken out of what it went into', alone.includes('sw0rdfish99'), false);
+  const plain = formatReport({ context: { version: '2.6.0' }, reports: [worked], unredacted: true });
+  check('unredacted, it is all there', plain.includes('sw0rdfish99'), true);
+}
+
 check('the report starts with its title', text.split('\n')[0], '# Decluttering Card Plus debug report');
 check('it says to read it first', /^> Read it before you post it/m.test(text), true);
 check('the versions are in a table', text.includes('| Decluttering Card Plus | 1.16.0 |'), true);

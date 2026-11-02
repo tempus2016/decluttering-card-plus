@@ -26,6 +26,8 @@ import { CONSUMER_TYPES } from './templates';
 export interface BuildTrace {
   /** Each placeholder, as written, and what it became - the first time it was met. */
   placeholders: Map<string, unknown>;
+  /** The placeholders left in the built config, whose entry above says why rather than what (#376). */
+  left?: Set<string>;
   /** Where an empty option took something out of the built config, and why. */
   dropped: string[];
   /** What substitution warned about in the console while building it. */
@@ -303,6 +305,8 @@ export interface VariableRow {
   variable: string;
   value: unknown;
   from: string;
+  /** What it worked out to in the end, and how (#376). */
+  worked?: Worked;
 }
 
 /*
@@ -373,6 +377,124 @@ function cell(value: unknown): unknown {
   return value !== null && typeof value === 'object' ? JSON.stringify(value) : value;
 }
 
+/** What a value worked out to in a build, and the steps that got it there: each placeholder and what it became. */
+export interface Worked {
+  value: unknown;
+  steps: [string, string][];
+}
+
+// The innermost placeholders in a piece of text, the ones a build fills first.
+const INNERMOST = /\[\[[^[\]]*\]\]/g;
+// Far more than any real chain needs; it only stops two names that read each other going round for ever.
+const MOST_STEPS = 50;
+// A name a placeholder can ask for on its own.
+const PLAIN_NAME = /^[A-Za-z0-9_-]+$/;
+
+/*
+ * What a value worked out to, read back from what each placeholder became in a build (#376).
+ * The placeholder table goes one step at a time - `[[cam_id]]` became `[[fr_name]]_sub`,
+ * `[[fr_name]]` became `[[fr_camera|object_id]]` - and following those rows by hand is the
+ * work this saves. Each placeholder is followed to the end before the next, so the steps read
+ * as a chain; innermost first, as the build does. One the build left standing keeps its
+ * place, and its step says why.
+ */
+export function workedOut(value: unknown, trace: BuildTrace, hass?: any): Worked {
+  const steps: [string, string][] = [];
+  const noted = new Set<string>();
+  let budget = MOST_STEPS;
+  const shown = (became: unknown): string =>
+    Array.isArray(became)
+      ? localize('trace.a_list', undefined, hass)
+      : became !== null && typeof became === 'object'
+        ? localize('trace.a_mapping', undefined, hass)
+        : String(became);
+  const note = (placeholder: string, text: string): void => {
+    if (noted.has(placeholder)) return;
+    noted.add(placeholder);
+    steps.push([placeholder, text]);
+  };
+  const asText = (worked: unknown): string =>
+    typeof worked === 'string'
+      ? worked
+      : worked !== null && typeof worked === 'object'
+        ? JSON.stringify(worked)
+        : String(worked);
+  const text = (written: string): unknown => {
+    let current = written;
+    for (;;) {
+      let changed = false;
+      let whole: { value: unknown } | undefined;
+      const next = current.replace(INNERMOST, (placeholder) => {
+        if (!trace.placeholders.has(placeholder)) return placeholder;
+        const became = trace.placeholders.get(placeholder);
+        if (trace.left?.has(placeholder)) {
+          note(placeholder, String(became));
+          return placeholder;
+        }
+        if (budget <= 0) return placeholder;
+        budget -= 1;
+        changed = true;
+        note(placeholder, shown(became));
+        const worked = walk(became);
+        if (placeholder === current) whole = { value: worked };
+        return asText(worked);
+      });
+      // A placeholder that was the whole value gives its own kind: a number, a list, a mapping.
+      if (whole && typeof whole.value !== 'string') return whole.value;
+      if (!changed || budget <= 0) return next;
+      current = next;
+    }
+  };
+  const walk = (node: unknown): unknown => {
+    if (typeof node === 'string') return node.includes('[[') ? text(node) : node;
+    if (Array.isArray(node)) return node.map(walk);
+    if (node && typeof node === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, item] of Object.entries(node)) out[key] = walk(item);
+      return out;
+    }
+    return node;
+  };
+  return { value: walk(value), steps };
+}
+
+/*
+ * Every variable worked out for real (#376). What the card's own build met only covers the
+ * names it used, and only as far as it went; a second, quiet build of nothing but
+ * `name: '[[name]]'` for each one asks for every one of them, so a name the card never shows
+ * still gets what it would have been, and every step towards it is met on the way.
+ */
+export function workOutRows(
+  rows: VariableRow[],
+  build: (content: Record<string, string>, trace: BuildTrace) => unknown,
+  hass?: any,
+): VariableRow[] {
+  const names = rows.map((row) => row.variable).filter((name) => PLAIN_NAME.test(name));
+  if (!names.length) return rows;
+  const trace = newTrace();
+  const content: Record<string, string> = {};
+  for (const name of names) content[name] = `[[${name}]]`;
+  let built: any;
+  try {
+    built = build(content, trace);
+  } catch {
+    return rows;
+  }
+  return rows.map((row) => {
+    const steps = workedOut(row.value, trace, hass).steps;
+    if (!built || typeof built !== 'object' || !PLAIN_NAME.test(row.variable)) return row;
+    // One that came to nothing is taken out of what the quiet build made, as it would be from a card.
+    const value = Object.prototype.hasOwnProperty.call(built, row.variable)
+      ? built[row.variable]
+      : localize('trace.worked_empty', undefined, hass);
+    return { ...row, worked: { value, steps } };
+  });
+}
+
+// The steps as one cell: `[[a]] → b; [[b]] → c`.
+const steps = (worked: Worked): string =>
+  worked.steps.map(([placeholder, became]) => `${placeholder} → ${became}`).join('; ');
+
 /** What the console is given, worked out apart from the logging so it can be tested. */
 export function describeSection(
   section: TraceSection,
@@ -384,11 +506,16 @@ export function describeSection(
 } {
   const col = (key: string): string => localize(`trace.col_${key}`, undefined, hass);
   return {
-    variables: section.variables.map((row) => ({
-      [col('variable')]: row.variable,
-      [col('value')]: cell(row.value),
-      [col('from')]: localize(`trace.from_${row.from}`, undefined, hass),
-    })),
+    variables: section.variables.map((row) => {
+      const worked = row.worked ?? workedOut(row.value, section.trace, hass);
+      return {
+        [col('variable')]: row.variable,
+        [col('value')]: cell(row.value),
+        [col('from')]: localize(`trace.from_${row.from}`, undefined, hass),
+        [col('final')]: cell(worked.value),
+        [col('how')]: steps(worked),
+      };
+    }),
     placeholders: [...section.trace.placeholders].map(([placeholder, became]) => ({
       [col('placeholder')]: placeholder,
       [col('became')]: cell(became),
@@ -406,10 +533,15 @@ export function itemTitle(item: ItemTrace, hass?: any): string {
 /** An item template's values as table rows, worked out apart from the logging so it can be tested. */
 export function itemValueRows(trace: BuildTrace, hass?: any): Record<string, unknown>[] {
   const col = (key: string): string => localize(`trace.col_${key}`, undefined, hass);
-  return [...(trace.values ?? [])].map(([variable, value]) => ({
-    [col('variable')]: variable,
-    [col('value')]: cell(value),
-  }));
+  return [...(trace.values ?? [])].map(([variable, value]) => {
+    const worked = workedOut(value, trace, hass);
+    return {
+      [col('variable')]: variable,
+      [col('value')]: cell(value),
+      [col('final')]: cell(worked.value),
+      [col('how')]: steps(worked),
+    };
+  });
 }
 
 // Each fill inside a build, and the fills inside those, as collapsed groups of their own.
