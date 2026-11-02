@@ -784,6 +784,27 @@ function fallbackPass(
   });
 }
 
+/*
+ * An optional placeholder still standing once the passes are done has nothing to give, and
+ * the pruning at the end takes it out of the text. Inside another placeholder that is too
+ * late: `[[block|with:ar=[[ratio?]]]]` keeps its inner brackets through every pass, so the
+ * fill around it never runs, and once pruning blanks the inner one the outer is left in the
+ * card as text. Only one inside another is taken out here - on its own, a whole value still
+ * waits for pruning to drop its key.
+ */
+function blankNestedOptionals(json: string, trace?: BuildTrace): string {
+  const opens = (text: string): number => (text.match(/\[\[/g) ?? []).length - (text.match(/\]\]/g) ?? []).length;
+  let depth = 0;
+  let from = 0;
+  return json.replace(/\[\[([^[\]]+)\]\]/g, (match: string, inside: string, offset: number) => {
+    depth += opens(json.slice(from, offset));
+    from = offset + match.length;
+    if (depth <= 0 || inside.startsWith(ESCAPE) || !isOptional(inside)) return match;
+    if (trace && !trace.placeholders.has(match)) trace.placeholders.set(match, '');
+    return '';
+  });
+}
+
 /** Whether anything here says what to do when nothing sets it. */
 function hasFallback(jsonConfig: string): boolean {
   const pattern = /\[\[([^[\]]+)\]\]/g;
@@ -1379,14 +1400,22 @@ function deepReplace(
    * after this build to finish them, and `exists` was asked about half an entity id.
    */
   let fallbacks = false;
-  for (let round = 0; ; round += 1) {
-    if (variableArray.length) substituteAll();
-    if (!hasFallback(jsonConfig)) break;
-    fallbacks = true;
-    const before = jsonConfig;
-    jsonConfig = fallbackPass(jsonConfig, values, read, hass, trace, shield);
-    if (jsonConfig === before || !variableArray.length || round >= MAX_FALLBACK_ROUNDS) break;
-    if (!PLACEHOLDER.test(jsonConfig) || budget.left <= 0) break;
+  for (let blanking = 0; ; blanking += 1) {
+    for (let round = 0; ; round += 1) {
+      if (variableArray.length) substituteAll();
+      if (!hasFallback(jsonConfig)) break;
+      fallbacks = true;
+      const before = jsonConfig;
+      jsonConfig = fallbackPass(jsonConfig, values, read, hass, trace, shield);
+      if (jsonConfig === before || !variableArray.length || round >= MAX_FALLBACK_ROUNDS) break;
+      if (!PLACEHOLDER.test(jsonConfig) || budget.left <= 0) break;
+    }
+    // An empty optional inside another placeholder is nothing, now rather than at the end,
+    // so the placeholder around it can still be filled - then the passes go over it again.
+    if (blanking >= MAX_FALLBACK_ROUNDS || budget.left <= 0) break;
+    const blanked = blankNestedOptionals(jsonConfig, trace);
+    if (blanked === jsonConfig) break;
+    jsonConfig = blanked;
   }
 
   if (variableArray.length && refused.size) {
