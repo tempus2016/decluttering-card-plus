@@ -104,8 +104,11 @@ here.
   rename a template or a variable everywhere, turn existing cards into a template, and keep
   the last 20 deleted or replaced templates to restore. Variables are edited as rows, with
   help beside each field, and a template can show or hide its fields depending on the others.
+  The card editor shows each field's default, sets up a repeat as a form with its filters,
+  order and a live count, and edits `template_by_domain` as a table.
 - A health panel for missing templates, unset variables and unused templates, and
-  `debug: report` to write up what a card built, ready to paste into an issue.
+  `debug: report` to write up what a card built, with what each variable worked out to and
+  how, ready to paste into an issue.
 
 The [Configuration Reference][wiki-config] lists every option.
 
