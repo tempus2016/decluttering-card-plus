@@ -56,6 +56,7 @@
     "src/declarations-rows.ts",
     "src/example-labels.ts",
     "src/placeholders.ts",
-    "src/help.ts"
+    "src/help.ts",
+    "src/card-editor/repeat-builder.ts"
   ]
 }
