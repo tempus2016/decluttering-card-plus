@@ -20,6 +20,7 @@ import {
   deprecationOf,
   itemTemplatesOf,
   borrowedFrom,
+  moveItem,
 } from './templates';
 import {
   diagnoseInstance,
@@ -73,6 +74,22 @@ import {
   takeReturn,
   templateCardPath,
 } from './card-editor/template-link';
+import {
+  applyRepeat,
+  isDrawableSource,
+  listItemLabel,
+  repeatBuilderSchema,
+  repeatData,
+  RepeatData,
+  repeatMode,
+  RepeatMode,
+  repeatModeOptions,
+  sourceKind,
+  withListItem,
+  withNewListItem,
+  withoutListItem,
+  withRepeatMode,
+} from './card-editor/repeat-builder';
 import { holdUndo } from './undo';
 import {
   currentViewIndex,
@@ -104,6 +121,10 @@ function matchedWhat(source: unknown, count: number, hass: unknown): string {
 // few enough that a sweep of the whole house does not fill the dialog.
 const MATCHES_SHOWN = 12;
 
+// mdi:drag, the handle a list that can be dragged into order shows on each item.
+const DRAG_PATH =
+  'M7,19V17H9V19H7M11,19V17H13V19H11M15,19V17H17V19H15M7,15V13H9V15H7M11,15V13H13V15H11M15,15V13H17V15H15M7,11V9H9V11H7M11,11V9H13V11H11M15,11V9H17V11H15M7,7V5H9V7H7M11,7V5H13V7H11M15,7V5H17V7H15Z';
+
 // One shared instance, built on first use so it speaks the user's language: the editor
 // re-renders on every state change Home Assistant sends, and a fresh schema object each
 // time would mark every field dirty for no reason.
@@ -111,18 +132,6 @@ let REPEAT_SCHEMA: unknown[] | undefined;
 
 function repeatSchema(): unknown[] {
   REPEAT_SCHEMA ??= [
-    {
-      name: 'for_each',
-      label: localize('editor.for_each_label'),
-      helper: localize('editor.for_each_helper'),
-      selector: { object: {} },
-    },
-    {
-      name: 'for_each_from',
-      label: localize('editor.for_each_from_label'),
-      helper: localize('editor.for_each_from_helper'),
-      selector: { object: {} },
-    },
     {
       name: 'gap',
       label: localize('editor.gap_label'),
@@ -311,6 +320,52 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         display: flex;
         gap: 8px;
       }
+      .repeat h3 {
+        font-size: 16px;
+        font-weight: 500;
+        margin: 8px 0 12px;
+      }
+      .matches-line {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 12px;
+        margin: 0 0 12px;
+        border-radius: 8px;
+        background: rgba(var(--rgb-success-color, 76, 175, 80), 0.12);
+      }
+      .matches-line ha-svg-icon {
+        color: var(--success-color);
+      }
+      .matches-line span {
+        flex: 1;
+      }
+      .matches {
+        margin: -4px 0 12px;
+      }
+      .items {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .items li {
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 2px 6px;
+        margin: 0 0 6px;
+      }
+      .item-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .item-row .handle {
+        color: var(--secondary-text-color);
+        cursor: grab;
+      }
+      .item-row .spacer {
+        flex: 1;
+      }
     `;
   }
 
@@ -337,6 +392,10 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _cannotOpen = false;
   // Idea 20: unsaved changes left when this card was closed to edit its template.
   @state() private _resume?: ReturnTicket;
+  @state() private _matchesOpen = false;
+  // Which hand-written items are open for editing, by position.
+  @state() private _openItems = new Set<number>();
+  private _dragging?: number;
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
@@ -506,18 +565,18 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       }
       ${this._renderResume()} ${this._renderResult(template)} ${this._renderSource(template)}
       ${this._renderStartFromExample(template)} ${this._renderDiagnostics(template, readable)}
-      ${this._renderMatches(template)}
       <ha-form
         .hass=${this.hass}
         .data=${data}
-        .schema=${this._formSchema(shown, repeatable && !hidden.repeat, hidden)}
+        .schema=${this._formSchema(shown, hidden, template)}
         .error=${error}
         .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
         .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
       ></ha-form>
-      ${this._renderCardVariables(shown)} ${this._renderEmptySlot(repeatable)} ${this._renderAdvanced(hidden)}
-      ${this._renderSectionPerCopy()}
+      ${this._renderCardVariables(shown)} ${this._renderRepeat(repeatable && !hidden.repeat, template)}
+      ${this._renderLayout(data, repeatable && !hidden.repeat, hidden)} ${this._renderEmptySlot(repeatable)}
+      ${this._renderAdvanced(hidden)} ${this._renderSectionPerCopy()}
       <decluttering-card-plus-health .hass=${this.hass} .lovelace=${this._lovelace}></decluttering-card-plus-health>
     `;
   }
@@ -1219,9 +1278,11 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     // dump, and a sweep of the house should not fill the dialog.
     const shown = matched.slice(0, MATCHES_SHOWN);
 
+    // The count sits beside the filters that change it (idea 15); the list is a click away.
     return html`
-      <ha-expansion-panel outlined>
-        <span slot="header">
+      <div class="matches-line">
+        <ha-svg-icon .path=${'M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z'}></ha-svg-icon>
+        <span>
           ${
             matched.length === 1
               ? localize('editor.matches_header_one', { what: matchedWhat(source, 1, this.hass) }, this.hass)
@@ -1232,23 +1293,259 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
                 )
           }
         </span>
-        <div class="matches">
-          <ul>
-            ${shown.map((item, index) => html`<li>${copyLabel(item, index)}</li>`)}
-          </ul>
-          ${
-            matched.length > shown.length
-              ? html`<p class="hint">
-                  ${localize('editor.matches_more', { count: matched.length - shown.length }, this.hass)}
-                </p>`
-              : html``
-          }
-          <p class="hint">
-            ${localize(template === undefined ? 'editor.matches_hint' : 'editor.matches_template_hint', undefined, this.hass)}
-          </p>
-        </div>
-      </ha-expansion-panel>
+        <ha-button
+          @click=${(): void => {
+            this._matchesOpen = !this._matchesOpen;
+          }}
+        >
+          ${localize(this._matchesOpen ? 'editor.repeat.matches_hide' : 'editor.repeat.matches_show', undefined, this.hass)}
+        </ha-button>
+      </div>
+      ${
+        this._matchesOpen
+          ? html`<div class="matches">
+              <ul>
+                ${shown.map((item, index) => html`<li>${copyLabel(item, index)}</li>`)}
+              </ul>
+              ${
+                matched.length > shown.length
+                  ? html`<p class="hint">
+                      ${localize('editor.matches_more', { count: matched.length - shown.length }, this.hass)}
+                    </p>`
+                  : html``
+              }
+              <p class="hint">
+                ${localize(template === undefined ? 'editor.matches_hint' : 'editor.matches_template_hint', undefined, this.hass)}
+              </p>
+            </div>`
+          : html``
+      }
     `;
+  }
+
+  /** The names every copy of a repeat is given, which the form shows greyed and the diagnostics count as set. */
+  private _suppliedNames(template: TemplateConfig | undefined): string[] {
+    return [
+      ...forEachNames(this._config?.for_each),
+      ...registryNames(this._config?.for_each_from),
+      ...(isRegistrySource(this._config?.for_each_from) ? POSITION_NAMES : []),
+      ...(template ? this._renderedTemplateNames(template) : []),
+    ];
+  }
+
+  /*
+   * Ideas 15 and 46: the repeat, as a form. One dropdown says what a copy is made for; the
+   * fields under it are the filters that collection takes, with the live match count beside
+   * them; a hand-written list is a list that can be put in order; a shape the form cannot
+   * draw keeps its YAML.
+   */
+  private _renderRepeat(repeatable: boolean, template: TemplateConfig | undefined): TemplateResult {
+    if (!this._config || !repeatable) return html``;
+    const mode = repeatMode(this._config);
+    const modeSchema = [
+      {
+        name: 'mode',
+        label: localize('editor.repeat.mode_label', undefined, this.hass),
+        helper: localize('editor.repeat.mode_helper', undefined, this.hass),
+        selector: { select: { mode: 'dropdown', options: repeatModeOptions(this.hass, mode) } },
+      },
+    ];
+    return html`
+      <div class="repeat">
+        <h3>${localize('editor.repeat.header', undefined, this.hass)}</h3>
+        <ha-form
+          .hass=${this.hass}
+          .data=${{ mode }}
+          .schema=${modeSchema}
+          .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+          .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+          @value-changed=${this._repeatModeChanged}
+        ></ha-form>
+        ${
+          mode === 'list'
+            ? this._renderRepeatList()
+            : mode === 'other'
+              ? this._renderOtherSource(template)
+              : mode === 'none'
+                ? html``
+                : this._renderRepeatBuilder(template)
+        }
+      </div>
+    `;
+  }
+
+  // How the copies are laid out and where the card sits, under the repeat they belong to.
+  private _renderLayout(data: Record<string, unknown>, repeatable: boolean, hidden: EditorHidden): TemplateResult {
+    const schema = [...(repeatable ? repeatSchema() : []), ...(hidden.fit ? [] : fitSchema())];
+    if (!schema.length) return html``;
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${data}
+        .schema=${schema}
+        .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+        .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+        @value-changed=${this._valueChanged}
+      ></ha-form>
+    `;
+  }
+
+  private _repeatModeChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    if (!this._config) return;
+    const mode = ev.detail.value?.mode as RepeatMode | undefined;
+    if (!mode) return;
+    const config = withRepeatMode(this._config, mode);
+    if (config !== this._config) fireEvent(this, 'config-changed', { config });
+  }
+
+  private _renderRepeatBuilder(template: TemplateConfig | undefined): TemplateResult {
+    const source = this._config?.for_each_from;
+    const kind = sourceKind(source);
+    if (!kind) return html``;
+    const data = repeatData(source);
+    return html`
+      <ha-form
+        .hass=${this.hass}
+        .data=${data}
+        .schema=${repeatBuilderSchema(this.hass, kind, data)}
+        .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+        .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+        @value-changed=${this._repeatBuilderChanged}
+      ></ha-form>
+      ${this._renderMatches(template)}
+    `;
+  }
+
+  private _repeatBuilderChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    if (!this._config || !isDrawableSource(this._config.for_each_from)) return;
+    const config = {
+      ...this._config,
+      for_each_from: applyRepeat(this._config.for_each_from, ev.detail.value as RepeatData),
+    };
+    fireEvent(this, 'config-changed', { config });
+  }
+
+  // A source the form cannot draw - a Jinja template, a range - is edited as it was written.
+  private _renderOtherSource(template: TemplateConfig | undefined): TemplateResult {
+    return html`
+      <p class="hint">${localize('editor.repeat.other_hint', undefined, this.hass)}</p>
+      <ha-yaml-editor
+        .hass=${this.hass}
+        .defaultValue=${this._config?.for_each_from}
+        @value-changed=${this._otherSourceChanged}
+      ></ha-yaml-editor>
+      ${this._renderMatches(template)}
+    `;
+  }
+
+  private _otherSourceChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    if (!this._config || ev.detail?.isValid === false) return;
+    const config = { ...this._config } as DeclutteringCardConfig;
+    setOrDelete(config, 'for_each_from', ev.detail.value);
+    fireEvent(this, 'config-changed', { config });
+  }
+
+  /* ---------------------------------------------------------- the hand-written list (idea 46) */
+
+  private _listItems(): unknown[] {
+    const list = this._config?.for_each;
+    if (Array.isArray(list)) return list;
+    return list && typeof list === 'object' ? [list] : [];
+  }
+
+  private _setList(items: unknown[]): void {
+    if (!this._config) return;
+    fireEvent(this, 'config-changed', { config: { ...this._config, for_each: items } as DeclutteringCardConfig });
+  }
+
+  private _renderRepeatList(): TemplateResult {
+    const items = this._listItems();
+    const name = (item: unknown, index: number): string =>
+      listItemLabel(item) || localize('editor.repeat.list_item', { number: index + 1 }, this.hass);
+    const drop = (ev: DragEvent, to: number): void => {
+      ev.preventDefault();
+      const from = this._dragging;
+      this._dragging = undefined;
+      if (from !== undefined && from !== to) this._setList(moveItem(items, from, to));
+    };
+    return html`
+      <p class="hint">${localize('editor.repeat.list_hint', undefined, this.hass)}</p>
+      <ul class="items">
+        ${items.map(
+          (item, index) => html`
+            <li
+              draggable="true"
+              @dragstart=${(ev: DragEvent): void => {
+                this._dragging = index;
+                ev.dataTransfer?.setData('text/plain', name(item, index));
+                if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+              }}
+              @dragover=${(ev: DragEvent): void => {
+                if (this._dragging !== undefined) ev.preventDefault();
+              }}
+              @drop=${(ev: DragEvent): void => drop(ev, index)}
+              @dragend=${(): void => {
+                this._dragging = undefined;
+              }}
+            >
+              <div class="item-row">
+                <ha-svg-icon class="handle" .path=${DRAG_PATH}></ha-svg-icon>
+                <span class="item-name">${name(item, index)}</span>
+                <span class="spacer"></span>
+                <ha-icon-button
+                  .path=${'M7,15L12,10L17,15H7Z'}
+                  .disabled=${index === 0}
+                  .label=${localize('editor.repeat.move_up', { name: name(item, index) }, this.hass)}
+                  @click=${(): void => this._setList(moveItem(items, index, index - 1))}
+                ></ha-icon-button>
+                <ha-icon-button
+                  .path=${'M7,10L12,15L17,10H7Z'}
+                  .disabled=${index === items.length - 1}
+                  .label=${localize('editor.repeat.move_down', { name: name(item, index) }, this.hass)}
+                  @click=${(): void => this._setList(moveItem(items, index, index + 1))}
+                ></ha-icon-button>
+                <ha-icon-button
+                  .path=${'M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z'}
+                  .label=${localize('editor.repeat.list_edit', { name: name(item, index) }, this.hass)}
+                  @click=${(): void => this._toggleItem(index)}
+                ></ha-icon-button>
+                <ha-icon-button
+                  .path=${'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z'}
+                  .label=${localize('editor.repeat.list_remove', { name: name(item, index) }, this.hass)}
+                  @click=${(): void => this._setList(withoutListItem(items, index))}
+                ></ha-icon-button>
+              </div>
+              ${
+                this._openItems.has(index)
+                  ? html`<ha-yaml-editor
+                      .hass=${this.hass}
+                      .defaultValue=${item}
+                      @value-changed=${(ev: CustomEvent): void => {
+                        ev.stopPropagation();
+                        if (ev.detail?.isValid === false) return;
+                        this._setList(withListItem(items, index, ev.detail.value));
+                      }}
+                    ></ha-yaml-editor>`
+                  : html``
+              }
+            </li>
+          `,
+        )}
+      </ul>
+      <ha-button @click=${(): void => this._setList(withNewListItem(items))}>
+        ${localize('editor.repeat.list_add', undefined, this.hass)}
+      </ha-button>
+    `;
+  }
+
+  private _toggleItem(index: number): void {
+    const open = new Set(this._openItems);
+    if (open.has(index)) open.delete(index);
+    else open.add(index);
+    this._openItems = open;
   }
 
   /*
@@ -1275,21 +1572,31 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
    * underneath for anything else the card sets. A template that does not is edited the
    * way it always has been, through that box alone.
    */
-  private _formSchema(declarations: VariableDeclaration[], repeatable: boolean, hidden: EditorHidden): unknown[] {
-    const repeat = repeatable ? repeatSchema() : [];
-    const fit = hidden.fit ? [] : fitSchema();
-
+  private _formSchema(
+    declarations: VariableDeclaration[],
+    hidden: EditorHidden,
+    template: TemplateConfig | undefined,
+  ): unknown[] {
     // With nothing described, the variables field is the only way to set any, so it stays.
-    if (!declarations.length) return [...this._schema, ...repeat, ...fit];
+    if (!declarations.length) return this._schema;
 
-    const field = (declaration: VariableDeclaration): Record<string, unknown> => ({
-      name: VARIABLE_FIELD_PREFIX + declaration.name,
-      label: declaration.label ?? declaration.name,
-      helper: declaration.description,
-      // A declared selector, then what its `type:` stands for, then its allowed values.
-      selector: declarationSelector(declaration),
-      required: declaration.required === true,
-    });
+    // A variable the repeat fills is shown greyed and says so, rather than as an empty
+    // field that looks like a mistake (idea 15).
+    const supplied = new Set(this._suppliedNames(template));
+    const field = (declaration: VariableDeclaration): Record<string, unknown> => {
+      const fromCopy = supplied.has(declaration.name);
+      return {
+        name: VARIABLE_FIELD_PREFIX + declaration.name,
+        label: declaration.label ?? declaration.name,
+        helper: fromCopy
+          ? localize('editor.repeat.from_each_copy_helper', undefined, this.hass)
+          : declaration.description,
+        // A declared selector, then what its `type:` stands for, then its allowed values.
+        selector: declarationSelector(declaration),
+        required: declaration.required === true && !fromCopy,
+        disabled: fromCopy,
+      };
+    };
 
     // Declarations sharing a `group:` fold into a collapsible section, so a template with
     // fifteen variables leads with its essentials. `name: ''` keeps the data flat - the
@@ -1313,8 +1620,6 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
               selector: { object: {} },
             },
           ]),
-      ...repeat,
-      ...fit,
     ];
   }
 
@@ -1357,8 +1662,6 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       return name !== undefined && !described.has(name);
     });
     if (extras.length) data.extras = extras;
-    if (this._config?.for_each !== undefined) data.for_each = this._config.for_each;
-    if (this._config?.for_each_from !== undefined) data.for_each_from = this._config.for_each_from;
     if (this._config?.columns !== undefined) data.columns = this._config.columns;
     if (this._config?.min_column_width !== undefined) data.min_column_width = this._config.min_column_width;
     if (this._config?.gap !== undefined) data.gap = this._config.gap;
@@ -1383,10 +1686,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     // be called missing. A registry source supplies its set whether or not anything is
     // registered yet, so it is read from the source rather than from what it resolved to.
     const supplied = [
-      ...forEachNames(this._config?.for_each),
-      ...registryNames(this._config?.for_each_from),
-      ...(isRegistrySource(this._config?.for_each_from) ? POSITION_NAMES : []),
-      ...this._renderedTemplateNames(template),
+      ...this._suppliedNames(template),
       // An entity the card rebuilds on stands for itself in a placeholder.
       ...rebuildOnEntities(this._config?.rebuild_on),
       // What the template's own `with:` and `repeat:` give the bodies they fill in, and the
@@ -1528,8 +1828,6 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const variables = mergeVariables(ownVariables(this._config?.variables), desired);
     if (variables.length) config.variables = variables;
     else delete config.variables;
-    setOrDelete(config, 'for_each', data.for_each);
-    setOrDelete(config, 'for_each_from', data.for_each_from);
     setOrDelete(config, 'columns', data.columns);
     setOrDelete(config, 'min_column_width', data.min_column_width);
     setOrDelete(config, 'gap', data.gap);
