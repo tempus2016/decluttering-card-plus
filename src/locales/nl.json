@@ -762,5 +762,13 @@
   "editor.repeat.list_remove": "{name} verwijderen",
   "editor.repeat.list_edit": "{name} bewerken",
   "editor.repeat.move_up": "{name} omhoog",
-  "editor.repeat.move_down": "{name} omlaag"
+  "editor.repeat.move_down": "{name} omlaag",
+  "editor.by_domain.header": "Sjabloon per domein",
+  "editor.by_domain.hint": "Elke kopie kiest haar sjabloon op het domein van haar entiteit. Al het andere gebruikt de laatste rij.",
+  "editor.by_domain.domain": "Domein",
+  "editor.by_domain.template": "Sjabloon",
+  "editor.by_domain.anything_else": "Al het andere",
+  "editor.by_domain.add": "Domein toevoegen",
+  "editor.by_domain.remove": "{domain} verwijderen",
+  "editor.by_domain.picked": "Deze entiteit koos {template}."
 }

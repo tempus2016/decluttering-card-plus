@@ -762,5 +762,13 @@
   "editor.repeat.list_remove": "Remover {name}",
   "editor.repeat.list_edit": "Editar {name}",
   "editor.repeat.move_up": "Subir {name}",
-  "editor.repeat.move_down": "Descer {name}"
+  "editor.repeat.move_down": "Descer {name}",
+  "editor.by_domain.header": "Modelo por domínio",
+  "editor.by_domain.hint": "Cada cópia escolhe o seu modelo pelo domínio da sua entidade. Tudo o resto usa a última linha.",
+  "editor.by_domain.domain": "Domínio",
+  "editor.by_domain.template": "Modelo",
+  "editor.by_domain.anything_else": "Tudo o resto",
+  "editor.by_domain.add": "Adicionar um domínio",
+  "editor.by_domain.remove": "Remover {domain}",
+  "editor.by_domain.picked": "Esta entidade escolheu {template}."
 }
