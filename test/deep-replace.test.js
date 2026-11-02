@@ -2886,3 +2886,28 @@ check(
 );
 
 console.warn = realWarn;
+
+/* ------------------------------------------- an empty optional inside an argument */
+
+{
+  // From #376: the fill around an empty optional was left in the card as text.
+  const template = {
+    default: [{ block: { aspect_ratio: '[[ar]]' } }, { high: '' }, { low: '[[high?]]' }, { ratio: '4:3' }],
+  };
+  const build = (value) => deepReplace([], template, { a: value, keep: 1 }, 'test');
+  check('an empty optional in a with: argument still lets the fill run', build('[[block|with:ar=[[low]]]]'), {
+    a: { aspect_ratio: '' },
+    keep: 1,
+  });
+  check('and an if: after it still takes the option out', build('[[block|with:ar=[[low]]|if:low?]]'), { keep: 1 });
+  check('an empty optional between text in an argument is nothing', build('[[block|with:ar=x[[high?]]y]]'), {
+    a: { aspect_ratio: 'xy' },
+    keep: 1,
+  });
+  check('one with a value fills in as ever', build('[[block|with:ar=[[ratio?]]]]'), {
+    a: { aspect_ratio: '4:3' },
+    keep: 1,
+  });
+  check('an empty optional that is the whole value still drops its key', build('[[high?]]'), { keep: 1 });
+  check('and inside a longer string it is still nothing', build('x[[high?]]y'), { a: 'xy', keep: 1 });
+}
