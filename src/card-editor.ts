@@ -64,6 +64,7 @@ import {
   OnErrorMode,
 } from './card-editor/advanced';
 import { EditorHidden, editorHidden, withoutFields } from './card-editor/hide';
+import { isShownValue, shownDefaults } from './card-editor/defaults';
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { buildTime, previewLines, PreviewLine, previewModes, PreviewMode } from './card-editor/result-preview';
 import {
@@ -407,7 +408,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
 
   private _templates?: Record<string, TemplateConfig>;
   // Typed booleans drawn as a switch other than the value written - see _formData.
-  private _shownAs = new Map<string, { shown: boolean; written: unknown }>();
+  private _shownAs = new Map<string, { shown: unknown; written: unknown }>();
   @state() private _loadingTemplates = false;
   @state() private _ejectPending = false;
   @state() private _sectionsPending = false;
@@ -1754,17 +1755,30 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const described = new Set(declarations.map((declaration) => declaration.name));
     const data: Record<string, unknown> = { template: this._config?.template };
     this._shownAs = new Map();
+    // What each unset field will be built with (#373), shown in the field but never written.
+    const unset = declarations
+      .filter((declaration) => !(declaration.name in values) && !isCardDeclaration(declaration))
+      .map((declaration) => declaration.name);
+    const defaults = shownDefaults(
+      unset,
+      this._config?.variables,
+      this._templates?.[this._config?.template as string],
+      this.hass,
+    );
     for (const declaration of declarations) {
       if (!(declaration.name in values)) {
+        if (!defaults.has(declaration.name)) continue;
+        let shown = defaults.get(declaration.name);
         /*
-         * An unset switch would be drawn off whatever its default says, so a `default: true`
-         * looked off while the card - and any show_if reading it (#347) - took it as on. It
-         * is drawn as its default instead, and still sets nothing unless it is moved.
+         * A switch shows a word default (`on`, `yes`) the way the card reads it, so a
+         * `default: true` no longer looks off while the card - and any show_if reading it
+         * (#347) - takes it as on.
          */
-        if (typeof declaration.default === 'boolean' && 'boolean' in (declarationSelector(declaration) as object)) {
-          this._shownAs.set(declaration.name, { shown: declaration.default, written: undefined });
-          data[VARIABLE_FIELD_PREFIX + declaration.name] = declaration.default;
+        if ('boolean' in (declarationSelector(declaration) as object) && typeof shown !== 'boolean') {
+          shown = TRUE_WORDS.has(String(shown).trim().toLowerCase());
         }
+        this._shownAs.set(declaration.name, { shown, written: undefined });
+        data[VARIABLE_FIELD_PREFIX + declaration.name] = shown;
         continue;
       }
       const value = values[declaration.name];
@@ -1938,9 +1952,10 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const desired: VariablesConfig[] = [];
     for (const declaration of declarations) {
       let value = data[VARIABLE_FIELD_PREFIX + declaration.name];
-      // A switch shown for a written word it was not moved from keeps the word.
+      // A switch shown for a written word it was not moved from keeps the word, and a default
+      // only shown in its field (#373) stays unwritten until the field is changed.
       const shownAs = this._shownAs.get(declaration.name);
-      if (shownAs && value === shownAs.shown) value = shownAs.written;
+      if (shownAs && isShownValue(value, shownAs.shown)) value = shownAs.written;
       // A field left alone or cleared sets nothing, so the template's own default keeps
       // working. An empty string can still be set through the box below.
       if (value !== undefined && value !== '') desired.push({ [declaration.name]: value });
