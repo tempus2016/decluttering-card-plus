@@ -123,7 +123,8 @@ const VARIABLE_FIELD_PREFIX = 'variable:';
 function matchedWhat(source: unknown, count: number, hass: unknown): string {
   const keys = ['areas', 'devices', 'floors', 'labels', 'views', 'entities'];
   const written = (source && typeof source === 'object' ? source : {}) as Record<string, unknown>;
-  const kind = keys.find((key) => written[key] !== undefined) ?? 'items';
+  // Filters on their own mean entities, as the card reads them.
+  const kind = keys.find((key) => written[key] !== undefined) ?? (isRegistrySource(source) ? 'entities' : 'items');
   return localize(`editor.matches_${kind}_${count === 1 ? 'one' : 'many'}`, undefined, hass as undefined);
 }
 
