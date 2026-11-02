@@ -1341,46 +1341,93 @@ export async function collectAllTemplates(
   sources = withLibrary(sources);
 
   const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
-  // Collected once the library has been read, so this dashboard's own templates have its values.
-  const local = collectTemplates(ll, view, own, section);
   const viewValues = collectViewDefaults(ll, view, section);
   const here = collectDefaults(ll);
   const declaredHere = collectSharedDeclarations(ll);
   const letsHere = [...placeLet(ll, view, section), ...dashboardLet(ll)];
-  const borrowed: Record<string, TemplateConfig> = {};
+  // Read once the library has been, so this dashboard's own templates have its values.
+  const library = libraryShares();
+
+  /*
+   * What each dashboard gives the templates that live on it. A borrowed template gets this
+   * dashboard's values first and then the lender's, so it goes on working where it lives
+   * and borrowing a library never means giving up what you set here; the library's go
+   * under a template from any other dashboard too (#343), last of all.
+   */
+  interface Gives {
+    shared: VariablesConfig[];
+    lets: LetLayer[];
+  }
+  const raw: Record<string, TemplateConfig> = Object.create(null);
+  const givenBy: Record<string, Gives> = Object.create(null);
   const origins: Record<string, string> = {};
   for (const [index, config] of configs.entries()) {
-    /*
-     * A borrowed template is read as written and then given both sets of shared values,
-     * this dashboard's first: it goes on working where it lives, because the lender's are
-     * still there underneath, and borrowing a library never means giving up what you set
-     * here. Reading it raw is what puts them in that order - collectTemplates would have
-     * folded the lender's in already, ahead of ours.
-     */
-    // The library's values go under a template from any other dashboard too (#343), last of
-    // all; on the library's own templates they are the lender's and already there.
     const fromLibrary = sources[index] === LIBRARY_DASHBOARD ? undefined : libraryOf(configs, sources);
-    const shared = [...here, ...collectDefaults(config), ...collectDefaults(fromLibrary)];
-    // Shared declarations travel the same way, this dashboard's ahead of the lender's - and
-    // so does a decluttering_let, the lender's still reaching its own templates underneath.
+    const gives: Gives = {
+      shared: [...here, ...collectDefaults(config), ...collectDefaults(fromLibrary)],
+      // A decluttering_let travels the same way, the lender's still reaching its own templates.
+      lets: [...letsHere, ...dashboardLet(config)],
+    };
+    // Shared declarations too, this dashboard's ahead of the lender's.
     const declarations = [
       ...declaredHere,
       ...collectSharedDeclarations(config),
       ...collectSharedDeclarations(fromLibrary),
     ];
-    const lets = [...letsHere, ...dashboardLet(config)];
     for (const [name, template] of Object.entries(collectRawTemplates(config))) {
       origins[name] = sources[index];
-      borrowed[name] = withDefaults(
-        withSharedDeclarations(withDeclarationList(template), declarations),
-        viewValues,
-        shared,
-        lets,
-      );
+      raw[name] = withSharedDeclarations(withDeclarationList(template), declarations);
+      givenBy[name] = gives;
     }
   }
-  recordBorrowed(origins, Object.keys(local));
-  return resolveExtends({ ...borrowed, ...local });
+  const ownHere = withShared(withOwn(collectRawTemplates(ll), own), declaredHere);
+  const givesHere: Gives = { shared: [...here, ...library.defaults], lets: letsHere };
+  for (const [name, template] of Object.entries(ownHere)) {
+    raw[name] = template;
+    givenBy[name] = givesHere;
+  }
+  recordBorrowed(origins, Object.keys(ownHere));
+
+  /*
+   * extends: is folded on the templates as written, and the shared values put underneath
+   * afterwards - the order collectTemplates keeps on a single dashboard. Folding templates
+   * that already carried them put a parent's own defaults behind the dashboard's, so a
+   * template built on a borrowed one lost them to any dashboard default of the same name,
+   * and every shared value was listed twice. A template gets what its own dashboard gives
+   * and then what each of its parents' dashboards does, so a parent on a lender still has
+   * the lender's values; the same value given twice is listed once.
+   */
+  const resolved = resolveExtends(raw);
+  const chainOf = (name: string): string[] => {
+    const chain: string[] = [];
+    const visit = (at: string): void => {
+      if (chain.includes(at) || raw[at] === undefined) return;
+      chain.push(at);
+      for (const parent of parentsOf(raw[at])) visit(parent);
+    };
+    visit(name);
+    return chain;
+  };
+  const out: Record<string, TemplateConfig> = Object.create(null);
+  for (const [name, template] of Object.entries(resolved)) {
+    const gives = [...new Set(chainOf(name).map((at) => givenBy[at]))];
+    const shared = onceEach(([] as VariablesConfig[]).concat(...gives.map((give) => give.shared)));
+    const lets = onceEach(([] as LetLayer[]).concat(...gives.map((give) => give.lets)));
+    const declared = givenBy[name] === givesHere ? withSharedDeclarations(template, library.declarations) : template;
+    out[name] = withDefaults(declared, viewValues, shared, lets);
+  }
+  return out;
+}
+
+/** A list with any entry written the same as one before it left out. */
+function onceEach<T>(list: T[]): T[] {
+  const seen = new Set<string>();
+  return list.filter((entry) => {
+    const key = JSON.stringify(entry);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** The library dashboard among the ones just read, if it was one of them. */
