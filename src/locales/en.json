@@ -762,5 +762,13 @@
   "editor.repeat.list_remove": "Remove {name}",
   "editor.repeat.list_edit": "Edit {name}",
   "editor.repeat.move_up": "Move {name} up",
-  "editor.repeat.move_down": "Move {name} down"
+  "editor.repeat.move_down": "Move {name} down",
+  "editor.by_domain.header": "Template by domain",
+  "editor.by_domain.hint": "Each copy picks its template by the domain of its entity. Anything else uses the last row.",
+  "editor.by_domain.domain": "Domain",
+  "editor.by_domain.template": "Template",
+  "editor.by_domain.anything_else": "Anything else",
+  "editor.by_domain.add": "Add a domain",
+  "editor.by_domain.remove": "Remove {domain}",
+  "editor.by_domain.picked": "This entity picked {template}."
 }

@@ -762,5 +762,13 @@
   "editor.repeat.list_remove": "{name} entfernen",
   "editor.repeat.list_edit": "{name} bearbeiten",
   "editor.repeat.move_up": "{name} nach oben",
-  "editor.repeat.move_down": "{name} nach unten"
+  "editor.repeat.move_down": "{name} nach unten",
+  "editor.by_domain.header": "Vorlage je Domäne",
+  "editor.by_domain.hint": "Jede Kopie wählt ihre Vorlage nach der Domäne ihrer Entität. Alles andere nutzt die letzte Zeile.",
+  "editor.by_domain.domain": "Domäne",
+  "editor.by_domain.template": "Vorlage",
+  "editor.by_domain.anything_else": "Alles andere",
+  "editor.by_domain.add": "Domäne hinzufügen",
+  "editor.by_domain.remove": "{domain} entfernen",
+  "editor.by_domain.picked": "Diese Entität hat {template} gewählt."
 }

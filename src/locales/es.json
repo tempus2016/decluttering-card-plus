@@ -762,5 +762,13 @@
   "editor.repeat.list_remove": "Quitar {name}",
   "editor.repeat.list_edit": "Editar {name}",
   "editor.repeat.move_up": "Subir {name}",
-  "editor.repeat.move_down": "Bajar {name}"
+  "editor.repeat.move_down": "Bajar {name}",
+  "editor.by_domain.header": "Plantilla por dominio",
+  "editor.by_domain.hint": "Cada copia elige su plantilla por el dominio de su entidad. Todo lo demás usa la última fila.",
+  "editor.by_domain.domain": "Dominio",
+  "editor.by_domain.template": "Plantilla",
+  "editor.by_domain.anything_else": "Todo lo demás",
+  "editor.by_domain.add": "Añadir un dominio",
+  "editor.by_domain.remove": "Quitar {domain}",
+  "editor.by_domain.picked": "Esta entidad eligió {template}."
 }

@@ -762,5 +762,13 @@
   "editor.repeat.list_remove": "Retirer {name}",
   "editor.repeat.list_edit": "Modifier {name}",
   "editor.repeat.move_up": "Monter {name}",
-  "editor.repeat.move_down": "Descendre {name}"
+  "editor.repeat.move_down": "Descendre {name}",
+  "editor.by_domain.header": "Modèle par domaine",
+  "editor.by_domain.hint": "Chaque copie choisit son modèle d'après le domaine de son entité. Le reste utilise la dernière ligne.",
+  "editor.by_domain.domain": "Domaine",
+  "editor.by_domain.template": "Modèle",
+  "editor.by_domain.anything_else": "Tout le reste",
+  "editor.by_domain.add": "Ajouter un domaine",
+  "editor.by_domain.remove": "Retirer {domain}",
+  "editor.by_domain.picked": "Cette entité a choisi {template}."
 }

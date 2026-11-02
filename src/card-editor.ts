@@ -75,6 +75,14 @@ import {
   templateCardPath,
 } from './card-editor/template-link';
 import {
+  applyByDomainRows,
+  ByDomainRow,
+  byDomainRows,
+  cardTemplateOptions,
+  isReadableByDomain,
+  remainingDomains,
+} from './card-editor/by-domain';
+import {
   applyRepeat,
   isDrawableSource,
   listItemLabel,
@@ -90,6 +98,7 @@ import {
   withoutListItem,
   withRepeatMode,
 } from './card-editor/repeat-builder';
+import { knownDomains } from './card-editor/repeat-builder';
 import { holdUndo } from './undo';
 import {
   currentViewIndex,
@@ -366,6 +375,28 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       .item-row .spacer {
         flex: 1;
       }
+      .by-domain h3 {
+        font-size: 16px;
+        font-weight: 500;
+        margin: 8px 0 4px;
+      }
+      .bd-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 12px;
+      }
+      .bd-row ha-selector {
+        flex: 1;
+        min-width: 0;
+      }
+      .bd-row .bd-default {
+        flex: 1;
+        color: var(--secondary-text-color);
+      }
+      .bd-row .bd-spacer {
+        width: 48px;
+      }
     `;
   }
 
@@ -393,6 +424,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   // Idea 20: unsaved changes left when this card was closed to edit its template.
   @state() private _resume?: ReturnTicket;
   @state() private _matchesOpen = false;
+  // Idea 16: rows added but not complete yet, which the mapping cannot hold (round 1, B3).
+  @state() private _byDomainDraft?: ByDomainRow[];
   // Which hand-written items are open for editing, by position.
   @state() private _openItems = new Set<number>();
   private _dragging?: number;
@@ -538,19 +571,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
          * need one to leave it alone: every save carries the rest of the config through,
          * and the mapping is changed in the code editor.
          */
-        byDomain
-          ? html`<ha-alert alert-type="info">
-              ${localize(
-                'editor.by_domain_hint',
-                {
-                  templates: Object.entries(byDomain)
-                    .map(([domain, name]) => `${domain}: ${name}`)
-                    .join(', '),
-                },
-                this.hass,
-              )}
-            </ha-alert>`
-          : html``
+        byDomain ? this._renderByDomain(byDomain) : html``
       }
       ${
         retired === undefined
@@ -714,6 +735,109 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     fireEvent(this, 'config-changed', { config: { ...this._config, variables } as DeclutteringCardConfig });
   }
 
+  /*
+   * Idea 16: `template_by_domain:` as a table of domain to template, writing the same
+   * mapping a hand writes. A mapping with a value the table cannot read keeps the alert.
+   */
+  private _renderByDomain(byDomain: Record<string, string>): TemplateResult {
+    if (!this._config) return html``;
+    if (!isReadableByDomain(this._config)) {
+      return html`<ha-alert alert-type="info">
+        ${localize(
+          'editor.by_domain_hint',
+          {
+            templates: Object.entries(byDomain)
+              .map(([domain, name]) => `${domain}: ${name}`)
+              .join(', '),
+          },
+          this.hass,
+        )}
+      </ha-alert>`;
+    }
+    const { rows: written, fallback } = byDomainRows(this._config);
+    // A row just added has no template yet, and the mapping cannot hold it: it lives here
+    // until both cells are filled, then it is written like the others (round 1, B3).
+    const rows = this._byDomainDraft ?? written;
+    const templates = cardTemplateOptions(this._templates ?? {}, this.hass);
+    const domains = knownDomains(this.hass);
+    const domainOptions = (current: string): { value: string; label: string }[] =>
+      [...new Set([current, ...domains])].filter(Boolean).map((value) => ({ value, label: value }));
+    const write = (next: typeof rows, nextFallback: string): void => {
+      const complete = next.every((row) => row.domain?.trim() && row.template?.trim());
+      this._byDomainDraft = complete ? undefined : next;
+      fireEvent(this, 'config-changed', {
+        config: applyByDomainRows(this._config as DeclutteringCardConfig, next, nextFallback),
+      });
+    };
+    return html`
+      <div class="by-domain">
+        <h3>${localize('editor.by_domain.header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('editor.by_domain.hint', undefined, this.hass)}</p>
+        ${rows.map(
+          (row, index) => html`
+            <div class="bd-row">
+              <ha-selector
+                .hass=${this.hass}
+                .selector=${{ select: { mode: 'dropdown', custom_value: true, options: domainOptions(row.domain) } }}
+                .value=${row.domain}
+                .label=${localize('editor.by_domain.domain', undefined, this.hass)}
+                @value-changed=${(ev: CustomEvent): void => {
+                  ev.stopPropagation();
+                  write(
+                    rows.map((each, at) => (at === index ? { ...each, domain: String(ev.detail.value ?? '') } : each)),
+                    fallback ?? '',
+                  );
+                }}
+              ></ha-selector>
+              <ha-selector
+                .hass=${this.hass}
+                .selector=${{ select: { mode: 'dropdown', options: templates } }}
+                .value=${row.template}
+                .label=${localize('editor.by_domain.template', undefined, this.hass)}
+                @value-changed=${(ev: CustomEvent): void => {
+                  ev.stopPropagation();
+                  write(
+                    rows.map((each, at) =>
+                      at === index ? { ...each, template: String(ev.detail.value ?? '') } : each,
+                    ),
+                    fallback ?? '',
+                  );
+                }}
+              ></ha-selector>
+              <ha-icon-button
+                .path=${'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z'}
+                .label=${localize('editor.by_domain.remove', { domain: row.domain }, this.hass)}
+                @click=${(): void =>
+                  write(
+                    rows.filter((_, at) => at !== index),
+                    fallback ?? '',
+                  )}
+              ></ha-icon-button>
+            </div>
+          `,
+        )}
+        <div class="bd-row">
+          <span class="bd-default">${localize('editor.by_domain.anything_else', undefined, this.hass)}</span>
+          <ha-selector
+            .hass=${this.hass}
+            .selector=${{ select: { mode: 'dropdown', options: templates } }}
+            .value=${fallback ?? ''}
+            .label=${localize('editor.by_domain.template', undefined, this.hass)}
+            @value-changed=${(ev: CustomEvent): void => {
+              ev.stopPropagation();
+              write(rows, String(ev.detail.value ?? ''));
+            }}
+          ></ha-selector>
+          <span class="bd-spacer"></span>
+        </div>
+        <ha-button
+          @click=${(): void => write([...rows, { domain: remainingDomains(domains, rows)[0] ?? '', template: '' }], fallback ?? '')}
+        >
+          ${localize('editor.by_domain.add', undefined, this.hass)}
+        </ha-button>
+      </div>
+    `;
+  }
   /*
    * A variable declared `selector: {card: {}}` takes a whole card as its value, so its
    * control is Home Assistant's own card editor rather than a box of YAML. Substitution
