@@ -1004,6 +1004,12 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       this._markedLines = previewLines(this._lastYaml, yaml);
       this._lastYaml = yaml;
     }
+    /*
+     * A card being edited in a section is drawn there on the section's grid, and a group
+     * lays its cards out side by side only when it is told so - drawn without it, the
+     * Rendered view stacked them full width while the dashboard did not (#387).
+     */
+    const layout = this._editingPlace().section !== undefined ? 'grid' : undefined;
     const modes = previewModes(thingType);
     const mode: PreviewMode = modes.includes(this._previewMode) ? this._previewMode : 'yaml';
     const canEject =
@@ -1036,7 +1042,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         ${
           mode === 'rendered'
             ? html`<div class="rendered">
-                <hui-card .hass=${this.hass} .config=${resolved} .preview=${true}></hui-card>
+                <hui-card .hass=${this.hass} .config=${resolved} .preview=${true} .layout=${layout}></hui-card>
               </div>`
             : html`<pre class="yaml">
 ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed' : ''}">${line.text}</span>`)}</pre>`

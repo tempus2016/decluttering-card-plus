@@ -1,4 +1,4 @@
-import{b as e,O as t,r as i,a as s,l as a,c as n,v as o,d as r,P as l,e as d,n as c,_ as h,f as p,g as u,i as m,h as f,j as g,k as v,m as _,B as y,o as b,p as $,q as w,s as x,t as k,u as j,w as A,x as S,y as O,z as C,A as E,C as T,D as N,E as P,F as L,G as I,H as F,I as M,J as V,K as H,L as D,M as q,N as R,Q as z,R as U,S as W,T as B,U as K,W as J,X as Y,Y as Z,Z as G,$ as Q,a0 as X,a1 as ee,a2 as te,a3 as ie,a4 as se,a5 as ae,a6 as ne,a7 as oe,a8 as re,a9 as le,aa as de,ab as ce,ac as he,ad as pe,ae as ue,af as me,ag as fe,ah as ge,ai as ve,aj as _e,ak as ye,al as be,am as $e,an as we,ao as xe,ap as ke,aq as je,ar as Ae,as as Se,at as Oe,au as Ce,av as Ee,aw as Te,ax as Ne,ay as Pe,az as Le,aA as Ie,aB as Fe,aC as Me,aD as Ve,aE as He,aF as De,aG as qe,aH as Re,aI as ze,aJ as Ue,aK as We,aL as Be,aM as Ke,aN as Je,aO as Ye,aP as Ze,aQ as Ge,aR as Qe,aS as Xe,aT as et,aU as tt,aV as it,aW as st,V as at,aX as nt,aY as ot,aZ as rt,a_ as lt,a$ as dt,b0 as ct,b1 as ht,b2 as pt,b3 as ut,b4 as mt,b5 as ft,b6 as gt,b7 as vt,b8 as _t,b9 as yt,ba as bt,bb as $t,bc as wt,bd as xt,be as kt,bf as jt,bg as At,bh as St,bi as Ot,bj as Ct,bk as Et,bl as Tt,bm as Nt,bn as Pt,bo as Lt,bp as It,bq as Ft,br as Mt,bs as Vt,bt as Ht,bu as Dt,bv as qt,bw as Rt,bx as zt,by as Ut,bz as Wt,bA as Bt,bB as Kt}from"./decluttering-card-plus.core-CfGtocek.js";
+import{b as e,O as t,r as i,a as s,l as a,c as n,v as o,d as r,P as l,e as d,n as c,_ as h,f as p,g as u,i as m,h as f,j as g,k as v,m as _,B as y,o as b,p as $,q as w,s as x,t as k,u as j,w as A,x as S,y as O,z as C,A as E,C as T,D as N,E as P,F as L,G as I,H as F,I as M,J as V,K as H,L as D,M as q,N as R,Q as z,R as U,S as W,T as B,U as K,W as J,X as Y,Y as Z,Z as G,$ as Q,a0 as X,a1 as ee,a2 as te,a3 as ie,a4 as se,a5 as ae,a6 as ne,a7 as oe,a8 as re,a9 as le,aa as de,ab as ce,ac as he,ad as pe,ae as ue,af as me,ag as fe,ah as ge,ai as ve,aj as _e,ak as ye,al as be,am as $e,an as we,ao as xe,ap as ke,aq as je,ar as Ae,as as Se,at as Oe,au as Ce,av as Ee,aw as Te,ax as Ne,ay as Pe,az as Le,aA as Ie,aB as Fe,aC as Me,aD as Ve,aE as He,aF as De,aG as qe,aH as Re,aI as ze,aJ as Ue,aK as We,aL as Be,aM as Ke,aN as Je,aO as Ye,aP as Ze,aQ as Ge,aR as Qe,aS as Xe,aT as et,aU as tt,aV as it,aW as st,V as at,aX as nt,aY as ot,aZ as rt,a_ as lt,a$ as dt,b0 as ct,b1 as ht,b2 as pt,b3 as ut,b4 as mt,b5 as ft,b6 as gt,b7 as vt,b8 as _t,b9 as yt,ba as bt,bb as $t,bc as wt,bd as xt,be as kt,bf as jt,bg as At,bh as St,bi as Ot,bj as Ct,bk as Et,bl as Tt,bm as Nt,bn as Pt,bo as Lt,bp as It,bq as Ft,br as Mt,bs as Vt,bt as Ht,bu as Dt,bv as qt,bw as Rt,bx as zt,by as Ut,bz as Wt,bA as Bt,bB as Kt}from"./decluttering-card-plus.core-BaEfUNk9.js";
 /**
  * @license
  * Copyright 2020 Google LLC
@@ -401,37 +401,37 @@ import{b as e,O as t,r as i,a as s,l as a,c as n,v as o,d as r,P as l,e as d,n a
                   ></hui-card-picker>
                 `}
         </div>
-      `})}`}_registryItemsForPreview(){var e;const t=null===(e=this._config)||void 0===e?void 0:e.for_each_from;if(!this.hass||!b(t))return;const i=M(t);if(void 0===i||Object.prototype.hasOwnProperty.call(this._renderedTemplates,i))try{const e=V(this.hass,t,Object.assign(Object.assign({},H(this._lovelace)),{rendered:this._renderedTemplates}));return e.length?e:void 0}catch(s){return}}_cardVariableChanged(e,t){var i,s;null==t||t.stopPropagation();const a=null===(i=null==t?void 0:t.detail)||void 0===i?void 0:i.config,n=I(null===(s=this._config)||void 0===s?void 0:s.variables).filter(t=>D(t)!==e);a&&"object"==typeof a&&n.push({[e]:a});const o=Object.assign({},this._config);n.length?o.variables=n:delete o.variables,g(this,"config-changed",{config:o})}_renderResult(t){var s,n,o;if(!this._config)return e``;const r=null!==(s=q(this._config.for_each))&&void 0!==s?s:this._registryItemsForPreview();let l=(null==r?void 0:r.length)?R(r[0],this._config.variables,0,r.length):this._config.variables,c=t,h=this._config.template;if(T(this._config))try{const e=null!==(n=this._templates)&&void 0!==n?n:{};let t;({template:c,name:h,entity:t}=z(this._config,l,t=>e[t],this.hass,Object.keys(e))),l=U(l,t)}catch(j){return e``}if(!c)return e``;const p=N(c);if(!p)return e``;const u=W(c);let m;const f=performance.now();try{const e=B(this.hass,i(this._config.rebuild_on)),t=null!==(o=this._lovelace)&&void 0!==o?o:A();m=K(d(l,c,u,h,e,!0,void 0,0,void 0,void 0,!1,{itemTemplates:J(t),context:H(t)}),this._config,p)}catch(S){return e`<ha-alert alert-type="warning">
-        ${a("editor.result_error",{error:String(S)},this.hass)}
-      </ha-alert>`}const g=performance.now(),v=(null==r?void 0:r.length)?a("editor.result_copies",{total:r.length},this.hass):"",[_,y]=Bi(a("editor.result_hint",{kind:p},this.hass),"[[name]]"),$=Y(m);$!==this._lastYaml&&(this._markedLines=function(e,t){const i=""===t?[]:t.replace(/\n$/,"").split("\n");if(void 0===e)return i.map(e=>({text:e,changed:!1}));const s=new Set(e.replace(/\n$/,"").split("\n"));return i.map(e=>({text:e,changed:!s.has(e)}))}(this._lastYaml,$),this._lastYaml=$);const w=function(e){return"card"===e?["rendered","yaml"]:["yaml"]}(p),x=w.includes(this._previewMode)?this._previewMode:"yaml",k=!(null==r?void 0:r.length)&&!b(this._config.for_each_from)&&m&&"object"==typeof m;return e`
+      `})}`}_registryItemsForPreview(){var e;const t=null===(e=this._config)||void 0===e?void 0:e.for_each_from;if(!this.hass||!b(t))return;const i=M(t);if(void 0===i||Object.prototype.hasOwnProperty.call(this._renderedTemplates,i))try{const e=V(this.hass,t,Object.assign(Object.assign({},H(this._lovelace)),{rendered:this._renderedTemplates}));return e.length?e:void 0}catch(s){return}}_cardVariableChanged(e,t){var i,s;null==t||t.stopPropagation();const a=null===(i=null==t?void 0:t.detail)||void 0===i?void 0:i.config,n=I(null===(s=this._config)||void 0===s?void 0:s.variables).filter(t=>D(t)!==e);a&&"object"==typeof a&&n.push({[e]:a});const o=Object.assign({},this._config);n.length?o.variables=n:delete o.variables,g(this,"config-changed",{config:o})}_renderResult(t){var s,n,o;if(!this._config)return e``;const r=null!==(s=q(this._config.for_each))&&void 0!==s?s:this._registryItemsForPreview();let l=(null==r?void 0:r.length)?R(r[0],this._config.variables,0,r.length):this._config.variables,c=t,h=this._config.template;if(T(this._config))try{const e=null!==(n=this._templates)&&void 0!==n?n:{};let t;({template:c,name:h,entity:t}=z(this._config,l,t=>e[t],this.hass,Object.keys(e))),l=U(l,t)}catch(S){return e``}if(!c)return e``;const p=N(c);if(!p)return e``;const u=W(c);let m;const f=performance.now();try{const e=B(this.hass,i(this._config.rebuild_on)),t=null!==(o=this._lovelace)&&void 0!==o?o:A();m=K(d(l,c,u,h,e,!0,void 0,0,void 0,void 0,!1,{itemTemplates:J(t),context:H(t)}),this._config,p)}catch(O){return e`<ha-alert alert-type="warning">
+        ${a("editor.result_error",{error:String(O)},this.hass)}
+      </ha-alert>`}const g=performance.now(),v=(null==r?void 0:r.length)?a("editor.result_copies",{total:r.length},this.hass):"",[_,y]=Bi(a("editor.result_hint",{kind:p},this.hass),"[[name]]"),$=Y(m);$!==this._lastYaml&&(this._markedLines=function(e,t){const i=""===t?[]:t.replace(/\n$/,"").split("\n");if(void 0===e)return i.map(e=>({text:e,changed:!1}));const s=new Set(e.replace(/\n$/,"").split("\n"));return i.map(e=>({text:e,changed:!s.has(e)}))}(this._lastYaml,$),this._lastYaml=$);const w=void 0!==this._editingPlace().section?"grid":void 0,x=function(e){return"card"===e?["rendered","yaml"]:["yaml"]}(p),k=x.includes(this._previewMode)?this._previewMode:"yaml",j=!(null==r?void 0:r.length)&&!b(this._config.for_each_from)&&m&&"object"==typeof m;return e`
       <div class="preview">
         <div class="preview-head">
           <span class="preview-title">${a("editor.preview.header",void 0,this.hass)}${v}</span>
-          ${w.length>1?e`<div class="segmented" role="group">
-                  ${w.map(t=>e`<button
+          ${x.length>1?e`<div class="segmented" role="group">
+                  ${x.map(t=>e`<button
                         type="button"
-                        class=${t===x?"on":""}
-                        aria-pressed=${t===x?"true":"false"}
+                        class=${t===k?"on":""}
+                        aria-pressed=${t===k?"true":"false"}
                         @click=${()=>{this._previewMode=t}}
                       >
                         ${a(`editor.preview.${t}`,void 0,this.hass)}
                       </button>`)}
                 </div>`:e``}
         </div>
-        ${"rendered"===x?e`<div class="rendered">
-                <hui-card .hass=${this.hass} .config=${m} .preview=${!0}></hui-card>
+        ${"rendered"===k?e`<div class="rendered">
+                <hui-card .hass=${this.hass} .config=${m} .preview=${!0} .layout=${w}></hui-card>
               </div>`:e`<pre class="yaml">
 ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}</span>`)}</pre>`}
         <p class="hint">
           ${a("editor.preview.built_in",{time:yi(f,g),template:null!=h?h:""},this.hass)}
-          ${"yaml"===x?a("editor.preview.changed_hint",void 0,this.hass):""}
+          ${"yaml"===k?a("editor.preview.changed_hint",void 0,this.hass):""}
         </p>
         <p class="hint">${_}<code>[[name]]</code>${y}</p>
         <div class="preview-actions">
-          ${"yaml"===x?e`<ha-button @click=${()=>this._copyYaml($)}>
+          ${"yaml"===k?e`<ha-button @click=${()=>this._copyYaml($)}>
                   ${a(this._copied?"editor.preview.copied":"editor.preview.copy",void 0,this.hass)}
                 </ha-button>`:e``}
-          ${k?e`
+          ${j?e`
                   <ha-button @click=${()=>this._eject(m)}>
                     ${a(this._ejectPending?"editor.eject_confirm":"editor.eject",void 0,this.hass)}
                   </ha-button>
@@ -2131,4 +2131,4 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
               </ul>
             `:e``}
     `}}h([p({attribute:!1})],fd.prototype,"hass",void 0),h([p({attribute:!1})],fd.prototype,"lovelace",void 0),h([u()],fd.prototype,"_borrowed",void 0),Ut(Wt,Yi),Ut(Bt,md),Ut(Kt,fd);export{Yi as DeclutteringCardEditor,fd as DeclutteringHealthPanel,md as DeclutteringTemplateEditor};
-//# sourceMappingURL=decluttering-card-plus.editors-oenI_i19.js.map
+//# sourceMappingURL=decluttering-card-plus.editors-EpqnUDAs.js.map
