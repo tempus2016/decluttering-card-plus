@@ -174,10 +174,14 @@ class StubHuiBadge extends HTMLElement {
   }
 }
 
-/* hui-section: only its place matters to the card - which view, which section. */
+/*
+ * hui-section: only its place matters to the card - which view, which section. Up to
+ * Home Assistant 2026.10 that was index and viewIndex; from 2026.11 it is a path (#387).
+ */
 class StubHuiSection extends HTMLElement {
   public index?: number;
   public viewIndex?: number;
+  public path?: (string | number)[];
 }
 
 export function stubElements(): void {
@@ -216,6 +220,14 @@ export function stubSection(viewIndex: number, index: number): HTMLElement {
   const section = document.createElement('hui-section') as any;
   section.viewIndex = viewIndex;
   section.index = index;
+  document.body.appendChild(section);
+  return section;
+}
+
+/** A hui-section the way Home Assistant 2026.11 places it: by path, with no indices (#387). */
+export function stubPathSection(path: (string | number)[]): HTMLElement {
+  const section = document.createElement('hui-section') as any;
+  section.path = path;
   document.body.appendChild(section);
   return section;
 }

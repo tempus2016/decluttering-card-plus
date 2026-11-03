@@ -75,6 +75,23 @@ import { isRegistrySource } from './registry';
 type SectionPlace = { view: number; section: number };
 
 /*
+ * The place a hui-section says it has. Up to Home Assistant 2026.10 it had index and
+ * viewIndex; 2026.11 dropped both for a path - ['views', 0, 'sections', 2] - which can go
+ * on into a section inside that one (#387). The view's own section is the one whose
+ * decluttering_defaults and decluttering_let are read, so that is the place given.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function sectionPlace(section: any): SectionPlace | undefined {
+  const { index, viewIndex, path } = section ?? {};
+  if (Number.isInteger(index) && Number.isInteger(viewIndex)) return { view: viewIndex, section: index };
+  if (Array.isArray(path) && path[0] === 'views' && path[2] === 'sections') {
+    const [, view, , place] = path;
+    if (Number.isInteger(view) && Number.isInteger(place)) return { view, section: place };
+  }
+  return undefined;
+}
+
+/*
  * Which section a card sits in, read off the hui-section it is rendered inside - through
  * any stacks, grids and shadow roots in between. Nothing hands a card this, and it can
  * only be read once the card is on the page. A card anywhere else - a masonry view, a
@@ -84,9 +101,8 @@ type SectionPlace = { view: number; section: number };
 function sectionOf(element: Element): SectionPlace | undefined {
   for (let node: Node | null = element; node; node = parentOf(node)) {
     if ((node as Element).localName === 'hui-section') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { index, viewIndex } = node as any;
-      if (Number.isInteger(index) && Number.isInteger(viewIndex)) return { view: viewIndex, section: index };
+      const place = sectionPlace(node);
+      if (place) return place;
     }
     if ((node as Element).localName === 'hui-dialog-edit-card') {
       const place = dialogPlace(node as Element);

@@ -6,7 +6,7 @@
  * did not hide itself.
  */
 import { describe, it, expect, settle, until } from './runner';
-import { stubHass, stubLovelace, stubSection } from './stubs';
+import { stubHass, stubLovelace, stubPathSection, stubSection } from './stubs';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -136,6 +136,57 @@ describe('section defaults', () => {
     await until(() => !!inner(el)?.config?.content, 2000, 'a build');
     await settle();
     expect(inner(el).config.content).to.equal('Mine');
+  });
+});
+
+describe('section placed by path (Home Assistant 2026.11, #387)', () => {
+  it('section defaults still reach the card', async () => {
+    stubLovelace({
+      decluttering_templates: { t: { card: { type: 'markdown', content: '[[name]]' } } },
+      views: [
+        { type: 'sections', sections: [] },
+        {
+          type: 'sections',
+          sections: [{ cards: [] }, { decluttering_defaults: [{ name: 'From the section' }], cards: [] }],
+        },
+      ],
+    });
+    const section = stubPathSection(['views', 1, 'sections', 1]);
+    const el = card({ template: 't' }, stubHass());
+    section.appendChild(el);
+    await until(() => inner(el)?.config?.content === 'From the section', 2000, 'the section default');
+    expect(inner(el).config.content).to.equal('From the section');
+  });
+
+  it('a section inside a section takes the values of the one in the view', async () => {
+    stubLovelace({
+      decluttering_templates: { t: { card: { type: 'markdown', content: '[[name]]' } } },
+      views: [
+        { type: 'sections', sections: [{ decluttering_defaults: [{ name: 'From the outer section' }], cards: [] }] },
+      ],
+    });
+    const section = stubPathSection(['views', 0, 'sections', 0, 'sections', 2]);
+    const el = card({ template: 't' }, stubHass());
+    section.appendChild(el);
+    await until(() => inner(el)?.config?.content === 'From the outer section', 2000, 'the outer section default');
+    expect(inner(el).config.content).to.equal('From the outer section');
+  });
+
+  it('the card still says once that its size is known', async () => {
+    stubLovelace({
+      decluttering_templates: { t: { card: { type: 'markdown', content: 'x' } } },
+      views: [{ type: 'sections', sections: [{ cards: [] }] }],
+    });
+    const section = stubPathSection(['views', 0, 'sections', 0]);
+    let fired = 0;
+    section.addEventListener('card-updated', () => {
+      fired += 1;
+    });
+    const el = card({ template: 't' }, stubHass());
+    section.appendChild(el);
+    await until(() => !!inner(el), 2000, 'the wrapped card');
+    await settle(6);
+    expect(fired).to.equal(1);
   });
 });
 
