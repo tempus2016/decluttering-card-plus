@@ -11,7 +11,7 @@ import {
   isEmptyMapping,
   forEachVariables,
   HA_MARK,
-  IF_EXISTS_STEP,
+  isIfExistsStep,
   isStructureStep,
   normaliseVariables,
   FLAT_STEP,
@@ -467,7 +467,7 @@ function substitutePass(
          * an optional placeholder drops out quietly, and one that stays names the entity id
          * it looked for rather than the variable it started from.
          */
-        if (steps[upTo - 1] === IF_EXISTS_STEP) {
+        if (isIfExistsStep(steps[upTo - 1])) {
           if (optional) return match;
           const id = upTo === 1 ? input : applyTransform(steps.slice(0, upTo - 1).join('|'), input, hass, values, read);
           return refuse(match, written, localize('warn.nothing_for', { value: id }), 'missing');
