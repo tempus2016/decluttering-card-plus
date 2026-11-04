@@ -155,4 +155,43 @@ check(
   [['v', 'w'], [], [], ['v', 'w'], ['v', 'w']],
 );
 
+/* ------------------------------------------- or:[[name]] reads like other steps' */
+
+check(
+  'or:[[name]] is or:name, and or:[[chain]] stands in with what the chain gives',
+  deepReplace(
+    [{ other: 'O' }, { sp: 'a b' }, { set: 'S' }, { l: ['x', 'y'] }, { c: 'C' }, { v: '[[nope|or:[[other]]]]' }],
+    {},
+    {
+      bare: '[[nope|or:[[other]]]]',
+      bare_optional: '[[nope|or:[[other?]]]]',
+      falls_through: '[[nope|or:[[missing]]|default:z]]',
+      chain: '[[nope|or:[[sp|upper]]]]',
+      chain_falls_through: '[[nope|or:[[missing|upper]]|default:z]]',
+      kept: '[[set|or:[[other]]]]',
+      in_text: 'x [[nope|or:[[other]]]] y',
+      list: '[[nope|or:[[l]]]]',
+      nested: '[[nope|or:[[missing|or:[[c]]]]]]',
+      from_a_variable: '[[v]]',
+      dropped: { k: '[[nope|or:[[missing]]?]]', keep: 1 },
+    },
+    't',
+    hass,
+    true,
+  ),
+  {
+    bare: 'O',
+    bare_optional: 'O',
+    falls_through: 'z',
+    chain: 'A B',
+    chain_falls_through: 'z',
+    kept: 'S',
+    in_text: 'x O y',
+    list: ['x', 'y'],
+    nested: 'C',
+    from_a_variable: 'O',
+    dropped: { keep: 1 },
+  },
+);
+
 console.warn = realWarn;

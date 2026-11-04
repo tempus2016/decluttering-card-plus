@@ -6,6 +6,7 @@ import { warn, WarningKind } from './warnings';
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import {
   forEachItems,
+  unwrapNestedOr,
   answersUnset,
   applyTransform,
   isEmptyMapping,
@@ -1265,7 +1266,7 @@ function deepReplace(
   // it come from the compiled form (idea 3); anything else - a value, a style string - is
   // stringified here as it always was.
   const built = content && typeof content === 'object' ? compile(content) : undefined;
-  let jsonConfig = built ? built.json : JSON.stringify(content);
+  let jsonConfig = built ? built.json : unwrapNestedOr(JSON.stringify(content));
   let pieces = built?.pieces;
   const haNames = extras?.haNames;
   // How much the text may still grow, counted across every fill this build makes.
@@ -1310,7 +1311,7 @@ function deepReplace(
     return out;
   };
   if (shield === undefined && hasStyleKey(content)) {
-    jsonConfig = JSON.stringify(shieldStyles(content));
+    jsonConfig = unwrapNestedOr(JSON.stringify(shieldStyles(content)));
     // The compiled sites belong to the text as written, not to this one.
     pieces = undefined;
   }
@@ -1394,6 +1395,8 @@ function deepReplace(
       // The compiled sites describe the text as written, so only the very first pass can use
       // them: a later pass, or a round after a fallback brought text in, has to scan (#235).
       pieces = undefined;
+      // A value brought in may hold an `or:[[name]]` of its own.
+      jsonConfig = unwrapNestedOr(jsonConfig);
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;

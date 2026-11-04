@@ -953,6 +953,33 @@ export function orTarget(step: string): string | undefined {
   return quotedText(arg) === undefined ? arg : undefined;
 }
 
+/*
+ * `or:[[name]]` reads the way every other step's nested placeholder does (#398). Left alone,
+ * `[[name]]` is filled first and `or:` then looks for a variable called whatever it became,
+ * which is never there. So before a build reads the text, a bare name in brackets loses them -
+ * `or:[[b]]` is `or:b`, falling through to the next stand-in when b is unset - and a chain in
+ * brackets becomes a `default:` with that chain marked optional, so `or:[[b|upper]]` stands
+ * in with b shouted, and with nothing at all (the next stand-in's turn) when b is unset.
+ * Innermost first and again until nothing changes, so `or:[[b|or:[[c]]]]` unwraps too.
+ */
+const NESTED_OR = /\|or:\[\[([^[\]]*)\]\]/g;
+const BARE_OR_NAME = /^([A-Za-z0-9_-]+)\??$/;
+
+export function unwrapNestedOr(text: string): string {
+  if (!text.includes('|or:[[')) return text;
+  let out = text;
+  for (let round = 0; round < 20; round += 1) {
+    const next = out.replace(NESTED_OR, (_match, inside: string) => {
+      const bare = BARE_OR_NAME.exec(inside);
+      if (bare) return `|or:${bare[1]}`;
+      return `|default:[[${inside.endsWith(OPTIONAL) ? inside : `${inside}${OPTIONAL}`}]]`;
+    });
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
 /** The text a step stands in with: `default:`'s own, or a quoted `or:`'s. Undefined for a bare `or:`. */
 function standInText(step: string): string | undefined {
   if (step.startsWith(DEFAULT_PREFIX)) return argText(step.slice(DEFAULT_PREFIX.length));
