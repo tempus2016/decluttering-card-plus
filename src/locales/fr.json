@@ -775,5 +775,23 @@
   "editor.by_domain.anything_else": "Tout le reste",
   "editor.by_domain.add": "Ajouter un domaine",
   "editor.by_domain.remove": "Retirer {domain}",
-  "editor.by_domain.picked": "Cette entité a choisi {template}."
+  "editor.by_domain.picked": "Cette entité a choisi {template}.",
+
+  "check.failed": "Une vérification du modèle « {template} » a échoué.",
+  "check.failed_named": "La vérification « {name} » du modèle « {template} » a échoué.",
+  "check.console_info": "decluttering-card-plus : modèle « {template} » : {message}",
+  "check.console_warn": "decluttering-card-plus : une vérification du modèle « {template} » a échoué : {message}",
+  "check.console_error": "decluttering-card-plus : une vérification du modèle « {template} » a échoué avec une erreur : {message}",
+  "error.check_stopped": "Une vérification a empêché la construction de cette carte : {message}",
+  "report.checks": "Vérifications échouées",
+  "report.check_named": "vérification « {name} » dans {label}",
+  "report.check_in": "dans {label}",
+  "editor.check_failed": "Vérification échouée : {message}",
+  "editor.check_failed_named": "La vérification « {name} » a échoué : {message}",
+  "lint.checks_not_list": "checks: est une liste de vérifications, chacune un dictionnaire avec une condition, donc rien n'est vérifié ici.",
+  "lint.check_not_mapping": "Cette vérification n'est pas un dictionnaire avec une condition, un message et un niveau, elle n'est donc jamais faite.",
+  "lint.check_key_unknown": "« {key} » n'est pas lu par une vérification, il ne fait donc rien. Une vérification prend name, condition, fail_on, message, level et continue_rendering.",
+  "lint.check_level_unknown": "« {level} » n'est pas un niveau, la vérification est donc traitée comme un avertissement. Écrivez info, warn ou error.",
+  "lint.check_no_condition": "Cette vérification n'a pas de condition, elle n'échoue donc jamais.",
+  "lint.check_condition_malformed": "« {condition} » n'est pas une condition que cette carte sait lire, la vérification est donc ignorée. Écrivez le nom d'une variable, !nom, nom=texte, nom!=texte, un texte avec des espaces réservés, ou true ou false."
 }

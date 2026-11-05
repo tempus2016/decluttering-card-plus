@@ -41,6 +41,7 @@ import { handedDownNames, traceRoot, tracePlace, wantsTrace } from './trace';
 import { DeclutteringElement } from './element';
 import { CARD_EDITOR_TAG, CARD_TAG, TemplatePicker, getThingType, sourceContext, warnUnlisted } from './shared';
 import { warn } from './warnings';
+import { withAlerts } from './checks';
 
 /*
  * Home Assistant's `title` translations - every integration's name - asked for once per
@@ -203,6 +204,7 @@ export class DeclutteringCard extends DeclutteringElement {
     this._fallbackConfig = undefined;
     this._fallbackFailed = false;
     this._fallbackSource = { variables: withInheritedVariables(config).variables, name: config.template };
+    this._alerts = [];
     if (this._hiddenByFallback) {
       this._hiddenByFallback = false;
       this._displayHidden();
@@ -357,8 +359,10 @@ export class DeclutteringCard extends DeclutteringElement {
     try {
       // Built as the card itself is: against the states it rebuilds on, with the dashboard's
       // item templates to hand (review 2026-10-25).
+      // The checks that stopped the build are there to say why (#389) - none, for any other failure.
+      const variables = withAlerts(this._fallbackSource?.variables, this._alerts);
       const built = deepReplace(
-        this._fallbackSource?.variables,
+        variables,
         template ?? ({} as TemplateConfig),
         onError.config,
         this._fallbackSource?.name,
@@ -519,6 +523,7 @@ export class DeclutteringCard extends DeclutteringElement {
     this._debug = config.debug === 'yaml' ? 'yaml' : config.debug === true ? 'json' : false;
     this._trace = wantsTrace(config);
     this._reportMode = config.debug === 'report';
+    this._reportForced = undefined;
     this._reportUnredacted = config.redact === false;
     this._lastReport = undefined;
     if (!this._reportMode) this._reportResult = undefined;

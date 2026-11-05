@@ -775,5 +775,23 @@
   "editor.by_domain.anything_else": "Tudo o resto",
   "editor.by_domain.add": "Adicionar um domínio",
   "editor.by_domain.remove": "Remover {domain}",
-  "editor.by_domain.picked": "Esta entidade escolheu {template}."
+  "editor.by_domain.picked": "Esta entidade escolheu {template}.",
+
+  "check.failed": "Uma verificação do modelo \"{template}\" falhou.",
+  "check.failed_named": "A verificação \"{name}\" do modelo \"{template}\" falhou.",
+  "check.console_info": "decluttering-card-plus: modelo \"{template}\": {message}",
+  "check.console_warn": "decluttering-card-plus: uma verificação do modelo \"{template}\" falhou: {message}",
+  "check.console_error": "decluttering-card-plus: uma verificação do modelo \"{template}\" falhou com um erro: {message}",
+  "error.check_stopped": "Uma verificação impediu que este cartão fosse construído: {message}",
+  "report.checks": "Verificações falhadas",
+  "report.check_named": "verificação \"{name}\" em {label}",
+  "report.check_in": "em {label}",
+  "editor.check_failed": "Verificação falhada: {message}",
+  "editor.check_failed_named": "A verificação \"{name}\" falhou: {message}",
+  "lint.checks_not_list": "checks: é uma lista de verificações, cada uma um mapa com uma condição, por isso nada aqui é verificado.",
+  "lint.check_not_mapping": "Esta verificação não é um mapa com condição, mensagem e nível, por isso nunca é feita.",
+  "lint.check_key_unknown": "\"{key}\" não é algo que uma verificação leia, por isso não faz nada. Uma verificação aceita name, condition, fail_on, message, level e continue_rendering.",
+  "lint.check_level_unknown": "\"{level}\" não é um nível, por isso a verificação é tratada como um aviso. Escreva info, warn ou error.",
+  "lint.check_no_condition": "Esta verificação não tem condição, por isso nunca falha.",
+  "lint.check_condition_malformed": "\"{condition}\" não é uma condição que este cartão saiba ler, por isso a verificação é ignorada. Escreva o nome de uma variável, !nome, nome=texto, nome!=texto, texto com marcadores, ou true ou false."
 }

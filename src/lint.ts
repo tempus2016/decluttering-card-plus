@@ -1,6 +1,7 @@
 import { TemplateConfig } from './types';
 import {
   conditionTarget,
+  ALERTS_NAME,
   ESCAPE,
   getDeclarations,
   isWellFormedCondition,
@@ -15,6 +16,7 @@ import { closestTemplate, closestStep, knownStep } from './closest';
 export { closestStep, knownStep };
 import { structureNames } from './structure';
 import { unknownHidden } from './card-editor/hide';
+import { CHECK_KEYS, CHECKS_KEY, checkLevel, conditionStep } from './checks';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -39,7 +41,19 @@ export interface LintFinding {
 
 // The parts of a template that are substituted into, and so the only places a placeholder
 // does anything. A description or a label that mentions `[[name]]` is prose.
-const LINTED_KEYS = ['card', 'badge', 'row', 'element', 'group', 'style', 'let', 'default', 'grid_options', 'name'];
+const LINTED_KEYS = [
+  'card',
+  'badge',
+  'row',
+  'element',
+  'group',
+  'style',
+  'let',
+  'default',
+  'grid_options',
+  'name',
+  'alert',
+];
 
 // Innermost placeholders: no bracket inside. A lookup like `[[colours.[[level]]]]` is read
 // from the inside out, the inner one standing in as a plain word for the outer.
@@ -166,6 +180,80 @@ export function definedNames(template: TemplateConfig | undefined): string[] {
   return [...names];
 }
 
+/*
+ * `checks:` (#389): a list of mappings, each with a condition this card can read, a level it
+ * knows, and nothing it would not read. Placeholders in a message or a condition are linted
+ * like any others; a condition written the show_if way names a variable that has to exist.
+ */
+function lintChecks(template: TemplateConfig, scan: Scan): void {
+  const written = (template as any)[CHECKS_KEY];
+  if (written === undefined || written === null) return;
+  if (!Array.isArray(written)) {
+    scan.findings.push({ level: 'warning', key: 'lint.checks_not_list', params: {}, path: CHECKS_KEY });
+    return;
+  }
+  written.forEach((check: unknown, index: number) => {
+    const path = `${CHECKS_KEY}[${index}]`;
+    if (!check || typeof check !== 'object' || Array.isArray(check)) {
+      scan.findings.push({ level: 'warning', key: 'lint.check_not_mapping', params: {}, path });
+      return;
+    }
+    const entry = check as Record<string, unknown>;
+    walk(entry.message, `${path}.message`, scan);
+    for (const key of Object.keys(entry)) {
+      if (!CHECK_KEYS.includes(key)) {
+        scan.findings.push({ level: 'warning', key: 'lint.check_key_unknown', params: { key }, path });
+      }
+    }
+    if (checkLevel(entry.level) === undefined) {
+      scan.findings.push({
+        level: 'warning',
+        key: 'lint.check_level_unknown',
+        params: { level: String(entry.level) },
+        path: `${path}.level`,
+      });
+    }
+    const condition = entry.condition;
+    if (condition === undefined || condition === null || condition === '') {
+      scan.findings.push({ level: 'warning', key: 'lint.check_no_condition', params: {}, path });
+      return;
+    }
+    if (typeof condition === 'boolean' || typeof condition === 'number') return;
+    if (typeof condition !== 'string') {
+      scan.findings.push({
+        level: 'warning',
+        key: 'lint.check_condition_malformed',
+        params: { condition: JSON.stringify(condition) },
+        path: `${path}.condition`,
+      });
+      return;
+    }
+    const step = conditionStep(condition);
+    if (step === undefined) {
+      walk(condition, `${path}.condition`, scan);
+      return;
+    }
+    if (/^(?:true|false)$/i.test(condition.trim())) return;
+    if (!isWellFormedCondition(step)) {
+      scan.findings.push({
+        level: 'warning',
+        key: 'lint.check_condition_malformed',
+        params: { condition },
+        path: `${path}.condition`,
+      });
+      return;
+    }
+    const name = conditionTarget(step);
+    if (name) {
+      scan.targets.push({
+        name: name.split('.')[0],
+        placeholder: `condition: ${condition}`,
+        path: `${path}.condition`,
+      });
+    }
+  });
+}
+
 /**
  * What is wrong, or probably wrong, with the placeholders in a template: brackets that do
  * not pair up, a step in a chain nobody has heard of, an `or:` that a `default:` before it
@@ -207,8 +295,17 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
     }
   });
 
+  lintChecks(template, scan);
+
   // A name a `with:` or `repeat:` gives the body it fills in is set, one copy at a time.
-  const defined = new Set([...definedNames(template), ...known, ...POSITION_NAMES, ...structureNames(template)]);
+  // `__alerts__` is set by every build of a template (#389).
+  const defined = new Set([
+    ...definedNames(template),
+    ...known,
+    ...POSITION_NAMES,
+    ...structureNames(template),
+    ALERTS_NAME,
+  ]);
   const findings = [...scan.findings];
 
   // `[[room.light]]` reaches into `room`, so a condition on `room.light` names something real

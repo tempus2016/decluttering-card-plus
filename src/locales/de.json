@@ -775,5 +775,23 @@
   "editor.by_domain.anything_else": "Alles andere",
   "editor.by_domain.add": "Domäne hinzufügen",
   "editor.by_domain.remove": "{domain} entfernen",
-  "editor.by_domain.picked": "Diese Entität hat {template} gewählt."
+  "editor.by_domain.picked": "Diese Entität hat {template} gewählt.",
+
+  "check.failed": "Eine Prüfung der Vorlage \"{template}\" ist fehlgeschlagen.",
+  "check.failed_named": "Die Prüfung \"{name}\" der Vorlage \"{template}\" ist fehlgeschlagen.",
+  "check.console_info": "decluttering-card-plus: Vorlage \"{template}\": {message}",
+  "check.console_warn": "decluttering-card-plus: Eine Prüfung der Vorlage \"{template}\" ist fehlgeschlagen: {message}",
+  "check.console_error": "decluttering-card-plus: Eine Prüfung der Vorlage \"{template}\" ist mit einem Fehler fehlgeschlagen: {message}",
+  "error.check_stopped": "Eine Prüfung hat verhindert, dass diese Karte aufgebaut wird: {message}",
+  "report.checks": "Fehlgeschlagene Prüfungen",
+  "report.check_named": "Prüfung \"{name}\" in {label}",
+  "report.check_in": "in {label}",
+  "editor.check_failed": "Prüfung fehlgeschlagen: {message}",
+  "editor.check_failed_named": "Prüfung \"{name}\" fehlgeschlagen: {message}",
+  "lint.checks_not_list": "checks: ist eine Liste von Prüfungen, jede eine Zuordnung mit einer Bedingung, daher wird hier nichts geprüft.",
+  "lint.check_not_mapping": "Diese Prüfung ist keine Zuordnung mit Bedingung, Meldung und Stufe, daher wird sie nie geprüft.",
+  "lint.check_key_unknown": "\"{key}\" liest eine Prüfung nicht, daher bewirkt es nichts. Eine Prüfung nimmt name, condition, fail_on, message, level und continue_rendering.",
+  "lint.check_level_unknown": "\"{level}\" ist keine Stufe, daher gilt die Prüfung als Warnung. Schreibe info, warn oder error.",
+  "lint.check_no_condition": "Diese Prüfung hat keine Bedingung, daher schlägt sie nie fehl.",
+  "lint.check_condition_malformed": "\"{condition}\" ist keine Bedingung, die diese Karte lesen kann, daher wird die Prüfung übergangen. Schreibe den Namen einer Variable, !name, name=text, name!=text, Text mit Platzhaltern oder true oder false."
 }

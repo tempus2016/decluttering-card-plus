@@ -1856,7 +1856,45 @@ function scanPlaceholders(json: string, pattern: RegExp, names: string[]): void 
 }
 
 function contentOf(template: TemplateConfig | undefined): unknown[] {
-  return CONTENT_KEYS.map((key) => (template as any)?.[key]).filter((part) => part !== undefined);
+  return [
+    ...CONTENT_KEYS.map((key) => (template as any)?.[key]).filter((part) => part !== undefined),
+    ...checkReads(template),
+  ];
+}
+
+/** The name `[[__alerts__]]` reads (#389): the template's failed checks, which every build sets. */
+export const ALERTS_NAME = '__alerts__';
+
+/** Whether a name is `__alerts__` or a key inside it, which nothing has to set. */
+export function isAlertsName(name: string): boolean {
+  return name === ALERTS_NAME || name.startsWith(`${ALERTS_NAME}.`);
+}
+
+/*
+ * What a template's `checks:` (#389) and its `alert:` read. A check's message and a
+ * condition written with placeholders read the way the card does; a condition written the
+ * show_if way reads its variable as an optional placeholder would - used, and never missing,
+ * since an unset one is an answer a condition can give.
+ */
+function checkReads(template: TemplateConfig | undefined): unknown[] {
+  const written = (template as any)?.checks;
+  const list = Array.isArray(written) ? written : written && typeof written === 'object' ? [written] : [];
+  const reads: unknown[] = [];
+  for (const check of list) {
+    if (!check || typeof check !== 'object') continue;
+    if (check.message !== undefined) reads.push(check.message);
+    const condition = check.condition;
+    if (typeof condition !== 'string') continue;
+    if (condition.includes('[[')) {
+      reads.push(condition);
+      continue;
+    }
+    const target = conditionTarget(isCondition(condition.trim()) ? condition.trim() : IF_PREFIX + condition.trim());
+    if (target && /^[A-Za-z0-9_.-]+$/.test(target)) reads.push(`[[${target}?]]`);
+  }
+  const alert = (template as any)?.alert;
+  if (alert !== undefined) reads.push(alert);
+  return reads;
 }
 
 /**
@@ -2175,7 +2213,7 @@ export function diagnoseInstance(
   }
 
   const answered = answeredNames(template, values, used);
-  const missing = used.filter((name) => !(name in values) && !answered.has(name));
+  const missing = used.filter((name) => !(name in values) && !answered.has(name) && !isAlertsName(name));
   // Which of the missing ones the template says it cannot do without, so an editor can
   // say so more loudly than it says the rest.
   const insisted = new Set(

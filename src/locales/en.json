@@ -775,5 +775,23 @@
   "editor.by_domain.anything_else": "Anything else",
   "editor.by_domain.add": "Add a domain",
   "editor.by_domain.remove": "Remove {domain}",
-  "editor.by_domain.picked": "This entity picked {template}."
+  "editor.by_domain.picked": "This entity picked {template}.",
+
+  "check.failed": "A check on template \"{template}\" failed.",
+  "check.failed_named": "Check \"{name}\" on template \"{template}\" failed.",
+  "check.console_info": "decluttering-card-plus: template \"{template}\": {message}",
+  "check.console_warn": "decluttering-card-plus: a check on template \"{template}\" failed: {message}",
+  "check.console_error": "decluttering-card-plus: a check on template \"{template}\" failed with an error: {message}",
+  "error.check_stopped": "A check stopped this card being built: {message}",
+  "report.checks": "Failed checks",
+  "report.check_named": "check \"{name}\" on {label}",
+  "report.check_in": "on {label}",
+  "editor.check_failed": "Check failed: {message}",
+  "editor.check_failed_named": "Check \"{name}\" failed: {message}",
+  "lint.checks_not_list": "checks: is a list of checks, each one a mapping with a condition, so nothing here is checked.",
+  "lint.check_not_mapping": "This check is not a mapping with a condition, message and level, so it is never checked.",
+  "lint.check_key_unknown": "\"{key}\" is not something a check reads, so it does nothing. A check takes name, condition, fail_on, message, level and continue_rendering.",
+  "lint.check_level_unknown": "\"{level}\" is not a level, so the check is treated as a warning. Write info, warn or error.",
+  "lint.check_no_condition": "This check has no condition, so it never fails.",
+  "lint.check_condition_malformed": "\"{condition}\" is not a condition this card can read, so the check is passed over. Write a variable's name, !name, name=text, name!=text, text with placeholders in it, or true or false."
 }

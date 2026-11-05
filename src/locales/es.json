@@ -775,5 +775,23 @@
   "editor.by_domain.anything_else": "Todo lo demás",
   "editor.by_domain.add": "Añadir un dominio",
   "editor.by_domain.remove": "Quitar {domain}",
-  "editor.by_domain.picked": "Esta entidad eligió {template}."
+  "editor.by_domain.picked": "Esta entidad eligió {template}.",
+
+  "check.failed": "Ha fallado una comprobación de la plantilla \"{template}\".",
+  "check.failed_named": "Ha fallado la comprobación \"{name}\" de la plantilla \"{template}\".",
+  "check.console_info": "decluttering-card-plus: plantilla \"{template}\": {message}",
+  "check.console_warn": "decluttering-card-plus: ha fallado una comprobación de la plantilla \"{template}\": {message}",
+  "check.console_error": "decluttering-card-plus: ha fallado con un error una comprobación de la plantilla \"{template}\": {message}",
+  "error.check_stopped": "Una comprobación ha impedido construir esta tarjeta: {message}",
+  "report.checks": "Comprobaciones fallidas",
+  "report.check_named": "comprobación \"{name}\" en {label}",
+  "report.check_in": "en {label}",
+  "editor.check_failed": "Comprobación fallida: {message}",
+  "editor.check_failed_named": "Ha fallado la comprobación \"{name}\": {message}",
+  "lint.checks_not_list": "checks: es una lista de comprobaciones, cada una un mapa con una condición, así que aquí no se comprueba nada.",
+  "lint.check_not_mapping": "Esta comprobación no es un mapa con condición, mensaje y nivel, así que nunca se comprueba.",
+  "lint.check_key_unknown": "\"{key}\" no es algo que lea una comprobación, así que no hace nada. Una comprobación admite name, condition, fail_on, message, level y continue_rendering.",
+  "lint.check_level_unknown": "\"{level}\" no es un nivel, así que la comprobación se trata como un aviso. Escribe info, warn o error.",
+  "lint.check_no_condition": "Esta comprobación no tiene condición, así que nunca falla.",
+  "lint.check_condition_malformed": "\"{condition}\" no es una condición que esta tarjeta sepa leer, así que la comprobación se pasa por alto. Escribe el nombre de una variable, !nombre, nombre=texto, nombre!=texto, texto con marcadores o true o false."
 }
