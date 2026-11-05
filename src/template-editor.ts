@@ -1,4 +1,4 @@
-import { LitElement, html, TemplateResult, CSSResult } from 'lit';
+import { LitElement, html, TemplateResult, CSSResult, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, FormSchemaEntry } from './types';
@@ -37,6 +37,7 @@ import './template-editor/declarations';
 import './template-editor/example-strip';
 import './template-editor/placeholder-tool';
 import './template-editor/help-icon';
+import './template-editor/field-menus';
 import './template-editor/usages-tab';
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
@@ -290,6 +291,11 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                   .value=${this._cardForEditor()}
                   @config-changed=${this._cardChanged}
                 ></hui-card-element-editor>
+                <decluttering-field-menus
+                  .hass=${this.hass}
+                  .config=${this._config}
+                  @config-changed=${this._childConfigChanged}
+                ></decluttering-field-menus>
               `
             : this._selectedTab === 'change_card'
               ? html`
@@ -982,5 +988,14 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     super.disconnectedCallback();
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
+  }
+
+  protected updated(changed: PropertyValues): void {
+    super.updated(changed);
+    // The field menus (idea 24) watch Home Assistant's card editor.
+    const cardEditor = this.renderRoot.querySelector('hui-card-element-editor') ?? undefined;
+    const menus = this.renderRoot.querySelector('decluttering-field-menus') as
+      (HTMLElement & { target?: Element }) | null;
+    if (menus && menus.target !== cardEditor) menus.target = cardEditor;
   }
 }

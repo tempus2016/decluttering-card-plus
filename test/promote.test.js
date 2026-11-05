@@ -2,7 +2,15 @@
  * Unit tests for src/promote.ts - turning one setting of a template into a variable.
  * Run with `npm test`.
  */
-const { listSettings, nameForSetting, namesInUse, promoteSetting } = require('../.test-build/promote.js');
+const {
+  listSettings,
+  nameForSetting,
+  namesInUse,
+  promoteSetting,
+  promoteSettingAs,
+  reuseVariable,
+  settingValue,
+} = require('../.test-build/promote.js');
 
 const { check } = require('./check');
 
@@ -89,3 +97,41 @@ check(
   { colour: 'red', low: { type: 'number', default: 0 } },
 );
 check('a mapping declaration counts as a name in use', namesInUse({ variables: { colour: 'red' } }), ['colour']);
+
+// --- idea 24: the field menu's dialog and "use an existing variable" -------------------------
+const promotedAs = promoteSettingAs(tile, ['tap_action', 'navigation_path'], 'path', {
+  label: 'Where to',
+  required: true,
+  default: '/home',
+});
+check(
+  'promoteSettingAs declares the label, required and a chosen default',
+  [promotedAs.ok, promotedAs.template.card.tap_action.navigation_path, promotedAs.template.variables.at(-1)],
+  [true, '[[path]]', { name: 'path', type: 'text', default: '/home', label: 'Where to', required: true }],
+);
+check(
+  'promoteSettingAs on a mapping-form template writes the mapping',
+  promoteSettingAs({ ...tile, variables: { name: 'Hall' } }, ['entity'], 'light', { label: 'Light' }).template
+    .variables,
+  { name: 'Hall', light: { type: 'entity', default: 'light.hall', label: 'Light' } },
+);
+check('promoteSettingAs refuses what promoteSetting refuses', promoteSettingAs(tile, ['nope'], 'x', {}), {
+  ok: false,
+  error: 'gone',
+});
+const reused = reuseVariable(tile, ['entity'], 'name');
+check(
+  'reuseVariable points the field at the variable and declares nothing',
+  [reused.ok, reused.template.card.entity, reused.template.variables],
+  [true, '[[name]]', undefined],
+);
+check(
+  'reuseVariable checks the name and the setting',
+  [reuseVariable(tile, ['entity'], 'bad name').error, reuseVariable(tile, ['nope'], 'x').error],
+  ['name_invalid', 'gone'],
+);
+check(
+  'settingValue reads a path in the content',
+  [settingValue(tile, ['tap_action', 'action']), settingValue(tile, ['nope'])],
+  ['navigate', undefined],
+);
