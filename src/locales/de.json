@@ -149,7 +149,6 @@
   "share.import_clash": "Dieses Dashboard hat bereits eine Vorlage namens \"{name}\". Nach dem Import gäbe es zwei Vorlagen mit demselben Namen, und nur eine davon würde verwendet. Drücke erneut auf Importieren, um fortzufahren.",
   "share.import_not_yaml": "Das ist kein gültiges YAML und kann daher nicht gelesen werden.",
   "share.import_too_big": "Das ist zu groß für eine Vorlage und kann nicht gelesen werden.",
-  "share.requires_custom_cards": "Benötigt diese Custom Cards: {types}",
   "share.uses_other_templates": "Verwendet diese anderen Vorlagen, die hier nicht enthalten sind: {names}",
   "share.picked_templates": "Wählt seine Vorlage über eine Variable, daher lässt sich hier nicht sagen, welche es braucht: {names}. Gib die Vorlagen, die es wählen kann, mit dazu.",
   "share.picked_templates_found": "Wählt seine Vorlage über eine Variable: {names}. Die Vorlagen hier, deren Namen passen, sind mitgekommen; gib alle anderen, die es wählen kann, dazu.",
