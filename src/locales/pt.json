@@ -263,6 +263,7 @@
   "warn.not_a_mapping": "{arg} não é um mapeamento",
   "warn.condition_closed": "a sua condição if: não se verifica",
   "warn.json_not_first": "json só pode ser o primeiro passo",
+  "warn.raw_not_first": "raw só pode ser o primeiro passo",
   "warn.kind_list": "uma lista",
   "warn.kind_mapping": "um mapeamento",
   "warn.override_misplaced": "decluttering-card-plus: o bloco {key}: deste cartão é ignorado - o modelo \"{template}\" constrói um {kind}, por isso só um bloco {kind}: é sobreposto.",

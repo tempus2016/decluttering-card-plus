@@ -443,6 +443,21 @@ export const TRANSFORMS: Record<string, (value: string) => string> = {
 export const JSON_STEP = 'json';
 
 /*
+ * `raw` gives a variable's value as it was written, before its own placeholders are filled
+ * (#391): with `camera_entity: camera.[[cam_name]]`, `[[camera_entity|raw]]` is the text
+ * `camera.[[cam_name]]`. That is not what `[[!camera_entity]]` does - the bang only writes
+ * the brackets themselves. Every `[[` in the value is escaped on the way out, so nothing
+ * fills it later and the escapes come off with the others when the build is done. It reads
+ * the value itself, so like `json` it can only come first; a mapping or a list is its JSON.
+ */
+export const RAW_STEP = 'raw';
+
+/** Text with every `[[` in it escaped, so it ends up written exactly as it is now. */
+function escapeAll(text: string): string {
+  return text.replace(/\[\[/g, `[[${ESCAPE}`);
+}
+
+/*
  * `bool` turns a value into a yes or a no - `enabled: '[[link|bool]]'` switches a button
  * on when the card was given a link and off when it was not (discussion #142). Two things
  * set it apart from the text transforms: it has an answer for a variable nothing sets,
@@ -583,7 +598,7 @@ function itemText(item: unknown): string {
 
 /** Whether a chain starting with this step takes a mapping or a list whole, rather than as text. */
 export function takesStructure(step: string, value: unknown): boolean {
-  if (step === JSON_STEP || step === BOOL_STEP) return true;
+  if (step === JSON_STEP || step === RAW_STEP || step === BOOL_STEP) return true;
   // A list is asked whether it holds the item, a mapping whether it has the key.
   if (stepName(step) === CONTAINS_STEP) return !!value && typeof value === 'object';
   // A mapping has a size, and nothing else a list step reads.
@@ -720,7 +735,7 @@ export function yieldsList(chain: string | undefined): boolean {
   for (const step of chain.split('|')) {
     if (isFallback(step) || isCondition(step)) continue;
     if (stepName(step) === SPLIT_STEP) list = true;
-    else if (isListStep(step) || isYesNoStep(step) || step === JSON_STEP) list = false;
+    else if (isListStep(step) || isYesNoStep(step) || step === JSON_STEP || step === RAW_STEP) list = false;
   }
   return list;
 }
@@ -733,6 +748,7 @@ export function isJsonNumber(text: string): boolean {
 const TRANSFORM_NAMES = [
   ...Object.keys(TRANSFORMS),
   JSON_STEP,
+  RAW_STEP,
   BOOL_STEP,
   IF_EXISTS_STEP,
   EXISTS_STEP,
@@ -1165,14 +1181,15 @@ export function applyTransform(
 
   // `json` is the one step that wants the value as it was rather than as text, so it is
   // read off the front before anything turns a mapping into "[object Object]".
-  const takesJson = steps[0] === JSON_STEP;
+  const takesJson = steps[0] === JSON_STEP || steps[0] === RAW_STEP;
   // A mapping or a list that reaches a text step anyway is its JSON, never "[object Object]".
   let text: string | undefined =
-    takesJson || (!!value && typeof value === 'object')
+    (takesJson && steps[0] === JSON_STEP) || (!!value && typeof value === 'object')
       ? JSON.stringify(value)
       : value === undefined
         ? undefined
         : String(value);
+  if (steps[0] === RAW_STEP && text !== undefined) text = escapeAll(text);
 
   /*
    * Whether there is anything to show, which is not the same as whether there is a value.
@@ -2315,6 +2332,7 @@ export const KNOWN_STEPS: string[] = [
   ...new Set([
     ...Object.keys(TRANSFORMS),
     JSON_STEP,
+    RAW_STEP,
     BOOL_STEP,
     EXISTS_STEP,
     IF_EXISTS_STEP,

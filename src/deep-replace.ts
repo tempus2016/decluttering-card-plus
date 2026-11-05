@@ -22,6 +22,7 @@ import {
   gateOpen,
   hasCondition,
   JSON_STEP,
+  RAW_STEP,
   resolveFallback,
   takesStructure,
   variableValues,
@@ -442,7 +443,11 @@ function substitutePass(
        * end up, not as written: a resolver asked about the text with the brackets still in
        * it finds no such entity, and `exists` says no.
        */
-      const input = typeof value === 'string' && PLACEHOLDER.test(value) ? settle(name) : value;
+      // `raw` is the one that wants the value exactly as written, placeholders and all (#391).
+      const input =
+        typeof value === 'string' && PLACEHOLDER.test(value) && transform.split('|')[0] !== RAW_STEP
+          ? settle(name)
+          : value;
       const unlisted = unlistedState(transform, input, hass, values, read);
       if (unlisted !== undefined) {
         return refuse(match, written, localize('warn.state_unlisted', { entity: unlisted }), 'unlisted');
@@ -571,9 +576,15 @@ function substitutePass(
       if (chain.split('|').lastIndexOf(JSON_STEP) > 0) {
         return refuse(match, written as string, localize('warn.json_not_first'), 'json');
       }
+      if (chain.split('|').lastIndexOf(RAW_STEP) > 0) {
+        return refuse(match, written as string, localize('warn.raw_not_first'), 'shape');
+      }
       if (!transformable(chain)) return refuse(match, written as string);
       if (whole) {
-        const input = typeof value === 'string' && PLACEHOLDER.test(value) ? settle(name) : value;
+        const input =
+          typeof value === 'string' && PLACEHOLDER.test(value) && chain.split('|')[0] !== RAW_STEP
+            ? settle(name)
+            : value;
         const standIn = structureStandIn(chain, input, values, hass, read, shield);
         if (standIn !== undefined) return standIn;
       }

@@ -263,6 +263,7 @@
   "warn.not_a_mapping": "{arg} is geen mapping",
   "warn.condition_closed": "de if:-voorwaarde klopt niet",
   "warn.json_not_first": "json kan alleen de eerste stap zijn",
+  "warn.raw_not_first": "raw kan alleen de eerste stap zijn",
   "warn.kind_list": "een lijst",
   "warn.kind_mapping": "een mapping",
   "warn.override_misplaced": "decluttering-card-plus: het {key}:-blok van deze kaart wordt genegeerd – het sjabloon \"{template}\" bouwt een {kind}, dus alleen een {kind}:-blok wordt eroverheen gelegd.",

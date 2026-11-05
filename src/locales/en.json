@@ -263,6 +263,7 @@
   "warn.not_a_mapping": "{arg} is not a mapping",
   "warn.condition_closed": "its if: condition does not hold",
   "warn.json_not_first": "json can only be the first step",
+  "warn.raw_not_first": "raw can only be the first step",
   "warn.kind_list": "a list",
   "warn.kind_mapping": "a mapping",
   "warn.override_misplaced": "decluttering-card-plus: this card's {key}: block is ignored - the template \"{template}\" builds a {kind}, so only a {kind}: block is laid over it.",
