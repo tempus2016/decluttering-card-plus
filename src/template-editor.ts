@@ -15,6 +15,7 @@ import {
   withGroupCards,
   moveItem,
   itemTemplatesOf,
+  parentsOf,
 } from './templates';
 import { contentKey, listSettings, nameForSetting, namesInUse, promoteSetting, SettingPath } from './promote';
 import {
@@ -282,10 +283,11 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
             `
           : this._selectedTab === 'card'
             ? html`
+                ${this._renderCardFromParents()}
                 <hui-card-element-editor
                   .hass=${this.hass}
                   .lovelace=${this.lovelace}
-                  .value=${this._config.card}
+                  .value=${this._cardForEditor()}
                   @config-changed=${this._cardChanged}
                 ></hui-card-element-editor>
               `
@@ -370,6 +372,34 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
           : html``
       }
     `;
+  }
+
+  /*
+   * A template that builds on another may write no `type:` of its own - `extends: warm_tile`
+   * and a colour - and Home Assistant's element editor throws on a card with no type. The
+   * tab then edits the card as the parents leave it, and says so: an edit here writes the
+   * whole card into this template, over the parents' version.
+   */
+  private _cardForEditor(): unknown {
+    const own = this._config?.card;
+    if (!this._config || (own && typeof own === 'object' && typeof (own as { type?: unknown }).type === 'string'))
+      return own;
+    const resolved = collectTemplates(this._savedLovelace, undefined, this._config)[this._config.template];
+    const merged = resolved?.card;
+    return merged && typeof merged === 'object' && typeof (merged as { type?: unknown }).type === 'string'
+      ? merged
+      : own;
+  }
+
+  private _renderCardFromParents(): TemplateResult {
+    const own = this._config?.card;
+    if (!this._config || (own && typeof own === 'object' && typeof (own as { type?: unknown }).type === 'string'))
+      return html``;
+    const parents = parentsOf(this._config);
+    if (!parents.length) return html``;
+    return html`<ha-alert alert-type="info">
+      ${localize('template_editor.card_from_parents', { parents: parents.join(', ') }, this.hass)}
+    </ha-alert>`;
   }
 
   /*

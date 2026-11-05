@@ -573,6 +573,7 @@
   "share.trash_empty": "Ainda nada aqui.",
   "undo.op.restore": "restaurar um modelo",
   "group.hidden_outside_edit": "+{count} oculto(s) fora do modo de edição",
+  "template_editor.card_from_parents": "Este modelo recebe o seu cartão de {parents}. O que se mostra é o cartão tal como eles o deixam; uma alteração aqui escreve o cartão inteiro neste modelo, por cima do deles.",
   "editor.advanced.header": "Avançado",
   "editor.advanced.count_one": "1 definição",
   "editor.advanced.count_many": "{count} definições",

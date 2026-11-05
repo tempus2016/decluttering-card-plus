@@ -573,6 +573,7 @@
   "share.trash_empty": "Nada por ahora.",
   "undo.op.restore": "restaurar una plantilla",
   "group.hidden_outside_edit": "+{count} oculta(s) fuera del modo de edición",
+  "template_editor.card_from_parents": "Esta plantilla toma su tarjeta de {parents}. Se muestra la tarjeta tal y como la dejan; un cambio aquí escribe la tarjeta entera en esta plantilla, sobre la suya.",
   "editor.advanced.header": "Avanzado",
   "editor.advanced.count_one": "1 ajuste",
   "editor.advanced.count_many": "{count} ajustes",

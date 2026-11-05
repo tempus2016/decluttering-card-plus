@@ -573,6 +573,7 @@
   "share.trash_empty": "Nog niets hier.",
   "undo.op.restore": "het herstellen van een sjabloon",
   "group.hidden_outside_edit": "+{count} verborgen buiten de bewerkmodus",
+  "template_editor.card_from_parents": "Dit sjabloon neemt zijn kaart over van {parents}. Getoond wordt de kaart zoals zij die achterlaten; een wijziging hier schrijft de hele kaart in dit sjabloon, over de hunne heen.",
   "editor.advanced.header": "Geavanceerd",
   "editor.advanced.count_one": "1 instelling",
   "editor.advanced.count_many": "{count} instellingen",
