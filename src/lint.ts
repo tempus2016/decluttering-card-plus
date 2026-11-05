@@ -6,6 +6,7 @@ import {
   isWellFormedCondition,
   normaliseVariables,
   POSITION_NAMES,
+  TEMPLATE_PLACEHOLDERS,
   templateDefaults,
   variableName,
   visibilityConditions,
@@ -208,7 +209,13 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
   });
 
   // A name a `with:` or `repeat:` gives the body it fills in is set, one copy at a time.
-  const defined = new Set([...definedNames(template), ...known, ...POSITION_NAMES, ...structureNames(template)]);
+  const defined = new Set([
+    ...definedNames(template),
+    ...known,
+    ...POSITION_NAMES,
+    ...TEMPLATE_PLACEHOLDERS,
+    ...structureNames(template),
+  ]);
   const findings = [...scan.findings];
 
   // `[[room.light]]` reaches into `room`, so a condition on `room.light` names something real

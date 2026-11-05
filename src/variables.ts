@@ -1843,7 +1843,9 @@ function scanPlaceholders(json: string, pattern: RegExp, names: string[]): void 
     // `[[!room]]` is not a use of anything - it is the brackets, written out.
     if (!match[1].startsWith(ESCAPE) && !insideButtonCardJs(json, match.index)) {
       const inside = withoutOptional(match[1]);
-      names.push(inside.replace(TRANSFORM_TAIL, ''));
+      const head = inside.replace(TRANSFORM_TAIL, '');
+      // The template's own names are given by every build, not set by anybody (#391).
+      if (!TEMPLATE_PLACEHOLDERS.includes(head)) names.push(head);
       // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing -
       // and `[[a|if:b]]` reads b to decide whether a is shown at all.
       for (const step of inside.split('|').slice(1)) {
@@ -2290,6 +2292,32 @@ export function forEachItems(forEach: unknown): unknown[] | undefined {
 
 /** The names every copy of a `for_each` gets given, whatever its items say. */
 export const POSITION_NAMES = ['index', 'index0', 'count', 'first', 'last'];
+
+/*
+ * The names every build is given about the templates it sits in (#391), for a message that
+ * says where it came from. `__template_name__` is the template being built - the one the card
+ * names, whatever it extends. The other three follow template cards nested inside template
+ * cards: `__parent_template_name__` is the template whose card holds this one (empty at the
+ * top), `__root_template_name__` the outermost (this one, at the top), and
+ * `__template_path__` the list from the outermost down to this one. A variable of the same
+ * name wins, as it does over an entity.
+ */
+export const TEMPLATE_NAME = '__template_name__';
+export const PARENT_TEMPLATE_NAME = '__parent_template_name__';
+export const ROOT_TEMPLATE_NAME = '__root_template_name__';
+export const TEMPLATE_PATH = '__template_path__';
+export const TEMPLATE_PLACEHOLDERS = [TEMPLATE_NAME, PARENT_TEMPLATE_NAME, ROOT_TEMPLATE_NAME, TEMPLATE_PATH];
+
+/** The values of those four for a template built inside the ones `above` names, outermost first. */
+export function templatePlaceholders(name: string | undefined, above: string[] = []): VariablesConfig[] {
+  const path = name ? [...above, name] : [...above];
+  return [
+    { [TEMPLATE_NAME]: name ?? '' },
+    { [PARENT_TEMPLATE_NAME]: above.length ? above[above.length - 1] : '' },
+    { [ROOT_TEMPLATE_NAME]: path[0] ?? '' },
+    { [TEMPLATE_PATH]: path },
+  ];
+}
 
 /** Every name any item of a `for_each` list sets, for warning about what is missing. */
 export function forEachNames(items: unknown): string[] {
