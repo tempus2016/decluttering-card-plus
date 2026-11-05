@@ -139,9 +139,37 @@ check(
 );
 
 check(
-  'an export names the custom cards the recipient needs',
-  buildExport({ template: 'a', card: { type: 'custom:button-card' } }).notes,
-  ['Requires these custom cards: custom:button-card'],
+  'an export writes the custom cards the recipient needs into requires:, not a comment',
+  (() => {
+    const out = buildExport({ template: 'a', card: { type: 'custom:button-card' } });
+    return [out.payload.requires, out.notes];
+  })(),
+  [{ custom_cards: ['button-card'] }, []],
+);
+
+check(
+  'cards the author listed stay as written, and the rest are added after them',
+  buildExport({
+    template: 'a',
+    requires: { integrations: ['frigate'], custom_cards: [{ card: 'button-card', message: 'Needs button-card' }] },
+    card: { type: 'vertical-stack', cards: [{ type: 'custom:button-card' }, { type: 'custom:mushroom-chips-card' }] },
+  }).payload.requires,
+  {
+    integrations: ['frigate'],
+    custom_cards: [{ card: 'button-card', message: 'Needs button-card' }, 'mushroom-chips-card'],
+  },
+);
+
+check(
+  'an included template needs its cards too, and requires: sits in read order',
+  (() => {
+    const out = buildExport(
+      { template: 'a', description: 'd', card: { type: 'custom:decluttering-card-plus', template: 'b' } },
+      { b: { template: 'b', card: { type: 'custom:mini-graph-card' } } },
+    );
+    return [out.payload.requires, Object.keys(out.payload)];
+  })(),
+  [{ custom_cards: ['mini-graph-card'] }, ['template', 'description', 'requires', 'card', 'includes']],
 );
 
 check(

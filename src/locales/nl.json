@@ -149,7 +149,6 @@
   "share.import_clash": "Dit dashboard heeft al een sjabloon met de naam \"{name}\". Na het importeren heb je twee sjablonen met dezelfde naam, en maar één ervan wordt gebruikt. Druk nogmaals op Importeren om door te gaan.",
   "share.import_not_yaml": "Dit is geen geldige YAML en kan dus niet worden gelezen.",
   "share.import_too_big": "Dit is te groot om een sjabloon te zijn en kan niet worden gelezen.",
-  "share.requires_custom_cards": "Vereist deze custom cards: {types}",
   "share.uses_other_templates": "Gebruikt deze andere sjablonen, die hier niet zijn meegenomen: {names}",
   "share.import_not_a_template": "Dit ziet er niet uit als een sjabloon: het hoort een blok YAML-sleutels en -waarden te zijn.",
   "share.import_no_name": "Dit sjabloon heeft geen naam: het heeft een \"template:\"-regel nodig.",

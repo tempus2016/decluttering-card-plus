@@ -149,7 +149,6 @@
   "share.import_clash": "Ce tableau de bord a déjà un modèle nommé \"{name}\". Importer vous laissera deux modèles du même nom, et un seul sera utilisé. Appuyez encore sur Importer pour continuer.",
   "share.import_not_yaml": "Ceci n'est pas du YAML valide, il ne peut donc pas être lu.",
   "share.import_too_big": "C'est trop volumineux pour être un modèle, donc illisible.",
-  "share.requires_custom_cards": "Nécessite ces cartes personnalisées : {types}",
   "share.uses_other_templates": "Utilise ces autres modèles, qui ne sont pas inclus ici : {names}",
   "share.import_not_a_template": "Ceci ne ressemble pas à un modèle : ce devrait être un bloc de clés et de valeurs YAML.",
   "share.import_no_name": "Ce modèle n'a pas de nom : il lui faut une ligne \"template:\".",

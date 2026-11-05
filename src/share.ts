@@ -1,7 +1,7 @@
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE, parentsOf, templatesNamedBy } from './templates';
 import { localize } from './localize';
 import { DEFAULTS_ALIAS, templateDefaults } from './variables';
-import { shareInfo, unquotedVersions } from './sharing';
+import { requirementsOf, shareInfo, unquotedVersions } from './sharing';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -137,8 +137,29 @@ export function buildExport(
     missing.push(...templateRefs);
   }
 
+  /*
+   * The custom cards it needs - its own and the included templates' - go into `requires:`
+   * rather than a comment (#399). A comment is gone the first time a dashboard edited in the
+   * UI saves, where `requires:` stays with the template and is checked when it is installed.
+   * Cards the author already listed are left as written.
+   */
+  const needed = new Set(customTypes);
+  for (const included of Object.values<any>(payload.includes ?? {})) {
+    for (const type of scanDependencies(included).customTypes) needed.add(type);
+  }
+  const listed = new Set<string>();
+  for (const each of requirementsOf(payload))
+    if (each.kind === 'custom_card') each.any.forEach((name) => listed.add(name));
+  const add = [...needed].map((type) => type.replace(/^custom:/, '')).filter((name) => !listed.has(name));
+  if (add.length) {
+    const written = payload.requires;
+    const requires = written && typeof written === 'object' && !Array.isArray(written) ? { ...written } : {};
+    requires.custom_cards = [...([] as unknown[]).concat(requires.custom_cards ?? []), ...add.sort()];
+    payload.requires = requires;
+    reorder(payload);
+  }
+
   const notes: string[] = [];
-  if (customTypes.length) notes.push(localize('share.requires_custom_cards', { types: customTypes.join(', ') }));
   if (missing.length) {
     notes.push(localize('share.uses_other_templates', { names: missing.join(', ') }));
   }
@@ -146,6 +167,17 @@ export function buildExport(
   if (unquoted.length) notes.push(localize('share.version_unquoted', { keys: unquoted.join(', ') }));
 
   return { payload, notes };
+}
+
+// Puts the keys back in read order after one was added late, leaving the rest where they were.
+function reorder(payload: Record<string, any>): void {
+  const entries = Object.entries(payload);
+  for (const [key] of entries) delete payload[key];
+  const rank = (key: string): number => {
+    const at = EXPORT_KEY_ORDER.indexOf(key);
+    return at === -1 ? EXPORT_KEY_ORDER.length : at;
+  };
+  for (const [key, value] of entries.sort((a, b) => rank(a[0]) - rank(b[0]))) payload[key] = value;
 }
 
 /*

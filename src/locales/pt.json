@@ -149,7 +149,6 @@
   "share.import_clash": "Este painel já tem um modelo chamado \"{name}\". Importar vai deixá-lo com dois modelos com o mesmo nome, e só um deles será usado. Carregue Importar outra vez para avançar.",
   "share.import_not_yaml": "Isto não é YAML válido, por isso não pode ser lido.",
   "share.import_too_big": "Isto é demasiado grande para ser um modelo, por isso não pode ser lido.",
-  "share.requires_custom_cards": "Requer estes cartões personalizados: {types}",
   "share.uses_other_templates": "Usa estes outros modelos, que não estão incluídos aqui: {names}",
   "share.import_not_a_template": "Isto não parece um modelo: devia ser um bloco de chaves e valores YAML.",
   "share.import_no_name": "Este modelo não tem nome: precisa de uma linha \"template:\".",

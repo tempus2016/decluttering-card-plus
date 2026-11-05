@@ -149,7 +149,6 @@
   "share.import_clash": "This dashboard already has a template called \"{name}\". Importing will give you two templates with the same name, and only one of them will be used. Press Import again to go ahead.",
   "share.import_not_yaml": "This is not valid YAML, so it cannot be read.",
   "share.import_too_big": "This is too big to be a template, so it cannot be read.",
-  "share.requires_custom_cards": "Requires these custom cards: {types}",
   "share.uses_other_templates": "Uses these other templates, which are not included here: {names}",
   "share.import_not_a_template": "This does not look like a template: it should be a block of YAML keys and values.",
   "share.import_no_name": "This template has no name: it needs a \"template:\" line.",
