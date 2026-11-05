@@ -20,11 +20,13 @@ const CONTENT_KEYS = [
   'name',
 ];
 
-// A placeholder, with up to two levels of placeholder nested inside it.
-const INNER = '[^[\\]]*';
-const ONE = `\\[\\[${INNER}\\]\\]`;
-const TWO = `\\[\\[(?:${INNER}|${ONE})*\\]\\]`;
-const PLACEHOLDER_ANY = new RegExp(`\\[\\[(?:${INNER}|${TWO})*\\]\\]`, 'g');
+// A placeholder, with up to two levels of placeholder nested inside it. Each level takes one
+// character at a time (never `[^[\]]*` inside `*`): a nested quantifier backtracks
+// exponentially when a stray `[` has no closing `]]`, as in button-card JavaScript (#403).
+const CHAR = '[^[\\]]';
+const ONE = `\\[\\[${CHAR}*\\]\\]`;
+const TWO = `\\[\\[(?:${CHAR}|${ONE})*\\]\\]`;
+const PLACEHOLDER_ANY = new RegExp(`\\[\\[(?:${CHAR}|${TWO})*\\]\\]`, 'g');
 
 /** Every distinct placeholder in `text`, outermost ones, in order of first appearance. */
 export function placeholdersIn(text: string): string[] {
