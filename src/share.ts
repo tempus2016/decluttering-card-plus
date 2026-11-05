@@ -94,6 +94,24 @@ function itemTemplateRefs(config: any, templates: Record<string, any>): string[]
   return found;
 }
 
+/*
+ * A template name built from a placeholder - `template: '[[kind]]_tile'` - is picked when the
+ * card builds, so an export cannot know which one it needs (#399). It is not a name to go
+ * looking for: every template whose name fits the pattern is one it could pick.
+ */
+function isPicked(name: string): boolean {
+  return name.includes('[[');
+}
+
+function fitsPicked(pattern: string, names: string[]): string[] {
+  const parts = pattern.split(/\[\[[^\]]*\]\]/);
+  // Nothing written around the placeholder fits every template there is, which says nothing.
+  if (!parts.join('')) return [];
+  const escaped = parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.+');
+  const fits = new RegExp(`^${escaped}$`);
+  return names.filter((name) => fits.test(name));
+}
+
 /**
  * A template ready to be handed to someone else: the config as it will be written out,
  * and the things they need to know that the config cannot tell them.
@@ -127,6 +145,9 @@ export function buildExport(
    * what else to go and find. The note stays for anything that could not be found.
    */
   const missing: string[] = [];
+  const picked: string[] = [];
+  // Whether any template here fitted a picked name and went along because of it.
+  let pickedFound = false;
   if (templates) {
     const includes: Record<string, any> = {};
     const queue = [...templateRefs, ...itemTemplateRefs(config, templates)];
@@ -141,6 +162,13 @@ export function buildExport(
     while (queue.length) {
       const name = queue.shift() as string;
       if (name in includes || name === self) continue;
+      if (isPicked(name)) {
+        if (!picked.includes(name)) picked.push(name);
+        const fits = fitsPicked(name, Object.keys(templates)).filter((each) => each !== self);
+        if (fits.length) pickedFound = true;
+        queue.push(...fits);
+        continue;
+      }
       const found = templates[name];
       if (!found) {
         if (!related.has(name)) missing.push(name);
@@ -156,13 +184,17 @@ export function buildExport(
     }
     if (Object.keys(includes).length) payload.includes = includes;
   } else {
-    missing.push(...templateRefs);
+    for (const name of templateRefs) (isPicked(name) ? picked : missing).push(name);
   }
 
   const notes: string[] = [];
   if (customTypes.length) notes.push(localize('share.requires_custom_cards', { types: customTypes.join(', ') }));
   if (missing.length) {
     notes.push(localize('share.uses_other_templates', { names: missing.join(', ') }));
+  }
+  if (picked.length) {
+    const key = pickedFound ? 'share.picked_templates_found' : 'share.picked_templates';
+    notes.push(localize(key, { names: picked.join(', ') }));
   }
   const unquoted = unquotedVersions(config);
   if (unquoted.length) notes.push(localize('share.version_unquoted', { keys: unquoted.join(', ') }));

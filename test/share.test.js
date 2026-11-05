@@ -416,3 +416,61 @@ check(
     undefined,
   );
 }
+
+/* --- #399: a template name picked by a variable --- */
+
+{
+  const templates = {
+    room: {
+      template: 'room',
+      card: { type: 'vertical-stack', cards: [{ type: 'custom:decluttering-card-plus', template: '[[kind]]_tile' }] },
+    },
+    light_tile: { template: 'light_tile', card: { type: 'tile' } },
+    cover_tile: { template: 'cover_tile', extends: 'base_tile', card: { type: 'tile' } },
+    base_tile: { template: 'base_tile', card: { type: 'tile' } },
+    light_row: { template: 'light_row', card: { type: 'tile' } },
+  };
+  const out = buildExport(templates.room, templates);
+  check(
+    'the templates whose names fit a picked name go along, with what they are built on',
+    Object.keys(out.payload.includes ?? {}).sort(),
+    ['base_tile', 'cover_tile', 'light_tile'],
+  );
+  check(
+    'the picked name is not reported as a template that could not be found',
+    out.notes.some((note) => note.includes('not included here')),
+    false,
+  );
+  check(
+    'it says the template is picked, and that the ones that fit went with it',
+    out.notes.some((note) => note.includes('[[kind]]_tile') && note.includes('went with it')),
+    true,
+  );
+
+  const none = buildExport(
+    { template: 't', card: { type: 'custom:decluttering-card-plus', template: '[[kind]]_card' } },
+    templates,
+  );
+  check('nothing fits: nothing goes along', none.payload.includes, undefined);
+  check(
+    'and the note says which one it needs cannot be known',
+    none.notes.some((note) => note.includes('[[kind]]_card') && note.includes('cannot be known')),
+    true,
+  );
+
+  const bare = buildExport(
+    { template: 't', card: { type: 'custom:decluttering-card-plus', template: '[[which]]' } },
+    templates,
+  );
+  check('a name that is all placeholder does not bring every template', bare.payload.includes, undefined);
+
+  const offline = buildExport({
+    template: 't',
+    card: { type: 'custom:decluttering-card-plus', template: '[[kind]]_tile' },
+  });
+  check(
+    'without the dashboard to hand, a picked name is still not called missing',
+    offline.notes.some((note) => note.includes('not included here')),
+    false,
+  );
+}
