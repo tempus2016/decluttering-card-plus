@@ -64,6 +64,11 @@ jobs:
           source: ./site
           destination: ./_site
 
+      # kramdown keeps the backslash of \| inside a code span in a table, where GitHub's
+      # wiki drops it (#401). Before the index, so search reads what the page shows.
+      - name: Take the backslash off escaped pipes in tables
+        run: sudo python3 -I repo/docs-theme/unescape_pipes.py _site
+
       # After Jekyll, from the HTML it wrote, so every link in the index is an id a page
       # really has. The Jekyll action runs in a container as root, so _site is root's.
       - name: Index the pages for the search box
@@ -86,6 +91,8 @@ jobs:
           python3 -I -c 'import json,sys; d=json.load(open("_site/search.json")); k=[e for e in d if "k" in e]; sys.exit(len(k) < 100 and "search index has only %d key rows" % len(k))'
           test -f _site/A-to-Z.html || { echo "no A to Z page"; exit 1; }
           grep -q 'id="k-rebuild_on"' _site/Configuration-Reference.html || { echo "key rows lost their anchors"; exit 1; }
+          grep -q '\[\[name|step\]\]' _site/Placeholder-Reference.html || { echo "escaped pipes were not unescaped"; exit 1; }
+          ! grep -q '\[\[name\\|step\]\]' _site/Placeholder-Reference.html || { echo "a table still shows \\|"; exit 1; }
           echo "$(ls _site/*.html | wc -l) pages built"
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
