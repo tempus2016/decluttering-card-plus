@@ -151,6 +151,8 @@
   "share.import_too_big": "C'est trop volumineux pour être un modèle, donc illisible.",
   "share.requires_custom_cards": "Nécessite ces cartes personnalisées : {types}",
   "share.uses_other_templates": "Utilise ces autres modèles, qui ne sont pas inclus ici : {names}",
+  "share.bundled_values": "Ces valeurs du tableau de bord ont été reprises dans ses valeurs par défaut, car il les utilise : {names}. Vérifiez qu'aucune n'est privée avant de partager.",
+  "share.setup_values_left_out": "Ces valeurs du tableau de bord ont été laissées de côté, car elles sont demandées à l'installation : {names}",
   "share.import_not_a_template": "Ceci ne ressemble pas à un modèle : ce devrait être un bloc de clés et de valeurs YAML.",
   "share.import_no_name": "Ce modèle n'a pas de nom : il lui faut une ligne \"template:\".",
   "share.import_defines_nothing": "Ce modèle ne définit rien : il lui faut un de \"card:\", \"badge:\", \"row:\" ou \"element:\".",

@@ -151,6 +151,8 @@
   "share.import_too_big": "This is too big to be a template, so it cannot be read.",
   "share.requires_custom_cards": "Requires these custom cards: {types}",
   "share.uses_other_templates": "Uses these other templates, which are not included here: {names}",
+  "share.bundled_values": "Brought these dashboard values into its defaults, since it uses them: {names}. Check none of them is private before sharing.",
+  "share.setup_values_left_out": "Left these dashboard values out, since they are asked for on install: {names}",
   "share.import_not_a_template": "This does not look like a template: it should be a block of YAML keys and values.",
   "share.import_no_name": "This template has no name: it needs a \"template:\" line.",
   "share.import_defines_nothing": "This template defines nothing: it needs one of \"card:\", \"badge:\", \"row:\" or \"element:\".",

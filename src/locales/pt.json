@@ -151,6 +151,8 @@
   "share.import_too_big": "Isto é demasiado grande para ser um modelo, por isso não pode ser lido.",
   "share.requires_custom_cards": "Requer estes cartões personalizados: {types}",
   "share.uses_other_templates": "Usa estes outros modelos, que não estão incluídos aqui: {names}",
+  "share.bundled_values": "Estes valores do painel foram trazidos para os seus valores por defeito, porque os usa: {names}. Confirme que nenhum é privado antes de partilhar.",
+  "share.setup_values_left_out": "Estes valores do painel ficaram de fora, porque são pedidos na instalação: {names}",
   "share.import_not_a_template": "Isto não parece um modelo: devia ser um bloco de chaves e valores YAML.",
   "share.import_no_name": "Este modelo não tem nome: precisa de uma linha \"template:\".",
   "share.import_defines_nothing": "Este modelo não define nada: precisa de um de \"card:\", \"badge:\", \"row:\" ou \"element:\".",
