@@ -5,6 +5,7 @@
  */
 import { describe, it, expect, until } from './runner';
 import { watchTarget } from '../../src/template-editor/watch-target';
+import { deepFind } from '../../src/template-editor/code-editor-hooks';
 
 let counter = 0;
 
@@ -60,5 +61,26 @@ describe('watching the card editor', () => {
     target.shadowRoot!.appendChild(document.createElement('span'));
     await new Promise((resolve) => setTimeout(resolve, 400));
     expect(calls).to.equal(before);
+  });
+});
+
+describe('finding the code editor', () => {
+  it('looks through deeply nested shadow roots once each, not twice per level', () => {
+    // Twenty-two levels of host and shadow root, deeper than Home Assistant's tile editor.
+    const top = document.createElement('div');
+    let at: Element | ShadowRoot = top;
+    for (let level = 0; level < 22; level++) {
+      const host = document.createElement('div');
+      at.appendChild(host);
+      at.appendChild(document.createElement('span'));
+      at = host.attachShadow({ mode: 'open' });
+    }
+    const started = performance.now();
+    const missing = deepFind(top, 'ha-code-editor');
+    const took = performance.now() - started;
+    at.appendChild(document.createElement('ha-code-editor'));
+    expect(missing).to.equal(undefined);
+    expect(took).to.be.below(200);
+    expect(deepFind(top, 'ha-code-editor')?.localName).to.equal('ha-code-editor');
   });
 });

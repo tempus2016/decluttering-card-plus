@@ -36,19 +36,20 @@ const PH_STYLE = `
 
 const hooked = new WeakSet<Element>();
 
-function deepFind(root: Element | ShadowRoot | null | undefined, tag: string): Element | undefined {
+export function deepFind(root: Element | ShadowRoot | null | undefined, tag: string): Element | undefined {
   if (!root) return undefined;
+  /*
+   * Each tree once: the one given, then every shadow root inside it. Queuing a shadow root
+   * from its host's parent and again from the host visited each one twice, and so doubled the
+   * work at every level of nesting - seconds a look in Home Assistant's tile editor.
+   */
   const queue: (Element | ShadowRoot)[] = [root];
+  if (root instanceof Element && root.shadowRoot) queue.push(root.shadowRoot);
   while (queue.length) {
-    const node = queue.shift() as Element | ShadowRoot;
-    const hit = node.querySelector?.(tag);
+    const tree = queue.shift() as Element | ShadowRoot;
+    const hit = tree.querySelector(tag);
     if (hit) return hit;
-    const children: Element[] = [...((node as Element).children ?? [])];
-    for (const child of children) {
-      if (child.shadowRoot) queue.push(child.shadowRoot);
-      queue.push(child);
-    }
-    if ((node as Element).shadowRoot) queue.push((node as Element).shadowRoot as ShadowRoot);
+    for (const element of tree.querySelectorAll('*')) if (element.shadowRoot) queue.push(element.shadowRoot);
   }
   return undefined;
 }
