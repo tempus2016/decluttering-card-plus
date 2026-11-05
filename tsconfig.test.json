@@ -40,6 +40,7 @@
     "src/similar.ts",
     "src/search.ts",
     "src/report.ts",
+    "src/report-try.ts",
     "src/promote.ts",
     "src/trash.ts",
     "src/builder.ts",

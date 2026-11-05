@@ -48,6 +48,7 @@ import {
   TracePlace,
   TraceReport,
   TraceRoot,
+  SectionEvaluate,
   TraceSection,
   traceLabel,
   variableRows,
@@ -394,6 +395,10 @@ export abstract class DeclutteringElement extends LitElement {
         gap: 8px;
         margin-bottom: 8px;
       }
+      .report decluttering-report-try {
+        display: block;
+        margin-bottom: 8px;
+      }
       .report .formatted {
         display: block;
         margin-top: 8px;
@@ -576,6 +581,7 @@ export abstract class DeclutteringElement extends LitElement {
             ),
             trace,
             built: withoutStamps(built),
+            evaluate: this._evaluate(variables, templateConfig, templateName),
           },
         ],
         templateConfig,
@@ -627,6 +633,33 @@ export abstract class DeclutteringElement extends LitElement {
         ),
       this._hass,
     );
+  }
+
+  /*
+   * The build's substitution kept for the report's Try a placeholder box (#376): the same call
+   * the build made, quiet, read when somebody types so it asks Home Assistant as it is now.
+   */
+  private _evaluate(
+    variables: Parameters<typeof deepReplace>[0],
+    template: TemplateConfig,
+    templateName: string | undefined,
+    haNames?: Set<string>,
+  ): SectionEvaluate {
+    return (content, onMissing, values) =>
+      deepReplace(
+        (values as Parameters<typeof deepReplace>[0]) ?? variables,
+        values ? ({} as TemplateConfig) : template,
+        content,
+        values ? undefined : templateName,
+        this._buildHass,
+        true,
+        onMissing,
+        0,
+        undefined,
+        undefined,
+        false,
+        { ...this._buildExtras(), ...(haNames ? { haNames } : {}) },
+      );
   }
 
   private _logBuild(started: number, sections: TraceSection[], templateConfig: TemplateConfig): void {
@@ -723,6 +756,22 @@ export abstract class DeclutteringElement extends LitElement {
     return html`<pre>${text}</pre>`;
   }
 
+  /*
+   * Try a placeholder against the builds in the report (#376). Its own chunk, fetched the
+   * first time a report is shown: nothing else on a dashboard needs it.
+   */
+  private _renderTry(): TemplateResult | string {
+    if (!customElements.get('decluttering-report-try')) {
+      import('./report-try-box').then(() => this.requestUpdate()).catch(() => {});
+      return '';
+    }
+    return html`<decluttering-report-try
+      .hass=${this._hass}
+      .reports=${this._reportResult?.reports ?? []}
+      .unredacted=${this._reportUnredacted}
+    ></decluttering-report-try>`;
+  }
+
   private _renderReport(): TemplateResult | string {
     if (!this._reportMode) return '';
     const text = this._reportText;
@@ -741,6 +790,7 @@ export abstract class DeclutteringElement extends LitElement {
             ${localize('report.download', undefined, this._hass)}
           </ha-button>
         </div>
+        ${ready ? this._renderTry() : ''}
         ${
           ready
             ? html`<details>
@@ -1092,6 +1142,7 @@ export abstract class DeclutteringElement extends LitElement {
           ),
           trace,
           built: withoutStamps(built),
+          evaluate: this._evaluate(variables, template, name, haNames),
         });
       }
       // Choosing by domain, a copy is told its own template is open above what it holds -

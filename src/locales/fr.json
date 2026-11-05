@@ -325,6 +325,8 @@
   "report.unredacted": "Rien n'a été retiré de ce rapport, car la carte a redact: false. Tous les mots de passe, jetons, adresses IP, adresses e-mail et hôtes y figurent tels qu'écrits : ne le publiez nulle part en public.",
   "report.show_markdown": "Afficher le Markdown",
   "report.show_formatted": "Afficher la mise en forme",
+  "report_try.scope": "Le lire dans",
+  "report_try.hint": "Tapez un espace réservé ou choisissez-en un, et voyez ce qu'il donne dans la construction choisie : la carte, une copie d'une répétition, une carte à l'intérieur ou le remplissage d'un modèle d'élément. Il est lu comme cette construction l'a lu, avec Home Assistant tel qu'il est maintenant, et ce que le rapport retirerait est aussi retiré ici.",
 
   "picker.card_description": "Réutilisez plusieurs fois la même configuration de carte avec des variables pour désencombrer votre configuration.",
   "picker.published_description": "Une carte construite à partir du modèle decluttering « {template} ».",

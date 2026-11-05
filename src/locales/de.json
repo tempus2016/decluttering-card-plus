@@ -325,6 +325,8 @@
   "report.unredacted": "Aus diesem Bericht wurde nichts entfernt, weil die Karte redact: false hat. Alle Passwörter, Token, IP-Adressen, E-Mail-Adressen und Hostnamen stehen so darin, wie sie geschrieben sind, also veröffentliche ihn nirgendwo öffentlich.",
   "report.show_markdown": "Markdown anzeigen",
   "report.show_formatted": "Formatiert anzeigen",
+  "report_try.scope": "Auswerten in",
+  "report_try.hint": "Gib einen Platzhalter ein oder wähle einen aus und sieh, was er im gewählten Build ergibt: die Karte, eine Kopie einer Wiederholung, eine Karte darin oder die Füllung einer Element-Vorlage. Er wird so gelesen, wie dieser Build ihn gelesen hat, gegen Home Assistant im jetzigen Zustand, und was der Bericht entfernen würde, wird auch hier entfernt.",
 
   "picker.card_description": "Verwende dieselbe Kartenkonfiguration mit Variablen mehrfach, um deine Konfiguration zu entrümpeln.",
   "picker.published_description": "Eine Karte aus der Decluttering-Vorlage \"{template}\".",

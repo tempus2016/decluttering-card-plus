@@ -357,7 +357,19 @@ export interface TraceSection {
   variables: VariableRow[];
   trace: BuildTrace;
   built: unknown;
+  /**
+   * This build's own substitution, run again on something else: the report's Try a
+   * placeholder box (#376). `values` stands in for the variables and template, for an item
+   * template's fill, whose values are all it was given. Never written into the report.
+   */
+  evaluate?: SectionEvaluate;
 }
+
+export type SectionEvaluate = (
+  content: unknown,
+  onMissing: (names: string[]) => void,
+  values?: Record<string, unknown>[],
+) => unknown;
 
 export interface TraceReport {
   /** What the card is called: its template, and its name when it has one. */

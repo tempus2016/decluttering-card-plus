@@ -325,6 +325,8 @@
   "report.unredacted": "Nada foi retirado deste relatório, porque o cartão tem redact: false. Todas as palavras-passe, tokens, endereços IP, endereços de e-mail e hosts estão tal como foram escritos, por isso não o publique em nenhum sítio público.",
   "report.show_markdown": "Mostrar o Markdown",
   "report.show_formatted": "Mostrar formatado",
+  "report_try.scope": "Ler em",
+  "report_try.hint": "Escreva um marcador ou escolha um e veja o que dá na construção escolhida: o cartão, uma cópia de uma repetição, um cartão dentro dele ou o preenchimento de um modelo de item. É lido como essa construção o leu, com o Home Assistant tal como está agora, e o que o relatório retiraria também é retirado aqui.",
 
   "picker.card_description": "Reutilize várias vezes a mesma configuração de cartão com variáveis para organizar a sua configuração.",
   "picker.published_description": "Um cartão criado a partir do modelo decluttering \"{template}\".",

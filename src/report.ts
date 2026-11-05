@@ -48,7 +48,7 @@ export interface ReportInput {
 const SECRET_WORDS =
   'token|secret|password|passwd|pwd|pass|pin|passcode|code|auth|authorization|credentials?|api[_-]?key|apikey|webhook[_-]?id|private[_-]?key|signature|lat|latitude|lon|lng|longitude|gps';
 const SECRET_KEY = `(?:[a-z0-9]+[_-])*(?:${SECRET_WORDS})(?:[_-][a-z0-9]+)*`;
-const SECRET_NAME = new RegExp(`^${SECRET_KEY}$`, 'i');
+export const SECRET_NAME = new RegExp(`^${SECRET_KEY}$`, 'i');
 // More count in a query string: `?key=` and `?sig=` mean plenty of other things as config keys.
 const URL_KEYS = `${SECRET_KEY}|sig|key`;
 // Paths that carry a token as a segment: a Home Assistant or Discord webhook, a Telegram bot,
@@ -159,7 +159,7 @@ const SHORTEST_SECRET = 4;
  * mapping. A transform's copy of one is in the placeholders. Longest first, so a secret that
  * contains another is taken out whole.
  */
-function secretValues(reports: TraceReport[]): string[] {
+export function secretValues(reports: TraceReport[]): string[] {
   const found = new Set<string>();
   const add = (value: unknown, secret: boolean): void => {
     if (value !== null && typeof value === 'object') {
