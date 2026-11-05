@@ -1,6 +1,8 @@
 import { TemplateConfig } from './types';
 import {
   conditionTarget,
+  orTarget,
+  quotedText,
   ESCAPE,
   getDeclarations,
   isWellFormedCondition,
@@ -53,7 +55,8 @@ const OR_STEP = 'or:';
 
 /** The variable an `or:` or `if:` step reads, or undefined for any other step. */
 function stepTarget(step: string): string | undefined {
-  if (step.startsWith(OR_STEP)) return step.slice(OR_STEP.length);
+  // `or:"text"` stands in with the text and reads no variable (#398).
+  if (step.startsWith(OR_STEP)) return orTarget(step);
   return conditionTarget(step);
 }
 
@@ -111,7 +114,8 @@ function scanPlaceholder(inside: string, path: string, scan: Scan): void {
   const placeholder = `[[${inside}]]`;
   const head = rawHead.endsWith('?') ? rawHead.slice(0, -1) : rawHead;
   // `[[room.light]]` reads `room`; the part after the dot is a key of its value.
-  const name = head.split('.')[0];
+  // A quoted name is text, not a variable (#398), and its dots are the text's own.
+  const name = quotedText(head) === undefined ? head.split('.')[0] : undefined;
   if (name && name !== STAND_IN && !scan.heads.has(name)) scan.heads.set(name, path);
 
   let filled = false;

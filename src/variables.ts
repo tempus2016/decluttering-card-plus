@@ -930,18 +930,90 @@ const OR_PREFIX = 'or:';
  */
 const TEXT_ARG = `(?:[^|\\][]|\\[(?!\\[))*`;
 
+/*
+ * Text in quotes is that text and never a variable's name (#398). `[["sensor.hall"|if_exists]]`
+ * works on the entity id itself, with no variable set to it first, and `or:"none"` stands in
+ * with the word rather than looking for a variable called none. A quoted argument loses its
+ * quotes everywhere else too - `default:"Living Room"`, `contains:"foo"`, `join:", "` - which
+ * is also how a step's argument can start or end with a space. Single or double quotes, and
+ * nothing a placeholder cannot hold: no bar, no bracket, and no `?` in a quoted name.
+ *
+ * Substitution reads the template as its JSON, where a double quote is written `\"`, so that
+ * spelling is a quote here too, and what is between the quotes is read back from JSON.
+ */
+const QUOTED_ARG = `(?:\\\\"(?:(?!\\\\")[^|\\][])*\\\\"|"[^"|\\][]*"|'[^'|\\][]*')`;
+
+function fromJsonText(inner: string): string {
+  if (!inner.includes('\\')) return inner;
+  try {
+    const parsed = JSON.parse(`"${inner}"`);
+    return typeof parsed === 'string' ? parsed : inner;
+  } catch {
+    return inner;
+  }
+}
+
+/** The text a quoted name or argument stands for, or undefined when it is not in quotes. */
+export function quotedText(text: string | undefined): string | undefined {
+  if (typeof text !== 'string' || text.length < 2) return undefined;
+  if (text.length >= 4 && text.startsWith('\\"') && text.endsWith('\\"')) return fromJsonText(text.slice(2, -2));
+  const quote = text[0];
+  if ((quote === '"' || quote === "'") && text.endsWith(quote)) return fromJsonText(text.slice(1, -1));
+  return undefined;
+}
+
+/** A step's argument as text: the quotes off when it is quoted, as written when it is not. */
+export function argText(arg: string): string {
+  return quotedText(arg) ?? arg;
+}
+
 // Anything but a bar or a bracket, so `default:Living Room` reads as it is written.
 const DEFAULT_STEP = `${DEFAULT_PREFIX}${TEXT_ARG}`;
-const OR_STEP = `${OR_PREFIX}[A-Za-z0-9_-]+`;
+const OR_STEP = `${OR_PREFIX}(?:[A-Za-z0-9_-]+|${QUOTED_ARG})`;
 
 /** Whether a step supplies a value rather than reshaping one. */
 export function isFallback(step: string): boolean {
   return step.startsWith(DEFAULT_PREFIX) || step.startsWith(OR_PREFIX);
 }
 
-/** The variable an `or:` step names, for counting it as used. */
+/** The variable an `or:` step names, for counting it as used. A quoted one names none. */
 export function orTarget(step: string): string | undefined {
-  return step.startsWith(OR_PREFIX) ? step.slice(OR_PREFIX.length) : undefined;
+  if (!step.startsWith(OR_PREFIX)) return undefined;
+  const arg = step.slice(OR_PREFIX.length);
+  return quotedText(arg) === undefined ? arg : undefined;
+}
+
+/*
+ * `or:[[name]]` reads the way every other step's nested placeholder does (#398). Left alone,
+ * `[[name]]` is filled first and `or:` then looks for a variable called whatever it became,
+ * which is never there. So before a build reads the text, a bare name in brackets loses them -
+ * `or:[[b]]` is `or:b`, falling through to the next stand-in when b is unset - and a chain in
+ * brackets becomes a `default:` with that chain marked optional, so `or:[[b|upper]]` stands
+ * in with b shouted, and with nothing at all (the next stand-in's turn) when b is unset.
+ * Innermost first and again until nothing changes, so `or:[[b|or:[[c]]]]` unwraps too.
+ */
+const NESTED_OR = /\|or:\[\[([^[\]]*)\]\]/g;
+const BARE_OR_NAME = /^([A-Za-z0-9_-]+)\??$/;
+
+export function unwrapNestedOr(text: string): string {
+  if (!text.includes('|or:[[')) return text;
+  let out = text;
+  for (let round = 0; round < 20; round += 1) {
+    const next = out.replace(NESTED_OR, (_match, inside: string) => {
+      const bare = BARE_OR_NAME.exec(inside);
+      if (bare) return `|or:${bare[1]}`;
+      return `|default:[[${inside.endsWith(OPTIONAL) ? inside : `${inside}${OPTIONAL}`}]]`;
+    });
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+/** The text a step stands in with: `default:`'s own, or a quoted `or:`'s. Undefined for a bare `or:`. */
+function standInText(step: string): string | undefined {
+  if (step.startsWith(DEFAULT_PREFIX)) return argText(step.slice(DEFAULT_PREFIX.length));
+  return quotedText(step.slice(OR_PREFIX.length));
 }
 
 /*
@@ -967,7 +1039,11 @@ function parseCondition(step: string): { name: string; text?: string; negated: b
   const equals = body.indexOf('=');
   if (equals === -1) return { name: body, negated: not };
   const unequal = body[equals - 1] === '!';
-  return { name: body.slice(0, unequal ? equals - 1 : equals), text: body.slice(equals + 1), negated: not !== unequal };
+  return {
+    name: body.slice(0, unequal ? equals - 1 : equals),
+    text: argText(body.slice(equals + 1)),
+    negated: not !== unequal,
+  };
 }
 
 /** Whether a step is a condition rather than something done to the value. */
@@ -1077,9 +1153,11 @@ function resolve(step: string, entityId: string, hass: any): string | undefined 
  */
 export const PARAM_TRANSFORMS: Record<string, (value: string, arg: string) => string | undefined> = {
   replace: (value, arg) => {
+    // A quoted first half may hold a colon of its own: `replace:": ":-` (#398).
+    const quoted = new RegExp(`^(${QUOTED_ARG})(?::([\\s\\S]*))?$`).exec(arg);
     const colon = arg.indexOf(':');
-    const from = colon === -1 ? arg : arg.slice(0, colon);
-    const to = colon === -1 ? '' : arg.slice(colon + 1);
+    const from = quoted ? argText(quoted[1]) : colon === -1 ? arg : arg.slice(0, colon);
+    const to = argText(quoted ? (quoted[2] ?? '') : colon === -1 ? '' : arg.slice(colon + 1));
     return from ? value.split(from).join(to) : value;
   },
   // Decoration, not content: a gap stays a gap, so `[[name?|suffix: room]]` still drops
@@ -1152,7 +1230,9 @@ function paramTransform(
   // would answer the lookup with a function that is not a transform at all. Same reasoning
   // as the null-prototype map in variableValues.
   if (!Object.prototype.hasOwnProperty.call(PARAM_TRANSFORMS, name)) return undefined;
-  return { fn: PARAM_TRANSFORMS[name], arg: step.slice(colon + 1) };
+  // `replace:` and `map:` take their argument apart themselves, quotes and all.
+  const arg = step.slice(colon + 1);
+  return { fn: PARAM_TRANSFORMS[name], arg: name === 'replace' || name === 'map' ? arg : argText(arg) };
 }
 
 const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES}|${OR_STEP}|${DEFAULT_STEP}|${IF_STEP}|${PARAM_STEP})`;
@@ -1318,7 +1398,7 @@ export function applyTransform(
     }
 
     if (stepName(name) === CONTAINS_STEP) {
-      const wanted = name.slice(CONTAINS_STEP.length + 1);
+      const wanted = argText(name.slice(CONTAINS_STEP.length + 1));
       const items = list ?? (Array.isArray(firstHand) ? firstHand : undefined);
       // A mapping "contains" a key, the way a list contains an item.
       const mapping = !items && !!firstHand && typeof firstHand === 'object' ? firstHand : undefined;
@@ -1346,7 +1426,7 @@ export function applyTransform(
       keptOwn = !empty && orTarget(name) !== undefined;
       if (empty) {
         const or = orTarget(name);
-        const fallback = or === undefined ? name.slice(DEFAULT_PREFIX.length) : values?.[or];
+        const fallback = or === undefined ? standInText(name) : values?.[or];
         // A mapping cannot stand in as text; `[[a|or:b]]` supplies words, not structure. As
         // the whole value it can, and deep-replace's structureStandIn puts it in before this.
         const usable = fallback !== undefined && fallback !== null && typeof fallback !== 'object';
@@ -1372,7 +1452,7 @@ export function applyTransform(
     if (isListStep(name)) {
       const colon = name.indexOf(':');
       const step = colon === -1 ? name : name.slice(0, colon);
-      const arg = colon === -1 ? undefined : name.slice(colon + 1);
+      const arg = colon === -1 ? undefined : argText(name.slice(colon + 1));
       // What the step reads as a list: one already made, a list variable, or text split up -
       // where a null or an empty string is an empty list, not the word "null".
       const separator = step === SPLIT_STEP ? (arg ?? DEFAULT_SPLIT) : DEFAULT_SPLIT;
@@ -1901,7 +1981,9 @@ function scanPlaceholders(json: string, pattern: RegExp, names: string[]): void 
     // `[[!room]]` is not a use of anything - it is the brackets, written out.
     if (!match[1].startsWith(ESCAPE) && !insideButtonCardJs(json, match.index)) {
       const inside = withoutOptional(match[1]);
-      names.push(inside.replace(TRANSFORM_TAIL, ''));
+      const head = inside.replace(TRANSFORM_TAIL, '');
+      // A quoted name is text, not a variable (#398).
+      if (quotedText(head) === undefined) names.push(head);
       // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing -
       // and `[[a|if:b]]` reads b to decide whether a is shown at all.
       for (const step of inside.split('|').slice(1)) {
