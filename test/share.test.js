@@ -474,3 +474,35 @@ check(
     false,
   );
 }
+
+/* --- #399: an included template goes out without the dashboard's defaults --- */
+
+{
+  const { collectTemplates } = require('../.test-build/templates.js');
+  const ll = {
+    decluttering_defaults: [{ frigate_password: 'hunter2' }, { unrelated: 1 }],
+    decluttering_templates: {
+      main: { template: 'main', card: { type: 'custom:decluttering-card-plus', template: 'inner' } },
+      inner: {
+        template: 'inner',
+        default: [{ icon: 'mdi:cctv' }],
+        card: { type: 'markdown', content: '[[frigate_password]] [[icon]]' },
+      },
+      bare: { template: 'bare', card: { type: 'markdown', content: '[[unrelated]]' } },
+    },
+    views: [],
+  };
+  const templates = collectTemplates(ll);
+  check(
+    'an included template keeps its own defaults and none of the dashboard ones',
+    buildExport(ll.decluttering_templates.main, templates).payload.includes.inner.default,
+    [{ icon: 'mdi:cctv' }],
+  );
+  check(
+    'one with no defaults of its own goes out with none',
+    'default' in
+      buildExport({ template: 'm', card: { type: 'custom:decluttering-card-plus', template: 'bare' } }, templates)
+        .payload.includes.bare,
+    false,
+  );
+}
