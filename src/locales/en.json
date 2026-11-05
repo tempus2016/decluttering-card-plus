@@ -329,6 +329,7 @@
   "picker.card_description": "Reuse multiple times the same card configuration with variables to declutter your config.",
   "picker.published_description": "A card built from the decluttering template \"{template}\".",
   "picker.badge_description": "Instantiate a template whose content is a badge.",
+  "picker.section_description": "A section built from one of your templates, kept up to date by the template.",
   "picker.template_description": "Define a reusable template for decluttering cards to instantiate.",
   "picker.legacy_card_description": "Compatibility alias for existing custom:decluttering-card configurations.",
   "picker.legacy_template_description": "Compatibility alias for existing custom:decluttering-template configurations.",
