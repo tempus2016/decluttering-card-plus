@@ -90,3 +90,13 @@ check(
   [argumentValues('if').length, argumentValues('round'), argumentValues('slug')],
   [4, ['0', '1', '2'], []],
 );
+
+// #403: a stray `[` in button-card JavaScript once made this scan backtrack for minutes.
+{
+  const js =
+    "[[[\n  const lastUpdate = hass.states['sensor.mg_hs_phev_trophy_last_update_time']?.state;\n  const c = 'test'[0];\n  if (!['unknown','unavailable'].includes(lastUpdate)) return c;\n]]] [[entity]]";
+  const started = Date.now();
+  const found = placeholderSpans(js, () => ({ kind: 'ok' })).map((span) => span.text);
+  check('button-card JavaScript with brackets is scanned quickly', Date.now() - started < 500, true);
+  check('and the real placeholder after it is still found', found, ['[[entity]]']);
+}

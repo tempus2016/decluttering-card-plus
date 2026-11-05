@@ -20,10 +20,12 @@ export interface PlaceholderSpan {
 }
 
 // Outermost placeholders with up to two levels nested inside, escaped ones included so they can be skipped.
-const INNER = '[^[\\]]*';
-const ONE = `\\[\\[${INNER}\\]\\]`;
-const TWO = `\\[\\[(?:${INNER}|${ONE})*\\]\\]`;
-const ANY = new RegExp(`\\[\\[(?:${INNER}|${TWO})*\\]\\]`, 'g');
+// One character at a time at each level, as in placeholders.ts: `[^[\]]*` inside `*` backtracks
+// exponentially on a stray `[`, such as button-card JavaScript's `'test'[0]` (#403).
+const CHAR = '[^[\\]]';
+const ONE = `\\[\\[${CHAR}*\\]\\]`;
+const TWO = `\\[\\[(?:${CHAR}|${ONE})*\\]\\]`;
+const ANY = new RegExp(`\\[\\[(?:${CHAR}|${TWO})*\\]\\]`, 'g');
 
 /**
  * Every placeholder in `text` with where it sits, judged by `resolve`: `ok` when it has a
