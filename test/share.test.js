@@ -379,3 +379,40 @@ check(
     [{ discussion: 1 }, {}],
   );
 }
+
+/* --- #399: item templates a with: or repeat: fills in travel too --- */
+
+{
+  const templates = {
+    room: {
+      template: 'room',
+      default: [{ rows: ['a', 'b'] }],
+      card: { type: 'entities', entities: '[[row_item|repeat:rows]]', footer: '[[badge_item]]' },
+    },
+    row_item: { template: 'row_item', item: { entity: '[[value]]', name: '[[label_item|with:x=1]]' } },
+    label_item: { template: 'label_item', item: '[[x]]' },
+    badge_item: { template: 'badge_item', item: { type: 'icon' } },
+    unrelated: { template: 'unrelated', item: { type: 'icon' } },
+  };
+  const out = buildExport(templates.room, templates);
+  check(
+    'an item template named by a placeholder goes under includes, and the ones it fills in',
+    Object.keys(out.payload.includes ?? {}).sort(),
+    ['badge_item', 'label_item', 'row_item'],
+  );
+  check('and nothing is reported missing', out.notes, []);
+  check(
+    'a placeholder naming a variable, not an item template, brings nothing',
+    buildExport({ template: 't', default: [{ rows: 1 }], card: { type: 'entities', title: '[[rows]]' } }, templates)
+      .payload.includes,
+    undefined,
+  );
+  check(
+    'an item template that fills itself in is not carried inside itself',
+    buildExport(
+      { template: 'self_item', item: { more: '[[self_item?]]' } },
+      { self_item: { template: 'self_item', item: { more: '[[self_item?]]' } } },
+    ).payload.includes,
+    undefined,
+  );
+}

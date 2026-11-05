@@ -72,6 +72,28 @@ export function scanDependencies(config: any): Dependencies {
   };
 }
 
+// The name a placeholder starts with: `camera_entry` in `[[camera_entry|with:entity=x]]`.
+const PLACEHOLDER_HEAD = /\[\[!?([A-Za-z0-9_-]+)/g;
+
+/*
+ * The item templates a template fills in (#399). `with:` and `repeat:` name one as the head
+ * of a placeholder - `[[camera_entry|with:...]]`, or a bare `[[camera_entry]]` - so they are
+ * found by name among the dashboard's templates rather than by card type. A head that is no
+ * item template here is a variable, and goes unsaid.
+ */
+function itemTemplateRefs(config: any, templates: Record<string, any>): string[] {
+  const text = JSON.stringify(config ?? null);
+  const found: string[] = [];
+  for (let match = PLACEHOLDER_HEAD.exec(text); match !== null; match = PLACEHOLDER_HEAD.exec(text)) {
+    const name = match[1];
+    if (found.includes(name) || !Object.prototype.hasOwnProperty.call(templates, name)) continue;
+    const template = templates[name];
+    if (template && typeof template === 'object' && 'item' in template) found.push(name);
+  }
+  PLACEHOLDER_HEAD.lastIndex = 0;
+  return found;
+}
+
 /**
  * A template ready to be handed to someone else: the config as it will be written out,
  * and the things they need to know that the config cannot tell them.
@@ -107,7 +129,7 @@ export function buildExport(
   const missing: string[] = [];
   if (templates) {
     const includes: Record<string, any> = {};
-    const queue = [...templateRefs];
+    const queue = [...templateRefs, ...itemTemplateRefs(config, templates)];
     /*
      * The templates it names under `related:` go too, and theirs in turn, though nothing calls
      * them: that is what the list is for. One that is not here is not missing anything this
@@ -118,14 +140,14 @@ export function buildExport(
     queue.push(...related);
     while (queue.length) {
       const name = queue.shift() as string;
-      if (name in includes) continue;
+      if (name in includes || name === self) continue;
       const found = templates[name];
       if (!found) {
         if (!related.has(name)) missing.push(name);
         continue;
       }
       includes[name] = withoutSource(found);
-      queue.push(...scanDependencies(found).templateRefs);
+      queue.push(...scanDependencies(found).templateRefs, ...itemTemplateRefs(found, templates));
       for (const each of shareInfo(found).related) {
         if (each === self || related.has(each)) continue;
         related.add(each);
