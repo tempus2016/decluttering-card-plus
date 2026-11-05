@@ -3,6 +3,7 @@ import { labelName } from './labels';
 import { registryIndex } from './registry-index';
 import { localize } from './localize';
 import { warn } from './warnings';
+import { cardExists, iconExists, integrationExists } from './installed';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -483,9 +484,36 @@ const CONTAINS_STEP = 'contains';
  */
 export const IF_EXISTS_STEP = 'if_exists';
 
+/*
+ * The same pair for what is installed (#397), so a template shared with somebody else can
+ * fall back on what everybody has: `integration_exists` and `if_integration_exists` read the
+ * value as an integration's domain, `card_exists` and `if_card_exists` as a custom card's
+ * type (`custom:` or not), `icon_exists` and `if_icon_exists` as an icon, of which only the
+ * set before the colon is checked - see installed.ts.
+ */
+const INSTALLED_CHECKS: Record<string, (value: string, hass: any) => boolean | undefined> = {
+  integration_exists: integrationExists,
+  card_exists: (value) => cardExists(value),
+  icon_exists: (value) => iconExists(value),
+};
+const INSTALLED_STEPS = Object.keys(INSTALLED_CHECKS);
+const IF_INSTALLED_STEPS = INSTALLED_STEPS.map((step) => `if_${step}`);
+
+/** Whether a step keeps the value only while it names something there, and is a gap otherwise. */
+export function isIfExistsStep(step: string): boolean {
+  return step === IF_EXISTS_STEP || IF_INSTALLED_STEPS.includes(step);
+}
+
+/** Whether a step asks what is installed, whose answer can change after the card has built. */
+export function asksInstalled(step: string): boolean {
+  return INSTALLED_STEPS.includes(step) || IF_INSTALLED_STEPS.includes(step);
+}
+
 /** Whether a step answers yes or no. */
 function isYesNoStep(step: string): boolean {
-  return step === BOOL_STEP || step === EXISTS_STEP || stepName(step) === CONTAINS_STEP;
+  return (
+    step === BOOL_STEP || step === EXISTS_STEP || INSTALLED_STEPS.includes(step) || stepName(step) === CONTAINS_STEP
+  );
 }
 
 /** Whether a chain ends in a yes or a no, so a whole value should become a real true or false. */
@@ -736,6 +764,8 @@ const TRANSFORM_NAMES = [
   BOOL_STEP,
   IF_EXISTS_STEP,
   EXISTS_STEP,
+  ...IF_INSTALLED_STEPS,
+  ...INSTALLED_STEPS,
   ...NUMBER_BARE_STEPS,
   ...LIST_BARE_STEPS,
   FLAT_STEP,
@@ -1250,6 +1280,34 @@ export function applyTransform(
       const known =
         !empty && id !== undefined && id !== null && typeof id !== 'object'
           ? entityExists(stripHaMarks(String(id)), hass)
+          : false;
+      if (known !== true) {
+        text = undefined;
+        list = undefined;
+        empty = true;
+      }
+      continue;
+    }
+
+    if (INSTALLED_STEPS.includes(name)) {
+      // Like `exists`: nothing set is a no, and nothing to ask yet leaves the placeholder.
+      const asked = index === 0 && !takesJson ? value : text;
+      const known =
+        empty || asked === undefined || asked === null || typeof asked === 'object'
+          ? false
+          : INSTALLED_CHECKS[name](stripHaMarks(String(asked)), hass);
+      text = known === undefined ? undefined : String(known);
+      list = undefined;
+      empty = text === undefined;
+      continue;
+    }
+
+    if (IF_INSTALLED_STEPS.includes(name)) {
+      // Like `if_exists`: the value stays while it names something installed, else a gap.
+      const asked = list ? undefined : index === 0 && !takesJson ? value : text;
+      const known =
+        !empty && asked !== undefined && asked !== null && typeof asked !== 'object'
+          ? INSTALLED_CHECKS[name.slice(3)](stripHaMarks(String(asked)), hass)
           : false;
       if (known !== true) {
         text = undefined;
@@ -1985,9 +2043,25 @@ export function usesResolver(
   // A `repeat:` over a registry source reads it too, and has to follow it the same way.
   return usesStep(
     template,
-    (step) => isResolver(step) || step === EXISTS_STEP || step === IF_EXISTS_STEP || stepName(step) === REPEAT_STEP,
+    (step) =>
+      isResolver(step) ||
+      step === EXISTS_STEP ||
+      step === IF_EXISTS_STEP ||
+      asksInstalled(step) ||
+      stepName(step) === REPEAT_STEP,
     itemTemplates,
   );
+}
+
+/**
+ * Whether the template asks what is installed (#397) - an integration, a card, an icon set -
+ * whose answer can change after the card has built, without the registry moving.
+ */
+export function usesInstalled(
+  template: TemplateConfig | undefined,
+  itemTemplates?: Record<string, TemplateConfig>,
+): boolean {
+  return usesStep(template, asksInstalled, itemTemplates);
 }
 
 /**
@@ -2318,6 +2392,8 @@ export const KNOWN_STEPS: string[] = [
     BOOL_STEP,
     EXISTS_STEP,
     IF_EXISTS_STEP,
+    ...INSTALLED_STEPS,
+    ...IF_INSTALLED_STEPS,
     STATE_STEP,
     // Bare, as `[[row|with]]` and `[[row|repeat]]` (#314); with an argument they are below.
     ...STRUCTURE_PARAM_STEPS,

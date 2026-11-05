@@ -13,6 +13,7 @@
  */
 
 import { DEFAULTS_ALIAS, templateDefaults } from './variables';
+import { integrationLoaded } from './installed';
 
 const MAX_TEXT = 200;
 const MAX_README = 8_000;
@@ -221,15 +222,8 @@ export interface Unmet extends Requirement {
 
 function met(requirement: Requirement, here: Surroundings): boolean {
   switch (requirement.kind) {
-    case 'integration': {
-      // A platform loads as `sensor.frigate`; the integration is the part after the dot.
-      const loaded = new Set<string>();
-      for (const each of here.components) {
-        loaded.add(each);
-        loaded.add(each.split('.').pop() as string);
-      }
-      return requirement.any.some((each) => loaded.has(each));
-    }
+    case 'integration':
+      return requirement.any.some((each) => integrationLoaded(here.components, each));
     case 'entity':
       return requirement.any.some((pattern) => {
         const test = entityPattern(pattern);
