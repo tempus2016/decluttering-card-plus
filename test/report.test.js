@@ -192,7 +192,7 @@ check(
   true,
 );
 check('so are the cards that never built', text.includes('- cards\\[2\\]'), true);
-check('no section without warnings has a warnings heading', text.includes('Warnings:'), false);
+check('a report without warnings has no warnings heading', text.includes('## Warnings'), false);
 
 {
   const fenced = formatReport({

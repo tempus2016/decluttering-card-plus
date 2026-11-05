@@ -355,17 +355,36 @@ function buildSection(report: TraceReport, { line, block, title, redacting }: Wr
       lines.push(`**${t('trace.taken_out')}**`, '', ...described.dropped.map((path) => `- ${line(path)}`), '');
     }
     items(section.trace.items, 4);
-    if (section.trace.warnings.length) {
-      lines.push(
-        `**${t('report.warnings')}**`,
-        '',
-        ...section.trace.warnings.map((warning: string) => `- ${line(warning)}`),
-        '',
-      );
-    }
     lines.push(`**${t('trace.result')}**`, '', ...block(section.built), '');
   }
   return folded(title(headline(report, hass)), lines);
+}
+
+/*
+ * Every warning any build in the report gave, in the order they came, each with the build it
+ * came from (#391). They used to sit inside each build's folded section, which is the last
+ * place somebody looks; up front, before anything is unfolded, nobody can miss one. A report
+ * with one build and one section has nowhere else they could have come from, so it does not
+ * say. A fill's warnings go with the build it is part of.
+ */
+function allWarnings(reports: TraceReport[]): { where: string; warning: string }[] {
+  const found: { where: string; warning: string }[] = [];
+  const seen = new Set<string>();
+  const add = (where: string, trace: BuildTrace): void => {
+    for (const warning of trace.warnings) {
+      const key = `${where}\n${warning}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push({ where, warning });
+    }
+    for (const item of trace.items ?? []) add(where, item.trace);
+  };
+  for (const report of reports) {
+    for (const section of report.sections) {
+      add(section.label ? `${report.label} › ${section.label}` : report.label, section.trace);
+    }
+  }
+  return found;
 }
 
 /** The whole report as Markdown, redacted unless asked not to be. */
@@ -396,6 +415,16 @@ export function formatReport(input: ReportInput, hass?: any): string {
   const label = input.reports[0]?.label ?? '';
   const body: string[] = [];
   if (input.error) body.push(`## ${t('report.error')}`, '', ...block(input.error, ''), '');
+  const warnings = allWarnings(input.reports);
+  if (warnings.length) {
+    const one = input.reports.length === 1 && input.reports[0].sections.length === 1;
+    body.push(
+      `## ${t('report.warnings')}`,
+      '',
+      ...warnings.map(({ where, warning }) => `- ${one ? '' : `${line(where)}: `}${line(warning)}`),
+      '',
+    );
+  }
   // What the card ended up as comes first: it is what somebody looks at to see what went wrong.
   if (input.full !== undefined) {
     body.push(...folded(title(t('trace.in_full', { label })), block(input.full), true));

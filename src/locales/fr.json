@@ -314,7 +314,7 @@
   "report.browser": "Navigateur",
   "report.error": "Erreur",
   "report.template": "Modèle \"{template}\"",
-  "report.warnings": "Avertissements :",
+  "report.warnings": "Avertissements",
   "report.waiting": "Rapport de débogage : en attente de la construction des cartes qu'elle contient.",
   "report.ready": "Rapport de débogage : comment cette carte a été construite, prêt à copier dans un ticket.",
   "report.copy": "Copier",

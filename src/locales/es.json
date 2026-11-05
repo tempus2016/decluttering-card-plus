@@ -314,7 +314,7 @@
   "report.browser": "Navegador",
   "report.error": "Error",
   "report.template": "Plantilla \"{template}\"",
-  "report.warnings": "Avisos:",
+  "report.warnings": "Avisos",
   "report.waiting": "Informe de depuración: esperando a que se construyan las tarjetas que contiene esta.",
   "report.ready": "Informe de depuración: cómo se construyó esta tarjeta, listo para copiar en una incidencia.",
   "report.copy": "Copiar",

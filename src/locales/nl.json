@@ -314,7 +314,7 @@
   "report.browser": "Browser",
   "report.error": "Fout",
   "report.template": "Sjabloon \"{template}\"",
-  "report.warnings": "Waarschuwingen:",
+  "report.warnings": "Waarschuwingen",
   "report.waiting": "Debugrapport: wachten tot de kaarten in deze kaart zijn opgebouwd.",
   "report.ready": "Debugrapport: hoe deze kaart is opgebouwd, klaar om in een issue te plakken.",
   "report.copy": "Kopiëren",
