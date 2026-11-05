@@ -1,6 +1,6 @@
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE, parentsOf, templatesNamedBy } from './templates';
 import { localize } from './localize';
-import { DEFAULTS_ALIAS, templateDefaults } from './variables';
+import { DEFAULTS_ALIAS, OWN_DEFAULTS, templateDefaults } from './variables';
 import { shareInfo, unquotedVersions } from './sharing';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -124,7 +124,7 @@ export function buildExport(
         if (!related.has(name)) missing.push(name);
         continue;
       }
-      includes[name] = withoutSource(found);
+      includes[name] = asWritten(withoutSource(found));
       queue.push(...scanDependencies(found).templateRefs);
       for (const each of shareInfo(found).related) {
         if (each === self || related.has(each)) continue;
@@ -161,6 +161,22 @@ export function withoutSource(template: any): any {
   const rest = { ...template };
   delete rest.source;
   return rest;
+}
+
+/*
+ * The dashboard's templates come with its `decluttering_defaults` - and the library's -
+ * folded into their `default:`, which is how a card builds with them. Those values are the
+ * dashboard's, not the template's, and every one of them was riding out with every template
+ * carried under `includes:`, whether it used them or not - a password kept there with it
+ * (#399). An included template goes out with the defaults written on it and nothing else.
+ */
+function asWritten(template: any): any {
+  if (!template || typeof template !== 'object' || !(OWN_DEFAULTS in template)) return template;
+  const own = template[OWN_DEFAULTS];
+  const out = { ...template };
+  if (own === undefined || own === null || (Array.isArray(own) && !own.length)) delete out.default;
+  else out.default = own;
+  return out;
 }
 
 /** A pasted template with any `source:` stamp taken off it and off each template it carries. */
