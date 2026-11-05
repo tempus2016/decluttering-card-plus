@@ -263,6 +263,7 @@
   "warn.not_a_mapping": "{arg} ist kein Mapping",
   "warn.condition_closed": "seine if:-Bedingung trifft nicht zu",
   "warn.json_not_first": "json kann nur der erste Schritt sein",
+  "warn.yaml_not_first": "yaml kann nur der erste Schritt sein",
   "warn.kind_list": "eine Liste",
   "warn.kind_mapping": "ein Mapping",
   "warn.override_misplaced": "decluttering-card-plus: der {key}:-Block dieser Karte wird ignoriert – die Vorlage \"{template}\" baut ein {kind}, daher wird nur ein {kind}:-Block darübergelegt.",

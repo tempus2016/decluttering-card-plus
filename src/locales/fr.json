@@ -263,6 +263,7 @@
   "warn.not_a_mapping": "{arg} n'est pas un mapping",
   "warn.condition_closed": "sa condition if: n'est pas remplie",
   "warn.json_not_first": "json ne peut être que la première étape",
+  "warn.yaml_not_first": "yaml ne peut être que la première étape",
   "warn.kind_list": "une liste",
   "warn.kind_mapping": "un mappage",
   "warn.override_misplaced": "decluttering-card-plus: le bloc {key}: de cette carte est ignoré - le modèle \"{template}\" construit un {kind}, donc seul un bloc {kind}: s'y superpose.",

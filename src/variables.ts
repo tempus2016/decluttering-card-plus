@@ -3,6 +3,7 @@ import { labelName } from './labels';
 import { registryIndex } from './registry-index';
 import { localize } from './localize';
 import { warn } from './warnings';
+import { toYaml } from './yaml';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -443,6 +444,18 @@ export const TRANSFORMS: Record<string, (value: string) => string> = {
 export const JSON_STEP = 'json';
 
 /*
+ * `yaml` is `json` written the way a dashboard is (#391): a mapping or a list as the YAML
+ * lines it would be written as, for a markdown card or a message that shows what a value
+ * worked out to. Like `json` it reads the variable's own value, so it can only come first.
+ */
+export const YAML_STEP = 'yaml';
+
+/** Whether a step reads the variable's value whole and writes it out as text. */
+function writesWhole(step: string | undefined): boolean {
+  return step === JSON_STEP || step === YAML_STEP;
+}
+
+/*
  * `bool` turns a value into a yes or a no - `enabled: '[[link|bool]]'` switches a button
  * on when the card was given a link and off when it was not (discussion #142). Two things
  * set it apart from the text transforms: it has an answer for a variable nothing sets,
@@ -583,7 +596,7 @@ function itemText(item: unknown): string {
 
 /** Whether a chain starting with this step takes a mapping or a list whole, rather than as text. */
 export function takesStructure(step: string, value: unknown): boolean {
-  if (step === JSON_STEP || step === BOOL_STEP) return true;
+  if (writesWhole(step) || step === BOOL_STEP) return true;
   // A list is asked whether it holds the item, a mapping whether it has the key.
   if (stepName(step) === CONTAINS_STEP) return !!value && typeof value === 'object';
   // A mapping has a size, and nothing else a list step reads.
@@ -720,7 +733,7 @@ export function yieldsList(chain: string | undefined): boolean {
   for (const step of chain.split('|')) {
     if (isFallback(step) || isCondition(step)) continue;
     if (stepName(step) === SPLIT_STEP) list = true;
-    else if (isListStep(step) || isYesNoStep(step) || step === JSON_STEP) list = false;
+    else if (isListStep(step) || isYesNoStep(step) || writesWhole(step)) list = false;
   }
   return list;
 }
@@ -733,6 +746,7 @@ export function isJsonNumber(text: string): boolean {
 const TRANSFORM_NAMES = [
   ...Object.keys(TRANSFORMS),
   JSON_STEP,
+  YAML_STEP,
   BOOL_STEP,
   IF_EXISTS_STEP,
   EXISTS_STEP,
@@ -1163,16 +1177,18 @@ export function applyTransform(
    */
   let haText = fromHa || (typeof value === 'string' && isHaMarked(value));
 
-  // `json` is the one step that wants the value as it was rather than as text, so it is
-  // read off the front before anything turns a mapping into "[object Object]".
-  const takesJson = steps[0] === JSON_STEP;
+  // `json` and `yaml` want the value as it was rather than as text, so they are read off
+  // the front before anything turns a mapping into "[object Object]".
+  const takesJson = writesWhole(steps[0]);
   // A mapping or a list that reaches a text step anyway is its JSON, never "[object Object]".
   let text: string | undefined =
-    takesJson || (!!value && typeof value === 'object')
-      ? JSON.stringify(value)
-      : value === undefined
-        ? undefined
-        : String(value);
+    value === undefined
+      ? undefined
+      : steps[0] === YAML_STEP
+        ? toYaml(value)
+        : takesJson || (!!value && typeof value === 'object')
+          ? JSON.stringify(value)
+          : String(value);
 
   /*
    * Whether there is anything to show, which is not the same as whether there is a value.
@@ -2315,6 +2331,7 @@ export const KNOWN_STEPS: string[] = [
   ...new Set([
     ...Object.keys(TRANSFORMS),
     JSON_STEP,
+    YAML_STEP,
     BOOL_STEP,
     EXISTS_STEP,
     IF_EXISTS_STEP,
