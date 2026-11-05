@@ -28,6 +28,7 @@ import {
 } from './variables';
 import { getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize, onLanguageLoaded } from './localize';
+import { sameConfig } from './undo';
 import { definedNames, lintTemplate } from './lint';
 import { getThingType, isVariablesShape, loadCardEditorPicker, setOrDelete } from './shared';
 import { THING_STUBS, DRAG_PATH, textField, loadRowEditor, saveDashboardWith } from './template-editor/common';
@@ -931,6 +932,15 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   private _cardChanged(ev: CustomEvent): void {
     ev.stopPropagation();
     if (!this._config) return;
+
+    /*
+     * With no card type of its own, the tab shows the card the parents leave, and Home
+     * Assistant's element editor hands that straight back as it loads. That is no edit: taking
+     * it would write the parents' card into this template and cut it off from them on save.
+     */
+    const own = this._config.card;
+    const ownType = own && typeof own === 'object' && typeof (own as { type?: unknown }).type === 'string';
+    if (!ownType && sameConfig(ev.detail.config, this._cardForEditor())) return;
 
     this._suggestion = undefined;
     this._suggestedNothing = false;
