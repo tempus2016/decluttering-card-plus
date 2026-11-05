@@ -100,6 +100,9 @@ import {
   withRepeatMode,
 } from './card-editor/repeat-builder';
 import { knownDomains } from './card-editor/repeat-builder';
+import { countText, filterPickerItems, groupHeading, PickerItem, pickerItems } from './card-editor/template-picker';
+import { ComboItem, pickerList } from './card-editor/generic-picker';
+import { isDefinedHere } from './template-editor/common';
 import { holdUndo } from './undo';
 import {
   currentViewIndex,
@@ -399,6 +402,35 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       .bd-row .bd-spacer {
         width: 48px;
       }
+      .picker {
+        display: block;
+        margin: 0 0 16px;
+      }
+      .pick-row {
+        padding: 4px 0;
+      }
+      .pick-heading {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: var(--secondary-text-color);
+        margin: 2px 0 6px;
+      }
+      .pick-name {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .pick-name small {
+        color: var(--secondary-text-color);
+      }
+      .pick-name small.unused {
+        color: var(--warning-color);
+      }
+      .pick-description {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+      }
     `;
   }
 
@@ -431,6 +463,10 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   // Which hand-written items are open for editing, by position.
   @state() private _openItems = new Set<number>();
   private _dragging?: number;
+  // Idea 21: the template combo box's rows, as filtered by what was typed.
+  @state() private _pickerFilter = '';
+  private _pickerItems: PickerItem[] = [];
+  private _pickerFor?: Record<string, TemplateConfig>;
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
@@ -586,8 +622,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
               }
             </ha-alert>`
       }
-      ${this._renderResume()} ${this._renderResult(template)} ${this._renderSource(template)}
-      ${this._renderStartFromExample(template)} ${this._renderDiagnostics(template, readable)}
+      ${this._renderResume()} ${this._renderTemplatePicker(error.template)} ${this._renderResult(template)}
+      ${this._renderSource(template)} ${this._renderStartFromExample(template)}
+      ${this._renderDiagnostics(template, readable)}
       <ha-form
         .hass=${this.hass}
         .data=${data}
@@ -1186,6 +1223,130 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   }
 
   /*
+   * Idea 21: the template dropdown as a combo box. Typing filters by name and description;
+   * each row is the name, its description, and how many cards use it; the categories and
+   * the borrowed templates' dashboards open as headings on the first row of each.
+   */
+  private _renderTemplatePicker(error: string | string[] | undefined): TemplateResult {
+    if (!this._config || !this._templates) return html``;
+    if (this._pickerFor !== this._templates) {
+      this._pickerFor = this._templates;
+      this._pickerItems = pickerItems(this._templates, this._lovelace, this.hass, borrowedFrom);
+    }
+    const shown = filterPickerItems(this._pickerItems, this._pickerFilter);
+    const renderer = (item: PickerItem, model: { index: number }): TemplateResult => {
+      const heading = groupHeading(item, shown[model.index - 1], this.hass);
+      return html`
+        <div class="pick-row">
+          ${heading ? html`<div class="pick-heading">${heading}</div>` : html``}
+          <div class="pick-name">
+            <span>${item.label}</span>
+            <small class=${item.count === 0 ? 'unused' : ''}>${countText(item.count, this.hass)}</small>
+          </div>
+          ${item.description ? html`<div class="pick-description">${item.description}</div>` : html``}
+        </div>
+      `;
+    };
+    const label = localize('editor.template_label', undefined, this.hass);
+    const helper = localize('editor.picker.search', undefined, this.hass);
+    const errorText = Array.isArray(error) ? error.join(' ') : (error ?? '');
+    /*
+     * Three Home Assistants: 2026.7 and later have ha-generic-picker and no ha-combo-box;
+     * 2025.7 to 2026.6 have both; before that only ha-combo-box. Each is asked for at render
+     * time, as textField() asks for its input, and an installation with neither falls back
+     * to the plain dropdown the editor had before (round 1, B1).
+     */
+    if (isDefinedHere('ha-generic-picker')) {
+      const all = this._pickerItems;
+      const rowRenderer = (item: ComboItem): TemplateResult => html`
+        <div class="pick-row">
+          <div class="pick-name">
+            <span>${item.primary}</span>
+            <small
+              class=${item.secondary?.startsWith(localize('editor.picker.unused', undefined, this.hass)) ? 'unused' : ''}
+            >
+              ${item.secondary}
+            </small>
+          </div>
+        </div>
+      `;
+      return html`
+        <ha-generic-picker
+          class="picker"
+          .hass=${this.hass}
+          .label=${label}
+          .helper=${helper}
+          .searchLabel=${helper}
+          .value=${this._config.template ?? ''}
+          .getItems=${(): (ComboItem | string)[] => pickerList(all, '', this.hass)}
+          .searchKeys=${[
+            { name: 'primary', weight: 10 },
+            { name: 'secondary', weight: 5 },
+            { name: 'search', weight: 3 },
+          ]}
+          .searchFn=${(search: string): (ComboItem | string)[] => pickerList(all, search, this.hass)}
+          .rowRenderer=${rowRenderer}
+          .invalid=${!!error}
+          .errorMessage=${errorText}
+          allow-custom-value
+          no-sort
+          @value-changed=${this._templatePicked}
+        ></ha-generic-picker>
+      `;
+    }
+    if (!isDefinedHere('ha-combo-box')) {
+      // Neither picker: the dropdown the editor always had, with a typed name still allowed.
+      return html`
+        <ha-selector
+          class="picker"
+          .hass=${this.hass}
+          .label=${label}
+          .selector=${{
+            select: {
+              mode: 'dropdown',
+              custom_value: true,
+              options: this._pickerItems.map((item) => ({ value: item.value, label: item.label })),
+            },
+          }}
+          .value=${this._config.template ?? ''}
+          @value-changed=${this._templatePicked}
+        ></ha-selector>
+        ${error ? html`<ha-alert alert-type="error">${errorText}</ha-alert>` : html``}
+      `;
+    }
+    return html`
+      <ha-combo-box
+        class="picker"
+        .hass=${this.hass}
+        .label=${localize('editor.template_label', undefined, this.hass)}
+        .helper=${localize('editor.picker.search', undefined, this.hass)}
+        .items=${this._pickerItems}
+        .filteredItems=${shown}
+        .value=${this._config.template ?? ''}
+        .renderer=${renderer}
+        .invalid=${!!error}
+        .errorMessage=${Array.isArray(error) ? error.join(' ') : (error ?? '')}
+        item-value-path="value"
+        item-label-path="value"
+        allow-custom-value
+        @filter-changed=${(ev: CustomEvent): void => {
+          ev.stopPropagation();
+          this._pickerFilter = String(ev.detail?.value ?? '');
+        }}
+        @value-changed=${this._templatePicked}
+      ></ha-combo-box>
+    `;
+  }
+
+  private _templatePicked(ev: CustomEvent): void {
+    ev.stopPropagation();
+    const value = ev.detail?.value;
+    if (typeof value !== 'string' || !value || !this._config || value === this._config.template) return;
+    this._pickerFilter = '';
+    fireEvent(this, 'config-changed', { config: { ...this._config, template: value } as DeclutteringCardConfig });
+  }
+
+  /*
    * A repeat inside one card stays inside that card's section, however wide the screen.
    * Offered only for a card sitting straight in a section of an ordinary sections view, as
    * saved - an unsaved edit has no place on the dashboard to convert yet.
@@ -1710,7 +1871,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     template: TemplateConfig | undefined,
   ): unknown[] {
     // With nothing described, the variables field is the only way to set any, so it stays.
-    if (!declarations.length) return this._schema;
+    // The template field is the picker above the form (idea 21), so the schema starts after it.
+    if (!declarations.length) return this._schema.slice(1);
 
     // A variable the repeat fills is shown greyed and says so, rather than as an empty
     // field that looks like a mistake (idea 15).
@@ -1740,7 +1902,6 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     }
 
     return [
-      this._schema[0],
       ...grouped,
       ...(hidden.extras
         ? []
