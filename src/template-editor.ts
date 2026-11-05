@@ -38,6 +38,7 @@ import './template-editor/example-strip';
 import './template-editor/placeholder-tool';
 import './template-editor/help-icon';
 import './template-editor/field-menus';
+import './template-editor/code-editor-hooks';
 import './template-editor/usages-tab';
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
@@ -296,6 +297,11 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                   .config=${this._config}
                   @config-changed=${this._childConfigChanged}
                 ></decluttering-field-menus>
+                <decluttering-code-hooks
+                  .hass=${this.hass}
+                  .lovelace=${this._savedLovelace}
+                  .config=${this._config}
+                ></decluttering-code-hooks>
               `
             : this._selectedTab === 'change_card'
               ? html`
@@ -992,10 +998,11 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
 
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
-    // The field menus (idea 24) watch Home Assistant's card editor.
+    // The field menus (idea 24) and the code hooks (ideas 25, 27) watch Home Assistant's card editor.
     const cardEditor = this.renderRoot.querySelector('hui-card-element-editor') ?? undefined;
-    const menus = this.renderRoot.querySelector('decluttering-field-menus') as
-      (HTMLElement & { target?: Element }) | null;
-    if (menus && menus.target !== cardEditor) menus.target = cardEditor;
+    for (const tag of ['decluttering-field-menus', 'decluttering-code-hooks']) {
+      const watcher = this.renderRoot.querySelector(tag) as (HTMLElement & { target?: Element }) | null;
+      if (watcher && watcher.target !== cardEditor) watcher.target = cardEditor;
+    }
   }
 }

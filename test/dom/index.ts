@@ -12,6 +12,7 @@ import '../../src/editors';
 import './regressions.test';
 import './accessibility.test';
 import './watch-target.test';
+import './code-mirror-classes.test';
 import { run } from './runner';
 
 declare global {
