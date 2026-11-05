@@ -153,6 +153,8 @@
   "share.uses_other_templates": "Verwendet diese anderen Vorlagen, die hier nicht enthalten sind: {names}",
   "share.picked_templates": "Wählt seine Vorlage über eine Variable, daher lässt sich hier nicht sagen, welche es braucht: {names}. Gib die Vorlagen, die es wählen kann, mit dazu.",
   "share.picked_templates_found": "Wählt seine Vorlage über eine Variable: {names}. Die Vorlagen hier, deren Namen passen, sind mitgekommen; gib alle anderen, die es wählen kann, dazu.",
+  "share.bundled_values": "Diese Werte des Dashboards wurden in seine Standardwerte übernommen, weil es sie verwendet: {names}. Prüfe vor dem Teilen, dass keiner davon privat ist.",
+  "share.setup_values_left_out": "Diese Werte des Dashboards wurden weggelassen, weil sie bei der Installation abgefragt werden: {names}",
   "share.import_not_a_template": "Das sieht nicht nach einer Vorlage aus: Es sollte ein Block aus YAML-Schlüsseln und -Werten sein.",
   "share.import_no_name": "Diese Vorlage hat keinen Namen: Sie braucht eine \"template:\"-Zeile.",
   "share.import_defines_nothing": "Diese Vorlage definiert nichts: Sie braucht eines von \"card:\", \"badge:\", \"row:\" oder \"element:\".",

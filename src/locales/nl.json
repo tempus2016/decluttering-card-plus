@@ -153,6 +153,8 @@
   "share.uses_other_templates": "Gebruikt deze andere sjablonen, die hier niet zijn meegenomen: {names}",
   "share.picked_templates": "Kiest zijn sjabloon via een variabele, dus hier valt niet te zeggen welke het nodig heeft: {names}. Stuur de sjablonen die het kan kiezen mee.",
   "share.picked_templates_found": "Kiest zijn sjabloon via een variabele: {names}. De sjablonen hier waarvan de naam past zijn meegenomen; stuur de andere die het kan kiezen mee.",
+  "share.bundled_values": "Deze waarden van het dashboard zijn in zijn standaardwaarden overgenomen, omdat het ze gebruikt: {names}. Controleer voor het delen dat er geen privé is.",
+  "share.setup_values_left_out": "Deze waarden van het dashboard zijn weggelaten, omdat ze bij installatie worden gevraagd: {names}",
   "share.import_not_a_template": "Dit ziet er niet uit als een sjabloon: het hoort een blok YAML-sleutels en -waarden te zijn.",
   "share.import_no_name": "Dit sjabloon heeft geen naam: het heeft een \"template:\"-regel nodig.",
   "share.import_defines_nothing": "Dit sjabloon definieert niets: het heeft één van \"card:\", \"badge:\", \"row:\" of \"element:\" nodig.",

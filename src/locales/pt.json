@@ -153,6 +153,8 @@
   "share.uses_other_templates": "Usa estes outros modelos, que não estão incluídos aqui: {names}",
   "share.picked_templates": "Escolhe o modelo através de uma variável, por isso aqui não se sabe qual precisa: {names}. Envie junto os modelos que pode escolher.",
   "share.picked_templates_found": "Escolhe o modelo através de uma variável: {names}. Os modelos daqui cujo nome encaixa foram incluídos; envie os outros que pode escolher.",
+  "share.bundled_values": "Estes valores do painel foram trazidos para os seus valores por defeito, porque os usa: {names}. Confirme que nenhum é privado antes de partilhar.",
+  "share.setup_values_left_out": "Estes valores do painel ficaram de fora, porque são pedidos na instalação: {names}",
   "share.import_not_a_template": "Isto não parece um modelo: devia ser um bloco de chaves e valores YAML.",
   "share.import_no_name": "Este modelo não tem nome: precisa de uma linha \"template:\".",
   "share.import_defines_nothing": "Este modelo não define nada: precisa de um de \"card:\", \"badge:\", \"row:\" ou \"element:\".",

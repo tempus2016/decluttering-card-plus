@@ -494,15 +494,59 @@ check(
   };
   const templates = collectTemplates(ll);
   check(
-    'an included template keeps its own defaults and none of the dashboard ones',
+    'an included template keeps its own defaults, and of the dashboard ones only what it uses',
     buildExport(ll.decluttering_templates.main, templates).payload.includes.inner.default,
-    [{ icon: 'mdi:cctv' }],
+    [{ icon: 'mdi:cctv' }, { frigate_password: 'hunter2' }],
   );
   check(
-    'one with no defaults of its own goes out with none',
-    'default' in
-      buildExport({ template: 'm', card: { type: 'custom:decluttering-card-plus', template: 'bare' } }, templates)
-        .payload.includes.bare,
-    false,
+    'one with no defaults of its own takes only the value it uses',
+    buildExport({ template: 'm', card: { type: 'custom:decluttering-card-plus', template: 'bare' } }, templates).payload
+      .includes.bare.default,
+    [{ unrelated: 1 }],
   );
+}
+
+/* --- #399: the dashboard values a template uses go with it --- */
+
+{
+  const { collectTemplates } = require('../.test-build/templates.js');
+  const ll = {
+    decluttering_defaults: [
+      { frigate_port: 5000 },
+      { frigate_password: 'hunter2' },
+      { host: 'http://frigate:[[frigate_port]]' },
+      { unrelated: 1 },
+      { icon: 'mdi:dashboard' },
+    ],
+    decluttering_templates: {
+      cam: {
+        template: 'cam',
+        setup: ['frigate_password'],
+        default: [{ icon: 'mdi:cctv' }],
+        card: { type: 'markdown', content: '[[host]] [[frigate_password]] [[icon]]' },
+      },
+      outer: { template: 'outer', card: { type: 'custom:decluttering-card-plus', template: 'cam' } },
+    },
+    views: [],
+  };
+  const templates = collectTemplates(ll);
+  const out = buildExport(ll.decluttering_templates.cam, templates);
+  check('a value it uses comes from the dashboard, and the ones that value uses, after its own', out.payload.default, [
+    { icon: 'mdi:cctv' },
+    { frigate_port: 5000 },
+    { host: 'http://frigate:[[frigate_port]]' },
+  ]);
+  check(
+    'the note names what came in and what was left for setup',
+    [out.notes.some((n) => n.includes('frigate_port, host')), out.notes.some((n) => n.includes('frigate_password'))],
+    [true, true],
+  );
+  check(
+    'an included template gets the values it uses too',
+    buildExport(ll.decluttering_templates.outer, templates).payload.includes.cam.default,
+    [{ icon: 'mdi:cctv' }, { frigate_port: 5000 }, { host: 'http://frigate:[[frigate_port]]' }],
+  );
+  check('without the dashboard to hand, nothing changes', buildExport(ll.decluttering_templates.cam).payload.default, [
+    { icon: 'mdi:cctv' },
+  ]);
 }

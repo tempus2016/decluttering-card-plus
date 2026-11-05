@@ -1,6 +1,7 @@
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE, parentsOf, templatesNamedBy } from './templates';
 import { localize } from './localize';
-import { DEFAULTS_ALIAS, OWN_DEFAULTS, templateDefaults } from './variables';
+import { DEFAULTS_ALIAS, OWN_DEFAULTS, normaliseVariables, templateDefaults, usedVariables } from './variables';
+import type { VariablesConfig } from './types';
 import { shareInfo, unquotedVersions } from './sharing';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -139,6 +140,20 @@ export function buildExport(
 
   const { customTypes, templateRefs } = scanDependencies(config);
 
+  const bundled = new Set<string>();
+  const askedFor = new Set<string>();
+  const resolvedSelf = templates?.[config?.template];
+  const withValues = (written: any, resolved: any): any => {
+    const out = bundleValues(written, resolved);
+    for (const name of out.bundled) bundled.add(name);
+    for (const name of out.askedFor) askedFor.add(name);
+    return out.template;
+  };
+  if (resolvedSelf) {
+    const out = withValues({ ...config, default: payload.default }, resolvedSelf);
+    if (out.default !== undefined) payload.default = out.default;
+  }
+
   /*
    * With the dashboard's templates to hand, the ones this one uses ride along under
    * `includes:`, transitively - a bundle that works on arrival instead of a note saying
@@ -174,7 +189,7 @@ export function buildExport(
         if (!related.has(name)) missing.push(name);
         continue;
       }
-      includes[name] = asWritten(withoutSource(found));
+      includes[name] = withValues(asWritten(withoutSource(found)), found);
       queue.push(...scanDependencies(found).templateRefs, ...itemTemplateRefs(found, templates));
       for (const each of shareInfo(found).related) {
         if (each === self || related.has(each)) continue;
@@ -196,6 +211,8 @@ export function buildExport(
     const key = pickedFound ? 'share.picked_templates_found' : 'share.picked_templates';
     notes.push(localize(key, { names: picked.join(', ') }));
   }
+  if (bundled.size) notes.push(localize('share.bundled_values', { names: [...bundled].sort().join(', ') }));
+  if (askedFor.size) notes.push(localize('share.setup_values_left_out', { names: [...askedFor].sort().join(', ') }));
   const unquoted = unquotedVersions(config);
   if (unquoted.length) notes.push(localize('share.version_unquoted', { keys: unquoted.join(', ') }));
 
@@ -231,6 +248,39 @@ function asWritten(template: any): any {
   if (own === undefined || own === null || (Array.isArray(own) && !own.length)) delete out.default;
   else out.default = own;
   return out;
+}
+
+/*
+ * The dashboard's values a template uses, brought into its own `default:` (#399). A template
+ * that reads `[[frigate_port]]` from the dashboard's decluttering_defaults otherwise arrives
+ * with nothing for it. Only names it uses go, and only ones its own defaults do not already
+ * set, after them, so its own still win. A name in `setup:` stays behind: it is asked for on
+ * install, which is where a password or anything else personal belongs.
+ */
+function bundleValues(written: any, resolved: any): { template: any; bundled: string[]; askedFor: string[] } {
+  const none = { template: written, bundled: [], askedFor: [] };
+  if (!written || typeof written !== 'object' || !resolved || !(OWN_DEFAULTS in resolved)) return none;
+  const own = normaliseVariables(templateDefaults(written));
+  const shared = normaliseVariables(resolved.default).slice(normaliseVariables(resolved[OWN_DEFAULTS]).length);
+  if (!shared.length) return none;
+  const ownNames = new Set(own.map((entry) => Object.keys(entry)[0]));
+  const used = new Set(usedVariables({ ...written, default: [...own, ...shared] }));
+  const setup = new Set(shareInfo(written).setup);
+  const take: VariablesConfig[] = [];
+  const bundled: string[] = [];
+  const askedFor: string[] = [];
+  for (const entry of shared) {
+    const name = Object.keys(entry)[0];
+    if (!used.has(name) || ownNames.has(name) || bundled.includes(name) || askedFor.includes(name)) continue;
+    if (setup.has(name)) {
+      askedFor.push(name);
+      continue;
+    }
+    take.push(entry);
+    bundled.push(name);
+  }
+  if (!take.length) return { template: written, bundled, askedFor };
+  return { template: { ...written, default: [...own, ...take] }, bundled, askedFor };
 }
 
 /** A pasted template with any `source:` stamp taken off it and off each template it carries. */
