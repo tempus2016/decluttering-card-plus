@@ -151,6 +151,8 @@
   "share.import_too_big": "Esto es demasiado grande para ser una plantilla, así que no se puede leer.",
   "share.requires_custom_cards": "Requiere estas tarjetas personalizadas: {types}",
   "share.uses_other_templates": "Usa estas otras plantillas, que no van incluidas aquí: {names}",
+  "share.picked_templates": "Elige su plantilla con una variable, así que aquí no se puede saber cuál necesita: {names}. Envía junto a ella las plantillas que puede elegir.",
+  "share.picked_templates_found": "Elige su plantilla con una variable: {names}. Las plantillas de aquí cuyo nombre encaja van incluidas; envía las demás que pueda elegir.",
   "share.import_not_a_template": "Esto no parece una plantilla: debería ser un bloque de claves y valores YAML.",
   "share.import_no_name": "Esta plantilla no tiene nombre: necesita una línea \"template:\".",
   "share.import_defines_nothing": "Esta plantilla no define nada: necesita uno de \"card:\", \"badge:\", \"row:\" o \"element:\".",
