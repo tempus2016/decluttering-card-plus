@@ -1,5 +1,6 @@
 import { HomeAssistant, LovelaceCard, LovelaceCardConfig } from 'custom-card-helpers';
 import { VariableDeclaration } from './variables';
+import { StrictConfig } from './strict';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export interface DeclutteringCardConfig extends LovelaceCardConfig {
@@ -27,8 +28,8 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   debug?: boolean | 'yaml' | 'console' | 'report';
   /** `false` leaves passwords, tokens, addresses and hosts in the `debug: report` text as they are. */
   redact?: boolean;
-  /** Turns what is normally a warning into a card that refuses to render. */
-  strict?: boolean;
+  /** What the card does about an error or a warning in its build: `true` refuses on errors, or one mode per level (#390). */
+  strict?: boolean | StrictConfig;
   /** What `debug: console` calls this card, placeholders and all. Beats the template's. */
   name?: string;
   /** Inside another template: be handed every variable of the card that builds this one. */
@@ -70,6 +71,8 @@ export interface TemplateConfig {
   examples?: unknown;
   /** What a card using this template shows instead of an error, unless the card says otherwise. */
   on_error?: 'hide' | Record<string, unknown>;
+  /** What a card using this template does about errors and warnings, unless the card says otherwise (#390). */
+  strict?: boolean | StrictConfig;
   /** Which entities Home Assistant's add-card dialog offers this template for. */
   suggest_for?: unknown;
   /** Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field. */

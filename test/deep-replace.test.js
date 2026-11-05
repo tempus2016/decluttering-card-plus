@@ -2911,3 +2911,54 @@ console.warn = realWarn;
   check('an empty optional that is the whole value still drops its key', build('[[high?]]'), { keep: 1 });
   check('and inside a longer string it is still nothing', build('x[[high?]]y'), { a: 'xy', keep: 1 });
 }
+
+/* ---------------------------------- strict warnings are told to the card (#390) */
+{
+  const realWarn = console.warn;
+  console.warn = () => {};
+  const told = [];
+  const said = new Set();
+  const build = () =>
+    deepReplace(
+      [{ tap: { action: 'toggle' } }],
+      {},
+      { a: '[[tap|lower]]', b: '[[nobody]]' },
+      't',
+      undefined,
+      said,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      { onWarning: (m) => told.push(m) },
+    );
+  build();
+  check('a warning the build says is told to onWarning', told.length, 1);
+  check(
+    'and it is the refusal, not the unset placeholder, which strict counts as an error',
+    /transform/.test(told[0]),
+    true,
+  );
+  build();
+  check('a build saying it again is told again, though the console is not', told.length, 2);
+  told.length = 0;
+  deepReplace(
+    [{ tap: 'x' }],
+    {},
+    { a: '[[tap|lower]]' },
+    't',
+    undefined,
+    true,
+    undefined,
+    0,
+    undefined,
+    undefined,
+    false,
+    {
+      onWarning: (m) => told.push(m),
+    },
+  );
+  check('a quiet build tells nothing', told, []);
+  console.warn = realWarn;
+}

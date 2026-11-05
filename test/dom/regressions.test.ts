@@ -277,3 +277,89 @@ describe('card-updated', () => {
     expect(fired).to.equal(0);
   });
 });
+
+describe('strict level by level (#390)', () => {
+  const shadow = (el: any, selector: string): any => el.shadowRoot?.querySelector(selector);
+  // A mapping run through |lower is refused - a warning - and [[nobody]] has no value - an error.
+  const refusing = { t: { card: { type: 'markdown', content: '[[tap|lower]]' } } };
+  const unset = { t: { card: { type: 'markdown', content: '[[nobody]]' } } };
+  const tap = [{ tap: { action: 'toggle' } }];
+
+  it('strict: true still refuses a card with a variable left unset', async () => {
+    stubLovelace({ decluttering_templates: unset, views: [{ cards: [] }] });
+    const el = card({ template: 't', strict: true }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, 'ha-alert[alert-type="error"]'), 2000, 'the strict refusal');
+    expect(inner(el), 'nothing built in its place').to.equal(null);
+  });
+
+  it('strict: true leaves a card that only warns as it always did', async () => {
+    stubLovelace({ decluttering_templates: refusing, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: tap, strict: true }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!inner(el), 2000, 'the wrapped card');
+    await settle();
+    expect(shadow(el, '.strict-notice'), 'no notice').to.equal(null);
+    expect(shadow(el, 'ha-card.report'), 'no report').to.equal(null);
+  });
+
+  it('warnings: notice shows a notice on the card that can be closed', async () => {
+    stubLovelace({ decluttering_templates: refusing, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: tap, strict: { warnings: 'notice' } }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.strict-notice'), 2000, 'the notice');
+    expect(!!inner(el), 'the card renders under it').to.equal(true);
+    expect(shadow(el, '.strict-notice').textContent).to.match(/transform/);
+    shadow(el, '.strict-notice').dispatchEvent(new CustomEvent('alert-dismissed-clicked'));
+    await settle();
+    expect(shadow(el, '.strict-notice'), 'closed').to.equal(null);
+  });
+
+  it('errors: report renders the card with the debug report under it', async () => {
+    stubLovelace({ decluttering_templates: unset, views: [{ cards: [] }] });
+    const el = card({ template: 't', strict: { errors: 'report' } }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, 'ha-card.report'), 2000, 'the report');
+    expect(!!inner(el), 'the card renders too').to.equal(true);
+  });
+
+  it('errors: report shows no report when nothing is wrong', async () => {
+    stubLovelace({ decluttering_templates: unset, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: [{ nobody: 'x' }], strict: { errors: 'report' } }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!inner(el), 2000, 'the wrapped card');
+    await settle();
+    expect(shadow(el, 'ha-card.report')).to.equal(null);
+  });
+
+  it('decluttering_strict on the dashboard reaches the card, and the card can turn it off', async () => {
+    stubLovelace({ decluttering_templates: unset, decluttering_strict: { errors: 'fail' }, views: [{ cards: [] }] });
+    const refused = card({ template: 't' }, stubHass());
+    document.body.appendChild(refused);
+    await until(() => !!shadow(refused, 'ha-alert[alert-type="error"]'), 2000, 'the dashboard-wide refusal');
+    const own = card({ template: 't', strict: false }, stubHass());
+    document.body.appendChild(own);
+    await until(() => !!inner(own), 2000, 'the card that turned it off');
+  });
+
+  it('a template strict: applies to the cards using it', async () => {
+    stubLovelace({
+      decluttering_templates: { t: { strict: { warnings: 'notice' }, card: refusing.t.card } },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 't', variables: tap }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.strict-notice'), 2000, 'the notice');
+  });
+
+  it('a section decluttering_strict reaches a card in it', async () => {
+    stubLovelace({
+      decluttering_templates: unset,
+      views: [{ type: 'sections', sections: [{ decluttering_strict: { errors: 'fail' }, cards: [] }] }],
+    });
+    const section = stubSection(0, 0);
+    const el = card({ template: 't' }, stubHass());
+    section.appendChild(el);
+    await until(() => !!shadow(el, 'ha-alert[alert-type="error"]'), 2000, 'the section refusal');
+  });
+});

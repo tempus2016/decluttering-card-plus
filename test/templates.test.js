@@ -226,6 +226,14 @@ check(
   ],
   [true, false, false, false, false],
 );
+check(
+  'a section with only decluttering_strict counts too (#390)',
+  hasSectionDefaults(
+    { views: [{ sections: [{ decluttering_strict: { warnings: 'notice' } }] }] },
+    { view: 0, section: 0 },
+  ),
+  true,
+);
 
 /* ------------------------------------------------- decluttering_let (#162) */
 

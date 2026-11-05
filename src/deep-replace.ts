@@ -108,6 +108,12 @@ export interface BuildExtras {
   // past MAX_CONDITION_DEPTH, shared by every read of one build so the build can say so (#235).
   readDepth?: number;
   tooDeep?: Set<string>;
+  /*
+   * Told every warning the build says, even one the console has already heard, so a card's
+   * `strict: {warnings: ...}` (#390) knows what this build had to say. Not told about a
+   * placeholder left standing: that is an error to `strict:`, and is reported as one.
+   */
+  onWarning?: (message: string) => void;
 }
 
 /*
@@ -945,9 +951,10 @@ function deepReplace(
   // What the console is told is also noted on the trace, for `debug: report` (#207) -
   // once per build, so a card building again still has the warning in its report even
   // when the set it keeps has heard it before.
-  const say = (message: string, kind: WarningKind = 'other'): void => {
+  const say = (message: string, kind: WarningKind = 'other', standing = false): void => {
     if (quiet === true) return;
     trace?.warnings.push(message);
+    if (!standing) extras?.onWarning?.(message);
     if (quiet instanceof Set) {
       if (quiet.has(message)) return;
       quiet.add(message);
@@ -1473,7 +1480,7 @@ function deepReplace(
   const unlistedNames = unresolved.filter(asksState);
   if (unlistedNames.length) {
     const which = unlistedNames.map((name) => `[[${name}]]`).join(', ');
-    say(localize('warn.state_unlisted_unset', { which }), 'state_unlisted');
+    say(localize('warn.state_unlisted_unset', { which }), 'state_unlisted', true);
   }
   /*
    * A chain with a word in it that is not a step never matches the placeholder grammar, so
@@ -1500,7 +1507,7 @@ function deepReplace(
         );
       })
       .join(' ');
-    say(localize('warn.unknown_step', { which }), 'other');
+    say(localize('warn.unknown_step', { which }), 'other', true);
   }
   const noTemplate = unresolved.filter(
     (inside) => !asksState(inside) && !unknownSteps.has(inside) && missingItemTemplate(inside, known) !== undefined,
@@ -1511,7 +1518,7 @@ function deepReplace(
     const whose = templateName
       ? localize('warn.unresolved_template', { name: templateName })
       : localize('warn.unresolved_this');
-    say(localize('warn.no_item_template', { whose, which, names }), 'unset');
+    say(localize('warn.no_item_template', { whose, which, names }), 'unset', true);
   }
   const unset = unresolved.filter(
     (inside) => !asksState(inside) && !unknownSteps.has(inside) && !noTemplate.includes(inside),
@@ -1521,7 +1528,7 @@ function deepReplace(
     const whose = templateName
       ? localize('warn.unresolved_template', { name: templateName })
       : localize('warn.unresolved_this');
-    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${unset[0]}` }), 'unset');
+    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${unset[0]}` }), 'unset', true);
   }
 
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be
