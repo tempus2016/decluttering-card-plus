@@ -70,6 +70,13 @@ export interface TemplateConfig {
   examples?: unknown;
   /** What a card using this template shows instead of an error, unless the card says otherwise. */
   on_error?: 'hide' | Record<string, unknown>;
+  /**
+   * What counts as a problem with the values a card gives it (#389): each a `condition`, a
+   * `message`, a `level` - info, warn or error - and for an error whether to go on building.
+   */
+  checks?: TemplateCheck[];
+  /** A config of the template's kind shown instead of the card while a warn or error check has failed. */
+  alert?: Record<string, unknown>;
   /** Which entities Home Assistant's add-card dialog offers this template for. */
   suggest_for?: unknown;
   /** Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field. */
@@ -123,6 +130,21 @@ export interface TemplateConfig {
   style?: string;
   /** How much of a sections grid a card built from this template asks for. */
   grid_options?: any;
+}
+
+/** One of a template's `checks:` (#389). */
+export interface TemplateCheck {
+  name?: string;
+  /** A show_if condition - `name`, `!name`, `name=text`, `name!=text` - text with placeholders, or true or false. */
+  condition?: string | boolean;
+  /** What the condition comes out as when the check fails. True unless it says otherwise. */
+  fail_on?: boolean;
+  /** What is said when it fails, with placeholders; a generic sentence when there is none. */
+  message?: string;
+  /** `info`, `warn` (the default) or `error`; `warning` reads as `warn`. */
+  level?: 'info' | 'warn' | 'warning' | 'error';
+  /** An error with `false` fails the build, so `on_error:` takes over. */
+  continue_rendering?: boolean;
 }
 
 export interface LovelaceElement extends HTMLElement {

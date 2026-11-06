@@ -43,6 +43,8 @@ const PAGES: Record<string, string> = {
   style: 'Styling.html',
   grid_options: 'Styling.html',
   on_error: 'Using-Templates.html',
+  checks: 'Troubleshooting.html',
+  alert: 'Troubleshooting.html',
   rebuild_on: 'Using-Templates.html',
   debug: 'Troubleshooting.html',
   strict: 'Using-Templates.html',

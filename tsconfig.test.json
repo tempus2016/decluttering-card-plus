@@ -42,6 +42,7 @@
     "src/search.ts",
     "src/report.ts",
     "src/report-try.ts",
+    "src/checks.ts",
     "src/promote.ts",
     "src/trash.ts",
     "src/builder.ts",

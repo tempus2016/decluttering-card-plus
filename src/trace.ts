@@ -382,6 +382,8 @@ export interface TraceReport {
   sections: TraceSection[];
   /** The template it was built from, as written, for `debug: report`. */
   template?: { name: string; config: unknown };
+  /** The template's checks that failed (#389), which the report lists ahead of everything else. */
+  alerts?: { level: string; message: string; name?: string }[];
 }
 
 // A table cell holds text: a mapping or a list goes in as its JSON, which is how it was written.
@@ -589,6 +591,7 @@ export function headline(report: TraceReport, hass?: any): string {
  */
 export function logTrace(report: TraceReport, hass?: any): void {
   console.groupCollapsed(headline(report, hass));
+  if (report.alerts?.length) console.log(localize('report.checks', undefined, hass), report.alerts);
   for (const section of report.sections) {
     if (section.label) console.groupCollapsed(section.label);
     const described = describeSection(section, hass);

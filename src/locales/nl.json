@@ -815,5 +815,23 @@
   "editor.by_domain.anything_else": "Al het andere",
   "editor.by_domain.add": "Domein toevoegen",
   "editor.by_domain.remove": "{domain} verwijderen",
-  "editor.by_domain.picked": "Deze entiteit koos {template}."
+  "editor.by_domain.picked": "Deze entiteit koos {template}.",
+
+  "check.failed": "Een controle van sjabloon \"{template}\" is mislukt.",
+  "check.failed_named": "Controle \"{name}\" van sjabloon \"{template}\" is mislukt.",
+  "check.console_info": "decluttering-card-plus: sjabloon \"{template}\": {message}",
+  "check.console_warn": "decluttering-card-plus: een controle van sjabloon \"{template}\" is mislukt: {message}",
+  "check.console_error": "decluttering-card-plus: een controle van sjabloon \"{template}\" is mislukt met een fout: {message}",
+  "error.check_stopped": "Een controle heeft verhinderd dat deze kaart werd opgebouwd: {message}",
+  "report.checks": "Mislukte controles",
+  "report.check_named": "controle \"{name}\" in {label}",
+  "report.check_in": "in {label}",
+  "editor.check_failed": "Controle mislukt: {message}",
+  "editor.check_failed_named": "Controle \"{name}\" mislukt: {message}",
+  "lint.checks_not_list": "checks: is een lijst van controles, elk een mapping met een voorwaarde, dus hier wordt niets gecontroleerd.",
+  "lint.check_not_mapping": "Deze controle is geen mapping met een voorwaarde, melding en niveau, dus hij wordt nooit uitgevoerd.",
+  "lint.check_key_unknown": "\"{key}\" wordt door een controle niet gelezen, dus het doet niets. Een controle neemt name, condition, fail_on, message, level en continue_rendering.",
+  "lint.check_level_unknown": "\"{level}\" is geen niveau, dus de controle telt als waarschuwing. Schrijf info, warn of error.",
+  "lint.check_no_condition": "Deze controle heeft geen voorwaarde, dus hij mislukt nooit.",
+  "lint.check_condition_malformed": "\"{condition}\" is geen voorwaarde die deze kaart kan lezen, dus de controle wordt overgeslagen. Schrijf de naam van een variabele, !naam, naam=tekst, naam!=tekst, tekst met plaatshouders, of true of false."
 }

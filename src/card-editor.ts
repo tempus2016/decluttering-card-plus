@@ -113,6 +113,7 @@ import { countText, filterPickerItems, groupHeading, PickerItem, pickerItems } f
 import { ComboItem, pickerList } from './card-editor/generic-picker';
 import { isDefinedHere } from './template-editor/common';
 import { holdUndo } from './undo';
+import { Alert, checksOf, runChecks } from './checks';
 import {
   currentViewIndex,
   dialogPlace,
@@ -2127,7 +2128,18 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const fixedColumns = repeats && columns > 1 && !(Number(this._config?.min_column_width) > 0);
     const kind = getThingType(template);
     const misplaced = misplacedOverrides(this._config, kind);
+    const failed = this._failedChecks(template);
     return html`
+      ${failed.map(
+        (alert) =>
+          html`<ha-alert alert-type=${alert.level === 'error' ? 'error' : 'warning'}>
+            ${localize(
+              alert.name ? 'editor.check_failed_named' : 'editor.check_failed',
+              { name: alert.name ?? '', message: alert.message },
+              this.hass,
+            )}
+          </ha-alert>`,
+      )}
       ${misplaced.map(
         (key) =>
           html`<ha-alert alert-type="warning">
@@ -2197,6 +2209,33 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
           : html``
       }
     `;
+  }
+
+  /*
+   * The template's checks that fail with the card's values as they stand (#389) - the
+   * warnings and errors; an info is for the console. Read the way the card reads them, with
+   * the states it rebuilds on and the dashboard's item templates.
+   */
+  private _failedChecks(template: TemplateConfig): Alert[] {
+    if (!checksOf(template).length || !this._config) return [];
+    const ll = this._lovelace ?? getLovelaceConfig();
+    const scoped = withStateScope(this.hass, rebuildOnEntities(this._config.rebuild_on));
+    const name = this._config.template;
+    const variables = this._config.variables;
+    try {
+      return runChecks(
+        template,
+        name,
+        (content) =>
+          deepReplace(variables, template, content, name, scoped, true, undefined, 0, undefined, undefined, false, {
+            itemTemplates: itemTemplatesOf(ll),
+            context: sourceContext(ll),
+          }),
+        this.hass,
+      ).filter((alert) => alert.level !== 'info');
+    } catch {
+      return [];
+    }
   }
 
   private _valueChanged(ev: CustomEvent): void {

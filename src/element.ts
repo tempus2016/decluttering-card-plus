@@ -26,6 +26,7 @@ import {
   ownVariables,
   hasRequiredVariables,
   withStateScope,
+  usesResolver,
 } from './variables';
 import { chainWith, withChain, withInherited, withoutStamps } from './cycles';
 import { columnsFor, eagerCopies } from './layout';
@@ -70,6 +71,16 @@ import {
   thingContent,
 } from './shared';
 import { warn } from './warnings';
+import {
+  Alert,
+  ALERT_KEY,
+  alertConsoleMessage,
+  checksOf,
+  runChecks,
+  stoppingError,
+  wantsAlerts,
+  withAlerts,
+} from './checks';
 import { isRegistrySource } from './registry';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
@@ -182,6 +193,10 @@ export abstract class DeclutteringElement extends LitElement {
   @state() protected _debug: false | 'json' | 'yaml' = false;
   // `debug: report` (#207): the card renders as normal, with its build written out underneath to copy.
   protected _reportMode = false;
+  // The template's checks that failed in the last build (#389), every copy's for a repeat.
+  protected _alerts: Alert[] = [];
+  // Set while a failed error check has the report on show that the card did not ask for, with the trace it had.
+  protected _reportForced?: { trace: boolean };
   // This card's own entry from its last build, and which build the report on show belongs to.
   protected _lastReport?: TraceReport;
   private _reportFor?: string;
@@ -532,7 +547,22 @@ export abstract class DeclutteringElement extends LitElement {
       );
     }
     this._templateName = templateName ?? this._templateName;
-    const content = thingContent(templateConfig);
+    const quiet = !!instance && this._placeUnsettled;
+    this._builtQuietly = quiet;
+    const hush = quiet || (!!instance && this._libraryUnsettled);
+    // The template's checks (#389), read with the card's values before anything is built.
+    // A template's own preview is not a card, and has nobody's values to check.
+    const alerts = instance ? this._runChecks(variables, templateConfig, templateName, hush, instance) : [];
+    this._alerts = alerts;
+    const stopped = stoppingError(alerts, this._hass);
+    if (stopped) {
+      // Failed like any card that cannot be built, so its `on_error:` takes over.
+      this._error = stopped;
+      return;
+    }
+    if (wantsAlerts(templateConfig)) variables = withAlerts(variables, alerts);
+    const content = this._alertOr(templateConfig, alerts) ?? thingContent(templateConfig);
+    this._forceReport(alerts, templateConfig);
     const unresolved: string[] = [];
     // Only a card that uses a template has variables to hand down; a template's own preview does not.
     const inherited = instance ? (): unknown[] => this._handDown(variables, templateConfig, templateName) : undefined;
@@ -544,9 +574,6 @@ export abstract class DeclutteringElement extends LitElement {
         this._traceName(variables, templateConfig, templateName, instance),
       );
     const started = performance.now();
-    const quiet = !!instance && this._placeUnsettled;
-    this._builtQuietly = quiet;
-    const hush = quiet || (!!instance && this._libraryUnsettled);
     const built = applyOverride(
       deepReplace(
         variables,
@@ -692,6 +719,15 @@ export abstract class DeclutteringElement extends LitElement {
       ms: performance.now() - started,
       sections,
       template: { name: this._templateName ?? '', config: withoutStamps(templateConfig) },
+      ...(this._alerts.length
+        ? {
+            alerts: this._alerts.map((alert) => ({
+              level: alert.level,
+              message: alert.message,
+              ...(alert.name ? { name: alert.name } : {}),
+            })),
+          }
+        : {}),
     };
     logTrace(report, this._hass);
     // Kept for the outermost card's report, which this card's entry goes into once it has built.
@@ -844,6 +880,93 @@ export abstract class DeclutteringElement extends LitElement {
     if (typeof name !== 'string') return undefined;
     const filled = deepReplace(variables, templateConfig, name, templateName, this._buildHass, true);
     return typeof filled === 'string' ? filled : undefined;
+  }
+
+  /* ------------------------------------------------------------ checks (#389) */
+
+  /*
+   * A template's checks against one build's values: each failure said where its level says
+   * - an info in the console, a warning or an error in the warnings the card keeps - once
+   * per config, so a card rebuilding on a busy sensor does not repeat itself.
+   */
+  private _runChecks(
+    variables: VariablesConfig[] | undefined,
+    templateConfig: TemplateConfig,
+    templateName: string | undefined,
+    hush: boolean,
+    instance: DeclutteringCardConfig,
+  ): Alert[] {
+    if (!checksOf(templateConfig).length) return [];
+    const extras = this._buildExtras();
+    // Before Home Assistant is here an `exists` is a no, and a check reading one would fail
+    // for nothing. A template asking Home Assistant is built again once it is, so it waits.
+    if (!this._hass && usesResolver(templateConfig, extras.itemTemplates)) return [];
+    const alerts = runChecks(
+      templateConfig,
+      templateName,
+      (content) =>
+        deepReplace(
+          variables,
+          templateConfig,
+          content,
+          templateName,
+          this._buildHass,
+          true,
+          undefined,
+          0,
+          undefined,
+          undefined,
+          false,
+          extras,
+        ),
+      this._hass,
+    );
+    if (hush) return alerts;
+    const said = this._saidFor(instance);
+    for (const alert of alerts) {
+      const message = alertConsoleMessage(alert, this._hass);
+      if (said.has(message)) continue;
+      said.add(message);
+      if (alert.level === 'info') console.info(message);
+      else
+        warn({
+          kind: 'check',
+          message,
+          template: alert.template,
+          card: typeof instance.name === 'string' ? instance.name : undefined,
+        });
+    }
+    return alerts;
+  }
+
+  // The template's `alert:`, built in place of its content while a warning or an error stands.
+  private _alertOr(templateConfig: TemplateConfig, alerts: Alert[]): unknown {
+    const alert = (templateConfig as Record<string, unknown>)[ALERT_KEY];
+    if (!alert || typeof alert !== 'object' || Array.isArray(alert)) return undefined;
+    return alerts.some((each) => each.level !== 'info') ? alert : undefined;
+  }
+
+  /*
+   * A failed `error` check shows the debug report under the card even with `debug` off -
+   * unless the template has an `alert:` to show instead, which is its own way of saying it.
+   * The report needs the build traced, so this comes before the build.
+   */
+  private _forceReport(alerts: Alert[], templateConfig: TemplateConfig): void {
+    const wanted =
+      alerts.some((alert) => alert.level === 'error') && this._alertOr(templateConfig, alerts) === undefined;
+    const forced = this._reportForced;
+    if (forced && !wanted) {
+      // Rebuilt without the config changing, and the error has gone: back to what the card asked for.
+      this._trace = forced.trace;
+      this._reportMode = false;
+      this._reportResult = undefined;
+      this._reportForced = undefined;
+      return;
+    }
+    if (!wanted || this._debug || this._reportMode) return;
+    this._reportForced = { trace: this._trace };
+    this._trace = true;
+    this._reportMode = true;
   }
 
   /*
@@ -1091,6 +1214,37 @@ export abstract class DeclutteringElement extends LitElement {
       });
     }
 
+    // As for a single card: kept quiet until the section is known.
+    const quiet = this._placeUnsettled;
+    this._builtQuietly = quiet;
+    const hush = quiet || this._libraryUnsettled;
+    /*
+     * Each copy's values, and the template's checks read against them (#389) before any copy
+     * is built: a copy that fails one with `continue_rendering: false` fails the whole card,
+     * the way a strict refusal does, and an error anywhere shows the report.
+     */
+    const copies = wanted.map(({ item, name, template, entity }, index) => {
+      // Underneath everything the copy sets: the entity its template was picked by, when
+      // that came from the fallback template rather than the copy - see pickTemplate.
+      const variables = withPickedEntity(
+        forEachVariables(item, config.variables, index, wanted.length),
+        entity,
+      ) as VariablesConfig[];
+      const alerts = this._runChecks(variables, template, name, hush, config);
+      return {
+        variables: wantsAlerts(template) ? withAlerts(variables, alerts) : variables,
+        content: this._alertOr(template, alerts) ?? thingContent(template),
+        alerts,
+      };
+    });
+    this._alerts = ([] as Alert[]).concat(...copies.map((copy) => copy.alerts));
+    const stopped = stoppingError(this._alerts, this._hass);
+    if (stopped) {
+      this._error = stopped;
+      return;
+    }
+    this._forceReport(this._alerts, templateConfig);
+
     // The card's own `card:` block is laid over every copy alike.
     // Each copy hands down its own item's values, so it is stamped here rather than as a whole.
     const started = performance.now();
@@ -1103,18 +1257,9 @@ export abstract class DeclutteringElement extends LitElement {
           : this._traceName(config.variables, templateConfig, config.template, config);
       this._traceLabel = traceLabel(repeatName, own);
     }
-    // As for a single card: kept quiet until the section is known.
-    const quiet = this._placeUnsettled;
-    this._builtQuietly = quiet;
-    const hush = quiet || this._libraryUnsettled;
     let missed = false;
-    const cards = wanted.map(({ item, name, template, entity }, index) => {
-      // Underneath everything the copy sets: the entity its template was picked by, when
-      // that came from the fallback template rather than the copy - see pickTemplate.
-      const variables = withPickedEntity(
-        forEachVariables(item, config.variables, index, wanted.length),
-        entity,
-      ) as VariablesConfig[];
+    const cards = wanted.map(({ item, name, template }, index) => {
+      const { variables, content } = copies[index];
       const trace = this._trace ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
       // What the item and its position set, as opposed to what the card set for every copy.
       // The item beats the card, and the card beats the position, as forEachVariables orders them.
@@ -1134,7 +1279,7 @@ export abstract class DeclutteringElement extends LitElement {
         deepReplace(
           variables,
           template,
-          thingContent(template),
+          content,
           name,
           this._buildHass,
           hush || this._saidFor(config),

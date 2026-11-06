@@ -396,6 +396,27 @@ export function formatReport(input: ReportInput, hass?: any): string {
   const label = input.reports[0]?.label ?? '';
   const body: string[] = [];
   if (input.error) body.push(`## ${t('report.error')}`, '', ...block(input.error, ''), '');
+  /*
+   * The checks that failed (#389), from this card and every card inside it, ahead of the
+   * builds: they are the template's own word on what is wrong, and the first thing to read.
+   */
+  const alerts: { level: string; message: string; name?: string; label: string }[] = [];
+  for (const report of input.reports) {
+    for (const alert of report.alerts ?? []) alerts.push({ ...alert, label: report.label });
+  }
+  if (alerts.length) {
+    body.push(
+      `## ${t('report.checks')}`,
+      '',
+      ...alerts.map((alert) => {
+        const where = alert.name
+          ? t('report.check_named', { name: alert.name, label: alert.label })
+          : t('report.check_in', { label: alert.label });
+        return `- **${line(alert.level)}** ${line(alert.message)} (${line(where)})`;
+      }),
+      '',
+    );
+  }
   // What the card ended up as comes first: it is what somebody looks at to see what went wrong.
   if (input.full !== undefined) {
     body.push(...folded(title(t('trace.in_full', { label })), block(input.full), true));
