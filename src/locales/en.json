@@ -20,6 +20,10 @@
   "error.variables_shape": "Variables must be a list of key and value pairs, or a mapping of them",
 
   "card.debug_builds": "Debug: what this card builds.",
+  "card.preview_paused": "The preview is paused, so this card is not built while you edit. Choose Render now to build it once.",
+  "card.preview_required_one": "Fill in {which} to see the card. The template needs it, so the preview waits for it.",
+  "card.preview_required_many": "Fill in {which} to see the card. The template needs them, so the preview waits for them.",
+  "card.preview_render_now": "Render now",
   "card.debug_builds_from": "Debug: what this card builds from \"{template}\".",
 
   "editor.template_label": "Template to use",
@@ -661,6 +665,9 @@
   "editor.preview.changed_hint": "The line the last edit changed is highlighted.",
   "editor.preview.copy": "Copy",
   "editor.preview.copied": "Copied",
+  "editor.preview.pause": "Pause preview",
+  "editor.preview.resume": "Resume preview",
+  "editor.preview.pause_helper": "Stops the preview building the card on every edit, for a card that misbehaves while a setting is wrong.",
   "editor.link.edit_template": "Edit the template",
   "editor.link.open_dashboard": "Open the other dashboard",
   "editor.link.raw_editor": "Change it in the raw configuration editor, from the dashboard menu.",

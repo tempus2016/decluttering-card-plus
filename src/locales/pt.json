@@ -20,6 +20,10 @@
   "error.variables_shape": "As variáveis têm de ser uma lista de pares chave e valor, ou um mapeamento deles",
 
   "card.debug_builds": "Debug: o que este cartão constrói.",
+  "card.preview_paused": "A pré-visualização está em pausa, por isso este cartão não é construído enquanto editas. Escolhe Renderizar agora para o construir uma vez.",
+  "card.preview_required_one": "Preenche {which} para ver o cartão. O modelo precisa dele, por isso a pré-visualização espera.",
+  "card.preview_required_many": "Preenche {which} para ver o cartão. O modelo precisa deles, por isso a pré-visualização espera.",
+  "card.preview_render_now": "Renderizar agora",
   "card.debug_builds_from": "Debug: o que este cartão constrói a partir de \"{template}\".",
 
   "editor.template_label": "Modelo a usar",
@@ -661,6 +665,9 @@
   "editor.preview.changed_hint": "A linha que a última edição mudou está realçada.",
   "editor.preview.copy": "Copiar",
   "editor.preview.copied": "Copiado",
+  "editor.preview.pause": "Pausar pré-visualização",
+  "editor.preview.resume": "Retomar pré-visualização",
+  "editor.preview.pause_helper": "Impede a pré-visualização de construir o cartão a cada alteração, para um cartão que falha enquanto uma definição está errada.",
   "editor.link.edit_template": "Editar o modelo",
   "editor.link.open_dashboard": "Abrir o outro painel",
   "editor.link.raw_editor": "Altere-o no editor de configuração em bruto, a partir do menu do painel.",

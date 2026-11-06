@@ -1,4 +1,5 @@
-import { PropertyValues } from 'lit';
+import { html, PropertyValues, TemplateResult } from 'lit';
+import { state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import {
   DeclutteringCardConfig,
@@ -27,7 +28,14 @@ import {
   warnIfDeprecated,
 } from './templates';
 import { trashHass, watchForTrash } from './trash';
-import { forEachItems, usesInstalled, usesResolver, usesTranslate, withInheritedVariables } from './variables';
+import {
+  forEachItems,
+  getDeclarations,
+  usesInstalled,
+  usesResolver,
+  usesTranslate,
+  withInheritedVariables,
+} from './variables';
 import { installedKey, whenInstalledChanges } from './installed';
 import { chainOf, describeCycle, describeTooDeep, findCycle, MAX_NESTING } from './cycles';
 import { customTags, OnError, onErrorOf, undefinedElements } from './on-error';
@@ -40,8 +48,17 @@ import { localize } from './localize';
 import { REBUILD_DEBOUNCE_MS, rebuildOnEntities, rebuildOnRejects, stateSnapshot, statesMoved } from './rebuild';
 import { handedDownNames, traceRoot, tracePlace, wantsTrace } from './trace';
 import { DeclutteringElement } from './element';
-import { CARD_EDITOR_TAG, CARD_TAG, TemplatePicker, getThingType, sourceContext, warnUnlisted } from './shared';
+import {
+  CARD_EDITOR_TAG,
+  CARD_TAG,
+  TemplatePicker,
+  editDialogOf,
+  getThingType,
+  sourceContext,
+  warnUnlisted,
+} from './shared';
 import { warn } from './warnings';
+import { onPreviewHold, PreviewHoldEvent, previewEditorOpen, previewPaused, requiredUnset } from './preview-hold';
 
 /*
  * Home Assistant's `title` translations - every integration's name - asked for once per
@@ -126,8 +143,21 @@ export class DeclutteringCard extends DeclutteringElement {
    */
   public connectedWhileHidden = true;
 
+  /*
+   * #407: an edit dialog's preview held back - paused from the card editor, or waiting for a
+   * required variable - and the config it last built when asked to build anyway, so another
+   * build of that same config (hass arriving, say) does not hold it again. An edit hands a
+   * new config, which is held again.
+   */
+  @state() private _held?: { reason: 'paused' } | { reason: 'required'; names: string[] };
+  private _builtAnyway?: DeclutteringCardConfig;
+  private _holdStop?: () => void;
+
   public connectedCallback(): void {
     super.connectedCallback();
+    this._holdStop ??= onPreviewHold((event) => this._heardHold(event));
+    // Held before it was on the page, which is the only place it could tell it was a preview.
+    if (this._held && !this._mayHold()) this._buildAnyway(false);
     // Home Assistant takes cards off the page and puts them back while it lays a view out,
     // which stops the card hearing about categories (below); put back, it starts again.
     if (this._hass && this._fromRegistry) this._loadLabelsIfWanted(this._hass);
@@ -136,6 +166,8 @@ export class DeclutteringCard extends DeclutteringElement {
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
+    this._holdStop?.();
+    this._holdStop = undefined;
     this._categoriesStop?.();
     this._categoriesStop = undefined;
     this._installedStop?.();
@@ -218,6 +250,11 @@ export class DeclutteringCard extends DeclutteringElement {
    */
   public setConfig(config: DeclutteringCardConfig): void {
     this._lastConfig = config;
+    this._held = undefined;
+    if (previewPaused() && config !== this._builtAnyway && this._mayHold(config)) {
+      this._hold({ reason: 'paused' });
+      return;
+    }
     this._fallbackFor = undefined;
     this._fallbackConfig = undefined;
     this._fallbackFailed = false;
@@ -318,6 +355,76 @@ export class DeclutteringCard extends DeclutteringElement {
 
   protected _rebuild(): void {
     if (this._lastConfig) this.setConfig(this._lastConfig);
+  }
+
+  /* ------------------------------------------------------------ preview hold (#407) */
+
+  /*
+   * Whether this card is one an edit dialog is previewing: the card being edited rather than
+   * one built inside another, and in the dialog - or not on the page yet, which is how the
+   * dialog first builds its preview. One held before it is placed is let go once it turns
+   * out to be somewhere else.
+   */
+  private _mayHold(config: DeclutteringCardConfig | undefined = this._lastConfig): boolean {
+    if (!config || chainOf(config).length) return false;
+    return this.isConnected ? !!editDialogOf(this) : true;
+  }
+
+  private _hold(held: NonNullable<DeclutteringCard['_held']>): void {
+    this._dropThing();
+    this._error = undefined;
+    this._held = held;
+  }
+
+  private _buildAnyway(once: boolean): void {
+    this._held = undefined;
+    if (once) this._builtAnyway = this._lastConfig;
+    try {
+      this._rebuild();
+    } catch (err) {
+      this._error = (err as Error)?.message ?? String(err);
+    }
+  }
+
+  private _heardHold(event: PreviewHoldEvent): void {
+    if (event === 'render') {
+      if (this._held) this._buildAnyway(true);
+      return;
+    }
+    if (previewPaused()) {
+      if (!this._held && this._mayHold()) {
+        this._builtAnyway = undefined;
+        this._hold({ reason: 'paused' });
+      }
+    } else if (this._held?.reason === 'paused') {
+      this._buildAnyway(false);
+    }
+  }
+
+  protected _holdForRequired(unresolved: string[], templateConfig: TemplateConfig): boolean {
+    if (!previewEditorOpen() || this._lastConfig === this._builtAnyway || !this._mayHold()) return false;
+    const names = requiredUnset(getDeclarations(templateConfig), unresolved);
+    if (!names.length) return false;
+    this._hold({ reason: 'required', names });
+    return true;
+  }
+
+  protected render(): TemplateResult | void {
+    if (!this._held) return super.render();
+    const message =
+      this._held.reason === 'paused'
+        ? localize('card.preview_paused', undefined, this._hass)
+        : localize(
+            this._held.names.length === 1 ? 'card.preview_required_one' : 'card.preview_required_many',
+            { which: this._held.names.map((name) => `[[${name}]]`).join(', ') },
+            this._hass,
+          );
+    return html`<ha-alert alert-type="info">
+      ${message}
+      <ha-button slot="action" @click=${(): void => this._buildAnyway(true)}>
+        ${localize('card.preview_render_now', undefined, this._hass)}
+      </ha-button>
+    </ha-alert>`;
   }
 
   /* ------------------------------------------------------------ on_error */

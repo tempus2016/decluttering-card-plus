@@ -20,6 +20,10 @@
   "error.variables_shape": "Les variables doivent être une liste de paires clé et valeur, ou un mappage de celles-ci",
 
   "card.debug_builds": "Debug : ce que cette carte construit.",
+  "card.preview_paused": "L'aperçu est en pause : cette carte n'est pas construite pendant que vous modifiez. Choisissez Afficher maintenant pour la construire une fois.",
+  "card.preview_required_one": "Renseignez {which} pour voir la carte. Le modèle en a besoin, l'aperçu l'attend donc.",
+  "card.preview_required_many": "Renseignez {which} pour voir la carte. Le modèle en a besoin, l'aperçu les attend donc.",
+  "card.preview_render_now": "Afficher maintenant",
   "card.debug_builds_from": "Debug : ce que cette carte construit à partir de \"{template}\".",
 
   "editor.template_label": "Modèle à utiliser",
@@ -661,6 +665,9 @@
   "editor.preview.changed_hint": "La ligne modifiée par la dernière édition est surlignée.",
   "editor.preview.copy": "Copier",
   "editor.preview.copied": "Copié",
+  "editor.preview.pause": "Mettre l'aperçu en pause",
+  "editor.preview.resume": "Reprendre l'aperçu",
+  "editor.preview.pause_helper": "Empêche l'aperçu de reconstruire la carte à chaque modification, pour une carte qui se comporte mal tant qu'un réglage est faux.",
   "editor.link.edit_template": "Modifier le modèle",
   "editor.link.open_dashboard": "Ouvrir l'autre tableau de bord",
   "editor.link.raw_editor": "Modifiez-le dans l'éditeur de configuration brute, depuis le menu du tableau de bord.",

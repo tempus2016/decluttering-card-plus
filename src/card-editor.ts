@@ -68,6 +68,14 @@ import { isShownValue, shownDefaults } from './card-editor/defaults';
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { buildTime, previewLines, PreviewLine, previewModes, PreviewMode } from './card-editor/result-preview';
 import {
+  onPreviewHold,
+  previewEditorOpened,
+  previewPauseOn,
+  renderPreviewNow,
+  requiredUnset,
+  setPreviewPaused,
+} from './preview-hold';
+import {
   cardAtPath,
   dashboardHref,
   ReturnTicket,
@@ -451,6 +459,13 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _onErrorMode?: OnErrorMode;
   // Idea 19: how the result is shown, and the lines the last edit changed.
   @state() private _previewMode: PreviewMode = 'yaml';
+  /*
+   * #407: the previews can be paused from here, the dialog's and the Rendered view alike.
+   * The config last built anyway - with Render now - so the Rendered view shows it until
+   * the next edit hands a new one.
+   */
+  @state() private _builtAnyway?: DeclutteringCardConfig;
+  private _holdStops: (() => void)[] = [];
   @state() private _copied = false;
   private _lastYaml?: string;
   private _markedLines: PreviewLine[] = [];
@@ -501,10 +516,21 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     super.disconnectedCallback();
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
+    for (const stop of this._holdStops) stop();
+    this._holdStops = [];
   }
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback();
+    if (!this._holdStops.length) {
+      this._holdStops = [
+        onPreviewHold((event) => {
+          if (event === 'render') this._builtAnyway = this._config;
+          this.requestUpdate();
+        }),
+        previewEditorOpened(),
+      ];
+    }
     this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
     // A card-valued variable renders Home Assistant's own card editor and picker, which
     // are lazy-loaded - free after the first editor anywhere has loaded them.
@@ -991,6 +1017,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     const content = thingContent(template);
 
     let resolved: unknown;
+    const unresolved: string[] = [];
     const started = performance.now();
     try {
       // Quietly: the editor re-renders on every keystroke, and the card itself already
@@ -1008,7 +1035,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
           templateName,
           scoped,
           true,
-          undefined,
+          (names) => unresolved.push(...names),
           0,
           undefined,
           undefined,
@@ -1051,6 +1078,10 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     const mode: PreviewMode = modes.includes(this._previewMode) ? this._previewMode : 'yaml';
     const canEject =
       !items?.length && !isRegistrySource(this._config.for_each_from) && resolved && typeof resolved === 'object';
+    const paused = previewPauseOn();
+    // Built anyway with Render now: shown as it is until the next edit.
+    const anyway = this._builtAnyway === this._config;
+    const needed = items?.length ? [] : requiredUnset(getDeclarations(template), unresolved);
 
     return html`
       <div class="preview">
@@ -1079,7 +1110,26 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         ${
           mode === 'rendered'
             ? html`<div class="rendered">
-                <hui-card .hass=${this.hass} .config=${resolved} .preview=${true} .layout=${layout}></hui-card>
+                ${
+                  !anyway && (paused || needed.length)
+                    ? html`<ha-alert alert-type="info">
+                        ${
+                          paused
+                            ? localize('card.preview_paused', undefined, this.hass)
+                            : localize(
+                                needed.length === 1 ? 'card.preview_required_one' : 'card.preview_required_many',
+                                { which: needed.map((name) => `[[${name}]]`).join(', ') },
+                                this.hass,
+                              )
+                        }
+                      </ha-alert>`
+                    : html`<hui-card
+                        .hass=${this.hass}
+                        .config=${resolved}
+                        .preview=${true}
+                        .layout=${layout}
+                      ></hui-card>`
+                }
               </div>`
             : html`<pre class="yaml">
 ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed' : ''}">${line.text}</span>`)}</pre>`
@@ -1090,6 +1140,19 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
         </p>
         <p class="hint">${hintBefore}<code>[[name]]</code>${hintAfter}</p>
         <div class="preview-actions">
+          <ha-button
+            title=${localize('editor.preview.pause_helper', undefined, this.hass)}
+            @click=${(): void => setPreviewPaused(!paused)}
+          >
+            ${localize(paused ? 'editor.preview.resume' : 'editor.preview.pause', undefined, this.hass)}
+          </ha-button>
+          ${
+            paused || needed.length
+              ? html`<ha-button @click=${(): void => renderPreviewNow()}>
+                  ${localize('card.preview_render_now', undefined, this.hass)}
+                </ha-button>`
+              : html``
+          }
           ${
             mode === 'yaml'
               ? html`<ha-button @click=${(): void => this._copyYaml(yaml)}>

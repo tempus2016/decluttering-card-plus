@@ -581,10 +581,32 @@ export abstract class DeclutteringElement extends LitElement {
         templateConfig,
       );
     }
-    this._setResolved(thingType, this._withGridOptions(thingType, built), styles, inherited);
     // Strict is held to the build on the page too, which knows the section.
     this._missedBeforeLibrary = !!instance && this._libraryUnsettled && unresolved.length > 0;
-    if (!hush) this._refuseIfStrict(unresolved);
+    /*
+     * A refusal comes before the card inside is made, not after (#407): made and then not
+     * shown, it is still a card that has been handed a config it cannot use - and one that
+     * asks a server for something has already asked by then.
+     */
+    if (!hush && this._refuseIfStrict(unresolved)) return;
+    if (instance && !hush && this._holdForRequired(unresolved, templateConfig)) return;
+    this._setResolved(thingType, this._withGridOptions(thingType, built), styles, inherited);
+  }
+
+  /*
+   * Whether this build should wait for the template's required variables instead of making
+   * the card inside. Only an edit dialog's preview does (#407); the card overrides this.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected _holdForRequired(_unresolved: string[], _templateConfig: TemplateConfig): boolean {
+    return false;
+  }
+
+  // Lets go of the card inside, and anything waiting to become it, so nothing is left running.
+  protected _dropThing(): void {
+    this._thing = undefined;
+    this._thingConfig = undefined;
+    this._stopRepeat();
   }
 
   // The health panel's note of this build: which template, the card's own name, how many copies, how long.
@@ -779,10 +801,12 @@ export abstract class DeclutteringElement extends LitElement {
    * that use it, so a card that looks wrong now may be right in a moment. Somebody building
    * a template for other people wants the opposite, and `strict: true` is how they say so.
    */
-  protected _refuseIfStrict(unresolved: string[]): void {
-    if (!this._strict || !unresolved.length) return;
+  protected _refuseIfStrict(unresolved: string[]): boolean {
+    if (!this._strict || !unresolved.length) return false;
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
+    this._dropThing();
     this._error = localize(unresolved.length === 1 ? 'error.strict_one' : 'error.strict_many', { which }, this._hass);
+    return true;
   }
 
   // Styles always resolve against the real template config, so a declared default or a
