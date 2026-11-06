@@ -893,5 +893,11 @@
   "visibility.not_built": "{label}, nicht gebaut",
   "tools.health_dropped_since": " Entfernt in Version {version}: \"{note}\".",
   "tools.health_rename_to": "Umbenennen in {name}",
-  "tools.health_older_elsewhere": "\"{template}\" auf {dashboard} ist Version {there}; die dieses Dashboards ist Version {here}."
+  "tools.health_older_elsewhere": "\"{template}\" auf {dashboard} ist Version {there}; die dieses Dashboards ist Version {here}.",
+  "editor.preset.label": "Voreinstellung",
+  "editor.preset.helper": "Füllt die Felder aus einem Beispiel der Vorlage. Von Hand Gesetztes bleibt, sofern die Voreinstellung es nicht nennt.",
+  "editor.preset.none": "Keine passt zu den gesetzten Werten",
+  "editor.preset.confirm": "{preset} würde {names} ändern, die du von Hand gesetzt hast.",
+  "editor.preset.apply_anyway": "Trotzdem anwenden",
+  "editor.preset.keep": "Meine Werte behalten"
 }

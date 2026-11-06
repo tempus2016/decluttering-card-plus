@@ -893,5 +893,11 @@
   "visibility.not_built": "{label}, não construído",
   "tools.health_dropped_since": " Removida na versão {version}: \"{note}\".",
   "tools.health_rename_to": "Renomear para {name}",
-  "tools.health_older_elsewhere": "\"{template}\" em {dashboard} está na versão {there}; o deste painel está na versão {here}."
+  "tools.health_older_elsewhere": "\"{template}\" em {dashboard} está na versão {there}; o deste painel está na versão {here}.",
+  "editor.preset.label": "Predefinição",
+  "editor.preset.helper": "Preenche os campos a partir de um exemplo do modelo. O que definiu à mão fica, a menos que a predefinição o nomeie.",
+  "editor.preset.none": "Nenhuma corresponde aos valores definidos",
+  "editor.preset.confirm": "{preset} mudaria {names}, que definiu à mão.",
+  "editor.preset.apply_anyway": "Aplicar mesmo assim",
+  "editor.preset.keep": "Manter os meus valores"
 }

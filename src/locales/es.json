@@ -893,5 +893,11 @@
   "visibility.not_built": "{label}, no construida",
   "tools.health_dropped_since": " Eliminada en la versión {version}: \"{note}\".",
   "tools.health_rename_to": "Renombrar a {name}",
-  "tools.health_older_elsewhere": "\"{template}\" en {dashboard} es la versión {there}; la de este panel es la versión {here}."
+  "tools.health_older_elsewhere": "\"{template}\" en {dashboard} es la versión {there}; la de este panel es la versión {here}.",
+  "editor.preset.label": "Preajuste",
+  "editor.preset.helper": "Rellena los campos desde uno de los ejemplos de la plantilla. Lo que fijaste a mano se conserva salvo que el preajuste lo nombre.",
+  "editor.preset.none": "Ninguno coincide con los valores fijados",
+  "editor.preset.confirm": "{preset} cambiaría {names}, que fijaste a mano.",
+  "editor.preset.apply_anyway": "Aplicar de todos modos",
+  "editor.preset.keep": "Conservar mis valores"
 }

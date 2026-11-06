@@ -44,7 +44,6 @@ import {
   withStateScope,
   normaliseVariables,
 } from './variables';
-import { exampleSets } from './examples';
 import { hasOptionsFrom, optionsFromSelector } from './options-from';
 import { copyLabel, isRegistrySource, registryNames, resolveRegistryItems } from './registry';
 import { categoryRegistry, loadCategories, wantsCategories } from './categories';
@@ -112,6 +111,7 @@ import { knownDomains } from './card-editor/repeat-builder';
 import { countText, filterPickerItems, groupHeading, PickerItem, pickerItems } from './card-editor/template-picker';
 import { ComboItem, pickerList } from './card-editor/generic-picker';
 import { isDefinedHere } from './template-editor/common';
+import { applyPreset, presetConflicts, presetMatching, presetOptions } from './card-editor/presets';
 import { holdUndo } from './undo';
 import { Alert, checksOf, runChecks } from './checks';
 import {
@@ -452,6 +452,11 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         font-size: 12px;
         color: var(--secondary-text-color);
       }
+      .presets .actions {
+        margin-top: 8px;
+        display: flex;
+        gap: 8px;
+      }
     `;
   }
 
@@ -495,6 +500,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _pickerFilter = '';
   private _pickerItems: PickerItem[] = [];
   private _pickerFor?: Record<string, TemplateConfig>;
+  // A preset waiting for a yes, because it would change values set by hand (idea 44).
+  @state() private _presetPending?: { index: number; names: string[] };
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
@@ -683,8 +690,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
             </ha-alert>`
       }
       ${this._renderResume()} ${this._renderTemplatePicker(error.template)} ${this._renderResult(template)}
-      ${this._renderSource(template)} ${this._renderStartFromExample(template)}
-      ${this._renderDiagnostics(template, readable)}
+      ${this._renderSource(template)} ${this._renderPresets(template)} ${this._renderDiagnostics(template, readable)}
       <ha-form
         .hass=${this.hass}
         .data=${data}
@@ -807,31 +813,81 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   }
 
   /*
-   * A template with examples can fill a new card in from one of them, which is quicker
-   * than reading the declarations and typing each value - and shows straight away what a
-   * working set looks like. Only for a card that sets nothing yet: an example is a place
-   * to start, not something to lay over values somebody has already chosen.
+   * Idea 44: a template's examples as presets. Usable at any time, not only for a card that
+   * sets nothing yet: picking one fills every declared field it names and keeps the rest,
+   * and asks first when it would change a value set by hand. The preset is not stored on the
+   * card - the dropdown shows a name only while the values still match one.
    */
-  private _renderStartFromExample(template: TemplateConfig | undefined): TemplateResult {
-    const sets = exampleSets(template);
-    if (!sets.length || !this._config || ownVariables(this._config.variables).length) return html``;
+  private _renderPresets(template: TemplateConfig | undefined): TemplateResult {
+    const options = presetOptions(template);
+    if (!options.length || !this._config) return html``;
+    const matching = presetMatching(template, this._config.variables);
+    const pending = this._presetPending;
     return html`
-      <div class="examples">
-        <p class="hint">${localize('editor.start_from_example_hint', undefined, this.hass)}</p>
-        ${sets.map(
-          (set, index) => html`
-            <ha-button @click=${(): void => this._startFromExample(set)}>
-              ${localize('editor.start_from_example', { number: index + 1 }, this.hass)}
-            </ha-button>
-          `,
-        )}
+      <div class="presets">
+        <ha-form
+          .hass=${this.hass}
+          .data=${{ preset: matching === undefined ? '' : String(matching) }}
+          .schema=${[
+            {
+              name: 'preset',
+              label: localize('editor.preset.label', undefined, this.hass),
+              helper:
+                matching === undefined && ownVariables(this._config.variables).length
+                  ? localize('editor.preset.none', undefined, this.hass)
+                  : localize('editor.preset.helper', undefined, this.hass),
+              selector: { select: { mode: 'dropdown', options } },
+            },
+          ]}
+          .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+          .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+          @value-changed=${(ev: CustomEvent): void => this._presetPicked(ev, template)}
+        ></ha-form>
+        ${
+          pending
+            ? html`<ha-alert alert-type="warning">
+                ${localize(
+                  'editor.preset.confirm',
+                  { preset: options[pending.index]?.label ?? '', names: pending.names.join(', ') },
+                  this.hass,
+                )}
+                <div class="actions">
+                  <ha-button @click=${(): void => this._applyPreset(template, pending.index)}>
+                    ${localize('editor.preset.apply_anyway', undefined, this.hass)}
+                  </ha-button>
+                  <ha-button
+                    @click=${(): void => {
+                      this._presetPending = undefined;
+                    }}
+                  >
+                    ${localize('editor.preset.keep', undefined, this.hass)}
+                  </ha-button>
+                </div>
+              </ha-alert>`
+            : html``
+        }
       </div>
     `;
   }
 
-  private _startFromExample(variables: VariablesConfig[]): void {
-    if (!variables.length) return;
-    fireEvent(this, 'config-changed', { config: { ...this._config, variables } as DeclutteringCardConfig });
+  private _presetPicked(ev: CustomEvent, template: TemplateConfig | undefined): void {
+    ev.stopPropagation();
+    const picked = ev.detail.value?.preset;
+    if (picked === undefined || picked === '' || !this._config) return;
+    const index = Number(picked);
+    if (!Number.isInteger(index)) return;
+    const names = presetConflicts(template, index, this._config.variables);
+    if (names.length) {
+      this._presetPending = { index, names };
+      return;
+    }
+    this._applyPreset(template, index);
+  }
+
+  private _applyPreset(template: TemplateConfig | undefined, index: number): void {
+    if (!this._config) return;
+    this._presetPending = undefined;
+    fireEvent(this, 'config-changed', { config: applyPreset(this._config, template, index) });
   }
 
   /*

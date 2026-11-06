@@ -893,5 +893,11 @@
   "visibility.not_built": "{label}, non construite",
   "tools.health_dropped_since": " Supprimée dans la version {version} : \"{note}\".",
   "tools.health_rename_to": "Renommer en {name}",
-  "tools.health_older_elsewhere": "\"{template}\" sur {dashboard} est en version {there} ; celui de ce tableau de bord est en version {here}."
+  "tools.health_older_elsewhere": "\"{template}\" sur {dashboard} est en version {there} ; celui de ce tableau de bord est en version {here}.",
+  "editor.preset.label": "Préréglage",
+  "editor.preset.helper": "Remplit les champs depuis un exemple du modèle. Ce que vous avez réglé à la main est gardé sauf si le préréglage le nomme.",
+  "editor.preset.none": "Aucun ne correspond aux valeurs définies",
+  "editor.preset.confirm": "{preset} changerait {names}, que vous avez réglés à la main.",
+  "editor.preset.apply_anyway": "Appliquer quand même",
+  "editor.preset.keep": "Garder mes valeurs"
 }

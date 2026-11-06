@@ -893,5 +893,11 @@
   "visibility.not_built": "{label}, niet gebouwd",
   "tools.health_dropped_since": " Vervallen in versie {version}: \"{note}\".",
   "tools.health_rename_to": "Hernoemen naar {name}",
-  "tools.health_older_elsewhere": "\"{template}\" op {dashboard} is versie {there}; die van dit dashboard is versie {here}."
+  "tools.health_older_elsewhere": "\"{template}\" op {dashboard} is versie {there}; die van dit dashboard is versie {here}.",
+  "editor.preset.label": "Voorinstelling",
+  "editor.preset.helper": "Vult de velden vanuit een voorbeeld van de sjabloon. Wat je zelf instelde blijft, tenzij de voorinstelling het noemt.",
+  "editor.preset.none": "Geen past bij de ingestelde waarden",
+  "editor.preset.confirm": "{preset} zou {names} veranderen, die je zelf hebt ingesteld.",
+  "editor.preset.apply_anyway": "Toch toepassen",
+  "editor.preset.keep": "Mijn waarden houden"
 }

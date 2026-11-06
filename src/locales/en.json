@@ -893,5 +893,11 @@
   "visibility.not_built": "{label}, not built",
   "tools.health_dropped_since": " Dropped in version {version}: \"{note}\".",
   "tools.health_rename_to": "Rename to {name}",
-  "tools.health_older_elsewhere": "\"{template}\" on {dashboard} is version {there}; this dashboard's is version {here}."
+  "tools.health_older_elsewhere": "\"{template}\" on {dashboard} is version {there}; this dashboard's is version {here}.",
+  "editor.preset.label": "Preset",
+  "editor.preset.helper": "Fill the fields from one of the template's examples. What you set by hand is kept unless the preset names it.",
+  "editor.preset.none": "None matches the values set",
+  "editor.preset.confirm": "{preset} would change {names}, which you set by hand.",
+  "editor.preset.apply_anyway": "Apply it anyway",
+  "editor.preset.keep": "Keep my values"
 }

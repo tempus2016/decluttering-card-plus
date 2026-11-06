@@ -77,6 +77,7 @@
     "src/family.ts",
     "src/compare.ts",
     "src/dates.ts",
-    "src/colour.ts"
+    "src/colour.ts",
+    "src/card-editor/presets.ts"
   ]
 }

@@ -20,11 +20,35 @@ import { INHERIT_FLAG, ownVariables, validateDeclared } from './variables';
 // How many nested templates one example is followed into, all told.
 const MAX_FOLLOWS = 500;
 
-export function exampleSets(template: unknown): VariablesConfig[][] {
+/*
+ * An example can carry a name, for the card editor's Preset dropdown: an entry that is a
+ * mapping of exactly `name` and `values` is read as the values under that name. Any other
+ * mapping is a whole example, as it always was, so an example that happens to set a
+ * variable called `name` is not mistaken for a named one unless `values` is there too.
+ */
+function namedExample(example: unknown): { name: string; values: unknown } | undefined {
+  if (!example || typeof example !== 'object' || Array.isArray(example)) return undefined;
+  const keys = Object.keys(example as object);
+  if (keys.length !== 2 || !keys.includes('name') || !keys.includes('values')) return undefined;
+  const { name, values } = example as { name: unknown; values: unknown };
+  return typeof name === 'string' && values !== null && typeof values === 'object' ? { name, values } : undefined;
+}
+
+function exampleList(template: unknown): unknown[] {
   const written = (template as any)?.examples;
   if (written === undefined || written === null) return [];
-  const list = Array.isArray(written) ? written : [written];
-  return list.map((example) => ownVariables(example));
+  return Array.isArray(written) ? written : [written];
+}
+
+export function exampleSets(template: unknown): VariablesConfig[][] {
+  return exampleList(template).map((example) => ownVariables(namedExample(example)?.values ?? example));
+}
+
+/** What each example is called: its own name, or "Example N" (idea 44). */
+export function exampleNames(template: unknown): string[] {
+  return exampleList(template).map(
+    (example, index) => namedExample(example)?.name ?? localize('template_editor.example_n', { number: index + 1 }),
+  );
 }
 
 /** The variables one example sets, or none when there is no such example - the template's defaults then apply. */
