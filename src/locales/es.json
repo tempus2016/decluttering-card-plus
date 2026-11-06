@@ -332,6 +332,8 @@
   "report.unredacted": "No se ha quitado nada de este informe, porque la tarjeta tiene redact: false. Todas las contraseñas, tokens, direcciones IP, direcciones de correo y hosts están tal como se escribieron, así que no lo publiques en ningún sitio público.",
   "report.show_markdown": "Mostrar el Markdown",
   "report.show_formatted": "Mostrarlo con formato",
+  "report_try.scope": "Leerlo en",
+  "report_try.hint": "Escribe un marcador o elige uno y mira lo que da en la construcción elegida: la tarjeta, una copia de una repetición, una tarjeta dentro de ella o el relleno de una plantilla de elemento. Se lee como lo leyó esa construcción, con Home Assistant tal como está ahora, y lo que el informe quitaría también se quita aquí.",
 
   "picker.card_description": "Reutiliza varias veces la misma configuración de tarjeta con variables para despejar tu configuración.",
   "picker.published_description": "Una tarjeta creada con la plantilla de decluttering \"{template}\".",

@@ -332,6 +332,8 @@
   "report.unredacted": "Nothing has been taken out of this report, because the card has redact: false. Every password, token, IP address, email address and host is in it as written, so do not post it anywhere public.",
   "report.show_markdown": "Show the Markdown",
   "report.show_formatted": "Show it formatted",
+  "report_try.scope": "Read it in",
+  "report_try.hint": "Type a placeholder or pick one, and see what it gives in the build chosen: the card, a copy of a repeat, a card inside it, or an item template's fill. It is read the way that build read it, against Home Assistant as it is now, and anything the report would take out is taken out here too.",
 
   "picker.card_description": "Reuse multiple times the same card configuration with variables to declutter your config.",
   "picker.published_description": "A card built from the decluttering template \"{template}\".",

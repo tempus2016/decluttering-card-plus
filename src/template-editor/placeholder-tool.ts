@@ -25,8 +25,8 @@ export class DeclutteringPlaceholderTool extends LitElement {
   @property({ attribute: false }) public lovelace?: LovelaceConfig | null;
   @property({ attribute: false }) public config?: DeclutteringTemplateConfig;
 
-  @state() private _expression = '';
-  @state() private _more = false;
+  @state() protected _expression = '';
+  @state() protected _more = false;
 
   static get styles(): CSSResult {
     return css`
@@ -131,26 +131,32 @@ export class DeclutteringPlaceholderTool extends LitElement {
             @value-changed=${this._picked}
           ></ha-form>
           <p class="hint">${localize('placeholder_tool.hint', { count: offered.length }, this.hass)}</p>
-          <div class="chips">
-            <span>${localize('placeholder_tool.add_step', undefined, this.hass)}</span>
-            ${(this._more ? [...KNOWN_STEPS, ...KNOWN_PARAM_STEPS.map((step) => `${step}:`)] : CHIP_STEPS).map(
-              (step) => html`<span class="chip" @click=${(): void => this._addStep(value, step)}>${step}</span>`,
-            )}
-            ${
-              this._more
-                ? nothing
-                : html`<span
-                    class="chip"
-                    @click=${(): void => {
-                      this._more = true;
-                    }}
-                    >…</span
-                  >`
-            }
-          </div>
-          ${value ? this._renderResult(value) : nothing}
+          ${this._renderChips(value)} ${value ? this._renderResult(value) : nothing}
         </div>
       </ha-expansion-panel>
+    `;
+  }
+
+  /* The steps offered as chips, appended to what is in the box when one is clicked. */
+  protected _renderChips(value: string): TemplateResult {
+    return html`
+      <div class="chips">
+        <span>${localize('placeholder_tool.add_step', undefined, this.hass)}</span>
+        ${(this._more ? [...KNOWN_STEPS, ...KNOWN_PARAM_STEPS.map((step) => `${step}:`)] : CHIP_STEPS).map(
+          (step) => html`<span class="chip" @click=${(): void => this._addStep(value, step)}>${step}</span>`,
+        )}
+        ${
+          this._more
+            ? nothing
+            : html`<span
+                class="chip"
+                @click=${(): void => {
+                  this._more = true;
+                }}
+                >…</span
+              >`
+        }
+      </div>
     `;
   }
 
@@ -163,7 +169,7 @@ export class DeclutteringPlaceholderTool extends LitElement {
   }
 
   /* The template as the dashboard resolves it, and the variables the preview is drawn with. */
-  private _result(expression: string): PlaygroundResult | undefined {
+  protected _result(expression: string): PlaygroundResult | undefined {
     const config = this.config;
     if (!config) return undefined;
     const resolved = collectTemplates(this.lovelace, undefined, config)[config.template] ?? config;
@@ -176,7 +182,7 @@ export class DeclutteringPlaceholderTool extends LitElement {
     }
   }
 
-  private _renderResult(expression: string): TemplateResult {
+  protected _renderResult(expression: string): TemplateResult {
     const result = this._result(expression);
     if (!result) return html``;
     if (result.error) return html`<ha-alert alert-type="error">${result.error}</ha-alert>`;
@@ -206,7 +212,7 @@ export class DeclutteringPlaceholderTool extends LitElement {
     `;
   }
 
-  private _renderStep(row: StepResult, index: number, refusedAt: number, result: PlaygroundResult): TemplateResult {
+  protected _renderStep(row: StepResult, index: number, refusedAt: number, result: PlaygroundResult): TemplateResult {
     const bad = row.kind === 'unresolved' && (refusedAt === -1 || index === refusedAt);
     const gap = row.value === undefined || row.value === '' || row.kind === 'removed';
     const from =
@@ -228,21 +234,21 @@ export class DeclutteringPlaceholderTool extends LitElement {
     </tr>`;
   }
 
-  private _shown(value: unknown, kind: string): string {
+  protected _shown(value: unknown, kind: string): string {
     if (kind === 'removed') return localize('placeholder_tool.removed', undefined, this.hass);
     if (value === undefined) return '';
     if (typeof value === 'string') return value;
     return JSON.stringify(value);
   }
 
-  private _picked(ev: CustomEvent): void {
+  protected _picked(ev: CustomEvent): void {
     ev.stopPropagation();
     const value = (ev.detail.value as { placeholder?: string }).placeholder;
     this._expression = typeof value === 'string' ? value : '';
   }
 
   /* A step appended before the closing brackets, keeping an optional marker at the end. */
-  private _addStep(current: string, step: string): void {
+  protected _addStep(current: string, step: string): void {
     let text = current.trim() || '[[]]';
     const optional = text.endsWith('?]]');
     text = text.replace(/\??\]\]$/, '');

@@ -332,6 +332,8 @@
   "report.unredacted": "Er is niets uit dit rapport gehaald, omdat de kaart redact: false heeft. Elk wachtwoord, token, IP-adres, e-mailadres en elke host staat erin zoals geschreven, dus plaats het nergens openbaar.",
   "report.show_markdown": "Markdown tonen",
   "report.show_formatted": "Opgemaakt tonen",
+  "report_try.scope": "Lezen in",
+  "report_try.hint": "Typ een plaatshouder of kies er een en zie wat hij geeft in de gekozen opbouw: de kaart, een kopie van een herhaling, een kaart daarbinnen of de invulling van een itemsjabloon. Hij wordt gelezen zoals die opbouw hem las, tegen Home Assistant zoals het nu is, en wat het rapport zou weglaten wordt ook hier weggelaten.",
 
   "picker.card_description": "Gebruik dezelfde kaartconfiguratie meerdere keren met variabelen om je configuratie op te ruimen.",
   "picker.published_description": "Een kaart gebouwd uit het decluttering-sjabloon \"{template}\".",
