@@ -2,7 +2,7 @@ import { LitElement, html, TemplateResult, CSSResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { keyed } from 'lit/directives/keyed.js';
 import { HomeAssistant, fireEvent, LovelaceConfig } from 'custom-card-helpers';
-import { DeclutteringTemplateConfig, TemplateConfig } from '../types';
+import { DeclutteringTemplateConfig, FormSchemaEntry, TemplateConfig } from '../types';
 import { buildExport, validateImport, freeName, missingCustomCards, withoutSources } from '../share';
 import { LIBRARY, libraryEntry, libraryNeeds, librarySource } from '../library';
 import {
@@ -55,6 +55,7 @@ import { readDashboard } from '../undo';
 import { rewriteDashboards, saverFor } from '../shared';
 import { isDefinedHere, anyRisk, newRisks, SECOND_PRESS_MS, saveDashboardWith } from './common';
 import { TEMPLATE_EDITOR_STYLES } from './styles';
+import { CompareSource, agoParts, compareSources, diffStats, templateBody } from '../compare';
 
 // The sharing-details fields that need a line of explanation under them.
 const DETAIL_HELPERS = ['readme', 'related', 'setup', 'requires_entities', 'requires_homeassistant', 'requires_card'];
@@ -162,6 +163,10 @@ export class DeclutteringTemplateShareTab extends LitElement {
 
   // Templates a save took away or changed, from the user data; nothing until it has been read.
   @state() private _trash?: TrashEntry[];
+  // Compare with (idea 30): which other version is chosen, and whether Take has been pressed once.
+  @state() private _compareWith?: string;
+  @state() private _comparePending = false;
+  private _compareArmedAt = 0;
 
   @state() private _trashShown?: number;
 
@@ -251,7 +256,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
               </ha-button>`
             : html``
         }
-        ${this._renderTrash()}
+        ${this._renderTrash()} ${this._renderCompare()}
 
         <h3>${localize('share.library_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.library_hint', undefined, this.hass)}</p>
@@ -924,13 +929,102 @@ export class DeclutteringTemplateShareTab extends LitElement {
       return;
     }
     if (Date.now() - this._updateArmedAt < SECOND_PRESS_MS) return;
-    const saved = await this._saveDashboard((config) => replaceTemplate(config, name, latest), 'shared_update');
+    const before = this._config?.template === name ? this._config : undefined;
+    const saved = await this._saveDashboard((config) => replaceTemplate(config, name, latest), 'shared_update', before);
     if (!saved) return;
     this._updatePending = undefined;
     this._updates = this._updates?.map((each) => (each.name === name ? { ...each, status: 'current' } : each));
     // The dialog may be open on this very template, and saving it would put the old one back.
     if (this._config?.template === name) {
       this._fireConfigChanged({ ...latest, type: this._config.type, template: name } as DeclutteringTemplateConfig);
+    }
+  }
+
+  /*
+   * Compare with (idea 30): the current template against the starter library's version, the
+   * shared post it was installed from, or the copy the trash kept - the same line diff the
+   * Where used tab draws for an edit, and a way to take the other version that can be undone.
+   */
+  private _renderCompare(): TemplateResult {
+    const config = this._config;
+    if (!config?.template) return html``;
+    const name = config.template;
+    const ago = (ms: number): string => {
+      const parts = agoParts(ms);
+      return localize(`compare.ago_${parts.unit}`, { count: parts.count }, this.hass);
+    };
+    const sources = compareSources(name, {
+      library: LIBRARY,
+      installed: this._updates,
+      trash: this._trash,
+      labels: {
+        library: (each) => localize('compare.source_library', { name: each }, this.hass),
+        shared: (title, author) => localize('compare.source_shared', { title, author }, this.hass),
+        elsewhere: (urlPath) => localize('compare.source_elsewhere', { dashboard: urlPath }, this.hass),
+        trash: (when, reason) => localize(`compare.source_trash_${reason}`, { when }, this.hass),
+        ago,
+      },
+    });
+    if (!sources.length) return html``;
+    const chosen = sources.find((each) => each.id === this._compareWith) ?? sources[0];
+    const current = templateBody(config);
+    const stats = diffStats(current, chosen.template);
+    return html`
+      <div class="compare">
+        <h3>${localize('compare.header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('compare.hint', undefined, this.hass)}</p>
+        <ha-form
+          .hass=${this.hass}
+          .data=${{ source: chosen.id }}
+          .schema=${[
+            {
+              name: 'source',
+              label: localize('compare.with', undefined, this.hass),
+              selector: {
+                select: { mode: 'dropdown', options: sources.map((each) => ({ value: each.id, label: each.label })) },
+              },
+            },
+          ]}
+          .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+          @value-changed=${(ev: CustomEvent): void => {
+            ev.stopPropagation();
+            this._compareWith = (ev.detail.value as { source?: string }).source;
+            this._comparePending = false;
+          }}
+        ></ha-form>
+        <p class="stats">
+          ${localize('compare.against', { name, label: chosen.label }, this.hass)}
+          <span class="add">+${stats.added}</span> <span class="remove">−${stats.removed}</span>
+          ${localize('compare.places', { places: stats.places }, this.hass)}
+        </p>
+        ${renderDiffWithFull(chosen.template, current, this.hass)}
+        ${
+          stats.added || stats.removed
+            ? html`<ha-button .disabled=${this._busy} @click=${(): void => void this._takeVersion(name, chosen)}>
+                ${localize(this._comparePending ? 'compare.take_confirm' : 'compare.take', undefined, this.hass)}
+              </ha-button>`
+            : html``
+        }
+      </div>
+    `;
+  }
+
+  private async _takeVersion(name: string, source: CompareSource): Promise<void> {
+    if (!this._comparePending) {
+      this._comparePending = true;
+      this._compareArmedAt = Date.now();
+      return;
+    }
+    if (Date.now() - this._compareArmedAt < SECOND_PRESS_MS) return;
+    const other = source.template;
+    // The dialog's config as it stands goes with the undo, so undoing puts the open editor back too.
+    const before = this._config?.template === name ? this._config : undefined;
+    const saved = await this._saveDashboard((config) => replaceTemplate(config, name, other), 'compare_take', before);
+    if (!saved) return;
+    this._comparePending = false;
+    // The dialog is open on this very template, and saving it would put the old one back.
+    if (this._config?.template === name) {
+      this._fireConfigChanged({ ...other, type: this._config.type, template: name } as DeclutteringTemplateConfig);
     }
   }
 

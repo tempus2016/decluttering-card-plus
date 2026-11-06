@@ -855,5 +855,21 @@
   "family.adds": "adds {keys}",
   "family.drops": "drops {keys}",
   "family.missing_parent": "extends {name}, which is not here",
-  "family.deprecated": "deprecated"
+  "family.deprecated": "deprecated",
+  "undo.op.compare_take": "taking the other version of the template",
+  "compare.header": "Compare with",
+  "compare.hint": "The starter library, a shared post, or the version the trash kept, against this template as it is now.",
+  "compare.with": "Compare with",
+  "compare.against": "{name} against {label}:",
+  "compare.places": "in {places} places",
+  "compare.take": "Take that version",
+  "compare.take_confirm": "Press again to take it - the dashboard is saved straight away, and the change can be undone",
+  "compare.source_library": "Starter library: {name}",
+  "compare.source_shared": "Shared post: {title}, by {author}",
+  "compare.source_elsewhere": "The copy on {dashboard}",
+  "compare.source_trash_removed": "In the trash: removed {when}",
+  "compare.source_trash_replaced": "In the trash: as it was {when}",
+  "compare.ago_minute": "{count} minutes ago",
+  "compare.ago_hour": "{count} hours ago",
+  "compare.ago_day": "{count} days ago"
 }

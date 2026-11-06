@@ -855,5 +855,21 @@
   "family.adds": "acrescenta {keys}",
   "family.drops": "remove {keys}",
   "family.missing_parent": "estende {name}, que não está aqui",
-  "family.deprecated": "obsoleto"
+  "family.deprecated": "obsoleto",
+  "undo.op.compare_take": "usar a outra versão do modelo",
+  "compare.header": "Comparar com",
+  "compare.hint": "A biblioteca inicial, uma publicação partilhada ou a versão guardada no lixo, face a este modelo como está agora.",
+  "compare.with": "Comparar com",
+  "compare.against": "{name} face a {label}:",
+  "compare.places": "em {places} sítios",
+  "compare.take": "Usar essa versão",
+  "compare.take_confirm": "Prima de novo para a usar - o painel é guardado de imediato e a alteração pode ser anulada",
+  "compare.source_library": "Biblioteca inicial: {name}",
+  "compare.source_shared": "Publicação partilhada: {title}, de {author}",
+  "compare.source_elsewhere": "A cópia em {dashboard}",
+  "compare.source_trash_removed": "No lixo: removida {when}",
+  "compare.source_trash_replaced": "No lixo: como estava {when}",
+  "compare.ago_minute": "há {count} minutos",
+  "compare.ago_hour": "há {count} horas",
+  "compare.ago_day": "há {count} dias"
 }

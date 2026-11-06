@@ -855,5 +855,21 @@
   "family.adds": "ajoute {keys}",
   "family.drops": "retire {keys}",
   "family.missing_parent": "étend {name}, qui n'est pas ici",
-  "family.deprecated": "obsolète"
+  "family.deprecated": "obsolète",
+  "undo.op.compare_take": "la reprise de l'autre version du modèle",
+  "compare.header": "Comparer avec",
+  "compare.hint": "La bibliothèque de départ, un post partagé ou la version gardée par la corbeille, face à ce modèle tel qu'il est maintenant.",
+  "compare.with": "Comparer avec",
+  "compare.against": "{name} face à {label} :",
+  "compare.places": "à {places} endroits",
+  "compare.take": "Prendre cette version",
+  "compare.take_confirm": "Appuyez à nouveau pour la prendre : le tableau de bord est enregistré aussitôt, et le changement peut être annulé",
+  "compare.source_library": "Bibliothèque de départ : {name}",
+  "compare.source_shared": "Post partagé : {title}, par {author}",
+  "compare.source_elsewhere": "La copie sur {dashboard}",
+  "compare.source_trash_removed": "Dans la corbeille : supprimée {when}",
+  "compare.source_trash_replaced": "Dans la corbeille : telle qu'elle était {when}",
+  "compare.ago_minute": "il y a {count} minutes",
+  "compare.ago_hour": "il y a {count} heures",
+  "compare.ago_day": "il y a {count} jours"
 }

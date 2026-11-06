@@ -855,5 +855,21 @@
   "family.adds": "añade {keys}",
   "family.drops": "quita {keys}",
   "family.missing_parent": "extiende {name}, que no está aquí",
-  "family.deprecated": "obsoleta"
+  "family.deprecated": "obsoleta",
+  "undo.op.compare_take": "tomar la otra versión de la plantilla",
+  "compare.header": "Comparar con",
+  "compare.hint": "La biblioteca inicial, una publicación compartida o la versión guardada en la papelera, frente a esta plantilla tal como está ahora.",
+  "compare.with": "Comparar con",
+  "compare.against": "{name} frente a {label}:",
+  "compare.places": "en {places} lugares",
+  "compare.take": "Tomar esa versión",
+  "compare.take_confirm": "Pulsa de nuevo para tomarla: el panel se guarda de inmediato y el cambio se puede deshacer",
+  "compare.source_library": "Biblioteca inicial: {name}",
+  "compare.source_shared": "Publicación compartida: {title}, de {author}",
+  "compare.source_elsewhere": "La copia en {dashboard}",
+  "compare.source_trash_removed": "En la papelera: eliminada {when}",
+  "compare.source_trash_replaced": "En la papelera: como estaba {when}",
+  "compare.ago_minute": "hace {count} minutos",
+  "compare.ago_hour": "hace {count} horas",
+  "compare.ago_day": "hace {count} días"
 }

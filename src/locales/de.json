@@ -855,5 +855,21 @@
   "family.adds": "ergänzt {keys}",
   "family.drops": "entfernt {keys}",
   "family.missing_parent": "erweitert {name}, das nicht vorhanden ist",
-  "family.deprecated": "veraltet"
+  "family.deprecated": "veraltet",
+  "undo.op.compare_take": "Übernehmen der anderen Version der Vorlage",
+  "compare.header": "Vergleichen mit",
+  "compare.hint": "Die Startbibliothek, ein geteilter Beitrag oder die Version aus dem Papierkorb, gegen diese Vorlage, wie sie jetzt ist.",
+  "compare.with": "Vergleichen mit",
+  "compare.against": "{name} gegen {label}:",
+  "compare.places": "an {places} Stellen",
+  "compare.take": "Diese Version übernehmen",
+  "compare.take_confirm": "Erneut drücken zum Übernehmen - das Dashboard wird sofort gespeichert, die Änderung kann rückgängig gemacht werden",
+  "compare.source_library": "Startbibliothek: {name}",
+  "compare.source_shared": "Geteilter Beitrag: {title}, von {author}",
+  "compare.source_elsewhere": "Die Kopie auf {dashboard}",
+  "compare.source_trash_removed": "Im Papierkorb: entfernt {when}",
+  "compare.source_trash_replaced": "Im Papierkorb: wie sie {when} war",
+  "compare.ago_minute": "vor {count} Minuten",
+  "compare.ago_hour": "vor {count} Stunden",
+  "compare.ago_day": "vor {count} Tagen"
 }

@@ -855,5 +855,21 @@
   "family.adds": "voegt {keys} toe",
   "family.drops": "laat {keys} weg",
   "family.missing_parent": "breidt {name} uit, dat hier niet is",
-  "family.deprecated": "verouderd"
+  "family.deprecated": "verouderd",
+  "undo.op.compare_take": "het overnemen van de andere versie van het sjabloon",
+  "compare.header": "Vergelijken met",
+  "compare.hint": "De startbibliotheek, een gedeeld bericht of de versie uit de prullenbak, tegenover dit sjabloon zoals het nu is.",
+  "compare.with": "Vergelijken met",
+  "compare.against": "{name} tegenover {label}:",
+  "compare.places": "op {places} plaatsen",
+  "compare.take": "Die versie overnemen",
+  "compare.take_confirm": "Druk nogmaals om over te nemen - het dashboard wordt meteen opgeslagen en de wijziging kan ongedaan worden gemaakt",
+  "compare.source_library": "Startbibliotheek: {name}",
+  "compare.source_shared": "Gedeeld bericht: {title}, door {author}",
+  "compare.source_elsewhere": "De kopie op {dashboard}",
+  "compare.source_trash_removed": "In de prullenbak: verwijderd {when}",
+  "compare.source_trash_replaced": "In de prullenbak: zoals het {when} was",
+  "compare.ago_minute": "{count} minuten geleden",
+  "compare.ago_hour": "{count} uur geleden",
+  "compare.ago_day": "{count} dagen geleden"
 }
