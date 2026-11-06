@@ -103,3 +103,20 @@ describe('template_by_domain failures', () => {
     await until(() => inner(covered)?.config?.content === 'FALLBACK', 3000, 'the on_error card');
   });
 });
+
+describe('health badge', () => {
+  it('reads edit mode off the hui-badge around it, so a clean badge comes back to be edited (idea 50)', async () => {
+    stubLovelace({ views: [{ cards: [] }] });
+    const wrapper = document.createElement('hui-badge') as any;
+    document.body.appendChild(wrapper);
+    const badge = document.createElement('decluttering-card-plus-health-card') as any;
+    badge.setConfig({ type: 'custom:decluttering-card-plus-health-card', hide_when_clean: true });
+    badge.hass = stubHass();
+    wrapper.appendChild(badge);
+    await until(() => badge.hasAttribute('hidden'), 3000, 'a clean badge to hide');
+    wrapper.preview = true;
+    wrapper.removeChild(badge);
+    wrapper.appendChild(badge);
+    await until(() => !badge.hasAttribute('hidden'), 3000, 'the badge back in edit mode');
+  });
+});

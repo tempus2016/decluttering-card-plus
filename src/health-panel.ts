@@ -26,6 +26,8 @@ import { BUILD_LOG, slowestBuilds } from './trace';
 export class DeclutteringHealthPanel extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
   @property({ attribute: false }) public lovelace?: LovelaceConfig | null;
+  /** Open from the start: the health card's "Open the full panel" dialog has nothing else to show. */
+  @property({ type: Boolean }) public expanded = false;
 
   // Stops listening for a language chunk landing (idea 4).
   private _stopLanguageListener?: () => void;
@@ -133,7 +135,7 @@ export class DeclutteringHealthPanel extends LitElement {
       !unread.length &&
       !older.length;
     return html`
-      <ha-expansion-panel outlined>
+      <ha-expansion-panel outlined .expanded=${this.expanded}>
         <span slot="header">${localize('tools.health_header', undefined, this.hass)}</span>
         <slot></slot>
         ${

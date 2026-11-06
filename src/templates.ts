@@ -1322,7 +1322,7 @@ export function setReadDashboardForTest(urlPath: string, config: LovelaceConfig 
   readVersion += 1;
 }
 
-function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<LovelaceConfig | null> {
+export function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<LovelaceConfig | null> {
   watchForSavedDashboards(hass);
   const cached = configCache.get(urlPath);
   if (cached) return cached;

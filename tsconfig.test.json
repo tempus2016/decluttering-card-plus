@@ -20,6 +20,7 @@
     "src/error-card.ts",
     "src/edit-chip-pure.ts",
     "src/skeleton.ts",
+    "src/health-card-pure.ts",
     "src/templates.ts",
     "src/share.ts",
     "src/variables.ts",

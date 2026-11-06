@@ -9,6 +9,7 @@ import { DeclutteringCard } from './card';
 import { DeclutteringLazyCopy } from './lazy-copy';
 import { CARD_TAG, LAZY_COPY_TAG, TEMPLATE_TAG, defineElement } from './shared';
 import { DeclutteringMany, MANY_TAG } from './row-repeat';
+import { DeclutteringHealthCard, HEALTH_CARD_TAG } from './health-card';
 import { DeclutteringDashboardStrategy, DeclutteringSectionStrategy, DeclutteringViewStrategy } from './strategies';
 import { DeclutteringTemplate } from './template-card';
 
@@ -184,6 +185,18 @@ defineElement(LAZY_COPY_TAG, DeclutteringLazyCopy);
 
 defineElement(MANY_TAG, DeclutteringMany);
 
+// The health card and badge (idea 50): one element, listed in both pickers.
+if (defineElement(HEALTH_CARD_TAG, DeclutteringHealthCard)) {
+  const entry = {
+    type: HEALTH_CARD_TAG,
+    documentationURL: DOCUMENTATION_URL,
+    name: 'Decluttering Card Plus: health',
+    preview: true,
+    description: localize('picker.health_description'),
+  };
+  customCards.push(entry);
+  customBadges.push({ ...entry, description: localize('picker.health_badge_description') });
+}
 if (defineElement(TEMPLATE_TAG, DeclutteringTemplate)) {
   customCards.push({
     type: TEMPLATE_TAG,
