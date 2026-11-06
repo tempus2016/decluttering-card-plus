@@ -2021,11 +2021,9 @@ function scanPlaceholders(json: string, pattern: RegExp, names: string[]): void 
     if (!match[1].startsWith(ESCAPE) && !insideButtonCardJs(json, match.index)) {
       const inside = withoutOptional(match[1]);
       const head = inside.replace(TRANSFORM_TAIL, '');
-      // A quoted name is text, not a variable (#398).
-      if (quotedText(head) === undefined) names.push(head);
-      const head = inside.replace(TRANSFORM_TAIL, '');
-      // The template's own names are given by every build, not set by anybody (#391).
-      if (!TEMPLATE_PLACEHOLDERS.includes(head)) names.push(head);
+      // A quoted name is text, not a variable (#398), and the template's own names are
+      // given by every build, not set by anybody (#391).
+      if (quotedText(head) === undefined && !TEMPLATE_PLACEHOLDERS.includes(head)) names.push(head);
       // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing -
       // and `[[a|if:b]]` reads b to decide whether a is shown at all.
       for (const step of inside.split('|').slice(1)) {

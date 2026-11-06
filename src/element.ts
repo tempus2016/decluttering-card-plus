@@ -650,6 +650,7 @@ export abstract class DeclutteringElement extends LitElement {
      * shown, it is still a card that has been handed a config it cannot use - and one that
      * asks a server for something has already asked by then.
      */
+    this._strictOutcome(hush ? STRICT_OFF : levels, unresolved, said);
     if (!hush && this._refuseIfStrict(unresolved)) return;
     if (instance && !hush && this._holdForRequired(unresolved, templateConfig)) return;
     this._setResolved(thingType, this._withGridOptions(thingType, built), styles, inherited);
@@ -669,8 +670,6 @@ export abstract class DeclutteringElement extends LitElement {
     this._thing = undefined;
     this._thingConfig = undefined;
     this._stopRepeat();
-    if (!hush) this._refuseIfStrict(unresolved);
-    this._strictOutcome(hush ? STRICT_OFF : levels, unresolved, said);
   }
 
   /*
@@ -1049,9 +1048,7 @@ export abstract class DeclutteringElement extends LitElement {
    * a template for other people wants the opposite, and `strict: true` is how they say so.
    */
   protected _refuseIfStrict(unresolved: string[]): boolean {
-    if (!this._strict || !unresolved.length) return false;
-  protected _refuseIfStrict(unresolved: string[]): void {
-    if (this._strictLevels.errors !== 'fail' || !unresolved.length) return;
+    if (this._strictLevels.errors !== 'fail' || !unresolved.length) return false;
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
     this._dropThing();
     this._error = localize(unresolved.length === 1 ? 'error.strict_one' : 'error.strict_many', { which }, this._hass);

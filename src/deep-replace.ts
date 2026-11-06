@@ -1592,8 +1592,7 @@ function deepReplace(
     const whose = templateName
       ? localize('warn.unresolved_template', { name: templateName })
       : localize('warn.unresolved_this');
-    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${shown(unset[0])}` }), 'unset');
-    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${unset[0]}` }), 'unset', true);
+    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${shown(unset[0])}` }), 'unset', true);
   }
 
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be

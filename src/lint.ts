@@ -309,15 +309,9 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
     ...definedNames(template),
     ...known,
     ...POSITION_NAMES,
-    ...structureNames(template),
-    ALERTS_NAME,
-  ]);
-  const defined = new Set([
-    ...definedNames(template),
-    ...known,
-    ...POSITION_NAMES,
     ...TEMPLATE_PLACEHOLDERS,
     ...structureNames(template),
+    ALERTS_NAME,
   ]);
   const findings = [...scan.findings];
 
