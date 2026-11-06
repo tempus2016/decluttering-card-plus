@@ -47,6 +47,7 @@ import {
   yieldsBoolean,
   yieldsList,
   yieldsNumber,
+  templatePlaceholders,
 } from './variables';
 import { closestStep, knownStep } from './closest';
 
@@ -117,6 +118,9 @@ export interface BuildExtras {
    * placeholder left standing: that is an error to `strict:`, and is reported as one.
    */
   onWarning?: (message: string) => void;
+  // The templates whose cards this one sits inside, outermost first, for `__template_path__`
+  // and the names beside it (#391).
+  templateChain?: string[];
 }
 
 /*
@@ -126,6 +130,10 @@ export interface BuildExtras {
  * hundred copies is forty thousand builds for a card nobody could read (review 2026-10-25).
  */
 const MAX_FILLS = 2000;
+
+// Whether a build has any use for the template's own names, so one that does not is not given four
+// variables to carry through every pass.
+const TEMPLATE_NAME_USE = /\[\[__(?:parent_|root_)?template_(?:name|path)__/;
 
 // How far a `with:` or `repeat:` may nest inside another before it is refused - a body that
 // fills itself in would otherwise never settle.
@@ -1007,6 +1015,13 @@ function deepReplace(
   for (const [name, template] of Object.entries(itemTemplates)) {
     if (!variableArray.some((entry) => Object.keys(entry)[0] === name)) {
       variableArray.push({ [name]: (template as any)?.item });
+    }
+  }
+  // The template's own names, under everything else (#391), when anything here asks for them.
+  if (TEMPLATE_NAME_USE.test(JSON.stringify([content, variableArray]))) {
+    for (const entry of templatePlaceholders(templateName, extras?.templateChain)) {
+      const name = Object.keys(entry)[0];
+      if (!variableArray.some((each) => Object.keys(each)[0] === name)) variableArray.push(entry);
     }
   }
   exposeFillValues(

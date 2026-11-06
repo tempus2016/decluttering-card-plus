@@ -1082,6 +1082,8 @@ export abstract class DeclutteringElement extends LitElement {
         0,
         trace,
         cssSafe,
+        false,
+        { templateChain: this._openTemplates },
       );
     }
     if (cardStyle) {
@@ -1096,6 +1098,8 @@ export abstract class DeclutteringElement extends LitElement {
         0,
         trace,
         cssSafe,
+        false,
+        { templateChain: this._openTemplates },
       );
     }
     return styles;
@@ -1113,7 +1117,7 @@ export abstract class DeclutteringElement extends LitElement {
   protected _buildExtras(): BuildExtras {
     const ll = getLovelaceConfig();
     // No rendered Jinja sources here: a `repeat:` over `template:` is out of the spike's scope.
-    return { itemTemplates: itemTemplatesOf(ll), context: sourceContext(ll) };
+    return { itemTemplates: itemTemplatesOf(ll), context: sourceContext(ll), templateChain: this._openTemplates };
   }
 
   private _handDown(
@@ -1134,6 +1138,7 @@ export abstract class DeclutteringElement extends LitElement {
       undefined,
       undefined,
       true,
+      { templateChain: this._openTemplates },
     );
     return (Array.isArray(list) ? list : []).filter(
       (entry: unknown) => !!entry && typeof entry === 'object' && Object.keys(entry as object).length > 0,

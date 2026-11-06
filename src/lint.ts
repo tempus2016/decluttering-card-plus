@@ -9,6 +9,7 @@ import {
   isWellFormedCondition,
   normaliseVariables,
   POSITION_NAMES,
+  TEMPLATE_PLACEHOLDERS,
   templateDefaults,
   variableName,
   visibilityConditions,
@@ -310,6 +311,13 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
     ...POSITION_NAMES,
     ...structureNames(template),
     ALERTS_NAME,
+  ]);
+  const defined = new Set([
+    ...definedNames(template),
+    ...known,
+    ...POSITION_NAMES,
+    ...TEMPLATE_PLACEHOLDERS,
+    ...structureNames(template),
   ]);
   const findings = [...scan.findings];
 
