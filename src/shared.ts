@@ -100,6 +100,21 @@ export function editDialogOf(element: Element): Element | undefined {
   return undefined;
 }
 
+/*
+ * Whether an edit dialog is open on the page (#407). Home Assistant builds the dialog's
+ * preview before the card is placed in it, so a card being configured cannot yet tell it is
+ * in one - only that one is open. Dialogs live in the home-assistant element's shadow root;
+ * the dialog stays there once closed, with no `_params`. A dialog that has no such field at
+ * all (a future Home Assistant, a test) counts as open.
+ */
+export function editDialogOnPage(): boolean {
+  const root = document.querySelector('home-assistant')?.shadowRoot;
+  const dialog = root?.querySelector('hui-dialog-edit-card') ?? document.querySelector('hui-dialog-edit-card');
+  if (!dialog) return false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return !('_params' in dialog) || !!(dialog as any)._params;
+}
+
 // Tags this bundle owns.
 export const CARD_TAG = 'decluttering-card-plus';
 
