@@ -342,6 +342,7 @@
   "picker.card_description": "Gebruik dezelfde kaartconfiguratie meerdere keren met variabelen om je configuratie op te ruimen.",
   "picker.published_description": "Een kaart gebouwd uit het decluttering-sjabloon \"{template}\".",
   "picker.badge_description": "Instantieert een sjabloon waarvan de inhoud een badge is.",
+  "picker.section_description": "Een sectie gemaakt van een van je sjablonen, die met het sjabloon actueel blijft.",
   "picker.template_description": "Definieert een herbruikbaar sjabloon voor decluttering-kaarten om te instantiëren.",
   "picker.legacy_card_description": "Compatibiliteitsalias voor bestaande custom:decluttering-card-configuraties.",
   "picker.legacy_template_description": "Compatibiliteitsalias voor bestaande custom:decluttering-template-configuraties.",

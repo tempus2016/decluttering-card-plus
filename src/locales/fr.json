@@ -342,6 +342,7 @@
   "picker.card_description": "Réutilisez plusieurs fois la même configuration de carte avec des variables pour désencombrer votre configuration.",
   "picker.published_description": "Une carte construite à partir du modèle decluttering « {template} ».",
   "picker.badge_description": "Instanciez un modèle dont le contenu est un badge.",
+  "picker.section_description": "Une section construite à partir de l'un de vos modèles, tenue à jour par le modèle.",
   "picker.template_description": "Définissez un modèle réutilisable que les cartes decluttering instancient.",
   "picker.legacy_card_description": "Alias de compatibilité pour les configurations custom:decluttering-card existantes.",
   "picker.legacy_template_description": "Alias de compatibilité pour les configurations custom:decluttering-template existantes.",

@@ -342,6 +342,7 @@
   "picker.card_description": "Reutiliza varias veces la misma configuración de tarjeta con variables para despejar tu configuración.",
   "picker.published_description": "Una tarjeta creada con la plantilla de decluttering \"{template}\".",
   "picker.badge_description": "Instancia una plantilla cuyo contenido es una insignia.",
+  "picker.section_description": "Una sección creada a partir de una de tus plantillas, que se mantiene al día con la plantilla.",
   "picker.template_description": "Define una plantilla reutilizable que las tarjetas decluttering instancian.",
   "picker.legacy_card_description": "Alias de compatibilidad para configuraciones custom:decluttering-card existentes.",
   "picker.legacy_template_description": "Alias de compatibilidad para configuraciones custom:decluttering-template existentes.",

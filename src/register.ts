@@ -8,7 +8,7 @@ import { localize } from './localize';
 import { DeclutteringCard } from './card';
 import { DeclutteringLazyCopy } from './lazy-copy';
 import { CARD_TAG, LAZY_COPY_TAG, TEMPLATE_TAG, defineElement } from './shared';
-import { DeclutteringDashboardStrategy, DeclutteringViewStrategy } from './strategies';
+import { DeclutteringDashboardStrategy, DeclutteringSectionStrategy, DeclutteringViewStrategy } from './strategies';
 import { DeclutteringTemplate } from './template-card';
 
 // Home Assistant finds a custom view strategy by this tag, from `type: custom:decluttering-card-plus`.
@@ -16,6 +16,9 @@ const STRATEGY_TAG = 'll-strategy-view-decluttering-card-plus';
 
 // And a dashboard strategy by this one, from the same type written on the dashboard itself.
 const DASHBOARD_STRATEGY_TAG = 'll-strategy-dashboard-decluttering-card-plus';
+
+// And a section strategy by this one, from the same type written as one section's strategy (#400).
+const SECTION_STRATEGY_TAG = 'll-strategy-section-decluttering-card-plus';
 
 // Tags of the original custom-cards/decluttering-card, claimed when it is not installed
 // so that existing configurations keep working unchanged.
@@ -31,6 +34,12 @@ const customCards: any[] = ((window as any).customCards = (window as any).custom
 // Home Assistant keeps a separate registry for badges, which is what its badge picker reads.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const customBadges: any[] = ((window as any).customBadges = (window as any).customBadges || []);
+
+// And one for strategies, which the add-section dialog reads for its "Community sections"
+// (Home Assistant 2026.11). Older versions never read it, and the strategy still works there
+// when written by hand.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const customStrategies: any[] = ((window as any).customStrategies = (window as any).customStrategies || []);
 
 // Shown as the documentation link on the entry in Home Assistant's card and badge pickers.
 const DOCUMENTATION_URL = 'https://github.com/tempus2016/decluttering-card-plus';
@@ -159,6 +168,16 @@ if (defineElement(CARD_TAG, DeclutteringCard)) {
 defineElement(STRATEGY_TAG, DeclutteringViewStrategy);
 
 defineElement(DASHBOARD_STRATEGY_TAG, DeclutteringDashboardStrategy);
+
+if (defineElement(SECTION_STRATEGY_TAG, DeclutteringSectionStrategy)) {
+  customStrategies.push({
+    type: CARD_TAG,
+    strategyType: 'section',
+    documentationURL: DOCUMENTATION_URL,
+    name: 'Decluttering Card Plus',
+    description: localize('picker.section_description'),
+  });
+}
 
 defineElement(LAZY_COPY_TAG, DeclutteringLazyCopy);
 

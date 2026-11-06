@@ -89,26 +89,86 @@ export function expandEntry(
   if (!items.length) return entry.empty === undefined ? [] : [entry.empty];
 
   const common = [...normaliseVariables(entry.variables), ...normaliseVariables(shared)];
-  return items.map((item, index) => {
-    const values = forEachVariables(item, common, index, items.length);
-    return handDown(
-      deepReplace(
-        values,
-        {},
-        content,
-        undefined,
-        hass,
-        undefined,
-        undefined,
-        0,
-        undefined,
-        undefined,
-        false,
-        extrasOf(context),
-      ),
+  return items.map((item, index) =>
+    fillCopy(content, forEachVariables(item, common, index, items.length), hass, context),
+  );
+}
+
+/** One copy of a repeat's content, its placeholders filled and its templated cards handed the values. */
+function fillCopy(content: any, values: VariablesConfig[], hass?: any, context?: SourceContext): any {
+  return handDown(
+    deepReplace(
       values,
-    );
-  });
+      {},
+      content,
+      undefined,
+      hass,
+      undefined,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      extrasOf(context),
+    ),
+    values,
+  );
+}
+
+/*
+ * The section strategy (#400) - `strategy: { type: custom:decluttering-card-plus }` on one
+ * section of a sections view, which Home Assistant 2026.11 offers under "Community sections"
+ * when a section is added. Home Assistant can only ask a section strategy for one section,
+ * so there is nothing to repeat over here; it comes in two shapes.
+ *
+ * A template, with the card's own options beside it - what the add-section dialog starts
+ * from. The section holds one card built from that template, so a `group:` template lays
+ * its cards out across the section, and everything a card can say (variables, a repeat,
+ * on_error) works as it does on a card.
+ *
+ *   - strategy:
+ *       type: custom:decluttering-card-plus
+ *       template: room_section
+ *       variables:
+ *         - area: kitchen
+ *
+ * Or a section written out, filled in the way a repeated section of the view strategy is
+ * for each of its items - placeholders replaced, and the templated cards in it handed the
+ * values - only once, from `variables:`.
+ *
+ *   - strategy:
+ *       type: custom:decluttering-card-plus
+ *       variables:
+ *         - area: kitchen
+ *       section:
+ *         type: grid
+ *         cards:
+ *           - type: heading
+ *             heading: '[[area]]'
+ *           - type: custom:decluttering-card-plus
+ *             template: room_lights
+ */
+export function generateSection(config: any, hass?: any, context?: SourceContext): any {
+  if (config?.section !== undefined) {
+    const section = fillCopy(config.section, normaliseVariables(config.variables), hass, context);
+    if (!section || typeof section !== 'object' || Array.isArray(section)) return { type: 'grid', cards: [] };
+    return section.type === undefined ? { type: 'grid', ...section } : section;
+  }
+  const card: any = { ...config, type: STRATEGY_TYPE };
+  return { type: 'grid', cards: [card] };
+}
+
+/*
+ * Which template the add-section dialog's preview tile is drawn with: the first `group:`
+ * template, which is a section's worth of cards, or failing that the first card template.
+ * Item, badge, row and element templates are no use as a section.
+ */
+export function sectionStubTemplate(templates: Record<string, any>): string | undefined {
+  const names = Object.keys(templates ?? {});
+  return (
+    names.find((name) => templates[name]?.group !== undefined) ??
+    names.find((name) => templates[name]?.card !== undefined)
+  );
 }
 
 /** The view a strategy config describes, with every repeat written out. */
