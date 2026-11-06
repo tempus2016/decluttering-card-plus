@@ -1,4 +1,4 @@
-import { LitElement, html, TemplateResult, CSSResult } from 'lit';
+import { LitElement, html, TemplateResult, CSSResult, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { keyed } from 'lit/directives/keyed.js';
 import { HomeAssistant, fireEvent, LovelaceConfig } from 'custom-card-helpers';
@@ -89,6 +89,15 @@ export class DeclutteringTemplateShareTab extends LitElement {
   protected render(): TemplateResult {
     if (!this.hass || !this._config) return html``;
     return this._renderShare();
+  }
+
+  /** The editor shows a dot on this tab while a shared update waits (idea 31). */
+  protected updated(changed: PropertyValues): void {
+    super.updated(changed);
+    if (changed.has('_updates')) {
+      const count = (this._updates ?? []).filter((each) => each.status === 'update').length;
+      this.dispatchEvent(new CustomEvent('updates-found', { detail: count, bubbles: true, composed: true }));
+    }
   }
 
   // The Share tab's import box: what has been pasted, whether it parsed, and what is

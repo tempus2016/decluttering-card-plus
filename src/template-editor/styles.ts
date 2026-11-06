@@ -210,4 +210,39 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
   .field-row.help-only > decluttering-help {
     margin-top: 0;
   }
+
+  /* The counts on the tabs (idea 31): a pill after the label, not a digit glued to it. */
+  ha-tab-group-tab .pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 6px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--primary-color);
+    color: var(--text-primary-color, #fff);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    vertical-align: middle;
+  }
+  ha-tab-group-tab .pill.grey {
+    background: var(--disabled-color, #bdbdbd);
+    color: var(--primary-text-color);
+  }
+  ha-tab-group-tab .pill.warn {
+    background: var(--warning-color, #ffa600);
+    color: #000;
+  }
+  ha-tab-group-tab .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-left: 6px;
+    border-radius: 50%;
+    background: var(--warning-color, #ffa600);
+    vertical-align: middle;
+  }
 `;

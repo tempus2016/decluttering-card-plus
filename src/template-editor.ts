@@ -5,6 +5,7 @@ import { DeclutteringTemplateConfig, TemplateConfig, FormSchemaEntry } from './t
 import { suggestVariables } from './suggest';
 import {
   collectSharedDeclarations,
+  checkDashboard,
   collectTemplates,
   collectUsages,
   listPlainCards,
@@ -16,6 +17,7 @@ import {
   moveItem,
   itemTemplatesOf,
   parentsOf,
+  totalUsages,
 } from './templates';
 import { contentKey, listSettings, nameForSetting, namesInUse, promoteSetting, SettingPath } from './promote';
 import {
@@ -31,7 +33,15 @@ import { localize, onLanguageLoaded } from './localize';
 import { sameConfig } from './undo';
 import { definedNames, lintTemplate } from './lint';
 import { getThingType, isVariablesShape, loadCardEditorPicker, setOrDelete } from './shared';
-import { THING_STUBS, DRAG_PATH, textField, loadRowEditor, saveDashboardWith } from './template-editor/common';
+import {
+  THING_STUBS,
+  DRAG_PATH,
+  textField,
+  loadRowEditor,
+  saveDashboardWith,
+  tabCounts,
+} from './template-editor/common';
+import { TrashEntry, loadTrash, onTrashChanged } from './trash';
 import { TEMPLATE_EDITOR_STYLES } from './template-editor/styles';
 import './template-editor/share-tab';
 import './template-editor/declarations';
@@ -46,6 +56,10 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   @state() private _config?: DeclutteringTemplateConfig;
 
   @state() private _selectedTab = 'settings';
+  // For the pills on the tabs (idea 31): the trash, and how many shared updates the Share tab found.
+  @state() private _trash?: TrashEntry[];
+  @state() private _updateCount = 0;
+  private _unwatchTrash?: () => void;
 
   // A pending suggestion, held between the press that works it out and the press that
   // applies it - rewriting somebody's card is not something to do on a single click.
@@ -177,6 +191,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     // `defaults:` is read as `default:`, so the field shows the two folded together.
     const defaultsData = { default: templateDefaults(this._config) };
     const declared = getDeclarations(this._config).length;
+    const pills = this._renderPills();
 
     return html`
       <ha-tab-group .active=${this._selectedTab} @click=${this._activateTab}>
@@ -201,10 +216,10 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
               : html``
         }
         <ha-tab-group-tab slot="nav" panel="usages">
-          ${localize('template_editor.tab_usages', undefined, this.hass)}
+          ${localize('template_editor.tab_usages', undefined, this.hass)} ${pills.usages}
         </ha-tab-group-tab>
         <ha-tab-group-tab slot="nav" panel="share">
-          ${localize('template_editor.tab_share', undefined, this.hass)}
+          ${localize('template_editor.tab_share', undefined, this.hass)} ${pills.share}
         </ha-tab-group-tab>
       </ha-tab-group>
       <decluttering-example-strip
@@ -334,6 +349,10 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                         .lovelace=${this.lovelace}
                         .config=${this._config}
                         @select-tab=${this._selectTab}
+                        @updates-found=${(ev: CustomEvent<number>): void => {
+                          ev.stopPropagation();
+                          this._updateCount = ev.detail;
+                        }}
                       ></decluttering-template-share-tab>`
                     : html``
       }
@@ -987,12 +1006,49 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     return saveDashboardWith(this, build, operation, dialog);
   }
 
+  private async _loadTrash(): Promise<void> {
+    if (!this.hass) return;
+    this._trash = await loadTrash(this.hass);
+  }
+
+  /** The counts the tabs wear: uses, cards leaving a variable unset, trash entries. */
+  private _renderPills(): { usages: TemplateResult; share: TemplateResult } {
+    const name = this._config?.template;
+    const ll = this._savedLovelace;
+    if (!name || !ll) return { usages: html``, share: html`` };
+    const counts = tabCounts(totalUsages(ll, name), checkDashboard(ll).unsetVariables, this._trash, name);
+    const usages =
+      counts.usages === 0
+        ? html`<span class="pill grey" title=${localize('template_editor.pill_unused', undefined, this.hass)}>0</span>`
+        : html`<span class="pill">${counts.usages}</span>${
+              counts.unset
+                ? html`<span class="pill warn"
+                    >${localize('template_editor.pill_unset', { count: counts.unset }, this.hass)}</span
+                  >`
+                : html``
+            }`;
+    const share = html`${
+      this._updateCount
+        ? html`<span class="dot" title=${localize('template_editor.pill_update', undefined, this.hass)}></span>`
+        : html``
+    }${
+      counts.trash
+        ? html`<span class="pill grey"
+            >${localize('template_editor.pill_trash', { count: counts.trash }, this.hass)}</span
+          >`
+        : html``
+    }`;
+    return { usages, share };
+  }
+
   // Stops listening for a language chunk landing (idea 4).
   private _stopLanguageListener?: () => void;
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback();
     this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
+    this._unwatchTrash = onTrashChanged(() => void this._loadTrash());
+    void this._loadTrash();
     if (!this._loadedElements) {
       await loadCardEditorPicker();
       await loadRowEditor();
@@ -1004,6 +1060,8 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     super.disconnectedCallback();
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
+    this._unwatchTrash?.();
+    this._unwatchTrash = undefined;
   }
 
   protected updated(changed: PropertyValues): void {

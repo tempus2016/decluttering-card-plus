@@ -147,3 +147,24 @@ export async function saveDashboardWith(
     host._busy = false;
   }
 }
+
+/** What the tab strip shows beside Where used and Share (idea 31). */
+export interface TabCounts {
+  usages: number;
+  /** Cards leaving a required variable of this template unset. */
+  unset: number;
+  trash: number;
+}
+
+export function tabCounts(
+  usages: number,
+  unset: { template: string; count: number }[],
+  trash: { name: string }[] | undefined,
+  name: string,
+): TabCounts {
+  return {
+    usages,
+    unset: unset.filter((each) => each.template === name).reduce((sum, each) => sum + each.count, 0),
+    trash: (trash ?? []).filter((each) => each.name === name).length,
+  };
+}
