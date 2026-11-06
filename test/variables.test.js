@@ -1797,6 +1797,14 @@ const knownStepForTest = (step) => KNOWN_PARAM_STEPS.includes(step.slice(0, step
   check('a count feeds plural', applyTransform('count|plural:light,lights', ['a', 'b'], en), 'lights');
   check('plural with a word is left as it was', applyTransform('plural:light,lights', 'many', en), 'many');
   check('plural with one form is left as it was', applyTransform('plural:light', '3', en), '3');
+  {
+    const pl = { locale: { language: 'pl' } };
+    check(
+      "three forms follow the language's own categories: Polish one, few, many",
+      ['1', '3', '5', '22', '25'].map((n) => applyTransform('plural:światło,światła,świateł', n, pl)),
+      ['światło', 'światła', 'świateł', 'światła', 'świateł'],
+    );
+  }
   check('format_number uses the viewer separators', applyTransform('format_number:1', '12345.678', en), '12,345.7');
   check('in German', applyTransform('format_number:1', '12345.678', de), '12.345,7');
   check('as money', applyTransform('format_number:currency=GBP', '4.5', en), '£4.50');

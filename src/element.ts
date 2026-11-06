@@ -1678,7 +1678,13 @@ export abstract class DeclutteringElement extends LitElement {
      * missing room is a visible decision rather than a silent gap.
      */
     const entries = wanted.map((copy, index) => {
-      const seen = templateVisibility(copy.template, forEachVariables(copy.item, config.variables), this._buildHass);
+      // Its place among the candidates is known to visibility: too (ideas 37, 45), so
+      // `variable: first` works; the copies that are built are numbered again after.
+      const seen = templateVisibility(
+        copy.template,
+        forEachVariables(copy.item, config.variables, index, wanted.length),
+        this._buildHass,
+      );
       return seen.visible
         ? { copy }
         : { skipped: skippedConfig(itemLabel(copy.item, index), seen.reason) as LovelaceThingConfig };

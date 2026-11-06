@@ -882,7 +882,8 @@ function hasFallback(jsonConfig: string): boolean {
  */
 function missingItemTemplate(inside: string, known: (name: string) => boolean): string | undefined {
   const [head, step] = withoutOptional(inside).split('|');
-  if (step === undefined || !isStructureStep(step) || known(head)) return undefined;
+  // A slot is the card's own to fill (idea 35): left empty it is unset, not a missing item template.
+  if (step === undefined || stepName(step) === SLOT_STEP || !isStructureStep(step) || known(head)) return undefined;
   return head;
 }
 

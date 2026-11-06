@@ -859,15 +859,21 @@ function localeStep(step: string, text: string, hass?: any): string | undefined 
       return text;
     }
     let category = 'other';
+    let categories = ['one', 'other'];
     try {
-      category = new Intl.PluralRules(languageOf(hass)).select(value);
+      const rules = new Intl.PluralRules(languageOf(hass));
+      category = rules.select(value);
+      categories = rules.resolvedOptions().pluralCategories;
     } catch {
       category = value === 1 ? 'one' : 'other';
     }
-    // Two forms are singular and plural; more follow the categories in order, as far as they go.
+    // Two forms are singular and plural. More follow the language's own categories in the
+    // usual order - Polish is one, few, many, other - so `plural:światło,światła,świateł`
+    // reads 1, 3 and 5 right; a category past the last form takes the last.
     if (forms.length === 2) return category === 'one' ? forms[0] : forms[1];
-    const at = Math.min(PLURAL_CATEGORIES.indexOf(category), forms.length - 1);
-    return forms[Math.max(at, 0)];
+    const own = PLURAL_CATEGORIES.filter((each) => categories.includes(each));
+    const at = Math.min(own.indexOf(category), forms.length - 1);
+    return forms[at < 0 ? forms.length - 1 : at];
   }
   const locale = numberLocaleOf(hass);
   const options: Intl.NumberFormatOptions = {};
@@ -878,14 +884,14 @@ function localeStep(step: string, text: string, hass?: any): string | undefined 
     options.style = 'currency';
     options.currency = arg.slice('currency='.length).toUpperCase();
   } else if (arg) {
-    warnOnce('warn.bad_number_argument', step, text, hass);
+    warnOnce('warn.bad_step_argument', step, text, hass);
     return text;
   }
   if (locale === undefined) options.useGrouping = false;
   try {
     return new Intl.NumberFormat(locale ?? 'en', options).format(value);
   } catch {
-    warnOnce('warn.bad_number_argument', step, text, hass);
+    warnOnce('warn.bad_step_argument', step, text, hass);
     return text;
   }
 }
@@ -922,7 +928,7 @@ function colourStep(step: string, text: string, hass?: any): string | undefined 
   if (name === 'alpha') {
     const alpha = Number(arg);
     if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
-      warnOnce('warn.bad_number_argument', step, text, hass);
+      warnOnce('warn.bad_step_argument', step, text, hass);
       return text;
     }
     return toRgba(colour, alpha);
@@ -939,7 +945,7 @@ function colourStep(step: string, text: string, hass?: any): string | undefined 
   }
   const percent = Number(arg);
   if (!Number.isFinite(percent)) {
-    warnOnce('warn.bad_number_argument', step, text, hass);
+    warnOnce('warn.bad_step_argument', step, text, hass);
     return text;
   }
   return toHex(name === 'lighten' ? lighten(colour, percent) : darken(colour, percent));

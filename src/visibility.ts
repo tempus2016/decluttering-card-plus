@@ -129,9 +129,11 @@ export function itemLabel(item: unknown, index: number): string {
     for (const key of LABEL_KEYS) {
       if (typeof record[key] === 'string' && record[key]) return record[key] as string;
     }
-    const scalar = Object.values(record).find((value) => typeof value === 'string' || typeof value === 'number');
+    const scalar = Object.values(record).find(
+      (value) => (typeof value === 'string' && value !== '') || typeof value === 'number',
+    );
     if (scalar !== undefined) return String(scalar);
-  } else if (typeof item === 'string' || typeof item === 'number') {
+  } else if ((typeof item === 'string' && item !== '') || typeof item === 'number') {
     return String(item);
   }
   return `#${index + 1}`;
