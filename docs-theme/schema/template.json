@@ -49,8 +49,108 @@
           ],
           "description": "What a card using this template shows instead of an error, unless the card says otherwise."
         },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TemplateCheck"
+          },
+          "description": "What counts as a problem with the values a card gives it (#389): each a `condition`, a `message`, a `level` - info, warn or error - and for an error whether to go on building."
+        },
+        "alert": {
+          "type": "object",
+          "additionalProperties": {},
+          "description": "A config of the template's kind shown instead of the card while a warn or error check has failed."
+        },
+        "strict": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/StrictConfig"
+            }
+          ],
+          "description": "What a card using this template does about errors and warnings, unless the card says otherwise (#390)."
+        },
         "suggest_for": {
           "description": "Which entities Home Assistant's add-card dialog offers this template for."
+        },
+        "editor_hide": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field."
+        },
+        "author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Who wrote it: a name, or `name`/`github`/`email`/`url`. For sharing; not inherited."
+        },
+        "license": {
+          "type": "string",
+          "description": "The licence it is shared under. Not inherited."
+        },
+        "help": {
+          "type": "string",
+          "description": "A page or post explaining it. Not inherited."
+        },
+        "homepage": {
+          "type": "string",
+          "description": "Where it lives, and where newer versions are. Not inherited."
+        },
+        "readme": {
+          "type": "string",
+          "description": "Markdown shown before it is installed. Not inherited."
+        },
+        "related": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Templates that belong with this one without it calling them; they travel with it. Not inherited."
+        },
+        "requires": {
+          "type": "object",
+          "additionalProperties": {},
+          "description": "Integrations, entities, custom cards and versions it needs, checked before installing."
+        },
+        "setup": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Variables to ask for when it is installed, written into its defaults."
         },
         "extends": {
           "description": "The template this one builds on: its content underneath, this one's last word on top. A list builds on several, left to right, each later one over the ones before.",
@@ -118,6 +218,12 @@
         "item": {
           "description": "A piece of config rather than a card - one entry of a camera card's `cameras:`, say - filled in where a placeholder asks for it: `[[name|with:...]]` once, `[[name|repeat:...]]` once per item. Takes `default:`, `let:` and `variables:` like any template."
         },
+        "for_each": {
+          "description": "For an item template: what a bare `[[name|repeat]]` repeats over - a list, or a placeholder that fills to one."
+        },
+        "for_each_from": {
+          "description": "For an item template: the registry source a bare `[[name|repeat]]` repeats over."
+        },
         "card": {
           "$ref": "#/$defs/config_with_placeholders"
         },
@@ -134,14 +240,110 @@
           "description": "Cards that take their places in the section one by one, as if each were written there.",
           "$ref": "#/$defs/config_with_placeholders"
         },
+        "dashboard": {
+          "description": "A whole dashboard, for a dashboard strategy's `page:` to build. Not a card."
+        },
         "style": {
           "$ref": "#/$defs/config_with_placeholders"
         },
         "grid_options": {
           "description": "How much of a sections grid a card built from this template asks for.",
           "$ref": "#/$defs/config_with_placeholders"
+        },
+        "visibility": {
+          "description": "Conditions on the variables that decide whether a copy is built at all - `variable:` with `exists`, `equals`, `not_equals`, `in`, `not_in` or `matches`. Every one must hold."
+        },
+        "version": {
+          "type": [
+            "number",
+            "string"
+          ],
+          "description": "Which version of itself the template is, for the health panel and the shared store. Not enforced."
+        },
+        "changes": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "description": "What changed in each version, keyed by version - the health panel reads a variable's story from these."
         }
       }
+    },
+    "TemplateCheck": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "condition": {
+          "type": [
+            "string",
+            "boolean"
+          ],
+          "description": "A show_if condition - `name`, `!name`, `name=text`, `name!=text` - text with placeholders, or true or false."
+        },
+        "fail_on": {
+          "type": "boolean",
+          "description": "What the condition comes out as when the check fails. True unless it says otherwise."
+        },
+        "message": {
+          "type": "string",
+          "description": "What is said when it fails, with placeholders; a generic sentence when there is none."
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warn",
+            "warning",
+            "error"
+          ],
+          "description": "`info`, `warn` (the default) or `error`; `warning` reads as `warn`."
+        },
+        "continue_rendering": {
+          "type": "boolean",
+          "description": "An error with `false` fails the build, so `on_error:` takes over."
+        }
+      },
+      "description": "One of a template's `checks:` (#389)."
+    },
+    "StrictConfig": {
+      "type": "object",
+      "properties": {
+        "errors": {
+          "$ref": "#/definitions/ErrorMode"
+        },
+        "warnings": {
+          "$ref": "#/definitions/WarningMode"
+        }
+      },
+      "description": "The level-by-level form of `strict:`. `error` and `warn` are taken too, the words #390 asked with."
+    },
+    "ErrorMode": {
+      "type": "string",
+      "enum": [
+        "ignore",
+        "report",
+        "fail"
+      ]
+    },
+    "WarningMode": {
+      "type": "string",
+      "enum": [
+        "ignore",
+        "notice",
+        "report"
+      ]
     },
     "VariableDeclaration": {
       "type": "object",
@@ -227,6 +429,45 @@
         "multiline": {
           "type": "boolean",
           "description": "`type: text`: a box with room for more than one line."
+        },
+        "show_if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Shows the field in the card editor only while one of these holds - `if:` conditions, written without the `if:`."
+        },
+        "hide_if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Hides the field in the card editor while any of these holds."
+        },
+        "options_from": {
+          "description": "A dropdown of what this source finds - the same source `for_each_from:` takes (#404)."
+        },
+        "option_value": {
+          "type": "string",
+          "description": "With `options_from:`, what each option sets the variable to, filled in per thing found."
+        },
+        "option_label": {
+          "type": "string",
+          "description": "With `options_from:`, what each option shows; the value when unset."
         }
       },
       "required": [
@@ -240,7 +481,7 @@
   "$defs": {
     "text_with_placeholders": {
       "type": "string",
-      "pattern": "^(?:[^\\[]|\\[(?!\\[)|\\[\\[!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|(?:area|area_icon|area_id|bool|capitalize|count|device|device_class|device_id|domain|exists|first|floor|floor_icon|friendly_name|icon|join|json|kebab|labels|last|lower|manufacturer|model|object_id|round|slug|split|state|title|translate|trim|upper|(?:add|attr|contains|default|div|find|if|join|map|max|mod|mul|or|pad|prefix|repeat|replace|round|split|sub|suffix|with):[^|\\]]*))*\\??\\]\\])*$",
+      "pattern": "^(?:[^\\[]|\\[(?!\\[)|\\[\\[!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|(?:age|area|area_icon|area_id|bool|capitalize|card_exists|contrast|count|device|device_class|device_id|domain|exists|first|flat|floor|floor_icon|format_number|friendly_name|icon|icon_exists|if_card_exists|if_exists|if_icon_exists|if_integration_exists|integration_exists|join|json|kebab|labels|last|lower|manufacturer|model|object_id|raw|relative|repeat|round|slot|slug|split|state|title|translate|trim|upper|with|yaml|(?:add|age|alpha|attr|contains|darken|default|div|find|format|format_number|if|join|lighten|map|max|mix|mod|mul|or|pad|plural|prefix|repeat|replace|round|split|sub|suffix|switch|unless|with):[^|\\]]*))*\\??\\]\\])*$",
       "description": "Text, with any number of [[placeholders]]. Each placeholder is a variable name, then steps the card knows, then an optional ?."
     },
     "config_with_placeholders": {
