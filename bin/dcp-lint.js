@@ -2,9 +2,11 @@
 /*
  * decluttering-card-plus lint - check YAML-mode dashboards from a shell (idea 57).
  *
- *   npx decluttering-card-plus lint dashboards/rooms.yaml [more files or directories]
- *   npx decluttering-card-plus lint --format=github dashboards/     annotations for a PR
- *   npx decluttering-card-plus lint --format=json file.yaml          machine-readable
+ *   node bin/dcp-lint.js lint dashboards/rooms.yaml [more files or directories]
+ *   node bin/dcp-lint.js lint --format=github dashboards/     annotations for a PR
+ *   node bin/dcp-lint.js lint --format=json file.yaml          machine-readable
+ *
+ * Run from a clone of the repo: the card is not published to npm, so there is no npx.
  *
  * Exit 0 when nothing is an error, 1 when something is, 2 when the command itself could not
  * run (no files, unreadable path). The checks are the template editor's own, built into

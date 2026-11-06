@@ -102,7 +102,7 @@ import './skipped';
 import { ErrorDetail, findCardPath, templateEditPath, unsetDetail, withTemplate } from './error-card';
 import { ChipAction } from './edit-chip-pure';
 import './edit-chip';
-import { skeletonHeight } from './skeleton';
+import { inMasonry, MASONRY_UNIT, MASONRY_WAITING_SIZE, skeletonHeight, skeletonRows } from './skeleton';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -2179,10 +2179,12 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     if (this._hiddenByFallback) return html``;
     if (!this._thing && this._waiting && this._thingType !== 'badge' && this._thingType !== 'element') {
       this.classList.add('decluttering-container');
-      return html`<div
-        class="skeleton"
-        style="height: ${skeletonHeight(this._waitingGrid ?? this._gridOptions)}px"
-      ></div>`;
+      const grid = this._waitingGrid ?? this._gridOptions;
+      const height =
+        skeletonRows(grid) === undefined && inMasonry(this)
+          ? MASONRY_WAITING_SIZE * MASONRY_UNIT
+          : skeletonHeight(grid);
+      return html`<div class="skeleton" style="height: ${height}px"></div>`;
     }
     if (!this._hass || !this._thing) return html``;
 
@@ -2551,6 +2553,8 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
 
   // for LovelaceCard
   public getCardSize(): Promise<number> | number {
+    if (!this._thing && this._waiting)
+      return skeletonRows(this._waitingGrid ?? this._gridOptions) ?? MASONRY_WAITING_SIZE;
     return this._thing && this._thingType === 'card' ? (this._thing as LovelaceCard).getCardSize() : 1;
   }
 }

@@ -2490,6 +2490,14 @@ export function usesTimeStep(template: TemplateConfig | undefined): boolean {
   return usesStep(template, (step) => step === RELATIVE_STEP || stepName(step) === AGE_STEP);
 }
 
+/** Whether a template reads an entity's attributes with `attr:` (idea 39), so attribute changes rebuild it. */
+export function usesAttributes(
+  template: TemplateConfig | undefined,
+  itemTemplates?: Record<string, TemplateConfig>,
+): boolean {
+  return usesStep(template, (step) => step.startsWith(ATTRIBUTE_PREFIX), itemTemplates);
+}
+
 export function usesTranslate(
   template: TemplateConfig | undefined,
   itemTemplates?: Record<string, TemplateConfig>,
@@ -2673,7 +2681,10 @@ export function diagnoseInstance(
   }
 
   const answered = answeredNames(template, values, used);
-  const missing = used.filter((name) => !(name in values) && !answered.has(name) && !isAlertsName(name));
+  // A chain with a step nobody knows (`name|uper`) is told apart as an unknown step, not an unset variable.
+  const missing = used.filter(
+    (name) => !name.includes('|') && !(name in values) && !answered.has(name) && !isAlertsName(name),
+  );
   // Which of the missing ones the template says it cannot do without, so an editor can
   // say so more loudly than it says the rest.
   const insisted = new Set(

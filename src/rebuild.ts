@@ -44,8 +44,14 @@ export function rebuildOnRejects(value: unknown): string[] {
 }
 
 /** The state of each entity, in order - undefined for one Home Assistant does not have. */
-export function stateSnapshot(hass: any, entities: string[]): (string | undefined)[] {
-  return entities.map((entity) => hass?.states?.[entity]?.state);
+export function stateSnapshot(hass: any, entities: string[], attributes = false): (string | undefined)[] {
+  return entities.map((entity) => {
+    const state = hass?.states?.[entity];
+    if (!state) return undefined;
+    // A card that reads `attr:` builds again when an attribute moves too (idea 39), which
+    // last_updated marks - but only that card, so a chatty media player costs no one else.
+    return attributes ? `${state.state}\u0000${state.last_updated ?? ''}` : state.state;
+  });
 }
 
 /** Whether any of the states has moved since the snapshot before. No snapshot yet counts as moved. */

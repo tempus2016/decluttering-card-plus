@@ -34,6 +34,7 @@ import {
   getDeclarations,
   usesInstalled,
   usesResolver,
+  usesAttributes,
   usesTimeStep,
   usesTranslate,
   withInheritedVariables,
@@ -140,6 +141,8 @@ export class DeclutteringCard extends DeclutteringElement {
   // rebuild waiting out a burst of changes.
   private _rebuildBuilt?: (string | undefined)[];
   private _rebuildSeen?: (string | undefined)[];
+  // Whether the last build read `attr:`, so an attribute change alone rebuilds it (idea 39).
+  private _rebuildAttributes = false;
   private _rebuildTimer?: ReturnType<typeof setTimeout>;
   private _rebuildWarnedFor?: unknown;
   private _timeWarnedFor?: DeclutteringCardConfig;
@@ -592,6 +595,9 @@ export class DeclutteringCard extends DeclutteringElement {
       (this as any).getGridOptions = (): unknown => this._gridOptions;
     }
     this._deferred = { templateConfig, config, token: this._lastConfig };
+    // The skeleton holds its place meanwhile: with no box at all, a masonry view piles every
+    // waiting card at the top, where each one counts as on screen (idea 10 with idea 48).
+    this._holdPlace(config, templateConfig);
     if (this.isConnected) this._watchForBuild();
   }
 
@@ -875,7 +881,10 @@ export class DeclutteringCard extends DeclutteringElement {
       this._rendering.clear();
     }
     // The states this build reads, so only a change from these sets off the next one.
-    this._rebuildBuilt = this._rebuildOn.length ? stateSnapshot(this._hass, this._rebuildOn) : undefined;
+    this._rebuildAttributes = usesAttributes(templateConfig, this._buildExtras().itemTemplates);
+    this._rebuildBuilt = this._rebuildOn.length
+      ? stateSnapshot(this._hass, this._rebuildOn, this._rebuildAttributes)
+      : undefined;
     this._rebuildSeen = this._rebuildBuilt;
     this._applyGap(config.gap);
     // The card's own beats its template's, and either beats the section's, the view's and the dashboard's (#390).
@@ -1142,14 +1151,14 @@ export class DeclutteringCard extends DeclutteringElement {
    */
   private _watchRebuildOn(hass: HomeAssistant): void {
     if (!this._rebuildOn.length || !this._lastConfig) return;
-    const now = stateSnapshot(hass, this._rebuildOn);
+    const now = stateSnapshot(hass, this._rebuildOn, this._rebuildAttributes);
     if (!statesMoved(this._rebuildSeen, now)) return;
     this._rebuildSeen = now;
     if (this._rebuildTimer) clearTimeout(this._rebuildTimer);
     this._rebuildTimer = setTimeout(() => {
       this._rebuildTimer = undefined;
       // Back where it was built: nothing to do.
-      if (!statesMoved(this._rebuildBuilt, stateSnapshot(this._hass, this._rebuildOn))) return;
+      if (!statesMoved(this._rebuildBuilt, stateSnapshot(this._hass, this._rebuildOn, this._rebuildAttributes))) return;
       try {
         this._rebuild();
       } catch (err) {
@@ -1245,7 +1254,7 @@ export class DeclutteringCard extends DeclutteringElement {
     findTemplateAnywhere(hass, ll, config.template, place.view, place.section)
       .then((templateConfig) => {
         if (templateConfig) {
-          this._applyTemplate(templateConfig, config);
+          this._buildOrDefer(templateConfig, config);
           this._loadLabelsIfWanted(hass);
           this._loadTranslationsIfWanted(hass);
         } else {
