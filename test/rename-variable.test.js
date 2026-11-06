@@ -360,3 +360,10 @@ check(
   renameVariableInTemplate({ variables: { old: 'x', other: 1 }, card: { a: '[[old]]' } }, 'old', 'new'),
   { variables: { new: 'x', other: 1 }, card: { a: '[[new]]' } },
 );
+
+/* --------------------------------------------------- idea 36: unless: renames like if: */
+check(
+  'unless: keeps its shape when its target is renamed',
+  renamePlaceholders('[[x|unless:a]] [[y|unless:!a=on]]', 'a', 'b'),
+  '[[x|unless:b]] [[y|unless:!b=on]]',
+);

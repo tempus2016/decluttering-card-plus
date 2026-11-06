@@ -46,6 +46,10 @@ const {
   usesTranslate,
   declarationSelector,
   VARIABLE_TYPES,
+  conditionHolds,
+  isCondition,
+  conditionTarget,
+  KNOWN_PARAM_STEPS,
 } = require('../.test-build/variables.js');
 
 const { check } = require('./check');
@@ -1658,5 +1662,40 @@ check(
       declarationShown({ name: 'a', show_if: ['[[zones]]', 'kind=x'] }, reader({ kind: 'y' })),
     ],
     [true, false],
+  );
+}
+
+const knownStepForTest = (step) => KNOWN_PARAM_STEPS.includes(step.slice(0, step.indexOf(':')));
+
+/* --------------------------------------------------- idea 36: unless: and switch: */
+{
+  const values = { short: 'yes', mode: 'off', empty: '' };
+  const read = (name) => values[name];
+  check('unless: holds while the variable is a no', conditionHolds('unless:empty', read), true);
+  check('unless: fails while the variable is a yes', conditionHolds('unless:short', read), false);
+  check('unless:! is if:', conditionHolds('unless:!short', read), true);
+  check('unless:name=text holds while it is anything else', conditionHolds('unless:mode=on', read), true);
+  check('and fails when it is that text', conditionHolds('unless:mode=off', read), false);
+  check('unless: is a condition', isCondition('unless:short'), true);
+  check('and names its target', conditionTarget('unless:mode=off'), 'mode');
+  check('a chain with unless: is gated', applyTransform('unless:short', 'Label', undefined, values), undefined);
+  check(
+    'and passes when the condition holds',
+    applyTransform('unless:empty|upper', 'Label', undefined, values),
+    'LABEL',
+  );
+  check('switch: picks the arm the value names', applyTransform('switch:on=red,off=grey,default=amber', 'on'), 'red');
+  check(
+    'switch: falls through to default=',
+    applyTransform('switch:on=red,off=grey,default=amber', 'unavailable'),
+    'amber',
+  );
+  check('switch: takes *= as well', applyTransform('switch:on=red,*=grey', 'off'), 'grey');
+  check('switch: with no arm and no default is a gap', applyTransform('switch:on=red', 'off'), undefined);
+  check('switch: can hand on to a default:', applyTransform('switch:on=red|default:blue', 'off'), 'blue');
+  check(
+    'unless: and switch: are known steps',
+    [knownStepForTest('unless:x'), knownStepForTest('switch:a=b')],
+    [true, true],
   );
 }

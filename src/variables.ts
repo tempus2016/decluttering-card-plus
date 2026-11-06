@@ -1065,13 +1065,27 @@ function standInText(step: string): string | undefined {
  */
 const IF_PREFIX = 'if:';
 
-const IF_STEP = `${IF_PREFIX}!?[A-Za-z0-9_.-]+(?:!?=${TEXT_ARG})?`;
+/*
+ * `unless:` is `if:` turned round, spelled so that it reads (idea 36): `[[label|unless:short]]`
+ * keeps the label unless `short` is set, and `unless:mode=off` holds while `mode` is
+ * anything but off. The same grammar after the colon as `if:`, bang included.
+ */
+const UNLESS_PREFIX = 'unless:';
+
+const CONDITION_BODY = `!?[A-Za-z0-9_.-]+(?:!?=${TEXT_ARG})?`;
+
+const IF_STEP = `(?:${IF_PREFIX}|${UNLESS_PREFIX})${CONDITION_BODY}`;
 
 /** An `if:` step taken apart: the variable it reads, the text it compares with, and whether it is turned round. */
 function parseCondition(step: string): { name: string; text?: string; negated: boolean } {
-  let body = step.slice(IF_PREFIX.length);
-  const not = body.startsWith('!');
-  if (not) body = body.slice(1);
+  const unless = step.startsWith(UNLESS_PREFIX);
+  let body = step.slice(unless ? UNLESS_PREFIX.length : IF_PREFIX.length);
+  // `unless:` is one more turn: `unless:!x` is `if:x`.
+  let not = unless;
+  if (body.startsWith('!')) {
+    not = !not;
+    body = body.slice(1);
+  }
   const equals = body.indexOf('=');
   if (equals === -1) return { name: body, negated: not };
   const unequal = body[equals - 1] === '!';
@@ -1084,7 +1098,7 @@ function parseCondition(step: string): { name: string; text?: string; negated: b
 
 /** Whether a step is a condition rather than something done to the value. */
 export function isCondition(step: string): boolean {
-  return step.startsWith(IF_PREFIX);
+  return step.startsWith(IF_PREFIX) || step.startsWith(UNLESS_PREFIX);
 }
 
 /** The variable an `if:` step reads, for counting it as used. */
@@ -1224,6 +1238,24 @@ export const PARAM_TRANSFORMS: Record<string, (value: string, arg: string) => st
   },
   // Where the text starts in the value, counting from 0, and -1 when it is not in it (#210).
   find: (value, arg) => String(value.indexOf(arg)),
+  /*
+   * `switch:on=green,off=grey,default=amber` (idea 36): `map:` with the fallthrough spelled
+   * `default=`, which is how people reading it expect a switch to end. `*=` is taken too,
+   * so a `map:` can be renamed without being rewritten. A value no arm names, with no
+   * default, is a gap - reported as `map:` reports one, not silently passed through.
+   */
+  switch: (value, arg) => {
+    let fallback: string | undefined;
+    for (const pair of arg.split(',')) {
+      const equals = pair.indexOf('=');
+      if (equals === -1) continue;
+      const from = pair.slice(0, equals);
+      const to = pair.slice(equals + 1);
+      if (from === value) return to;
+      if (from === 'default' || from === '*') fallback = to;
+    }
+    return fallback;
+  },
 };
 
 /*
@@ -2603,4 +2635,5 @@ export const KNOWN_PARAM_STEPS: string[] = [
   OR_PREFIX.slice(0, -1),
   DEFAULT_PREFIX.slice(0, -1),
   IF_PREFIX.slice(0, -1),
+  UNLESS_PREFIX.slice(0, -1),
 ];
