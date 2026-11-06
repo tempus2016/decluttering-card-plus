@@ -29,10 +29,19 @@
           "description": "The card type."
         },
         "variables": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/VariablesConfig"
-          }
+          "description": "The template's variables for this card: a list of single-key mappings, or one mapping.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object",
+              "description": "The same values as one mapping, keyed by name."
+            }
+          ]
         },
         "template": {
           "type": "string"
@@ -377,6 +386,7 @@
           "description": "Variables to ask for when it is installed, written into its defaults."
         },
         "extends": {
+          "description": "The template this one builds on: its content underneath, this one's last word on top. A list builds on several, left to right, each later one over the ones before.",
           "anyOf": [
             {
               "type": "string"
@@ -387,15 +397,45 @@
                 "type": "string"
               }
             }
-          ],
-          "description": "The template this one builds on: its content underneath, this one's last word on top. A list builds on several, left to right, each later one over the ones before."
+          ]
         },
         "variables": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/VariableDeclaration"
-          },
-          "description": "The variables the template takes, described so its editor can offer real controls."
+          "description": "The variables the template takes, described so its editor can offer real controls.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VariableDeclaration"
+              },
+              "description": "The variables the template takes, described so its editor can offer real controls."
+            },
+            {
+              "type": "object",
+              "description": "The same declarations keyed by name: a scalar or list is the default, a mapping is the whole declaration, null is a bare name.",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/VariableDeclarationByName"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          ]
         },
         "default": {
           "$ref": "#/$defs/config_with_placeholders"
@@ -659,12 +699,139 @@
       "required": [
         "name"
       ]
+    },
+    "VariableDeclarationByName": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "selector": {
+          "description": "A Home Assistant selector, in the same shape ha-form takes."
+        },
+        "default": {},
+        "defaults": {
+          "description": "`default:` spelled plural, read the same; `default:` wins when both are written."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the template is unusable without it. Warns; it never blocks a save."
+        },
+        "pattern": {
+          "type": "string",
+          "description": "A regular expression the value must match. Warns; it never blocks a save."
+        },
+        "allowed": {
+          "type": "array",
+          "items": {},
+          "description": "The values this variable can take. Warns; it never blocks a save."
+        },
+        "group": {
+          "type": "string",
+          "description": "Declarations sharing a group fold into one collapsible section of the editor."
+        },
+        "type": {
+          "type": "string",
+          "description": "What kind of value it takes - see VARIABLE_TYPES - which picks its editor control."
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "`type: entity`: the domains it may come from, one or a list."
+        },
+        "device_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "`type: entity`: the device class it must have, one or a list."
+        },
+        "min": {
+          "type": "number",
+          "description": "`type: number`: the range, the step between values, and the unit shown beside it."
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "multiline": {
+          "type": "boolean",
+          "description": "`type: text`: a box with room for more than one line."
+        },
+        "show_if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Shows the field in the card editor only while one of these holds - `if:` conditions, written without the `if:`."
+        },
+        "hide_if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Hides the field in the card editor while any of these holds."
+        },
+        "options_from": {
+          "description": "A dropdown of what this source finds - the same source `for_each_from:` takes (#404)."
+        },
+        "option_value": {
+          "type": "string",
+          "description": "With `options_from:`, what each option sets the variable to, filled in per thing found."
+        },
+        "option_label": {
+          "type": "string",
+          "description": "With `options_from:`, what each option shows; the value when unset."
+        }
+      },
+      "description": "A declaration under a mapping-form `variables:`, named by its key."
     }
   },
   "$defs": {
     "text_with_placeholders": {
       "type": "string",
-      "pattern": "^(?:[^\\[]|\\[(?!\\[)|\\[\\[!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|(?:age|area|area_icon|area_id|bool|capitalize|card_exists|contrast|count|device|device_class|device_id|domain|exists|first|flat|floor|floor_icon|format_number|friendly_name|icon|icon_exists|if_card_exists|if_exists|if_icon_exists|if_integration_exists|integration_exists|join|json|kebab|labels|last|lower|manufacturer|model|object_id|raw|relative|repeat|round|slot|slug|split|state|title|translate|trim|upper|with|yaml|(?:add|age|alpha|attr|contains|darken|default|div|find|format|format_number|if|join|lighten|map|max|mix|mod|mul|or|pad|plural|prefix|repeat|replace|round|split|sub|suffix|switch|unless|with):[^|\\]]*))*\\??\\]\\])*$",
+      "pattern": "^(?:[^\\[]|\\[{3,}(?!\\[)|\\[(?!\\[)|\\[\\[!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|(?:age|area|area_icon|area_id|bool|capitalize|card_exists|contrast|count|device|device_class|device_id|domain|exists|first|flat|floor|floor_icon|format_number|friendly_name|icon|icon_exists|if_card_exists|if_exists|if_icon_exists|if_integration_exists|integration_exists|join|json|kebab|labels|last|lower|manufacturer|model|object_id|raw|relative|repeat|round|slot|slug|split|state|title|translate|trim|upper|with|yaml|(?:add|age|alpha|attr|contains|darken|default|div|find|format|format_number|if|join|lighten|map|max|mix|mod|mul|or|pad|plural|prefix|repeat|replace|round|split|sub|suffix|switch|unless|with):[^|\\]]*))*\\??\\]\\])*$",
       "description": "Text, with any number of [[placeholders]]. Each placeholder is a variable name, then steps the card knows, then an optional ?."
     },
     "config_with_placeholders": {

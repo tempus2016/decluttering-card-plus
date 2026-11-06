@@ -182,7 +182,7 @@
               "additionalProperties": {
                 "anyOf": [
                   {
-                    "$ref": "#/definitions/VariableDeclaration"
+                    "$ref": "#/definitions/VariableDeclarationByName"
                   },
                   {
                     "type": "string"
@@ -251,7 +251,18 @@
           "$ref": "#/$defs/config_with_placeholders"
         },
         "visibility": {
-          "description": "Conditions on the variables that decide whether a copy is built at all - `variable:` with `exists`, `equals`, `not_equals`, `in`, `not_in` or `matches`. Every one must hold."
+          "description": "Conditions on the variables that decide whether a copy is built at all - `variable:` with `exists`, `equals`, `not_equals`, `in`, `not_in` or `matches`. Every one must hold.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VisibilityCondition"
+            },
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VisibilityCondition"
+              }
+            }
+          ]
         },
         "version": {
           "type": [
@@ -476,12 +487,194 @@
     },
     "VariablesConfig": {
       "type": "object"
+    },
+    "VariableDeclarationByName": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "selector": {
+          "description": "A Home Assistant selector, in the same shape ha-form takes."
+        },
+        "default": {},
+        "defaults": {
+          "description": "`default:` spelled plural, read the same; `default:` wins when both are written."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the template is unusable without it. Warns; it never blocks a save."
+        },
+        "pattern": {
+          "type": "string",
+          "description": "A regular expression the value must match. Warns; it never blocks a save."
+        },
+        "allowed": {
+          "type": "array",
+          "items": {},
+          "description": "The values this variable can take. Warns; it never blocks a save."
+        },
+        "group": {
+          "type": "string",
+          "description": "Declarations sharing a group fold into one collapsible section of the editor."
+        },
+        "type": {
+          "type": "string",
+          "description": "What kind of value it takes - see VARIABLE_TYPES - which picks its editor control."
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "`type: entity`: the domains it may come from, one or a list."
+        },
+        "device_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "`type: entity`: the device class it must have, one or a list."
+        },
+        "min": {
+          "type": "number",
+          "description": "`type: number`: the range, the step between values, and the unit shown beside it."
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "multiline": {
+          "type": "boolean",
+          "description": "`type: text`: a box with room for more than one line."
+        },
+        "show_if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Shows the field in the card editor only while one of these holds - `if:` conditions, written without the `if:`."
+        },
+        "hide_if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Hides the field in the card editor while any of these holds."
+        },
+        "options_from": {
+          "description": "A dropdown of what this source finds - the same source `for_each_from:` takes (#404)."
+        },
+        "option_value": {
+          "type": "string",
+          "description": "With `options_from:`, what each option sets the variable to, filled in per thing found."
+        },
+        "option_label": {
+          "type": "string",
+          "description": "With `options_from:`, what each option shows; the value when unset."
+        }
+      },
+      "description": "A declaration under a mapping-form `variables:`, named by its key."
+    },
+    "VisibilityCondition": {
+      "type": "object",
+      "properties": {
+        "variable": {
+          "type": "string"
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "equals": {},
+        "not_equals": {},
+        "in": {},
+        "not_in": {},
+        "matches": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "variable"
+      ],
+      "description": "One condition: a `variable` and exists, equals, not_equals, in, not_in, matches.",
+      "additionalProperties": false,
+      "anyOf": [
+        {
+          "required": [
+            "exists"
+          ]
+        },
+        {
+          "required": [
+            "equals"
+          ]
+        },
+        {
+          "required": [
+            "not_equals"
+          ]
+        },
+        {
+          "required": [
+            "in"
+          ]
+        },
+        {
+          "required": [
+            "not_in"
+          ]
+        },
+        {
+          "required": [
+            "matches"
+          ]
+        }
+      ]
     }
   },
   "$defs": {
     "text_with_placeholders": {
       "type": "string",
-      "pattern": "^(?:[^\\[]|\\[(?!\\[)|\\[\\[!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|(?:age|area|area_icon|area_id|bool|capitalize|card_exists|contrast|count|device|device_class|device_id|domain|exists|first|flat|floor|floor_icon|format_number|friendly_name|icon|icon_exists|if_card_exists|if_exists|if_icon_exists|if_integration_exists|integration_exists|join|json|kebab|labels|last|lower|manufacturer|model|object_id|raw|relative|repeat|round|slot|slug|split|state|title|translate|trim|upper|with|yaml|(?:add|age|alpha|attr|contains|darken|default|div|find|format|format_number|if|join|lighten|map|max|mix|mod|mul|or|pad|plural|prefix|repeat|replace|round|split|sub|suffix|switch|unless|with):[^|\\]]*))*\\??\\]\\])*$",
+      "pattern": "^(?:[^\\[]|\\[{3,}(?!\\[)|\\[(?!\\[)|\\[\\[!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|(?:age|area|area_icon|area_id|bool|capitalize|card_exists|contrast|count|device|device_class|device_id|domain|exists|first|flat|floor|floor_icon|format_number|friendly_name|icon|icon_exists|if_card_exists|if_exists|if_icon_exists|if_integration_exists|integration_exists|join|json|kebab|labels|last|lower|manufacturer|model|object_id|raw|relative|repeat|round|slot|slug|split|state|title|translate|trim|upper|with|yaml|(?:add|age|alpha|attr|contains|darken|default|div|find|format|format_number|if|join|lighten|map|max|mix|mod|mul|or|pad|plural|prefix|repeat|replace|round|split|sub|suffix|switch|unless|with):[^|\\]]*))*\\??\\]\\])*$",
       "description": "Text, with any number of [[placeholders]]. Each placeholder is a variable name, then steps the card knows, then an optional ?."
     },
     "config_with_placeholders": {
