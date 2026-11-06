@@ -70,6 +70,7 @@ import {
   previewEditorOpen,
   previewEditorOpenings,
   previewPauseOn,
+  renderPreviewNow,
   requiredUnset,
 } from './preview-hold';
 import { withAlerts } from './checks';
@@ -555,7 +556,7 @@ export class DeclutteringCard extends DeclutteringElement {
           );
     return html`<ha-alert alert-type="info">
       ${message}
-      <ha-button slot="action" @click=${(): void => this._buildAnyway(true)}>
+      <ha-button slot="action" @click=${(): void => renderPreviewNow()}>
         ${localize('card.preview_render_now', undefined, this._hass)}
       </ha-button>
     </ha-alert>`;

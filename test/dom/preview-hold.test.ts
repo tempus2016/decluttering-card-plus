@@ -284,3 +284,36 @@ describe('the first preview, before the editor arrives (#407)', () => {
     }
   });
 });
+
+describe('the two Render now buttons (#407)', () => {
+  it("the held preview's button renders the editor's Rendered view as well", async () => {
+    const lovelace = templates();
+    // Where Home Assistant puts its dialogs: in the home-assistant element's shadow root.
+    const dialog = document.createElement('hui-dialog-edit-card');
+    document.querySelector('home-assistant')!.shadowRoot!.appendChild(dialog);
+    const config = { type: `custom:${CARD}`, template: 'cam' };
+    const el = document.createElement(CARD) as any;
+    el.setConfig(config);
+    el.hass = stubHass({});
+    dialog.appendChild(el);
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = stubHass({});
+    editor.lovelace = lovelace.config;
+    editor.setConfig(config);
+    editor._previewMode = 'rendered';
+    try {
+      dialog.appendChild(editor);
+      await settle(6);
+      const frame = (): any => editor.shadowRoot?.querySelector('decluttering-preview-frame');
+      expect(inner(el), 'the dialog preview waits').to.equal(null);
+      expect(frame(), 'the Rendered view waits').to.equal(null);
+      const button = notice(el)?.querySelector('ha-button');
+      expect(!!button, 'the held preview has a Render now button').to.equal(true);
+      button.click();
+      await until(() => !!inner(el) && !!frame(), 2000, 'both previews rendered');
+    } finally {
+      editor.remove();
+      dialog.remove();
+    }
+  });
+});
