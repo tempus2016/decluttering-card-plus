@@ -57,13 +57,21 @@ import {
   CARD_TAG,
   TemplatePicker,
   editDialogOf,
+  editDialogOnPage,
   getThingType,
   sourceContext,
   warnUnlisted,
 } from './shared';
 import { shouldDefer, whenIdle, whenVisible } from './idle';
 import { warn } from './warnings';
-import { onPreviewHold, PreviewHoldEvent, previewEditorOpen, previewPaused, requiredUnset } from './preview-hold';
+import {
+  onPreviewHold,
+  PreviewHoldEvent,
+  previewEditorOpen,
+  previewEditorOpenings,
+  previewPauseOn,
+  requiredUnset,
+} from './preview-hold';
 import { withAlerts } from './checks';
 import { withSlotVariables } from './slots';
 import {
@@ -86,6 +94,9 @@ import { customMissingDetail, missingTemplateDetail } from './error-card';
  * was given, as it always may.
  */
 const titleTranslations = new Map<string, Promise<void>>();
+
+// How long a preview held in an open edit dialog waits for the card editor to arrive (#407).
+const EDITOR_WAIT_MS = 5000;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function loadTitleTranslations(hass: any): Promise<void> {
@@ -182,12 +193,23 @@ export class DeclutteringCard extends DeclutteringElement {
   @state() private _held?: { reason: 'paused' } | { reason: 'required'; names: string[] };
   private _builtAnyway?: DeclutteringCardConfig;
   private _holdStop?: () => void;
+  /*
+   * The dialog builds its preview before the card editor beside it is on the page, so a card
+   * in an open dialog is taken for its preview until an editor comes - but only until one
+   * comes and goes (the code editor, a stack showing another card), or a few seconds pass
+   * with none. The count of editors opened is noted when the card is made and taken off the
+   * page, so a dialog reopened starts afresh.
+   */
+  private _editorsBefore = previewEditorOpenings();
+  private _editorWait?: ReturnType<typeof setTimeout>;
+  private _editorWaitOver = false;
 
   public connectedCallback(): void {
     super.connectedCallback();
     this._holdStop ??= onPreviewHold((event) => this._heardHold(event));
     // Held before it was on the page, which is the only place it could tell it was a preview.
-    if (this._held && !this._mayHold()) this._buildAnyway(false);
+    if (this._held && !this._inPreview()) this._buildAnyway(false);
+    else if (this._held) this._waitForEditor();
     // Home Assistant takes cards off the page and puts them back while it lays a view out,
     // which stops the card hearing about categories (below); put back, it starts again.
     if (this._hass && this._fromRegistry) this._loadLabelsIfWanted(this._hass);
@@ -204,6 +226,10 @@ export class DeclutteringCard extends DeclutteringElement {
     super.disconnectedCallback();
     this._holdStop?.();
     this._holdStop = undefined;
+    clearTimeout(this._editorWait);
+    this._editorWait = undefined;
+    this._editorWaitOver = false;
+    this._editorsBefore = previewEditorOpenings();
     this._categoriesStop?.();
     this._categoriesStop = undefined;
     // Off the page, nothing is on screen; put back, connectedCallback watches again.
@@ -303,7 +329,7 @@ export class DeclutteringCard extends DeclutteringElement {
     this._deferStop = undefined;
     this._deferred = undefined;
     this._held = undefined;
-    if (previewPaused() && config !== this._builtAnyway && this._mayHold(config)) {
+    if (previewPauseOn() && config !== this._builtAnyway && this._inPreview(config)) {
       this._hold({ reason: 'paused' });
       return;
     }
@@ -452,11 +478,36 @@ export class DeclutteringCard extends DeclutteringElement {
     return this.isConnected ? !!editDialogOf(this) : true;
   }
 
+  /*
+   * Whether this card is the edit dialog's preview right now: one that may be held, with a
+   * card editor open - or in an open dialog no editor has reached yet, which is how Home
+   * Assistant builds the first preview. Before it is placed, an open dialog on the page is
+   * all there is to go on; placed elsewhere, connectedCallback lets it go.
+   */
+  private _inPreview(config: DeclutteringCardConfig | undefined = this._lastConfig): boolean {
+    if (!this._mayHold(config)) return false;
+    if (previewEditorOpen()) return true;
+    if (this._editorWaitOver || previewEditorOpenings() !== this._editorsBefore) return false;
+    return this.isConnected || editDialogOnPage();
+  }
+
+  // Lets a card held for an editor that never comes build, as it would with none open.
+  private _waitForEditor(): void {
+    if (this._editorWait || !this.isConnected || previewEditorOpen()) return;
+    this._editorWait = setTimeout(() => {
+      this._editorWait = undefined;
+      if (previewEditorOpen()) return;
+      this._editorWaitOver = true;
+      if (this._held) this._buildAnyway(false);
+    }, EDITOR_WAIT_MS);
+  }
+
   private _hold(held: NonNullable<DeclutteringCard['_held']>): void {
     this._dropThing();
     this._error = undefined;
     this._errorDetail = undefined;
     this._held = held;
+    this._waitForEditor();
   }
 
   private _buildAnyway(once: boolean): void {
@@ -474,8 +525,8 @@ export class DeclutteringCard extends DeclutteringElement {
       if (this._held) this._buildAnyway(true);
       return;
     }
-    if (previewPaused()) {
-      if (!this._held && this._mayHold()) {
+    if (previewPauseOn() && this._inPreview()) {
+      if (!this._held) {
         this._builtAnyway = undefined;
         this._hold({ reason: 'paused' });
       }
@@ -485,7 +536,7 @@ export class DeclutteringCard extends DeclutteringElement {
   }
 
   protected _holdForRequired(unresolved: string[], templateConfig: TemplateConfig): boolean {
-    if (!previewEditorOpen() || this._lastConfig === this._builtAnyway || !this._mayHold()) return false;
+    if (this._lastConfig === this._builtAnyway || !this._inPreview()) return false;
     const names = requiredUnset(getDeclarations(templateConfig), unresolved);
     if (!names.length) return false;
     this._hold({ reason: 'required', names });
