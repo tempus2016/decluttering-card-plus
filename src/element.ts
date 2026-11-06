@@ -557,7 +557,11 @@ export abstract class DeclutteringElement extends LitElement {
     const extras =
       levels.warnings === 'ignore'
         ? this._buildExtras()
-        : { ...this._buildExtras(), onWarning: (m: string) => said.push(m) };
+        : {
+            ...this._buildExtras(),
+            // The notice sits on the card, so the console's own prefix is no use there.
+            onWarning: (m: string) => said.push(m.replace(/^decluttering-card-plus:\s*/, '')),
+          };
     if (trace)
       this._traceLabel = traceLabel(
         templateName ?? '',
