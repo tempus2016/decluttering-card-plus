@@ -105,6 +105,14 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
 
   private _loadedElements = false;
 
+  // What a screen reader is told about, as it happens: copied, saved, undone (idea 55).
+  @state() private _announcement = '';
+  private _announceTimer?: ReturnType<typeof setTimeout>;
+  private readonly _onAnnounce = (ev: Event): void => {
+    ev.stopPropagation();
+    this._announce(String((ev as CustomEvent).detail?.text ?? ''));
+  };
+
   // Shared instances, built on first use so they speak the user's language - a fresh
   // schema object per render would mark every field dirty for no reason.
   private static _describeSchema?: unknown[];
@@ -192,9 +200,31 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     const defaultsData = { default: templateDefaults(this._config) };
     const declared = getDeclarations(this._config).length;
     const pills = this._renderPills();
+    const panelLabel = localize(
+      this._selectedTab === 'card'
+        ? 'template_editor.tab_card'
+        : this._selectedTab === 'change_card'
+          ? 'template_editor.tab_change_card'
+          : this._selectedTab === 'row'
+            ? 'template_editor.tab_row'
+            : this._selectedTab === 'usages'
+              ? 'template_editor.tab_usages'
+              : this._selectedTab === 'share'
+                ? 'template_editor.tab_share'
+                : 'template_editor.tab_settings',
+      undefined,
+      this.hass,
+    );
 
     return html`
-      <ha-tab-group .active=${this._selectedTab} @click=${this._activateTab}>
+      <div class="sr-only" role="status" aria-live="polite">${this._announcement}</div>
+      <ha-tab-group
+        .active=${this._selectedTab}
+        @click=${this._activateTab}
+        @pointerdown=${this._tabPointer}
+        @wa-tab-show=${this._tabShown}
+        @sl-tab-show=${this._tabShown}
+      >
         <ha-tab-group-tab slot="nav" panel="settings">
           ${localize('template_editor.tab_settings', undefined, this.hass)}
         </ha-tab-group-tab>
@@ -228,6 +258,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
         .config=${this._config}
         @config-changed=${this._childConfigChanged}
       ></decluttering-example-strip>
+      <h3 id="panel-heading" class="sr-only" tabindex="-1">${panelLabel}</h3>
       ${
         this._selectedTab === 'settings'
           ? html`
@@ -496,7 +527,12 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                 this._dragging = undefined;
               }}
             >
-              <ha-svg-icon class="handle" .path=${DRAG_PATH}></ha-svg-icon>
+              <ha-svg-icon
+                class="handle"
+                role="img"
+                aria-label=${localize('template_editor.drag_hint', undefined, this.hass)}
+                .path=${DRAG_PATH}
+              ></ha-svg-icon>
               <span>${item.label}</span>
               <span class="spacer"></span>
               <ha-icon-button
@@ -883,8 +919,51 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   private _activateTab(ev: Event): void {
     const tab = ev.composedPath().find((node) => (node as HTMLElement).localName === 'ha-tab-group-tab') as
       HTMLElement | undefined;
-    const panel = tab?.getAttribute('panel');
-    if (panel) this._selectedTab = panel;
+    this._showTab(tab?.getAttribute('panel'), (ev as MouseEvent).detail === 0);
+  }
+
+  // When the strip was last touched by a pointer: a tab shown soon after that is a click, not a key.
+  private _tabPointerAt = 0;
+
+  private _tabPointer(): void {
+    this._tabPointerAt = Date.now();
+  }
+
+  /*
+   * Enter, Space and the arrow keys switch tabs through the strip's own show event, which
+   * comes with no click (idea 55): the strip highlighted the new tab while the editor kept
+   * drawing the old panel. The event's detail names the panel; the tab element in its path
+   * is the fallback, since the name of the field has followed the underlying component
+   * through its renames.
+   */
+  private _tabShown(ev: Event): void {
+    const detail = (ev as CustomEvent).detail as { name?: string; panel?: string } | string | undefined;
+    const named = typeof detail === 'string' ? detail : (detail?.name ?? detail?.panel);
+    const tab = ev.composedPath().find((node) => (node as HTMLElement).localName === 'ha-tab-group-tab') as
+      HTMLElement | undefined;
+    this._showTab(named ?? tab?.getAttribute('panel'), Date.now() - this._tabPointerAt > 500);
+  }
+
+  private _showTab(panel: string | null | undefined, keyboard: boolean): void {
+    if (!panel || panel === this._selectedTab) return;
+    this._selectedTab = panel;
+    // Focus lands on the panel's heading, so the next Tab is the first control in it rather
+    // than the top of the dialog (idea 55). Only for a keyboard: a pointer click keeps its place.
+    if (keyboard) {
+      void this.updateComplete.then(() => {
+        (this.renderRoot.querySelector('#panel-heading') as HTMLElement | null)?.focus();
+      });
+    }
+  }
+
+  // Says something to a screen reader without drawing it; cleared so the same words can be said again.
+  private _announce(text: string): void {
+    if (this._announceTimer) clearTimeout(this._announceTimer);
+    this._announcement = '';
+    this._announceTimer = setTimeout(() => {
+      this._announcement = text;
+      this._announceTimer = setTimeout(() => (this._announcement = ''), 4000);
+    }, 50);
   }
 
   /** The Describe panel: name, kind, description, category. */
@@ -1049,6 +1128,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
     this._unwatchTrash = onTrashChanged(() => void this._loadTrash());
     void this._loadTrash();
+    this.addEventListener('decluttering-announce', this._onAnnounce);
     if (!this._loadedElements) {
       await loadCardEditorPicker();
       await loadRowEditor();
@@ -1060,6 +1140,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     super.disconnectedCallback();
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
+    this.removeEventListener('decluttering-announce', this._onAnnounce);
     this._unwatchTrash?.();
     this._unwatchTrash = undefined;
   }

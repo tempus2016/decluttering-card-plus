@@ -348,6 +348,14 @@ export abstract class DeclutteringElement extends LitElement {
 
   static get styles(): CSSResult {
     return css`
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
       /*
        * A badge belongs to the flex row of badges, so this wrapper has to get out of the
        * way rather than box it. Styles injected with the style option still reach the

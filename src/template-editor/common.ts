@@ -3,7 +3,7 @@ import { HomeAssistant } from 'custom-card-helpers';
 import { CommunityRisks } from '../community';
 import { getLovelacePanel } from '../utils';
 import { localize } from '../localize';
-import { HELPERS, pageDashboard, rewriteDashboards } from '../shared';
+import { HELPERS, pageDashboard, rewriteDashboards, operationLabel } from '../shared';
 
 // What a template of each kind starts out as, when its type is chosen in the editor. One
 // of these is kept and the rest removed, so switching the type swaps the body for a
@@ -139,6 +139,7 @@ export async function saveDashboardWith(
     // Through the one place every rewrite goes, so it can be undone.
     await rewriteDashboards(host, host.hass, operation, [{ urlPath: pageDashboard(), build }], dialog);
     host._undoChanged = undefined;
+    announce(host, localize('undo.toast', { operation: operationLabel(operation, host.hass) }, host.hass));
     return true;
   } catch (err) {
     host._toolError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, host.hass);
@@ -167,4 +168,12 @@ export function tabCounts(
     unset: unset.filter((each) => each.template === name).reduce((sum, each) => sum + each.count, 0),
     trash: (trash ?? []).filter((each) => each.name === name).length,
   };
+}
+
+/**
+ * Says something to a screen reader (idea 55). The tabs are elements of their own, so the
+ * words travel up as an event and the editor's one live region speaks them.
+ */
+export function announce(host: HTMLElement, text: string): void {
+  host.dispatchEvent(new CustomEvent('decluttering-announce', { detail: { text }, bubbles: true, composed: true }));
 }

@@ -228,6 +228,14 @@ const HOST_SELECTOR = /:host|\.decluttering-container/;
 export class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   static get styles(): CSSResult {
     return css`
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
       .description {
         margin: 0 0 8px;
         color: var(--secondary-text-color);

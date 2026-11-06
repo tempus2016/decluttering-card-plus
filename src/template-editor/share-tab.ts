@@ -53,7 +53,7 @@ import {
 } from '../sharing';
 import { readDashboard } from '../undo';
 import { rewriteDashboards, saverFor } from '../shared';
-import { isDefinedHere, anyRisk, newRisks, SECOND_PRESS_MS, saveDashboardWith } from './common';
+import { isDefinedHere, anyRisk, newRisks, SECOND_PRESS_MS, saveDashboardWith, announce } from './common';
 import { TEMPLATE_EDITOR_STYLES } from './styles';
 import { CompareSource, agoParts, compareSources, diffStats, templateBody } from '../compare';
 
@@ -1190,6 +1190,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     const text = [...notes.map((note) => `# ${note}`), yaml].join('\n');
 
     this._copyState = (await copyText(text)) ? 'done' : 'failed';
+    announce(this, localize(this._copyState === 'done' ? 'share.copied' : 'share.copy_failed', undefined, this.hass));
     setTimeout(() => (this._copyState = ''), 3000);
   }
 
@@ -1203,6 +1204,10 @@ export class DeclutteringTemplateShareTab extends LitElement {
     if (!yaml) return;
     const { notes } = buildExport(this._config, collectTemplates(this._savedLovelace));
     this._postCopyState = (await copyText(postBody(yaml, notes, this._config?.description))) ? 'done' : 'failed';
+    announce(
+      this,
+      localize(this._postCopyState === 'done' ? 'share.copied' : 'share.copy_failed', undefined, this.hass),
+    );
     setTimeout(() => (this._postCopyState = ''), 3000);
   }
 

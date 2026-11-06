@@ -17,6 +17,27 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
     padding: 12px 4px 4px;
   }
 
+  /* Read by a screen reader, drawn by nothing (idea 55). */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition: none !important;
+      animation: none !important;
+    }
+  }
+
   ${DeclutteringElement.styles}
   ha-tab-group {
     display: block;
