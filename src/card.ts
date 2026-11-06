@@ -373,6 +373,7 @@ export class DeclutteringCard extends DeclutteringElement {
      */
     if (templateConfig && this._rebuildOn.length && !this._hass) {
       this._pendingConfig = config;
+      this._holdPlace(config, templateConfig);
       return;
     }
     if (templateConfig) {
@@ -400,7 +401,19 @@ export class DeclutteringCard extends DeclutteringElement {
     // dashboard every one borrows from, which has to be fetched.
     // setConfig cannot wait, so it is picked up as soon as hass arrives.
     this._pendingConfig = config;
+    this._holdPlace(config);
     if (this._hass) this.hassAvailable(this._hass);
+  }
+
+  /*
+   * Holds the card's place while its template is on its way (idea 48), at the size the card
+   * - or, when it is already to hand, its template - asked for.
+   */
+  private _holdPlace(config: DeclutteringCardConfig, templateConfig?: TemplateConfig): void {
+    this._waiting = true;
+    this._waitingGrid = config.grid_options ?? (templateConfig as { grid_options?: unknown } | undefined)?.grid_options;
+    this._thingType ??= 'card';
+    this.requestUpdate();
   }
 
   protected _rebuild(): void {
@@ -688,6 +701,7 @@ export class DeclutteringCard extends DeclutteringElement {
       return;
     }
     this._pendingConfig = config;
+    this._holdPlace(config);
     if (this._hass) this.hassAvailable(this._hass);
   }
 

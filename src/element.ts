@@ -100,6 +100,7 @@ import './skipped';
 import { ErrorDetail, findCardPath, templateEditPath, unsetDetail, withTemplate } from './error-card';
 import { ChipAction } from './edit-chip-pure';
 import './edit-chip';
+import { skeletonHeight } from './skeleton';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -295,6 +296,13 @@ export abstract class DeclutteringElement extends LitElement {
   private _said?: { config: unknown; messages: Set<string> };
   // The wrapped card a sections view has been told the size of.
   private _sizeAnnounced?: LovelaceThing;
+  /*
+   * Set while a card is on its way - a borrowed template being fetched, hass not yet here -
+   * so the place it will take is held at the size it asked for (idea 48). The card's own
+   * grid_options are all that is known before the template arrives.
+   */
+  protected _waiting = false;
+  protected _waitingGrid?: unknown;
 
   set hass(hass: HomeAssistant) {
     if (!hass) return;
@@ -494,6 +502,21 @@ export abstract class DeclutteringElement extends LitElement {
         word-break: break-word;
         -webkit-user-select: text;
         user-select: text;
+      }
+      /*
+       * The place a card holds while it is on its way (idea 48): the colour of a card's
+       * surface, slightly dimmed, at the size the grid will give it. A theme can shimmer it.
+       */
+      .skeleton {
+        box-sizing: border-box;
+        border-radius: var(--ha-card-border-radius, 12px);
+        background: var(--decluttering-skeleton-color, rgba(127, 127, 127, 0.12));
+        animation: var(--decluttering-skeleton-animation, none);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .skeleton {
+          animation: none;
+        }
       }
       :host(.decluttering-report) {
         height: auto;
@@ -1715,6 +1738,7 @@ export abstract class DeclutteringElement extends LitElement {
 
     this._thing = thing;
     this._errorLayoutFor = undefined;
+    this._waiting = false;
     this._forwardGridApi(thing);
     if (this._hass) thing.hass = this._hass;
     this._watchForHiding(thing);
@@ -1854,6 +1878,11 @@ export abstract class DeclutteringElement extends LitElement {
     const self = this as any;
     delete self.getGridOptions;
     delete self.getLayoutOptions;
+    if (!thing && this._waiting && (this._waitingGrid ?? this._gridOptions) !== undefined) {
+      // Holding a place: the section is told the size the card asked for, before it is built.
+      self.getGridOptions = (): unknown => this._waitingGrid ?? this._gridOptions;
+      return;
+    }
     if (this._thingType !== 'card' || !thing) return;
 
     /*
@@ -1916,7 +1945,15 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
       `;
     }
 
-    if (this._hiddenByFallback || !this._hass || !this._thing) return html``;
+    if (this._hiddenByFallback) return html``;
+    if (!this._thing && this._waiting && this._thingType !== 'badge' && this._thingType !== 'element') {
+      this.classList.add('decluttering-container');
+      return html`<div
+        class="skeleton"
+        style="height: ${skeletonHeight(this._waitingGrid ?? this._gridOptions)}px"
+      ></div>`;
+    }
+    if (!this._hass || !this._thing) return html``;
 
     this.classList.toggle('decluttering-badge', this._thingType === 'badge');
     this.classList.toggle('decluttering-container', this._thingType !== 'badge');

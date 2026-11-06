@@ -1,6 +1,7 @@
 import { HomeAssistant, createThing } from 'custom-card-helpers';
 import { LAZY_MARGIN, placeholderHeight } from './layout';
 import { HELPERS } from './shared';
+import { skeletonHeight, skeletonRows } from './skeleton';
 
 /*
  * One copy of a `lazy: true` repeat, waiting to come into view. The card has already
@@ -89,7 +90,14 @@ export class DeclutteringLazyCopy extends HTMLElement {
   /** Keeps the first copy's height, or the default height when there is none to go by. */
   public holdPlace(): void {
     if (this._built) return;
-    this.style.minHeight = `${placeholderHeight(this._firstCopy()?.getBoundingClientRect().height)}px`;
+    // A copy that says how many rows it wants holds exactly that (idea 48); otherwise the
+    // first copy's measured height, else the default.
+    const asked = skeletonRows(this._card?.grid_options);
+    this.style.minHeight = `${asked ? skeletonHeight(this._card?.grid_options) : placeholderHeight(this._firstCopy()?.getBoundingClientRect().height)}px`;
+    // Drawn as the place it holds rather than as nothing, so the layout reads as final.
+    this.style.borderRadius = 'var(--ha-card-border-radius, 12px)';
+    this.style.background = 'var(--decluttering-skeleton-color, rgba(127, 127, 127, 0.12))';
+    this.style.animation = 'var(--decluttering-skeleton-animation, none)';
   }
 
   private _follow(): void {
@@ -145,6 +153,9 @@ export class DeclutteringLazyCopy extends HTMLElement {
     this._sized = new ResizeObserver(() => {
       if (thing.getBoundingClientRect().height > 0) {
         this.style.minHeight = '';
+        this.style.background = '';
+        this.style.borderRadius = '';
+        this.style.animation = '';
         this._sized?.disconnect();
       }
     });
