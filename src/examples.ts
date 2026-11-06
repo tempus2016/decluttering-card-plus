@@ -4,6 +4,8 @@ import { localize } from './localize';
 import { describeCycle, describeTooDeep, MAX_NESTING } from './cycles';
 import { groupCard, templatesNamedBy } from './templates';
 import { INHERIT_FLAG, ownVariables, validateDeclared } from './variables';
+import { DASHBOARD_KIND } from './page-template';
+import { splitDeclutteringKeys, withoutRepeatContent } from './page-body';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -57,8 +59,8 @@ export function exampleVariables(template: unknown, index: number | undefined): 
   return exampleSets(template)[index];
 }
 
-// The things a template can define, exactly one of which it must.
-const CONTENT_KEYS = ['card', 'row', 'element', 'badge', 'group'];
+// The things a template can define, exactly one of which it must - a page's `dashboard:` included.
+const CONTENT_KEYS = ['card', 'row', 'element', 'badge', 'group', DASHBOARD_KIND];
 
 function contentOf(template: TemplateConfig): { content?: unknown; problem?: string } {
   const defined = CONTENT_KEYS.filter((key) => (template as any)[key] !== undefined);
@@ -70,7 +72,10 @@ function contentOf(template: TemplateConfig): { content?: unknown; problem?: str
     };
   }
   const key = defined[0];
-  return { content: key === 'group' ? groupCard(template.group) : (template as any)[key] };
+  if (key === 'group') return { content: groupCard(template.group) };
+  // A page's own template keys are definitions, which each card using them fills in.
+  if (key === DASHBOARD_KIND) return { content: splitDeclutteringKeys((template as any)[key]).rest };
+  return { content: (template as any)[key] };
 }
 
 /** Every card of ours inside a built config, with the place it was found. */
@@ -109,8 +114,18 @@ function problemsOf(
 
   const unresolved: string[] = [];
   let built: unknown;
+  const collect = (names: string[]): void => {
+    unresolved.push(...names);
+  };
   try {
-    built = deepReplace(variables, template, content, name, hass, true, (names) => unresolved.push(...names));
+    if ((template as any)[DASHBOARD_KIND] !== undefined) {
+      // A page's repeats are filled for each copy when the dashboard is written out, so
+      // their `[[entity]]` or `[[index]]` is not the example's to set (idea 33).
+      built = deepReplace(variables, template, content, name, hass, true);
+      deepReplace(variables, template, withoutRepeatContent(content), name, hass, true, collect);
+    } else {
+      built = deepReplace(variables, template, content, name, hass, true, collect);
+    }
   } catch (err) {
     return [String((err as Error)?.message ?? err)];
   }

@@ -12,6 +12,7 @@
   "files": [
     "src/deep-replace.ts",
     "src/page-template.ts",
+    "src/page-body.ts",
     "src/repeat-kinds.ts",
     "src/slots.ts",
     "src/visibility.ts",

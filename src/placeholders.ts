@@ -18,6 +18,8 @@ const CONTENT_KEYS = [
   'defaults',
   'grid_options',
   'name',
+  // A page template's whole dashboard (idea 33).
+  'dashboard',
 ];
 
 // A placeholder, with up to two levels of placeholder nested inside it. Each level takes one

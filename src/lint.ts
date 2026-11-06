@@ -21,6 +21,7 @@ import { structureNames } from './structure';
 import { unknownHidden } from './card-editor/hide';
 import { CHECK_KEYS, CHECKS_KEY, checkLevel, conditionStep } from './checks';
 import { strictProblems } from './strict';
+import { splitDeclutteringKeys, withoutRepeatContent } from './page-body';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -58,6 +59,9 @@ const LINTED_KEYS = [
   'name',
   'alert',
 ];
+
+// A page template's whole dashboard (idea 33), read apart from the rest: see lintTemplate.
+const PAGE_KEY = 'dashboard';
 
 // Innermost placeholders: no bracket inside. A lookup like `[[colours.[[level]]]]` is read
 // from the inside out, the inner one standing in as a plain word for the outer.
@@ -277,6 +281,16 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
   for (const key of LINTED_KEYS) {
     const value = (template as any)[key];
     if (value !== undefined) walk(value, key, scan);
+  }
+  if ((template as any)[PAGE_KEY] !== undefined) {
+    // The page's own template keys are definitions, each linted where it is used. A repeat's
+    // content is filled for each copy from items nobody can name here - `[[entity]]`,
+    // `[[area]]` - so it is read for mistakes in how it is written, not for whose names it uses.
+    const { rest } = splitDeclutteringKeys((template as any)[PAGE_KEY]);
+    walk(withoutRepeatContent(rest), PAGE_KEY, scan);
+    const inRepeats: Scan = { findings: [], heads: new Map(), targets: [] };
+    walk(rest, PAGE_KEY, inRepeats);
+    scan.findings.push(...inRepeats.findings);
   }
   getDeclarations(template).forEach((declaration, index) => {
     if (declaration.default !== undefined) walk(declaration.default, `variables[${index}].default`, scan);
