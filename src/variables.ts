@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import { labelName } from './labels';
 import { registryIndex } from './registry-index';
@@ -2260,7 +2261,7 @@ export function variableValues(variableArray: VariablesConfig[] | VariablesConfi
 function placeholdersIn(value: unknown): string[] {
   if (value === undefined) return [];
   const names: string[] = [];
-  let json = JSON.stringify(value);
+  let json = placeholderJson(value);
   if (typeof json !== 'string') return names;
   // A fresh regex each time: a shared global one carries lastIndex between calls.
   const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
@@ -2372,7 +2373,7 @@ function reachable(template: TemplateConfig | undefined, values: Record<string, 
 function answeredNames(template: TemplateConfig | undefined, values: Record<string, any>, used: string[]): Set<string> {
   const answered = new Map<string, boolean>();
   const scan = (value: unknown): void => {
-    const json = JSON.stringify(value);
+    const json = placeholderJson(value);
     if (typeof json !== 'string') return;
     const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
     for (let match = pattern.exec(json); match !== null; match = pattern.exec(json)) {
@@ -2406,7 +2407,7 @@ function usesStep(
   wanted: (step: string) => boolean,
   itemTemplates?: Record<string, TemplateConfig>,
 ): boolean {
-  const json = JSON.stringify([
+  const json = placeholderJson([
     template,
     outerLet(template).map((layer) => layer.values),
     ...itemTemplatesReached(template, itemTemplates),
@@ -2450,10 +2451,10 @@ export function itemTemplatesReached(
       if (!text.includes(`[[${name}|`) && !text.includes(`[[${name}]]`) && !text.includes(`[[${name}?`)) continue;
       seen.add(name);
       reached.push(itemTemplates[name]);
-      visit(JSON.stringify(itemTemplates[name]));
+      visit(placeholderJson(itemTemplates[name]));
     }
   };
-  visit(JSON.stringify([template, outerLet(template).map((layer) => layer.values)]));
+  visit(placeholderJson([template, outerLet(template).map((layer) => layer.values)]));
   return reached;
 }
 

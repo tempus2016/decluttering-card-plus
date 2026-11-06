@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { loadAll } from 'js-yaml';
 import { CONSUMER_TYPES, isTemplateCardType } from './templates';
 import {
@@ -133,7 +134,7 @@ function labelFor(card: any, index: number): string {
 const isContainer = (card: any): boolean => Array.isArray(card.cards) || (card.card && typeof card.card === 'object');
 
 const usesTemplate = (card: any): boolean =>
-  CONSUMER_TYPES.includes(card.type) || isTemplateCardType(card.type) || JSON.stringify(card).includes('[[');
+  CONSUMER_TYPES.includes(card.type) || isTemplateCardType(card.type) || placeholderJson(card).includes('[[');
 
 const INHERITED = new Set(['__proto__', 'constructor', 'prototype']);
 const isInherited = (step: string | number): boolean => typeof step === 'string' && INHERITED.has(step);

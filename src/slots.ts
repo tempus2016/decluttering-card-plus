@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import { normaliseVariables, SLOT_STEP } from './variables';
 
@@ -44,7 +45,7 @@ const SLOT_PLACEHOLDER = new RegExp(`\\[\\[([^|[\\]?]+)\\|${SLOT_STEP}\\??\\]\\]
 export function slotNames(template: TemplateConfig | undefined): string[] {
   if (!template) return [];
   const names: string[] = [];
-  const json = JSON.stringify(template);
+  const json = placeholderJson(template);
   if (typeof json !== 'string') return names;
   for (let match = SLOT_PLACEHOLDER.exec(json); match !== null; match = SLOT_PLACEHOLDER.exec(json)) {
     if (!names.includes(match[1])) names.push(match[1]);

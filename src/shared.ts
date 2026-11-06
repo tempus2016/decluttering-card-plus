@@ -115,6 +115,21 @@ export function editDialogOnPage(): boolean {
   return !('_params' in dialog) || !!(dialog as any)._params;
 }
 
+/*
+ * Whether this editor is the options of a section strategy (#400) rather than of a card.
+ * Home Assistant mounts the card's editor there too, in its section dialog's strategy tab,
+ * and whatever the editor fires as config-changed becomes the section's `strategy:` - so
+ * anything that swaps the card for a different type of thing cannot work there.
+ */
+export function inSectionStrategyEditor(element: Element): boolean {
+  for (let node: Node | null = element; node; node = parentOf(node)) {
+    const name = (node as Element).localName;
+    if (name === 'hui-section-strategy-element-editor') return true;
+    if (name === 'hui-dialog-edit-card') return false;
+  }
+  return false;
+}
+
 // Tags this bundle owns.
 export const CARD_TAG = 'decluttering-card-plus';
 

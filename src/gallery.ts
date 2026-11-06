@@ -3,6 +3,7 @@
  * shared and the ones installed from either, as one list of tiles with a thumbnail each,
  * searched and filtered the same way. Pure: the dialog in gallery-dialog.ts draws it.
  */
+import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import { LibraryEntry } from './library';
 import { CommunityEntry } from './community';
@@ -248,7 +249,7 @@ const asList = (value: unknown): string[] | undefined =>
 /** The names a template's content writes in brackets, each once, without their steps. */
 function placeholderNames(content: unknown): string[] {
   const names = new Set<string>();
-  const text = JSON.stringify(content ?? '');
+  const text = placeholderJson(content ?? '');
   const grammar = /\[\[([a-zA-Z_][\w.]*)/g;
   let match: RegExpExecArray | null;
   while ((match = grammar.exec(text)) !== null) names.add(match[1].split('.')[0]);

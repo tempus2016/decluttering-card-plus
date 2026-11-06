@@ -121,3 +121,69 @@ describe('convert from another card', () => {
     editor.remove();
   });
 });
+
+/*
+ * The card's editor is also a section strategy's options (#400), mounted by Home Assistant
+ * inside hui-section-strategy-element-editor, which writes whatever the editor fires as the
+ * section's `strategy:`. Ejecting a group there wrote the group card as the strategy, a
+ * strategy type that does not exist, and the section broke - so it is not offered there.
+ */
+describe('eject and section strategies (#400)', () => {
+  const roomGroup = {
+    default: [{ area: 'living_room' }],
+    group: [
+      { type: 'heading', heading: 'GROUP [[area]]' },
+      { type: 'tile', entity: 'light.[[area]]' },
+    ],
+  };
+  const mount = (host?: HTMLElement): any => {
+    const lovelace = stubLovelace({ decluttering_templates: { room_group: roomGroup }, views: [{ cards: [] }] });
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = stubHass({ 'light.living_room': 'on' });
+    editor.lovelace = lovelace.config;
+    editor.setConfig({ type: 'custom:decluttering-card-plus', template: 'room_group' });
+    if (host) {
+      const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
+      root.appendChild(editor);
+      document.body.appendChild(host);
+    } else {
+      document.body.appendChild(editor);
+    }
+    return editor;
+  };
+  const buttons = (editor: any): string[] =>
+    [...(editor.shadowRoot?.querySelectorAll('ha-button') ?? [])].map((each: any) => each.textContent.trim());
+  const alerts = (editor: any): string[] =>
+    [...(editor.shadowRoot?.querySelectorAll('ha-alert') ?? [])].map((each: any) => each.textContent.trim());
+  const EJECT = 'Replace this card with what it builds';
+
+  it('a card editor offers eject for a group template', async () => {
+    const editor = mount();
+    await until(() => buttons(editor).includes(EJECT), 3000, 'the eject button');
+    editor.remove();
+  });
+
+  it('a section strategy editor does not offer eject', async () => {
+    const host = document.createElement('hui-section-strategy-element-editor');
+    const editor = mount(host);
+    // The preview's own buttons are drawn, so eject would be by now.
+    await until(() => buttons(editor).some((text) => text.startsWith('Copy')), 3000, 'the preview');
+    expect(buttons(editor), 'no eject').not.to.include(EJECT);
+    let fired = 0;
+    editor.addEventListener('config-changed', () => (fired += 1));
+    await settle(2);
+    expect(fired, 'nothing written to the strategy').to.equal(0);
+    host.remove();
+  });
+
+  it('a group template is not said to use a variable named after its cards', async () => {
+    const editor = mount();
+    await until(() => buttons(editor).includes(EJECT), 3000, 'the preview');
+    await settle(2);
+    expect(
+      alerts(editor).some((text) => text.includes('no value and no default')),
+      'no garbled missing-variable warning',
+    ).to.equal(false);
+    editor.remove();
+  });
+});

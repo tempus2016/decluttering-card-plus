@@ -5,6 +5,8 @@
  * nesting included - for the Try a placeholder tool (idea 28) to offer in its dropdown.
  */
 
+import { placeholderJson } from './placeholder-text';
+
 // The parts of a template that are substituted into; a description mentioning `[[name]]` is prose.
 const CONTENT_KEYS = [
   'card',
@@ -48,7 +50,7 @@ export function listPlaceholders(template: unknown): string[] {
   for (const key of CONTENT_KEYS) {
     const value = (template as any)[key];
     if (value === undefined) continue;
-    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    const text = typeof value === 'string' ? value : placeholderJson(value);
     for (const each of placeholdersIn(text)) if (!out.includes(each)) out.push(each);
   }
   return out;
