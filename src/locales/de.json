@@ -986,5 +986,22 @@
   "gallery.preview_full": "Vollständige Vorschau",
   "gallery.preview_hide": "YAML ausblenden",
   "gallery.installed_already": "Schon auf diesem Dashboard.",
-  "gallery.close": "Schließen"
+  "gallery.close": "Schließen",
+  "preview.header": "Vorschau mit dem gewählten Beispiel",
+  "preview.mode_rendered": "Dargestellt",
+  "preview.mode_yaml": "YAML",
+  "preview.theme_light": "Hell",
+  "preview.theme_dark": "Dunkel",
+  "preview.theme_both": "Beide",
+  "preview.width_desktop": "Desktop",
+  "preview.width_tablet": "Tablet",
+  "preview.width_phone": "Telefon",
+  "preview.width_px": "{width} px",
+  "preview.width_columns": "{width} px · {columns} Spalten",
+  "preview.width_columns_min": "{width} px · min_column_width {min} ergibt {columns} Spalten",
+  "preview.width_columns_one": "{width} px · 1 Spalte",
+  "preview.width_columns_min_one": "{width} px · min_column_width {min} ergibt 1 Spalte",
+  "preview.width_narrower": "({width} px angefragt, aber der Dialog ist schmaler)",
+  "preview.changed_line": "Die Zeile, die die letzte Änderung betraf, ist hervorgehoben.",
+  "preview.cannot_render": "Dieses Home Assistant kann die Vorschau hier nicht zeichnen; die YAML-Ansicht zeigt trotzdem, was gebaut wird."
 }

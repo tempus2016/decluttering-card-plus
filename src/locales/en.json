@@ -986,5 +986,22 @@
   "gallery.preview_full": "Preview in full",
   "gallery.preview_hide": "Hide the YAML",
   "gallery.installed_already": "Already on this dashboard.",
-  "gallery.close": "Close"
+  "gallery.close": "Close",
+  "preview.header": "Preview under the chosen example",
+  "preview.mode_rendered": "Rendered",
+  "preview.mode_yaml": "YAML",
+  "preview.theme_light": "Light",
+  "preview.theme_dark": "Dark",
+  "preview.theme_both": "Both",
+  "preview.width_desktop": "Desktop",
+  "preview.width_tablet": "Tablet",
+  "preview.width_phone": "Phone",
+  "preview.width_px": "{width} px",
+  "preview.width_columns": "{width} px · {columns} columns",
+  "preview.width_columns_min": "{width} px · min_column_width {min} gives {columns} columns",
+  "preview.width_columns_one": "{width} px · 1 column",
+  "preview.width_columns_min_one": "{width} px · min_column_width {min} gives 1 column",
+  "preview.width_narrower": "(asked for {width} px, but the dialog is narrower)",
+  "preview.changed_line": "The line the last edit changed is highlighted.",
+  "preview.cannot_render": "This Home Assistant cannot draw the preview here; the YAML view still shows what is built."
 }

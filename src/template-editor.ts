@@ -29,11 +29,13 @@ import {
   templateDefaults,
   VariableDeclaration,
 } from './variables';
+import { exampleVariables } from './examples';
 import { getLovelaceConfig, getLovelacePanel } from './utils';
+import deepReplace from './deep-replace';
 import { localize, onLanguageLoaded } from './localize';
 import { sameConfig } from './undo';
 import { definedNames, lintTemplate } from './lint';
-import { getThingType, isVariablesShape, loadCardEditorPicker, setOrDelete } from './shared';
+import { getThingType, isVariablesShape, loadCardEditorPicker, previewExamples, setOrDelete } from './shared';
 import {
   THING_STUBS,
   DRAG_PATH,
@@ -51,6 +53,7 @@ import './template-editor/placeholder-tool';
 import './template-editor/help-icon';
 import './template-editor/field-menus';
 import './template-editor/code-editor-hooks';
+import './preview-frame';
 import './template-editor/usages-tab';
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
@@ -350,6 +353,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                   .lovelace=${this._savedLovelace}
                   .config=${this._config}
                 ></decluttering-code-hooks>
+                ${this._renderCardPreview()}
               `
             : this._selectedTab === 'change_card'
               ? html`
@@ -1123,6 +1127,29 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
 
   // Stops listening for a language chunk landing (idea 4).
   private _stopLanguageListener?: () => void;
+
+  /*
+   * The card as the chosen example builds it (ideas 26, 53, 54): under the Card tab's form,
+   * so what a setting does is seen without leaving the tab, in light or dark and at a phone's
+   * width. Built the way the card editor's Result is, quietly.
+   */
+  private _renderCardPreview(): TemplateResult {
+    const config = this._config;
+    if (!config?.card || !this.hass) return html``;
+    const resolved = collectTemplates(this._savedLovelace, undefined, config)[config.template] ?? config;
+    const variables = exampleVariables(resolved, previewExamples.get(config.template)) ?? [];
+    let built: unknown;
+    try {
+      built = deepReplace(variables, resolved, resolved.card, config.template, this.hass, true);
+    } catch {
+      return html``;
+    }
+    if (!built || typeof built !== 'object') return html``;
+    return html`
+      <h4 class="preview-header">${localize('preview.header', undefined, this.hass)}</h4>
+      <decluttering-preview-frame .hass=${this.hass} .config=${built} kind="card"></decluttering-preview-frame>
+    `;
+  }
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback();

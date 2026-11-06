@@ -4,6 +4,7 @@ import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringCardConfig, TemplateConfig, VariablesConfig, FormSchemaEntry } from './types';
 import deepReplace, { fillSource } from './deep-replace';
+import './preview-frame';
 import { structureNames } from './structure';
 import {
   collectTemplates,
@@ -1213,12 +1214,22 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
                               )
                         }
                       </ha-alert>`
-                    : html`<hui-card
+                    : html`<decluttering-preview-frame
                         .hass=${this.hass}
                         .config=${resolved}
-                        .preview=${true}
+                        .kind=${thingType}
                         .layout=${layout}
-                      ></hui-card>`
+                        .renderedOnly=${true}
+                        .repeat=${
+                          items?.length
+                            ? {
+                                copies: items.length,
+                                max: Number(this._config.columns) || 1,
+                                minWidth: Number(this._config.min_column_width) || undefined,
+                              }
+                            : undefined
+                        }
+                      ></decluttering-preview-frame>`
                 }
               </div>`
             : html`<pre class="yaml">

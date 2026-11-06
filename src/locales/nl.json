@@ -986,5 +986,22 @@
   "gallery.preview_full": "Volledig voorbeeld",
   "gallery.preview_hide": "YAML verbergen",
   "gallery.installed_already": "Staat al op dit dashboard.",
-  "gallery.close": "Sluiten"
+  "gallery.close": "Sluiten",
+  "preview.header": "Voorvertoning met het gekozen voorbeeld",
+  "preview.mode_rendered": "Weergegeven",
+  "preview.mode_yaml": "YAML",
+  "preview.theme_light": "Licht",
+  "preview.theme_dark": "Donker",
+  "preview.theme_both": "Beide",
+  "preview.width_desktop": "Desktop",
+  "preview.width_tablet": "Tablet",
+  "preview.width_phone": "Telefoon",
+  "preview.width_px": "{width} px",
+  "preview.width_columns": "{width} px · {columns} kolommen",
+  "preview.width_columns_min": "{width} px · min_column_width {min} geeft {columns} kolommen",
+  "preview.width_columns_one": "{width} px · 1 kolom",
+  "preview.width_columns_min_one": "{width} px · min_column_width {min} geeft 1 kolom",
+  "preview.width_narrower": "({width} px gevraagd, maar het dialoogvenster is smaller)",
+  "preview.changed_line": "De regel die de laatste bewerking veranderde is gemarkeerd.",
+  "preview.cannot_render": "Deze Home Assistant kan de voorvertoning hier niet tekenen; de YAML-weergave toont nog steeds wat er wordt gebouwd."
 }

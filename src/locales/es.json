@@ -986,5 +986,22 @@
   "gallery.preview_full": "Vista previa completa",
   "gallery.preview_hide": "Ocultar el YAML",
   "gallery.installed_already": "Ya está en este panel.",
-  "gallery.close": "Cerrar"
+  "gallery.close": "Cerrar",
+  "preview.header": "Vista previa con el ejemplo elegido",
+  "preview.mode_rendered": "Renderizado",
+  "preview.mode_yaml": "YAML",
+  "preview.theme_light": "Claro",
+  "preview.theme_dark": "Oscuro",
+  "preview.theme_both": "Ambos",
+  "preview.width_desktop": "Escritorio",
+  "preview.width_tablet": "Tableta",
+  "preview.width_phone": "Teléfono",
+  "preview.width_px": "{width} px",
+  "preview.width_columns": "{width} px · {columns} columnas",
+  "preview.width_columns_min": "{width} px · min_column_width {min} da {columns} columnas",
+  "preview.width_columns_one": "{width} px · 1 columna",
+  "preview.width_columns_min_one": "{width} px · min_column_width {min} da 1 columna",
+  "preview.width_narrower": "(se pidieron {width} px, pero el diálogo es más estrecho)",
+  "preview.changed_line": "La línea que cambió la última edición está resaltada.",
+  "preview.cannot_render": "Este Home Assistant no puede dibujar la vista previa aquí; la vista YAML sigue mostrando lo que se construye."
 }
