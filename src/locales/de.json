@@ -919,5 +919,14 @@
   "errorcard.show_passed": "Übergebene Werte zeigen",
   "errorcard.details": "Details",
   "errorcard.nothing_passed": "Es wurden keine Variablen übergeben.",
-  "undo.op.use_closest": "Wechsel der Karte auf die nächstliegende Vorlage"
+  "undo.op.use_closest": "Wechsel der Karte auf die nächstliegende Vorlage",
+  "chip.edit": "Vorlage bearbeiten",
+  "chip.where_used": "Wo verwendet",
+  "chip.show_built": "Zeigen, was gebaut wurde",
+  "chip.show_card": "Karte wieder zeigen",
+  "chip.eject": "Aus der Vorlage lösen",
+  "chip.dialog_title": "Vorlage {name} bearbeiten",
+  "chip.save": "Speichern",
+  "chip.cancel": "Abbrechen",
+  "undo.op.edit_template": "Bearbeiten der Vorlage"
 }

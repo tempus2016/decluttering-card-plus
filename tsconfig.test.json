@@ -18,6 +18,7 @@
     "src/breakpoints.ts",
     "src/version-check.ts",
     "src/error-card.ts",
+    "src/edit-chip-pure.ts",
     "src/templates.ts",
     "src/share.ts",
     "src/variables.ts",
@@ -79,6 +80,7 @@
     "src/compare.ts",
     "src/dates.ts",
     "src/colour.ts",
-    "src/card-editor/presets.ts"
+    "src/card-editor/presets.ts",
+    "src/initial-tab.ts"
   ]
 }

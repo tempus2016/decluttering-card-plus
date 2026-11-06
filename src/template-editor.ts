@@ -1,3 +1,4 @@
+import { takeInitialTab } from './initial-tab';
 import { LitElement, html, TemplateResult, CSSResult, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'custom-card-helpers';
@@ -1125,6 +1126,9 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback();
+    // Opened from the chip's "Where used" (idea 47): start on that tab.
+    const asked = takeInitialTab();
+    if (asked) this._selectedTab = asked;
     this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
     this._unwatchTrash = onTrashChanged(() => void this._loadTrash());
     void this._loadTrash();

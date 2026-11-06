@@ -1514,6 +1514,29 @@ export function findTemplate(
   return collectTemplates(ll, view, undefined, section)[template] ?? null;
 }
 
+/**
+ * Which dashboard a borrowed template comes from, by url path - undefined for one defined
+ * here, or one nobody has. Looked for where collectAllTemplates looks, in the same order, so
+ * the answer is the dashboard whose copy a card here actually gets (idea 47).
+ */
+export async function templateSourcePath(
+  hass: HomeAssistant | undefined,
+  ll: LovelaceConfig | null | undefined,
+  template: string,
+): Promise<string | undefined> {
+  if (collectRawTemplates(ll)[template] !== undefined || !hass || !mayBorrowTemplates(ll)) return undefined;
+  let sources = getTemplateSources(ll);
+  if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
+  sources = withLibrary(sources);
+  const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
+  // Named sources are merged after the library, so the last one holding the name wins.
+  let found: string | undefined;
+  configs.forEach((config, index) => {
+    if (config && collectRawTemplates(config)[template] !== undefined) found = sources[index];
+  });
+  return found;
+}
+
 /** A single template from this dashboard or one it borrows from. */
 export async function findTemplateAnywhere(
   hass: HomeAssistant | undefined,

@@ -919,5 +919,14 @@
   "errorcard.show_passed": "Voir ce qui a été transmis",
   "errorcard.details": "Détails",
   "errorcard.nothing_passed": "Aucune variable n'a été transmise.",
-  "undo.op.use_closest": "le passage de la carte au modèle le plus proche"
+  "undo.op.use_closest": "le passage de la carte au modèle le plus proche",
+  "chip.edit": "Modifier le modèle",
+  "chip.where_used": "Où il est utilisé",
+  "chip.show_built": "Voir ce qui a été construit",
+  "chip.show_card": "Revoir la carte",
+  "chip.eject": "Détacher du modèle",
+  "chip.dialog_title": "Modifier le modèle {name}",
+  "chip.save": "Enregistrer",
+  "chip.cancel": "Annuler",
+  "undo.op.edit_template": "la modification du modèle"
 }

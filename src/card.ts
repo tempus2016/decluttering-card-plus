@@ -72,6 +72,7 @@ import {
   MOBILE_VIEWPORT_QUERY,
   withMobileVariables,
 } from './breakpoints';
+import { loadEditors } from './editors-loader';
 import { customMissingDetail, missingTemplateDetail } from './error-card';
 
 /*
@@ -264,7 +265,7 @@ export class DeclutteringCard extends DeclutteringElement {
 
   // The editors live in a chunk of their own, fetched the first time one is opened (idea 4).
   static async getConfigElement(): Promise<HTMLElement> {
-    await import('./editors');
+    await loadEditors();
     return document.createElement(CARD_EDITOR_TAG);
   }
 
@@ -342,7 +343,7 @@ export class DeclutteringCard extends DeclutteringElement {
     }
     this._error = undefined;
     this._errorDetail = undefined;
-    this._errorConfig = this._lastConfig;
+    this._ownConfig = this._lastConfig;
     this._rebuildOn = rebuildOnEntities(config.rebuild_on);
     this._warnRebuildOn(config);
     /*

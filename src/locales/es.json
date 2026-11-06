@@ -919,5 +919,14 @@
   "errorcard.show_passed": "Mostrar lo que se pasó",
   "errorcard.details": "Detalles",
   "errorcard.nothing_passed": "No se pasaron variables.",
-  "undo.op.use_closest": "cambiar la tarjeta a la plantilla más cercana"
+  "undo.op.use_closest": "cambiar la tarjeta a la plantilla más cercana",
+  "chip.edit": "Editar plantilla",
+  "chip.where_used": "Dónde se usa",
+  "chip.show_built": "Mostrar lo que construyó",
+  "chip.show_card": "Mostrar la tarjeta de nuevo",
+  "chip.eject": "Separar de la plantilla",
+  "chip.dialog_title": "Editar plantilla {name}",
+  "chip.save": "Guardar",
+  "chip.cancel": "Cancelar",
+  "undo.op.edit_template": "editar la plantilla"
 }

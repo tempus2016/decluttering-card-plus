@@ -919,5 +919,14 @@
   "errorcard.show_passed": "Show what was passed",
   "errorcard.details": "Details",
   "errorcard.nothing_passed": "No variables were passed.",
-  "undo.op.use_closest": "switching the card to the nearest template"
+  "undo.op.use_closest": "switching the card to the nearest template",
+  "chip.edit": "Edit template",
+  "chip.where_used": "Where used",
+  "chip.show_built": "Show what it built",
+  "chip.show_card": "Show the card again",
+  "chip.eject": "Eject from the template",
+  "chip.dialog_title": "Edit template {name}",
+  "chip.save": "Save",
+  "chip.cancel": "Cancel",
+  "undo.op.edit_template": "editing the template"
 }

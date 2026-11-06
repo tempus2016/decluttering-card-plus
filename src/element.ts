@@ -20,6 +20,8 @@ import {
   withPickedEntity,
   itemTemplatesOf,
   replaceCard,
+  replaceTemplate,
+  templateSourcePath,
 } from './templates';
 import {
   forEachVariables,
@@ -61,6 +63,7 @@ import {
 import {
   HELPERS,
   LAZY_COPY_TAG,
+  TEMPLATE_TAG,
   THING_TYPE_KEYS,
   TemplatePicker,
   currentViewIndex,
@@ -73,6 +76,9 @@ import {
   pageDashboard,
   rewriteDashboards,
 } from './shared';
+import { loadEditors } from './editors-loader';
+import { dialogButtons } from './dialog-compat';
+import { requestInitialTab } from './initial-tab';
 import { warn } from './warnings';
 import {
   Alert,
@@ -92,6 +98,8 @@ import { manyConfig, MANY_TYPE } from './row-repeat';
 import { itemLabel, skippedConfig, templateVisibility } from './visibility';
 import './skipped';
 import { ErrorDetail, findCardPath, templateEditPath, unsetDetail, withTemplate } from './error-card';
+import { ChipAction } from './edit-chip-pure';
+import './edit-chip';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -254,10 +262,20 @@ export abstract class DeclutteringElement extends LitElement {
   @state() protected _error?: string;
   // What the error card says beyond the message (idea 49), and the card config it is about.
   @state() protected _errorDetail?: ErrorDetail;
-  protected _errorConfig?: DeclutteringCardConfig;
+  protected _ownConfig?: DeclutteringCardConfig;
   @state() private _errorOpen = false;
   // The error the card last laid itself out for, so the section is told once per error (idea 49).
   private _errorLayoutFor?: string;
+  // The edit-mode chip (idea 47): how many copies the last repeat made, which dashboard a
+  // borrowed template comes from (asked once per template), and the template dialog open.
+  protected _copyCount?: number;
+  @state() private _chipSource?: string;
+  private _chipSourceFor?: string;
+  @state() private _templateDialog?: {
+    name: string;
+    config: Record<string, unknown>;
+    pending?: Record<string, unknown>;
+  };
 
   /** Whether this card was asked to give up its box in the layout. */
   @state() protected _fitContents = false;
@@ -544,6 +562,10 @@ export abstract class DeclutteringElement extends LitElement {
       :host(.decluttering-many) {
         display: contents;
       }
+      /* The chip in edit mode is pinned to the host's box (idea 47). */
+      :host(.decluttering-chipped) {
+        position: relative;
+      }
       /*
        * Last, and it has to stay last. Every rule here is :host(.one-class), so they all
        * have the same specificity and the later one wins - which meant a hidden card kept
@@ -566,6 +588,13 @@ export abstract class DeclutteringElement extends LitElement {
 
   protected updated(changedProperties: PropertyValues): void {
     super.updated(changedProperties);
+    // The template editor in this card's own dialog is configured once it is on the page.
+    const editor = this.renderRoot?.querySelector?.('decluttering-template-plus-editor') as
+      (HTMLElement & { setConfig?: (config: unknown) => void; setConfigOnce?: unknown; configured?: unknown }) | null;
+    if (editor && editor.setConfigOnce && editor.configured !== editor.setConfigOnce) {
+      editor.configured = editor.setConfigOnce;
+      editor.setConfig?.(editor.setConfigOnce);
+    }
     // Cheap, and it catches a wrapper that was told about edit mode without the badge
     // being moved - whichever way round a future Home Assistant does it.
     this._syncWrapperPreview();
@@ -734,6 +763,7 @@ export abstract class DeclutteringElement extends LitElement {
     const styles = this._resolveStyles(templateConfig, variables, cardStyle, templateName, trace);
     // Every card's build is noted for the health panel; a template's own preview is not a card.
     if (instance) this._noteBuild(templateName ?? '', instance, 1, started);
+    this._copyCount = undefined;
     if (trace) {
       this._logBuild(
         started,
@@ -1553,6 +1583,7 @@ export abstract class DeclutteringElement extends LitElement {
     });
     this._missedBeforeLibrary = missed;
     this._noteBuild(config.template, config, cards.length, started);
+    this._copyCount = cards.length;
     if (this._trace) this._logBuild(started, sections, templateConfig);
 
     // Rows and picture elements: every copy to the one wrapper, nothing laid out here.
@@ -1864,7 +1895,11 @@ export abstract class DeclutteringElement extends LitElement {
      * on a phone, or in a view whose editor is awkward to reach.
      */
     if (this._debug && this._thingConfig) {
+      // The chip stays while the built YAML is showing, so "Show the card again" is reachable.
+      const chip = this._renderChip();
+      this.classList.toggle('decluttering-chipped', chip !== '');
       return html`
+        ${chip}
         <ha-card>
           <div class="debug">
             <p>
@@ -1893,6 +1928,8 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     this.classList.toggle('decluttering-many', this._thingConfig?.type === MANY_TYPE);
     this.classList.toggle('decluttering-report', this._reportMode || this._strictReporting || !!this._strictNotice);
 
+    const chip = this._renderChip();
+    this.classList.toggle('decluttering-chipped', chip !== '');
     return html`
       ${
         this._style
@@ -1903,8 +1940,145 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
             `
           : ''
       }
-      ${this._renderStrictNotice()} ${this._thing} ${this._renderReport()}
+      ${chip} ${this._renderStrictNotice()} ${this._thing} ${this._renderReport()} ${this._renderTemplateDialog()}
     `;
+  }
+
+  /*
+   * The chip in edit mode (idea 47): only on a card, only on the outermost one - the cards a
+   * template builds inside it would otherwise each wear one - and not on a card that has
+   * given up its box, which has nothing to pin a chip to.
+   */
+  private _renderChip(): TemplateResult | '' {
+    const name = this._templateName;
+    if (!this._previewing || this._thingType !== 'card' || !name || this._openTemplates.length || this._fitContents) {
+      return '';
+    }
+    // Not on the card that defines the template, which is its own editor's business, and not
+    // on the preview inside an edit dialog, where every card counts as being edited.
+    if (this.localName === TEMPLATE_TAG || editDialogOf(this)) return '';
+    if (this._chipSourceFor !== name) {
+      this._chipSourceFor = name;
+      this._chipSource = undefined;
+      void templateSourcePath(this._hass, getLovelaceConfig(), name).then((source) => {
+        if (this._chipSourceFor === name) this._chipSource = source;
+      });
+    }
+    const canEdit = this._canOpenTemplate(name);
+    return html`<decluttering-card-plus-chip
+      .hass=${this._hass}
+      .name=${name}
+      .source=${this._chipSource}
+      .copies=${this._copyCount}
+      .showing=${!!this._debug}
+      .canEdit=${canEdit}
+      @dcp-chip=${(ev: CustomEvent<{ action: ChipAction }>) => this._chipAction(ev.detail.action)}
+    ></decluttering-card-plus-chip>`;
+  }
+
+  /** Whether "Edit template" can open the named template: a template card here, one declared under the root key, or one on another dashboard. */
+  private _canOpenTemplate(name: string): boolean {
+    const ll = getLovelaceConfig();
+    return (
+      !!this._chipSource ||
+      !!templateEditPath(ll, name) ||
+      !!(ll as { decluttering_templates?: Record<string, unknown> } | null)?.decluttering_templates?.[name]
+    );
+  }
+
+  private _chipAction(action: ChipAction): void {
+    const name = this._templateName;
+    if (!name) return;
+    const ll = getLovelaceConfig();
+    switch (action) {
+      case 'show':
+        // The debug view of what the card built, until the next build puts the card back.
+        this._debug = this._debug ? false : 'yaml';
+        return;
+      case 'eject': {
+        const own = this._ownConfig;
+        const built = this._thingConfig;
+        if (!own || !built) return;
+        void rewriteDashboards(this, this._hass, 'eject', [
+          { urlPath: pageDashboard(), build: (config) => replaceCard(config, own, withoutStamps(built)) },
+        ]);
+        return;
+      }
+      case 'edit':
+      case 'where_used': {
+        if (action === 'where_used') requestInitialTab('usages');
+        const path = templateEditPath(ll, name);
+        if (path) {
+          this._openEditor(path);
+          return;
+        }
+        if (this._chipSource) {
+          // Another dashboard's template: that dashboard, in edit mode, in a new tab.
+          window.open(`/${this._chipSource}/0?edit=1`, '_blank', 'noopener');
+          return;
+        }
+        const declared = (ll as { decluttering_templates?: Record<string, unknown> } | null)?.decluttering_templates?.[
+          name
+        ];
+        if (declared && typeof declared === 'object') {
+          // The template editor lives in the editors chunk, so the dialog waits for it.
+          void loadEditors().then(() => {
+            this._templateDialog = {
+              name,
+              config: { type: 'custom:decluttering-template-plus', template: name, ...declared },
+            };
+          });
+        }
+      }
+    }
+  }
+
+  /*
+   * A template declared under the root key has no card for Home Assistant's dialog to open,
+   * so it is edited here, in a dialog of this card's own holding the template editor, and
+   * saved through the same path every other rewrite takes - undoable from the toast.
+   */
+  private _renderTemplateDialog(): TemplateResult | '' {
+    const dialog = this._templateDialog;
+    if (!dialog) return '';
+    return html`<ha-dialog
+      open
+      scrimClickAction
+      escapeKeyAction
+      .heading=${localize('chip.dialog_title', { name: dialog.name }, this._hass)}
+      .headerTitle=${localize('chip.dialog_title', { name: dialog.name }, this._hass)}
+      @closed=${() => (this._templateDialog = undefined)}
+    >
+      <decluttering-template-plus-editor
+        .hass=${this._hass}
+        .lovelace=${getLovelaceConfig()}
+        .setConfigOnce=${dialog.config}
+        @config-changed=${(ev: CustomEvent) => {
+          ev.stopPropagation();
+          if (this._templateDialog) this._templateDialog = { ...this._templateDialog, pending: ev.detail?.config };
+        }}
+      ></decluttering-template-plus-editor>
+      ${dialogButtons(html`
+        <ha-button slot="secondaryAction" appearance="plain" @click=${() => (this._templateDialog = undefined)}
+          >${localize('chip.cancel', undefined, this._hass)}</ha-button
+        >
+        <ha-button slot="primaryAction" .disabled=${!dialog.pending} @click=${() => this._saveTemplateDialog()}>
+          ${localize('chip.save', undefined, this._hass)}
+        </ha-button>
+      `)}
+    </ha-dialog>`;
+  }
+
+  private _saveTemplateDialog(): void {
+    const dialog = this._templateDialog;
+    if (!dialog?.pending) return;
+    const content: Record<string, unknown> = { ...dialog.pending };
+    delete content.type;
+    delete content.template;
+    this._templateDialog = undefined;
+    void rewriteDashboards(this, this._hass, 'edit_template', [
+      { urlPath: pageDashboard(), build: (config) => replaceTemplate(config, dialog.name, content) },
+    ]);
   }
 
   /*
@@ -1930,8 +2104,7 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     // The card's own grid_options still stand: they are what the user asked for this slot.
     delete self.getGridOptions;
     delete self.getLayoutOptions;
-    if (this._errorConfig?.grid_options !== undefined)
-      self.getGridOptions = (): unknown => this._errorConfig?.grid_options;
+    if (this._ownConfig?.grid_options !== undefined) self.getGridOptions = (): unknown => this._ownConfig?.grid_options;
     this.classList.remove('decluttering-card', 'decluttering-fit-contents', 'decluttering-badge');
     this.classList.add('decluttering-container');
     if (!hadSize) return;
@@ -1969,9 +2142,8 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
         )
       : '';
     const ll = getLovelaceConfig();
-    const ownPath = this._errorConfig ? findCardPath(ll, this._errorConfig) : undefined;
-    const templatePath = detail.template ? templateEditPath(ll, detail.template) : undefined;
-    const variables = this._errorConfig?.variables;
+    const ownPath = this._ownConfig ? findCardPath(ll, this._ownConfig) : undefined;
+    const variables = this._ownConfig?.variables;
     const passed =
       variables && (Array.isArray(variables) ? variables.length : Object.keys(variables).length)
         ? toYaml(variables)
@@ -2011,8 +2183,8 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
                     : ''
                 }
                 ${
-                  detail.kind === 'custom_missing' && templatePath
-                    ? html`<ha-button @click=${() => this._openEditor(templatePath)}>
+                  detail.kind === 'custom_missing' && detail.template && this._canOpenTemplate(detail.template)
+                    ? html`<ha-button @click=${() => this._chipAction('edit')}>
                         ${localize('errorcard.open_template', undefined, hass)}
                       </ha-button>`
                     : ''
@@ -2038,7 +2210,7 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
 
   /** Use the nearest template: the one key rewritten and saved, undoable from the toast. */
   private _useClosest(closest: string): void {
-    const original = this._errorConfig;
+    const original = this._ownConfig;
     if (!original) return;
     void rewriteDashboards(this, this._hass, 'use_closest', [
       { urlPath: pageDashboard(), build: (ll) => replaceCard(ll, original, withTemplate(original, closest)) },

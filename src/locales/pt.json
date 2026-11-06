@@ -919,5 +919,14 @@
   "errorcard.show_passed": "Mostrar o que foi passado",
   "errorcard.details": "Detalhes",
   "errorcard.nothing_passed": "Não foram passadas variáveis.",
-  "undo.op.use_closest": "mudar o cartão para o modelo mais próximo"
+  "undo.op.use_closest": "mudar o cartão para o modelo mais próximo",
+  "chip.edit": "Editar modelo",
+  "chip.where_used": "Onde é usado",
+  "chip.show_built": "Mostrar o que construiu",
+  "chip.show_card": "Mostrar o cartão de novo",
+  "chip.eject": "Separar do modelo",
+  "chip.dialog_title": "Editar modelo {name}",
+  "chip.save": "Guardar",
+  "chip.cancel": "Cancelar",
+  "undo.op.edit_template": "editar o modelo"
 }
