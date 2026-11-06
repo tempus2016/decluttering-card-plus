@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { PLACEHOLDER, VariableDeclaration, addDeclarations, declarationList } from './variables';
 import { freeName } from './share';
 
@@ -69,7 +70,7 @@ export function namesInUse(template: any): string[] {
   for (const declaration of declarationList(template?.variables)) {
     if (declaration && typeof declaration.name === 'string') names.add(declaration.name);
   }
-  const text = JSON.stringify(template ?? {});
+  const text = placeholderJson(template ?? {});
   const used = /\[\[([A-Za-z0-9_-]+)/g;
   for (let match = used.exec(text); match; match = used.exec(text)) names.add(match[1]);
   return [...names];

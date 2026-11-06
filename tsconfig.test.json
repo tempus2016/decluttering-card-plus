@@ -72,6 +72,7 @@
     "src/declarations-rows.ts",
     "src/example-labels.ts",
     "src/placeholders.ts",
+    "src/placeholder-text.ts",
     "src/help.ts",
     "src/card-editor/repeat-builder.ts",
     "src/card-editor/by-domain.ts",

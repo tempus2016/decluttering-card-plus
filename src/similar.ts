@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { VariablesConfig } from './types';
 import { addTemplateToRoot, replaceCard } from './templates';
 import { freeName } from './share';
@@ -80,7 +81,7 @@ export function findSimilarCards(cards: any[]): SimilarGroup[] {
   cards.forEach((card, index) => {
     if (!card || typeof card !== 'object' || typeof card.type !== 'string') return;
     const body = withoutLayout(card);
-    if (JSON.stringify(body).includes('[[')) return;
+    if (placeholderJson(body).includes('[[')) return;
     const key = JSON.stringify([card.type, shape(body)]);
     buckets.set(key, [...(buckets.get(key) ?? []), index]);
   });

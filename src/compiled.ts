@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { OPTIONAL_SUFFIX, TRANSFORM_SUFFIX, unwrapNestedOr } from './variables';
 
 /*
@@ -72,7 +73,7 @@ export function splitSites(json: string): Piece[] {
 export function compile(content: object): Compiled {
   let found = compiled.get(content);
   if (!found) {
-    const json = unwrapNestedOr(JSON.stringify(content));
+    const json = unwrapNestedOr(placeholderJson(content));
     found = { json, pieces: splitSites(json) };
     compiled.set(content, found);
     compiles += 1;

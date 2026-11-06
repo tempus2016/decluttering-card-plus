@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE, parentsOf, templatesNamedBy } from './templates';
 import { localize } from './localize';
 import { DEFAULTS_ALIAS, OWN_DEFAULTS, normaliseVariables, templateDefaults, usedVariables } from './variables';
@@ -83,7 +84,7 @@ const PLACEHOLDER_HEAD = /\[\[!?([A-Za-z0-9_-]+)/g;
  * item template here is a variable, and goes unsaid.
  */
 function itemTemplateRefs(config: any, templates: Record<string, any>): string[] {
-  const text = JSON.stringify(config ?? null);
+  const text = placeholderJson(config ?? null);
   const found: string[] = [];
   for (let match = PLACEHOLDER_HEAD.exec(text); match !== null; match = PLACEHOLDER_HEAD.exec(text)) {
     const name = match[1];

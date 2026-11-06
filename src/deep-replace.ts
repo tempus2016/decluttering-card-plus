@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
 import { BuildTrace } from './trace';
@@ -220,13 +221,13 @@ function escapeForJsonString(value: string): string {
 /** Whether a value - text, or a mapping or list with text in it - still has a placeholder to fill. */
 function holdsPlaceholder(value: unknown): boolean {
   if (typeof value === 'string') return PLACEHOLDER.test(value);
-  return !!value && typeof value === 'object' && PLACEHOLDER.test(JSON.stringify(value));
+  return !!value && typeof value === 'object' && PLACEHOLDER.test(placeholderJson(value));
 }
 
 function asWholeValue(value: any, match: string): string {
   // `typeof null` is 'object', and JSON.stringify(null) is 'null', which is what a bare
   // `"[[name]]"` should become - so null belongs here rather than with the strings.
-  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'object') return placeholderJson(value);
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return match;
 }
@@ -285,7 +286,7 @@ export function fillSource(
   templateConfig: TemplateConfig | undefined,
   hass?: any,
 ): unknown {
-  if (!isRegistrySource(source) || !PLACEHOLDER.test(JSON.stringify(source))) return source;
+  if (!isRegistrySource(source) || !PLACEHOLDER.test(placeholderJson(source))) return source;
   return deepReplace(variables, templateConfig ?? ({} as TemplateConfig), source, undefined, hass, true);
 }
 
@@ -605,7 +606,7 @@ function substitutePass(
         // any other, so `[[row|with:...?]]` leaves its list rather than putting "" in (#235).
         if (optional && (out === null || out === '')) return match;
         if (!whole) return asPartOfString(out);
-        return JSON.stringify(outcome.splice ? { [SPLICE_KEY]: out } : out);
+        return placeholderJson(outcome.splice ? { [SPLICE_KEY]: out } : out);
       }
       const chain = transform;
       // `json` reads the variable's own value, so anywhere but first it has nothing to
@@ -933,7 +934,7 @@ function exposeFillValues(
 ): void {
   if (!Object.keys(itemTemplates).length) return;
   const values = variableValues(variableArray);
-  const text = JSON.stringify([content, variableArray]);
+  const text = placeholderJson([content, variableArray]);
   if (typeof text !== 'string' || !text.includes('.')) return;
   const asked = new Set<string>();
   for (let match = DOTTED_ASK.exec(text); match !== null; match = DOTTED_ASK.exec(text)) {
@@ -1032,7 +1033,7 @@ function deepReplace(
     }
   }
   // The template's own names, under everything else (#391), when anything here asks for them.
-  if (TEMPLATE_NAME_USE.test(JSON.stringify([content, variableArray]))) {
+  if (TEMPLATE_NAME_USE.test(placeholderJson([content, variableArray]))) {
     for (const entry of templatePlaceholders(templateName, extras?.templateChain)) {
       const name = Object.keys(entry)[0];
       if (!variableArray.some((each) => Object.keys(each)[0] === name)) variableArray.push(entry);
@@ -1141,7 +1142,7 @@ function deepReplace(
    */
   const ownItemsOf = (name: string, template: TemplateConfig): { items: unknown[]; fromHa: boolean } | undefined => {
     const own = (raw: unknown): unknown => {
-      const below = deeper(name, JSON.stringify(raw));
+      const below = deeper(name, placeholderJson(raw));
       if (!below) return raw;
       return deepReplace(
         variableArray,
@@ -1173,7 +1174,7 @@ function deepReplace(
    * another repeat's copy can filter by that copy's values (#309).
    */
   const filledSource = (name: string, source: unknown): unknown => {
-    const below = deeper(name, JSON.stringify(source));
+    const below = deeper(name, placeholderJson(source));
     if (!below) return source;
     return deepReplace(
       variableArray,
@@ -1312,7 +1313,7 @@ function deepReplace(
       // A body still carrying a structural placeholder of its own name is one that fills
       // itself in: refused here, so every level says so rather than inserting another copy
       // of it on every pass until the size ceiling stops it.
-      if (JSON.stringify(value)?.includes(`[[${name}|`)) return { refused: localize('warn.fills_itself', { name }) };
+      if (placeholderJson(value)?.includes(`[[${name}|`)) return { refused: localize('warn.fills_itself', { name }) };
       return { value };
     })();
     expansions.set(key, outcome);
@@ -1323,7 +1324,7 @@ function deepReplace(
   // it come from the compiled form (idea 3); anything else - a value, a style string - is
   // stringified here as it always was.
   const built = content && typeof content === 'object' ? compile(content) : undefined;
-  let jsonConfig = built ? built.json : unwrapNestedOr(JSON.stringify(content));
+  let jsonConfig = built ? built.json : unwrapNestedOr(placeholderJson(content));
   let pieces = built?.pieces;
   const haNames = extras?.haNames;
   // How much the text may still grow, counted across every fill this build makes.
@@ -1368,7 +1369,7 @@ function deepReplace(
     return out;
   };
   if (shield === undefined && hasStyleKey(content)) {
-    jsonConfig = unwrapNestedOr(JSON.stringify(shieldStyles(content)));
+    jsonConfig = unwrapNestedOr(placeholderJson(shieldStyles(content)));
     // The compiled sites belong to the text as written, not to this one.
     pieces = undefined;
   }
@@ -1422,7 +1423,7 @@ function deepReplace(
     const raw = values[name];
     // A mapping is settled too, for `yaml` (#391): its lines are written once, from the
     // values as they end up, rather than filled in afterwards around the YAML's own quotes.
-    const below = deeper(name, holdsPlaceholder(raw) && typeof raw === 'object' ? JSON.stringify(raw) : raw);
+    const below = deeper(name, holdsPlaceholder(raw) && typeof raw === 'object' ? placeholderJson(raw) : raw);
     const value = below
       ? deepReplace(variableArray, {}, raw, templateName, hass, true, undefined, depth, undefined, shield, true, below)
       : raw;
