@@ -6,6 +6,7 @@ import { warn } from './warnings';
 import { cardExists, iconExists, integrationExists } from './installed';
 import { toYaml } from './yaml';
 import { AGE_UNITS, age, formatDate, parseDate, relative } from './dates';
+import { contrast, darken, isThemeVariable, lighten, mix, parseColour, toHex, toRgba } from './colour';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -889,9 +890,65 @@ function localeStep(step: string, text: string, hass?: any): string | undefined 
   }
 }
 
+
+/*
+ * Colours (idea 41). `lighten:20`, `darken:20`, `alpha:0.12`, `mix:#ff9800,50` and
+ * `contrast` derive from one colour; a value that is not a colour is left as it was with a
+ * word in the console, and a theme variable is passed through, since its value is not known
+ * until the page paints.
+ */
+const CONTRAST_STEP = 'contrast';
+const COLOUR_PARAM_STEPS = ['lighten', 'darken', 'alpha', 'mix'];
+
+function isColourStep(step: string): boolean {
+  const colon = step.indexOf(':');
+  return colon === -1 ? step === CONTRAST_STEP : COLOUR_PARAM_STEPS.includes(step.slice(0, colon));
+}
+
+function colourStep(step: string, text: string, hass?: any): string | undefined {
+  if (!isColourStep(step)) return undefined;
+  if (isThemeVariable(text)) {
+    warnOnce('warn.colour_from_theme', step, text, hass);
+    return text;
+  }
+  const colour = parseColour(text);
+  if (!colour) {
+    warnOnce('warn.not_a_colour', step, text, hass);
+    return text;
+  }
+  const colon = step.indexOf(':');
+  const name = colon === -1 ? step : step.slice(0, colon);
+  const arg = colon === -1 ? '' : step.slice(colon + 1);
+  if (name === CONTRAST_STEP) return contrast(colour);
+  if (name === 'alpha') {
+    const alpha = Number(arg);
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+      warnOnce('warn.bad_number_argument', step, text, hass);
+      return text;
+    }
+    return toRgba(colour, alpha);
+  }
+  if (name === 'mix') {
+    const comma = arg.lastIndexOf(',');
+    const other = parseColour(comma === -1 ? arg : arg.slice(0, comma));
+    const percent = comma === -1 ? 50 : Number(arg.slice(comma + 1));
+    if (!other || !Number.isFinite(percent)) {
+      warnOnce('warn.not_a_colour', step, text, hass);
+      return text;
+    }
+    return toHex(mix(colour, other, percent));
+  }
+  const percent = Number(arg);
+  if (!Number.isFinite(percent)) {
+    warnOnce('warn.bad_number_argument', step, text, hass);
+    return text;
+  }
+  return toHex(name === 'lighten' ? lighten(colour, percent) : darken(colour, percent));
+}
+
 // Every new step, for the grammar and the lint: written bare, and written with an argument.
-const EXTRA_BARE_STEPS = [...DATE_BARE_STEPS, FORMAT_NUMBER_STEP];
-const EXTRA_PARAM_STEPS = [...DATE_PARAM_STEPS, PLURAL_STEP, FORMAT_NUMBER_STEP];
+const EXTRA_BARE_STEPS = [...DATE_BARE_STEPS, FORMAT_NUMBER_STEP, CONTRAST_STEP];
+const EXTRA_PARAM_STEPS = [...DATE_PARAM_STEPS, PLURAL_STEP, FORMAT_NUMBER_STEP, ...COLOUR_PARAM_STEPS];
 
 /** The name a step goes by, without its argument. */
 export function stepName(step: string): string {
@@ -1538,6 +1595,8 @@ export function applyTransform(
     if (dated !== undefined) return dated;
     const worded = localeStep(name, input, hass);
     if (worded !== undefined) return worded;
+    const coloured = colourStep(name, input, hass);
+    if (coloured !== undefined) return coloured;
     const parameterised = paramTransform(name);
     if (parameterised) return parameterised.fn(input, parameterised.arg);
     return TRANSFORMS[name](input);
@@ -1729,6 +1788,7 @@ export function applyTransform(
       isNumberStep(name) ||
       isDateStep(name) ||
       isLocaleStep(name) ||
+      isColourStep(name) ||
       !!paramTransform(name) ||
       (Object.prototype.hasOwnProperty.call(TRANSFORMS, name) && !!TRANSFORMS[name]);
     if (!known) return undefined;

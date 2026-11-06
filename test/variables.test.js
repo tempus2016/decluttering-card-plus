@@ -1830,3 +1830,39 @@ const knownStepForTest = (step) => KNOWN_PARAM_STEPS.includes(step.slice(0, step
   check('while a plain one does not', usesTranslate({ card: { a: '[[n|upper]]' } }), false);
   console.warn = warnedBefore;
 }
+
+/* --------------------------------------------------- idea 41: colour steps */
+{
+  const warnedBefore = console.warn;
+  const said = [];
+  console.warn = (m) => said.push(m);
+
+  check('lighten', applyTransform('lighten:20', '#1565c0'), '#4484cd');
+  check('darken', applyTransform('darken:20', '#1565c0'), '#11519a');
+  check('alpha', applyTransform('alpha:0.12', '#1565c0'), 'rgba(21,101,192,0.12)');
+  check('contrast', applyTransform('contrast', '#1565c0'), '#ffffff');
+  check('mix', applyTransform('mix:#ff9800,50', '#1565c0'), '#8a7f60');
+  check('mix defaults to half', applyTransform('mix:#ff9800', '#1565c0'), '#8a7f60');
+  check('a named colour works', applyTransform('lighten:50', 'navy'), '#8080c0');
+  check('colour steps chain', applyTransform('lighten:20|contrast', '#1565c0'), '#000000');
+  check('not a colour is left as it was', applyTransform('lighten:20', 'amberish'), 'amberish');
+  check('a theme variable passes through', applyTransform('alpha:0.5', 'var(--primary-color)'), 'var(--primary-color)');
+  check(
+    'and the console says so',
+    said.some((m) => m.includes('theme variable')),
+    true,
+  );
+  check('a bad alpha is left as it was', applyTransform('alpha:7', '#1565c0'), '#1565c0');
+
+  check(
+    'the new steps are known to the lint lists',
+    ['contrast'].every((s) => KNOWN_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'and the ones with arguments',
+    ['lighten', 'darken', 'alpha', 'mix'].every((s) => KNOWN_PARAM_STEPS.includes(s)),
+    true,
+  );
+  console.warn = warnedBefore;
+}

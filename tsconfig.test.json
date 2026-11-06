@@ -70,6 +70,7 @@
     "src/options-from.ts",
     "src/family.ts",
     "src/compare.ts",
-    "src/dates.ts"
+    "src/dates.ts",
+    "src/colour.ts"
   ]
 }

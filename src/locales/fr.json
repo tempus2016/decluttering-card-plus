@@ -880,5 +880,7 @@
   "warn.not_a_date": "decluttering-card-plus : |{step} travaille sur une date - un horodatage ISO ou une époque - mais a reçu \"{value}\", la valeur est donc laissée telle quelle.",
   "warn.bad_date_argument": "decluttering-card-plus : |{step} a besoin après les deux-points d'un motif pour format, ou d'une unité pour age - seconds, minutes, hours, days ou weeks -, \"{value}\" est donc laissé tel quel.",
   "warn.stale_time_step": "decluttering-card-plus : une carte utilisant {template} met en forme un temps avec |relative ou |age mais ne liste rien dans rebuild_on:, les mots ne suivront donc pas. Listez l'entité dont elle lit le temps.",
-  "warn.bad_plural_argument": "decluttering-card-plus : |{step} a besoin d'au moins deux mots après les deux-points, singulier puis pluriel, \"{value}\" est donc laissé tel quel."
+  "warn.bad_plural_argument": "decluttering-card-plus : |{step} a besoin d'au moins deux mots après les deux-points, singulier puis pluriel, \"{value}\" est donc laissé tel quel.",
+  "warn.not_a_colour": "decluttering-card-plus : |{step} travaille sur une couleur - hex, rgb() ou un nom CSS - mais a reçu \"{value}\", la valeur est donc laissée telle quelle.",
+  "warn.colour_from_theme": "decluttering-card-plus : |{step} ne peut rien dériver d'une variable de thème, qui n'a de valeur qu'au rendu de la page, \"{value}\" est donc transmis tel qu'écrit."
 }
