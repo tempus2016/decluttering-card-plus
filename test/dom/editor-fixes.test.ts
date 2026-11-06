@@ -28,17 +28,30 @@ function templateEditor(): any {
 const shareTab = (editor: any): any => editor.shadowRoot?.querySelector('decluttering-template-share-tab');
 
 describe('keyboard tabs', () => {
-  it('a tab shown by the strip without a click switches the panel and moves focus to its heading', async () => {
+  it('a tab chosen with Enter from the strip switches the panel and moves focus to its heading', async () => {
     const editor = templateEditor();
     await settle(4);
     const strip = editor.shadowRoot.querySelector('ha-tab-group');
     expect(!!strip, 'the tab strip rendered').to.equal(true);
+    strip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
     strip.dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'share' }, bubbles: true, composed: true }));
     await until(() => editor._selectedTab === 'share', 2000, 'the share panel');
     await settle(4);
     expect(!!shareTab(editor), 'the share tab is drawn').to.equal(true);
     const heading = editor.shadowRoot.querySelector('#panel-heading');
     expect(editor.shadowRoot.activeElement === heading, 'focus moved to the panel heading').to.equal(true);
+  });
+
+  it('an arrow key along the strip switches the panel and leaves focus on the strip', async () => {
+    const editor = templateEditor();
+    await settle(4);
+    const strip = editor.shadowRoot.querySelector('ha-tab-group');
+    strip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, composed: true }));
+    strip.dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'usages' }, bubbles: true, composed: true }));
+    await until(() => editor._selectedTab === 'usages', 2000, 'the usages panel');
+    await settle(2);
+    const heading = editor.shadowRoot.querySelector('#panel-heading');
+    expect(editor.shadowRoot.activeElement === heading, 'focus stayed on the strip').to.equal(false);
   });
 
   it('a pointer click on a tab switches the panel without stealing focus', async () => {
