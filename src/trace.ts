@@ -624,6 +624,12 @@ export interface BuildTiming {
   /** How many copies the build made: one, or the size of a repeat. */
   copies: number;
   ms: number;
+  /** The view the card sits in, as the health panel's statistics name it (idea 60). */
+  view?: string;
+  /** Whether the card follows state (`rebuild_on:`), so a later build of it was a rebuild. */
+  follows?: boolean;
+  /** Which card on the page built it, so two cards using one template in one view count as two. */
+  card?: number;
 }
 
 /** How many builds are remembered before the oldest make way. */

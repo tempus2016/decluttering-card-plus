@@ -170,6 +170,9 @@ const DEBUG_ELEMENT_STYLE: Record<string, string> = {
   'z-index': '1',
 };
 
+// Numbers each card element as it is made, for BuildTiming.card.
+let nextBuildId = 0;
+
 export abstract class DeclutteringElement extends LitElement {
   @state() protected _hass?: HomeAssistant;
   @state() private _thing?: LovelaceThing;
@@ -944,12 +947,23 @@ export abstract class DeclutteringElement extends LitElement {
   }
 
   // The health panel's note of this build: which template, the card's own name, how many copies, how long.
+  // This element's number in the page's build log, so the statistics count cards, not templates.
+  private readonly _buildId = (nextBuildId += 1);
+
   private _noteBuild(template: string, config: DeclutteringCardConfig, copies: number, started: number): void {
+    // The view's name, for the health panel's statistics (idea 60): its title, else its path, else its number.
+    const ll = getLovelaceConfig();
+    const at = this._place(ll).view;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const view: any = at === undefined ? undefined : (ll as any)?.views?.[at];
     BUILD_LOG.add({
       template,
       ...(typeof config.name === 'string' && config.name ? { name: config.name } : {}),
       copies,
       ms: performance.now() - started,
+      ...(view ? { view: String(view.title || view.path || at) } : {}),
+      ...(this._rebuildOn.length ? { follows: true } : {}),
+      card: this._buildId,
     });
   }
 

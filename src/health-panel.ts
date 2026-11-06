@@ -17,6 +17,9 @@ import { checkUnreadVariables } from './unread';
 import { olderElsewhere, renameVariableOnCards, withVersionNotes } from './version-check';
 import { pageDashboard, rewriteDashboards } from './shared';
 import { BUILD_LOG, slowestBuilds } from './trace';
+import { STATS_SNAPSHOT_KEY, StatsSnapshot, buildStats, snapshotOf, sortRows, statsAsMarkdown } from './stats';
+import { warnings } from './warnings';
+import { copyText } from './utils';
 
 /*
  * Dashboard health, as its own element so the template editor's Where used tab and the card
@@ -35,12 +38,14 @@ export class DeclutteringHealthPanel extends LitElement {
   public connectedCallback(): void {
     super.connectedCallback();
     this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
+    window.addEventListener('pagehide', this._writeSnapshot);
   }
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
+    window.removeEventListener('pagehide', this._writeSnapshot);
   }
 
   // The templates this dashboard borrows: their names for the missing-template check, and
@@ -73,6 +78,85 @@ export class DeclutteringHealthPanel extends LitElement {
         margin: 0 0 8px;
         padding-left: 20px;
         font-size: 0.9em;
+      }
+      .timings-header small {
+        color: var(--secondary-text-color);
+        font-weight: 400;
+        margin-left: 6px;
+      }
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 8px;
+        margin: 0 0 12px;
+      }
+      .kpis div {
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 8px 10px;
+      }
+      .kpis b {
+        display: block;
+        font-size: 1.4em;
+        font-weight: 400;
+      }
+      .kpis small {
+        color: var(--secondary-text-color);
+      }
+      table.stats {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9em;
+      }
+      table.stats th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--secondary-text-color);
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--divider-color);
+      }
+      table.stats th.sortable {
+        cursor: pointer;
+      }
+      table.stats th[aria-sort='descending'] {
+        color: var(--primary-text-color);
+      }
+      table.stats td {
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--divider-color);
+        vertical-align: top;
+      }
+      table.stats td.num {
+        text-align: right;
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .bar {
+        display: inline-block;
+        height: 8px;
+        border-radius: 2px;
+        background: var(--primary-color);
+        vertical-align: middle;
+        margin-right: 6px;
+      }
+      .bar.slow {
+        background: var(--warning-color, #ffa600);
+      }
+      td.trend {
+        font-family: var(--ha-font-family-code, monospace);
+        font-size: 0.9em;
+        white-space: nowrap;
+      }
+      td.trend.up {
+        color: var(--error-color, #db4437);
+      }
+      td.trend.down {
+        color: var(--success-color, #43a047);
+      }
+      td.trend small {
+        font-family: var(--ha-font-family, inherit);
+        color: var(--secondary-text-color);
+        margin-left: 4px;
       }
     `;
   }
@@ -267,7 +351,7 @@ export class DeclutteringHealthPanel extends LitElement {
                 }
               `
         }
-        ${this._renderTimings()}
+        ${this._renderTimings()} ${this._renderStats()} ${this._renderSaid()}
       </ha-expansion-panel>
     `;
   }
@@ -339,6 +423,172 @@ export class DeclutteringHealthPanel extends LitElement {
             `
           : html``
       }
+    `;
+  }
+
+  /* ---------------------------------------------------------------- statistics (idea 60) */
+
+  @state() private _sortBy: 'template' | 'builds' | 'total' | 'slowest' | 'delta' = 'total';
+  @state() private _copiedStats = false;
+  private _snapshot?: StatsSnapshot;
+  private _snapshotRead = false;
+  private _loadedAt = performance.now();
+
+  private _writeSnapshot = (): void => {
+    try {
+      sessionStorage.setItem(STATS_SNAPSHOT_KEY, JSON.stringify(snapshotOf(buildStats(BUILD_LOG.entries()))));
+    } catch {
+      // Session storage can be full or off; the trend column then has nothing to compare with.
+    }
+  };
+
+  /*
+   * What this page has built since it loaded, by template: counts, time, the slowest single
+   * build, and against the numbers kept from before the last reload. Nothing leaves the
+   * browser; these are the Slowest builds timings, grouped and kept between reloads.
+   */
+  private _renderStats(): TemplateResult {
+    if (!this._snapshotRead) {
+      this._snapshotRead = true;
+      try {
+        const raw = sessionStorage.getItem(STATS_SNAPSHOT_KEY);
+        this._snapshot = raw ? (JSON.parse(raw) as StatsSnapshot) : undefined;
+      } catch {
+        this._snapshot = undefined;
+      }
+    }
+    const stats = buildStats(BUILD_LOG.entries(), this._snapshot);
+    const minutes = Math.round((performance.now() - this._loadedAt) / 60000);
+    const rows = sortRows(stats.rows, this._sortBy);
+    const biggest = rows.reduce((max, row) => Math.max(max, row.total), 0) || 1;
+    const headings = ['template', 'views', 'builds', 'total', 'slowest', 'delta'] as const;
+    const headingText = (key: string): string => localize(`stats.col_${key}`, undefined, this.hass);
+    return html`
+      <h4 class="timings-header">
+        ${localize('stats.header', undefined, this.hass)}
+        <small>${localize('stats.since', { minutes }, this.hass)}</small>
+      </h4>
+      <div class="kpis">
+        <div><b>${stats.cardsBuilt}</b><small>${localize('stats.cards_built', undefined, this.hass)}</small></div>
+        <div>
+          <b>${stats.templatesInUse}</b><small>${localize('stats.templates_in_use', undefined, this.hass)}</small>
+        </div>
+        <div><b>${stats.totalMs} ms</b><small>${localize('stats.total_time', undefined, this.hass)}</small></div>
+        <div><b>${stats.rebuiltOnState}</b><small>${localize('stats.rebuilt', undefined, this.hass)}</small></div>
+      </div>
+      ${
+        rows.length
+          ? html`
+              <table class="stats">
+                <thead>
+                  <tr>
+                    ${headings.map(
+                      (key) =>
+                        html`<th
+                          class=${key === 'views' ? '' : 'sortable'}
+                          aria-sort=${this._sortBy === key ? 'descending' : 'none'}
+                          @click=${(): void => {
+                            if (key !== 'views') this._sortBy = key;
+                          }}
+                        >
+                          ${headingText(key)}
+                        </th>`,
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map(
+                    (row) => html`
+                      <tr>
+                        <td><code>${row.template}</code></td>
+                        <td>${row.views.join(', ')}</td>
+                        <td class="num">${row.builds}</td>
+                        <td class="num">
+                          <span
+                            class="bar ${row.total === biggest && rows.length > 1 ? 'slow' : ''}"
+                            style="width: ${Math.max(4, Math.round((row.total / biggest) * 80))}px"
+                          ></span
+                          >${row.total} ms
+                        </td>
+                        <td class="num">${row.slowest} ms</td>
+                        <td
+                          class="trend ${row.delta === undefined ? '' : row.delta > 0 ? 'up' : row.delta < 0 ? 'down' : ''}"
+                        >
+                          ${
+                            row.delta === undefined
+                              ? ''
+                              : `${row.delta > 0 ? '+' : row.delta < 0 ? '−' : '±'}${Math.abs(row.delta)} ms`
+                          }
+                          ${row.reason ? html`<small>${localize(`stats.reason_${row.reason}`, undefined, this.hass)}</small>` : ''}
+                        </td>
+                      </tr>
+                    `,
+                  )}
+                </tbody>
+              </table>
+              <p class="hint">${localize('stats.hint', undefined, this.hass)}</p>
+              <ha-button appearance="plain" @click=${this._copyStats}>
+                ${localize(this._copiedStats ? 'share.copied' : 'stats.copy', undefined, this.hass)}
+              </ha-button>
+              <ha-button appearance="plain" @click=${this._resetStats}
+                >${localize('stats.reset', undefined, this.hass)}</ha-button
+              >
+            `
+          : html`<p class="hint">${localize('tools.timings_none', undefined, this.hass)}</p>`
+      }
+    `;
+  }
+
+  private async _copyStats(): Promise<void> {
+    const stats = buildStats(BUILD_LOG.entries(), this._snapshot);
+    const headings = ['template', 'views', 'builds', 'total', 'slowest', 'delta'].map((key) =>
+      localize(`stats.col_${key}`, undefined, this.hass),
+    );
+    this._copiedStats = await copyText(statsAsMarkdown(stats, headings));
+    setTimeout(() => {
+      this._copiedStats = false;
+    }, 2000);
+  }
+
+  private _resetStats(): void {
+    BUILD_LOG.clear();
+    this._loadedAt = performance.now();
+    this.requestUpdate();
+  }
+
+  /*
+   * What the cards said while building, this page load: the warnings only a build can raise,
+   * which a walk over the dashboard never finds, with the moment each happened (idea 9's
+   * table, read from the one warnings log).
+   */
+  private _renderSaid(): TemplateResult {
+    const said = warnings();
+    if (!said.length) return html``;
+    const first = this._loadedAt;
+    const shown = said.slice(-50).reverse();
+    return html`
+      <h4 class="timings-header">${localize('stats.said_header', undefined, this.hass)}</h4>
+      <table class="stats said">
+        <thead>
+          <tr>
+            <th>${localize('stats.said_when', undefined, this.hass)}</th>
+            <th>${localize('stats.said_card', undefined, this.hass)}</th>
+            <th>${localize('stats.said_what', undefined, this.hass)}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${shown.map(
+            (warning) => html`
+              <tr>
+                <td class="num">${Math.max(0, (warning.at - first) / 1000).toFixed(2)} s</td>
+                <td>${warning.card ?? warning.template ?? ''}</td>
+                <td>${warning.message}</td>
+              </tr>
+            `,
+          )}
+        </tbody>
+      </table>
+      ${said.length > shown.length ? html`<p class="hint">${localize('stats.said_more', { count: said.length - shown.length }, this.hass)}</p>` : ''}
     `;
   }
 }
