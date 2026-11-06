@@ -20,6 +20,10 @@
   "error.variables_shape": "Las variables tienen que ser una lista de pares clave y valor, o un mapeo de ellos",
 
   "card.debug_builds": "Debug: lo que construye esta tarjeta.",
+  "card.preview_paused": "La vista previa está en pausa, así que esta tarjeta no se construye mientras editas. Elige Renderizar ahora para construirla una vez.",
+  "card.preview_required_one": "Rellena {which} para ver la tarjeta. La plantilla lo necesita, así que la vista previa lo espera.",
+  "card.preview_required_many": "Rellena {which} para ver la tarjeta. La plantilla los necesita, así que la vista previa los espera.",
+  "card.preview_render_now": "Renderizar ahora",
   "card.debug_builds_from": "Debug: lo que construye esta tarjeta a partir de \"{template}\".",
 
   "editor.template_label": "Plantilla a usar",
@@ -661,6 +665,9 @@
   "editor.preview.changed_hint": "La línea que cambió la última edición está resaltada.",
   "editor.preview.copy": "Copiar",
   "editor.preview.copied": "Copiado",
+  "editor.preview.pause": "Pausar vista previa",
+  "editor.preview.resume": "Reanudar vista previa",
+  "editor.preview.pause_helper": "Evita que la vista previa construya la tarjeta en cada cambio, para una tarjeta que falla mientras un ajuste es incorrecto.",
   "editor.link.edit_template": "Editar la plantilla",
   "editor.link.open_dashboard": "Abrir el otro panel",
   "editor.link.raw_editor": "Cámbiala en el editor de configuración sin procesar, desde el menú del panel.",

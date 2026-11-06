@@ -28,6 +28,7 @@
     "src/picker.ts",
     "src/community.ts",
     "src/sharing.ts",
+    "src/preview-hold.ts",
     "src/examples.ts",
     "src/on-error.ts",
     "src/rebuild.ts",

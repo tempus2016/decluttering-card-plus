@@ -20,6 +20,10 @@
   "error.variables_shape": "Variablen müssen eine Liste von Schlüssel-Wert-Paaren sein, oder ein Mapping davon",
 
   "card.debug_builds": "Debug: was diese Karte baut.",
+  "card.preview_paused": "Die Vorschau ist pausiert, daher wird diese Karte beim Bearbeiten nicht erstellt. Wähle Jetzt rendern, um sie einmal zu erstellen.",
+  "card.preview_required_one": "Fülle {which} aus, um die Karte zu sehen. Die Vorlage braucht es, daher wartet die Vorschau darauf.",
+  "card.preview_required_many": "Fülle {which} aus, um die Karte zu sehen. Die Vorlage braucht sie, daher wartet die Vorschau darauf.",
+  "card.preview_render_now": "Jetzt rendern",
   "card.debug_builds_from": "Debug: was diese Karte aus \"{template}\" baut.",
 
   "editor.template_label": "Zu verwendende Vorlage",
@@ -661,6 +665,9 @@
   "editor.preview.changed_hint": "Die vom letzten Schritt geänderte Zeile ist hervorgehoben.",
   "editor.preview.copy": "Kopieren",
   "editor.preview.copied": "Kopiert",
+  "editor.preview.pause": "Vorschau pausieren",
+  "editor.preview.resume": "Vorschau fortsetzen",
+  "editor.preview.pause_helper": "Verhindert, dass die Vorschau die Karte bei jeder Änderung neu erstellt – für eine Karte, die sich bei einer falschen Einstellung fehlerhaft verhält.",
   "editor.link.edit_template": "Vorlage bearbeiten",
   "editor.link.open_dashboard": "Das andere Dashboard öffnen",
   "editor.link.raw_editor": "Im Roh-Konfigurationseditor ändern, über das Dashboard-Menü.",

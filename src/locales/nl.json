@@ -20,6 +20,10 @@
   "error.variables_shape": "Variabelen moeten een lijst van sleutel-waardeparen zijn, of een mapping daarvan",
 
   "card.debug_builds": "Debug: wat deze kaart bouwt.",
+  "card.preview_paused": "Het voorbeeld is gepauzeerd, dus deze kaart wordt niet gebouwd terwijl je bewerkt. Kies Nu weergeven om hem één keer te bouwen.",
+  "card.preview_required_one": "Vul {which} in om de kaart te zien. De template heeft het nodig, dus het voorbeeld wacht erop.",
+  "card.preview_required_many": "Vul {which} in om de kaart te zien. De template heeft ze nodig, dus het voorbeeld wacht erop.",
+  "card.preview_render_now": "Nu weergeven",
   "card.debug_builds_from": "Debug: wat deze kaart bouwt uit \"{template}\".",
 
   "editor.template_label": "Te gebruiken sjabloon",
@@ -661,6 +665,9 @@
   "editor.preview.changed_hint": "De regel die de laatste bewerking veranderde is gemarkeerd.",
   "editor.preview.copy": "Kopiëren",
   "editor.preview.copied": "Gekopieerd",
+  "editor.preview.pause": "Voorbeeld pauzeren",
+  "editor.preview.resume": "Voorbeeld hervatten",
+  "editor.preview.pause_helper": "Voorkomt dat het voorbeeld de kaart bij elke wijziging opnieuw bouwt, voor een kaart die misgaat zolang een instelling fout is.",
   "editor.link.edit_template": "Sjabloon bewerken",
   "editor.link.open_dashboard": "Open het andere dashboard",
   "editor.link.raw_editor": "Wijzig het in de ruwe configuratie-editor, via het dashboardmenu.",
