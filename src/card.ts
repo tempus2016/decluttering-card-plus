@@ -44,6 +44,7 @@ import { loadLabels } from './labels';
 import { loadCategories, wantsCategories, whenCategoriesChange } from './categories';
 import { renderTemplateOnce, sourceTemplate, TemplateRender } from './template-source';
 import { getLovelaceConfig } from './utils';
+import { placeStrict, strictLevels } from './strict';
 import { localize } from './localize';
 import { REBUILD_DEBOUNCE_MS, rebuildOnEntities, rebuildOnRejects, stateSnapshot, statesMoved } from './rebuild';
 import { handedDownNames, traceRoot, tracePlace, wantsTrace } from './trace';
@@ -645,7 +646,14 @@ export class DeclutteringCard extends DeclutteringElement {
     this._rebuildBuilt = this._rebuildOn.length ? stateSnapshot(this._hass, this._rebuildOn) : undefined;
     this._rebuildSeen = this._rebuildBuilt;
     this._applyGap(config.gap);
-    this._strict = config.strict === true;
+    // The card's own beats its template's, and either beats the section's, the view's and the dashboard's (#390).
+    const ll = getLovelaceConfig();
+    const place = this._place(ll);
+    this._strictLevels = strictLevels([
+      config.strict,
+      (templateConfig as { strict?: unknown }).strict,
+      ...placeStrict(ll, place.view, place.section),
+    ]);
     this._debug = config.debug === 'yaml' ? 'yaml' : config.debug === true ? 'json' : false;
     this._trace = wantsTrace(config);
     this._reportMode = config.debug === 'report';

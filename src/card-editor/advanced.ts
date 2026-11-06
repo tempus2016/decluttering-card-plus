@@ -3,6 +3,7 @@ import { DeclutteringCardConfig, FormSchemaEntry } from '../types';
 import { localize } from '../localize';
 import { rebuildOnEntities } from '../rebuild';
 import { ON_ERROR_HIDE, ON_ERROR_KEY } from '../on-error';
+import { ERROR_MODES, ErrorMode, STRICT_TRUE, strictLayer, WARNING_MODES, WarningMode } from '../strict';
 
 /*
  * Idea 14: the Advanced section of the card editor. Eight settings that were YAML-only -
@@ -22,7 +23,9 @@ export interface AdvancedData {
   grid_rows?: string;
   style?: string;
   on_error_mode: OnErrorMode;
-  strict?: boolean;
+  /** `strict:` one level at a time (#390); `ignore` for both writes nothing. */
+  strict_errors: ErrorMode;
+  strict_warnings: WarningMode;
   rebuild_on?: string[];
   debug: DebugMode;
   name?: string;
@@ -70,14 +73,20 @@ function debugMode(written: unknown): DebugMode {
 
 /** What the section's form shows for a card. */
 export function advancedData(config: DeclutteringCardConfig): AdvancedData {
-  const data: AdvancedData = { on_error_mode: onErrorMode(config[ON_ERROR_KEY]), debug: debugMode(config.debug) };
+  // Only what the card itself writes: what a template or a dashboard says is not this card's to change.
+  const strict = strictLayer(config.strict);
+  const data: AdvancedData = {
+    on_error_mode: onErrorMode(config[ON_ERROR_KEY]),
+    strict_errors: strict.errors ?? 'ignore',
+    strict_warnings: strict.warnings ?? 'ignore',
+    debug: debugMode(config.debug),
+  };
   const grid = config.grid_options as Record<string, unknown> | undefined;
   const columns = gridText(grid?.columns);
   const rows = gridText(grid?.rows);
   if (columns !== undefined) data.grid_columns = columns;
   if (rows !== undefined) data.grid_rows = rows;
   if (typeof config.style === 'string' && config.style) data.style = config.style;
-  if (config.strict === true) data.strict = true;
   const rebuild = rebuildOnEntities(config.rebuild_on);
   if (rebuild.length) data.rebuild_on = rebuild;
   if (typeof config.name === 'string' && config.name) data.name = config.name;
@@ -119,7 +128,17 @@ export function applyAdvanced(config: DeclutteringCardConfig, data: AdvancedData
       delete out[ON_ERROR_KEY];
   }
 
-  if (data.strict === true) out.strict = true;
+  // What `strict: true` has always meant is still written that way; anything else level by level.
+  const errors = data.strict_errors ?? 'ignore';
+  const warnings = data.strict_warnings ?? 'ignore';
+  // An `ignore` the card wrote out is kept: it is how one card turns off what its dashboard asks for.
+  const written = config.strict && typeof config.strict === 'object' ? strictLayer(config.strict) : {};
+  const strict = {
+    ...(errors !== 'ignore' || written.errors ? { errors } : {}),
+    ...(warnings !== 'ignore' || written.warnings ? { warnings } : {}),
+  };
+  if (errors === STRICT_TRUE.errors && warnings === STRICT_TRUE.warnings && !written.warnings) out.strict = true;
+  else if (Object.keys(strict).length) out.strict = strict;
   else delete out.strict;
 
   const rebuild = rebuildOnEntities(data.rebuild_on);
@@ -175,7 +194,7 @@ export function advancedCount(config: DeclutteringCardConfig): number {
   if (data.grid_columns !== undefined || data.grid_rows !== undefined) count += 1;
   if (data.style !== undefined) count += 1;
   if (data.on_error_mode !== 'show') count += 1;
-  if (data.strict) count += 1;
+  if (data.strict_errors !== 'ignore' || data.strict_warnings !== 'ignore') count += 1;
   if (data.rebuild_on) count += 1;
   if (data.debug !== 'off') count += 1;
   if (data.name !== undefined) count += 1;
@@ -229,10 +248,26 @@ export function advancedSchema(hass?: HomeAssistant): FormSchemaEntry[] {
       },
     },
     {
-      name: 'strict',
-      label: text('editor.advanced.strict_label'),
-      helper: text('editor.advanced.strict_helper'),
-      selector: { boolean: {} },
+      name: 'strict_errors',
+      label: text('editor.advanced.strict_errors_label'),
+      helper: text('editor.advanced.strict_errors_helper'),
+      selector: {
+        select: {
+          mode: 'dropdown',
+          options: ERROR_MODES.map((value) => ({ value, label: text(`editor.advanced.strict_errors_${value}`) })),
+        },
+      },
+    },
+    {
+      name: 'strict_warnings',
+      label: text('editor.advanced.strict_warnings_label'),
+      helper: text('editor.advanced.strict_warnings_helper'),
+      selector: {
+        select: {
+          mode: 'dropdown',
+          options: WARNING_MODES.map((value) => ({ value, label: text(`editor.advanced.strict_warnings_${value}`) })),
+        },
+      },
     },
     {
       name: 'rebuild_on',

@@ -82,6 +82,7 @@ import {
   withAlerts,
 } from './checks';
 import { isRegistrySource } from './registry';
+import { STRICT_OFF, StrictLevels } from './strict';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -180,7 +181,13 @@ export abstract class DeclutteringElement extends LitElement {
   // are what stops a template that uses itself from building levels forever.
   protected _templateName?: string;
   protected _gridOptions?: unknown;
-  protected _strict = false;
+  // What `strict:` asks for, level by level (#390), worked out from the card and the places around it.
+  protected _strictLevels: StrictLevels = STRICT_OFF;
+  // `strict: {warnings: notice}`: what the last build warned about, until it is closed.
+  @state() private _strictNotice?: string[];
+  @state() private _strictNoticeClosed = false;
+  // `strict:` asked for the report and the last build gave it something to report.
+  @state() private _strictReporting = false;
   // `debug: console`: the card renders as normal and logs how it was built (#160).
   protected _trace = false;
   // What this card's console entry calls it, and where a logging card around it put it.
@@ -395,6 +402,14 @@ export abstract class DeclutteringElement extends LitElement {
       :host(.decluttering-report) {
         height: auto;
       }
+      .strict-notice {
+        display: block;
+        margin-bottom: 8px;
+      }
+      .strict-notice ul {
+        margin: 0;
+        padding-inline-start: 20px;
+      }
       .report {
         margin-top: 8px;
         padding: 12px 16px;
@@ -566,8 +581,22 @@ export abstract class DeclutteringElement extends LitElement {
     const unresolved: string[] = [];
     // Only a card that uses a template has variables to hand down; a template's own preview does not.
     const inherited = instance ? (): unknown[] => this._handDown(variables, templateConfig, templateName) : undefined;
+    // Only a card using a template is strict; a template's own preview is not a card.
+    const levels = instance ? this._strictLevels : STRICT_OFF;
+    // A report `strict:` may show needs the build written down, without it going to the console.
+    const reportable = levels.errors === 'report' || levels.warnings === 'report';
     // Only a card using a template logs; a template's own preview has nothing to say.
-    const trace = this._trace && instance ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
+    const trace =
+      (this._trace || reportable) && instance ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
+    const said: string[] = [];
+    const extras =
+      levels.warnings === 'ignore'
+        ? this._buildExtras()
+        : {
+            ...this._buildExtras(),
+            // The notice sits on the card, so the console's own prefix is no use there.
+            onWarning: (m: string) => said.push(m.replace(/^decluttering-card-plus:\s*/, '')),
+          };
     if (trace)
       this._traceLabel = traceLabel(
         templateName ?? '',
@@ -587,7 +616,7 @@ export abstract class DeclutteringElement extends LitElement {
         trace,
         undefined,
         false,
-        this._buildExtras(),
+        extras,
       ),
       instance,
       thingType,
@@ -640,6 +669,50 @@ export abstract class DeclutteringElement extends LitElement {
     this._thing = undefined;
     this._thingConfig = undefined;
     this._stopRepeat();
+    if (!hush) this._refuseIfStrict(unresolved);
+    this._strictOutcome(hush ? STRICT_OFF : levels, unresolved, said);
+  }
+
+  /*
+   * What `strict:` shows beside the card once it has built (#390): a notice of the warnings
+   * that can be closed, or the debug report when a level asked for it and has something in
+   * it. `debug: report` already shows the report, so it is left to that.
+   */
+  private _strictOutcome(levels: StrictLevels, unresolved: string[], said: string[]): void {
+    const warnings = [...new Set(said)];
+    const notice = levels.warnings === 'notice' && warnings.length ? warnings : undefined;
+    if (JSON.stringify(notice) !== JSON.stringify(this._strictNotice)) {
+      this._strictNotice = notice;
+      this._strictNoticeClosed = false;
+    }
+    const reporting =
+      !this._reportMode &&
+      ((levels.errors === 'report' && unresolved.length > 0) || (levels.warnings === 'report' && warnings.length > 0));
+    this._strictReporting = reporting;
+    if (reporting) this._reportResult = { reports: this._lastReport ? [this._lastReport] : [], neverBuilt: [] };
+    else if (!this._reportMode) this._reportResult = undefined;
+  }
+
+  private _renderStrictNotice(): TemplateResult | string {
+    if (!this._strictNotice || this._strictNoticeClosed) return '';
+    const notice = this._strictNotice;
+    return html`
+      <ha-alert
+        class="strict-notice"
+        alert-type="warning"
+        .title=${localize(notice.length === 1 ? 'strict.notice_one' : 'strict.notice_many', { count: notice.length }, this._hass)}
+        dismissable
+        @alert-dismissed-clicked=${() => (this._strictNoticeClosed = true)}
+      >
+        ${
+          notice.length === 1
+            ? notice[0]
+            : html`<ul>
+                ${notice.map((each) => html`<li>${each}</li>`)}
+              </ul>`
+        }
+      </ha-alert>
+    `;
   }
 
   // The health panel's note of this build: which template, the card's own name, how many copies, how long.
@@ -729,7 +802,8 @@ export abstract class DeclutteringElement extends LitElement {
           }
         : {}),
     };
-    logTrace(report, this._hass);
+    // A build written down only for a report `strict:` might show says nothing in the console.
+    if (this._trace) logTrace(report, this._hass);
     // Kept for the outermost card's report, which this card's entry goes into once it has built.
     this._lastReport = report;
   }
@@ -831,7 +905,7 @@ export abstract class DeclutteringElement extends LitElement {
   }
 
   private _renderReport(): TemplateResult | string {
-    if (!this._reportMode) return '';
+    if (!this._reportMode && !this._strictReporting) return '';
     const text = this._reportText;
     const ready = text !== undefined;
     return html`
@@ -976,6 +1050,8 @@ export abstract class DeclutteringElement extends LitElement {
    */
   protected _refuseIfStrict(unresolved: string[]): boolean {
     if (!this._strict || !unresolved.length) return false;
+  protected _refuseIfStrict(unresolved: string[]): void {
+    if (this._strictLevels.errors !== 'fail' || !unresolved.length) return;
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
     this._dropThing();
     this._error = localize(unresolved.length === 1 ? 'error.strict_one' : 'error.strict_many', { which }, this._hass);
@@ -1141,6 +1217,8 @@ export abstract class DeclutteringElement extends LitElement {
     items: unknown[],
     picker?: TemplatePicker,
   ): void {
+    // A repeat is not held to `strict:` levels, as it was never refused by `strict: true`.
+    this._strictOutcome(STRICT_OFF, [], []);
     /*
      * Each copy's template: the card's own, or - choosing by domain - the one its entity
      * picks, worked out from the copy's own values before anything else is done with it.
@@ -1628,7 +1706,7 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     // Only a card is laid out as a box in the first place, so only a card has one to give
     // up. A badge is already out of the way, and an element is positioned inside the card.
     this.classList.toggle('decluttering-fit-contents', this._thingType === 'card' && this._fitContents);
-    this.classList.toggle('decluttering-report', this._reportMode);
+    this.classList.toggle('decluttering-report', this._reportMode || this._strictReporting || !!this._strictNotice);
 
     return html`
       ${
@@ -1640,7 +1718,7 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
             `
           : ''
       }
-      ${this._thing} ${this._renderReport()}
+      ${this._renderStrictNotice()} ${this._thing} ${this._renderReport()}
     `;
   }
 

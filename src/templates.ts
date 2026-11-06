@@ -23,6 +23,7 @@ import { rebuildOnEntities } from './rebuild';
 import { localize } from './localize';
 import { isItemTemplate, placeholderHeads, structureNames } from './structure';
 import { warn } from './warnings';
+import { STRICT_KEY } from './strict';
 import { closestTemplate } from './closest';
 
 export { closestTemplate };
@@ -852,7 +853,12 @@ export function hasSectionDefaults(
 ): boolean {
   if (!place) return false;
   const section = (ll as any)?.views?.[place.view]?.sections?.[place.section];
-  return normaliseVariables(section?.[DEFAULTS_KEY]).length > 0 || normaliseVariables(section?.[LET_KEY]).length > 0;
+  return (
+    normaliseVariables(section?.[DEFAULTS_KEY]).length > 0 ||
+    normaliseVariables(section?.[LET_KEY]).length > 0 ||
+    // A section's own `decluttering_strict:` (#390) changes what a card in it does, too.
+    section?.[STRICT_KEY] !== undefined
+  );
 }
 
 /**

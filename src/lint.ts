@@ -19,6 +19,7 @@ export { closestStep, knownStep };
 import { structureNames } from './structure';
 import { unknownHidden } from './card-editor/hide';
 import { CHECK_KEYS, CHECKS_KEY, checkLevel, conditionStep } from './checks';
+import { strictProblems } from './strict';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -346,6 +347,11 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
   // A part of the editor named wrong is never hidden, and nothing else would say so.
   for (const unknown of unknownHidden(template)) {
     findings.push({ level: 'warning', key: 'lint.editor_hide_unknown', params: { ...unknown }, path: 'editor_hide' });
+  }
+
+  // A `strict:` level written wrong is left to the next place that sets it (#390), so it would quietly do nothing.
+  for (const problem of strictProblems((template as any).strict)) {
+    findings.push({ level: 'warning', key: 'lint.strict_unknown', params: problem, path: 'strict' });
   }
 
   // The same mistake written twice in one place is one thing to fix.

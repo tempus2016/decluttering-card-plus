@@ -352,3 +352,21 @@ check(
   }),
   ['warning lint.condition_malformed {"key":"hide_if","condition":"[[normal]]"} @variables[1].hide_if'],
 );
+
+/* ------------------------------------------------------------------ strict (#390) */
+
+check(
+  'a boolean or a well-written strict says nothing',
+  [
+    lint({ strict: true, card: { type: 'tile' } }),
+    lint({ strict: { errors: 'fail', warnings: 'notice' }, card: { type: 'tile' } }),
+    lint({ strict: { error: 'report', warn: 'report' }, card: { type: 'tile' } }),
+  ],
+  [[], [], []],
+);
+check('a mode a level does not have is found', lint({ strict: { warnings: 'fail' }, card: { type: 'tile' } }), [
+  'warning lint.strict_unknown {"key":"warnings","value":"fail","allowed":"ignore, notice, report"} @strict',
+]);
+check('a level strict does not know is found', lint({ strict: { info: 'ignore' }, card: { type: 'tile' } }), [
+  'warning lint.strict_unknown {"key":"info","value":"ignore","allowed":"errors, warnings"} @strict',
+]);
