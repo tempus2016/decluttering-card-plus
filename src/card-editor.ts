@@ -1950,7 +1950,12 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
               }}
             >
               <div class="item-row">
-                <ha-svg-icon class="handle" .path=${DRAG_PATH}></ha-svg-icon>
+                <ha-svg-icon
+                  class="handle"
+                  role="img"
+                  aria-label=${localize('template_editor.drag_hint', undefined, this.hass)}
+                  .path=${DRAG_PATH}
+                ></ha-svg-icon>
                 <span class="item-name">${name(item, index)}</span>
                 <span class="spacer"></span>
                 <ha-icon-button

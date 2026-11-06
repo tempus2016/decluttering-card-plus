@@ -226,6 +226,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
         .active=${this._selectedTab}
         @click=${this._activateTab}
         @pointerdown=${this._tabPointer}
+        @keydown=${this._tabKey}
         @wa-tab-show=${this._tabShown}
         @sl-tab-show=${this._tabShown}
       >
@@ -946,7 +947,15 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     const named = typeof detail === 'string' ? detail : (detail?.name ?? detail?.panel);
     const tab = ev.composedPath().find((node) => (node as HTMLElement).localName === 'ha-tab-group-tab') as
       HTMLElement | undefined;
-    this._showTab(named ?? tab?.getAttribute('panel'), Date.now() - this._tabPointerAt > 500);
+    // Arrow keys move along the strip and show each tab as they go; only Enter or Space,
+    // which choose one, take focus into its panel (idea 55) - or the arrows stop after one.
+    this._showTab(named ?? tab?.getAttribute('panel'), Date.now() - this._tabChooseAt < 500);
+  }
+
+  private _tabChooseAt = 0;
+
+  private _tabKey(ev: KeyboardEvent): void {
+    if (ev.key === 'Enter' || ev.key === ' ') this._tabChooseAt = Date.now();
   }
 
   private _showTab(panel: string | null | undefined, keyboard: boolean): void {

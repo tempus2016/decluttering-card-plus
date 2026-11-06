@@ -6,7 +6,6 @@ import { DeclutteringTemplateConfig, TemplateConfig } from '../types';
 import deepReplace from '../deep-replace';
 import {
   collectRawTemplates,
-  totalUsages,
   collectTemplates,
   addCardToView,
   collectUsages,
@@ -419,7 +418,10 @@ export class DeclutteringTemplateUsagesTab extends LitElement {
    */
   private _renderFamily(ll: LovelaceConfig, name: string): TemplateResult {
     const raw = collectRawTemplates(ll);
-    const roots = extendsFamilies(raw, (each) => totalUsages(ll, each));
+    // Cards only: a template extending another is a child in the tree, not a use of it.
+    const cardsUsing = (each: string): number =>
+      collectUsages(ll, each).views.reduce((sum, view) => sum + view.count, 0);
+    const roots = extendsFamilies(raw, cardsUsing);
     const root = familyOf(roots, name);
     if (!root) return html``;
     const size = familySize(root);
