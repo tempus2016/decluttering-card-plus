@@ -53,3 +53,58 @@ describe('keyboard tabs', () => {
     expect(editor.shadowRoot.activeElement === heading, 'focus stayed where the pointer left it').to.equal(false);
   });
 });
+
+/*
+ * Home Assistant's ha-yaml-editor reads defaultValue once, when it first draws. This stand-in
+ * does the same, so a converted YAML that only had its property changed would keep showing
+ * the first conversion - what the dev Home Assistant showed after a second paste (#296).
+ */
+class OnceYamlEditor extends HTMLElement {
+  public shown: unknown;
+  private _seen = false;
+  set defaultValue(value: unknown) {
+    if (this._seen) return;
+    this._seen = true;
+    this.shown = value;
+  }
+  get defaultValue(): unknown {
+    return this.shown;
+  }
+}
+
+describe('convert from another card', () => {
+  it('a second paste shows its own conversion, not the first one', async () => {
+    if (!customElements.get('ha-yaml-editor')) customElements.define('ha-yaml-editor', OnceYamlEditor);
+    const editor = templateEditor();
+    await settle(4);
+    editor.shadowRoot
+      .querySelector('ha-tab-group')
+      .dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'share' }, bubbles: true, composed: true }));
+    await until(() => !!shareTab(editor)?.shadowRoot?.querySelector('#convert'), 2000, 'the convert box');
+    const tab = shareTab(editor);
+    const paste = (value: unknown): void => {
+      tab.shadowRoot
+        .querySelector('#convert')
+        .dispatchEvent(new CustomEvent('value-changed', { detail: { value, isValid: true } }));
+    };
+    const auto = (domain: string): unknown => ({
+      type: 'custom:auto-entities',
+      card: { type: 'entities' },
+      filter: { include: [{ domain }] },
+    });
+    paste(auto('light'));
+    await tab.updateComplete;
+    await settle(2);
+    const shown = (): any => (tab.shadowRoot.querySelector('#converted') as any)?.defaultValue;
+    expect(JSON.stringify(shown()), 'the first conversion is shown').to.contain('"domain":"light"');
+    paste(auto('switch'));
+    await tab.updateComplete;
+    await settle(2);
+    expect(JSON.stringify(shown()), 'the second conversion is shown').to.contain('"domain":"switch"');
+    expect(JSON.stringify(shown()), 'the first one is gone').not.to.contain('"domain":"light"');
+    expect(!!tab.shadowRoot.querySelector('#converted-card'), 'the card to put on the dashboard is drawn').to.equal(
+      true,
+    );
+    editor.remove();
+  });
+});

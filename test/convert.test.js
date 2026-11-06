@@ -8,7 +8,6 @@ const {
   convertAutoEntities,
   asImport,
   CONVERTED_ROWS,
-  CONVERTED_CARD,
 } = require('../.test-build/convert');
 
 // ---- button-card
@@ -49,6 +48,7 @@ check('variables become declarations with defaults, and plain returns become pla
     tap_action: { action: 'toggle' },
     styles: { card: [{ height: '80px' }] },
     custom_fields: { note: '[[[ return states[variables.entity].state ]]]' },
+    variables: { entity: '[[entity]]' },
   },
 });
 check('a template: parent becomes extends: when it was pasted too', bc.templates.big_button.extends, 'room_button');
@@ -76,6 +76,54 @@ check(
   undefined,
 );
 check('a list is nothing', convertButtonCardTemplates([1]), undefined);
+
+// Kept JavaScript reads variables.* from the card, so the card is handed what it reads (#296).
+const nested = convertButtonCardTemplates({
+  button_card_templates: {
+    base: {
+      variables: { colour: 'red' },
+      styles: { icon: [{ color: '[[[ return variables.colour ]]]' }] },
+      custom_fields: { tag: "[[[ return variables['colour'] + '!' ]]]" },
+    },
+    light_btn: {
+      template: 'base',
+      variables: { room: 'Kitchen' },
+      label: '[[[ return variables.room + " is " + entity.state ]]]',
+      name: '[[[ return variables.colour + variables.room ]]]',
+    },
+  },
+});
+check('kept JavaScript gets the variables it reads passed on the card', nested.templates.light_btn, {
+  extends: 'base',
+  variables: [{ name: 'room', default: 'Kitchen' }],
+  card: {
+    type: 'custom:button-card',
+    label: '[[[ return variables.room + " is " + entity.state ]]]',
+    name: '[[[ return variables.colour + variables.room ]]]',
+    variables: { room: '[[room]]', colour: '[[colour]]' },
+  },
+});
+check('a variable the parent declares is not declared again bare in the child', nested.templates.light_btn.variables, [
+  { name: 'room', default: 'Kitchen' },
+]);
+check(
+  'the parent passes the variable its own JavaScript reads, bracketed or not',
+  nested.templates.base.card.variables,
+  {
+    colour: '[[colour]]',
+  },
+);
+check(
+  'a template with no kept JavaScript gets no variables: on its card',
+  'variables' in
+    convertButtonCardTemplates({ x: { name: '[[[ return variables.n ]]]', icon: 'mdi:x' } }).templates.x.card,
+  false,
+);
+check(
+  'a variable only kept JavaScript reads is declared',
+  convertButtonCardTemplates({ x: { label: '[[[ return variables.n + 1 ]]]', icon: 'mdi:x' } }).templates.x.variables,
+  [{ name: 'n' }],
+);
 
 // ---- auto-entities, entities card
 const autoRows = {
@@ -110,24 +158,28 @@ check('and a card using it', ae.card, { type: 'custom:decluttering-card-plus', t
 check('an exclude on state is dropped and named', ae.dropped.length === 1 && /unavailable/.test(ae.dropped[0]), true);
 check('nothing custom is needed for an entities card', ae.needs, []);
 
-// ---- auto-entities, other card
+// ---- auto-entities, other cards: the card_param list repeats, the card is drawn once (#296)
 const autoCards = {
   type: 'custom:auto-entities',
   card: { type: 'grid', columns: 2 },
   card_param: 'cards',
-  filter: { include: [{ entity_id: 'camera.*', state: 'idle' }, { domain: 'binary_sensor' }] },
+  filter: {
+    include: [
+      { entity_id: 'camera.*', state: 'idle', options: { type: 'picture-entity' } },
+      { domain: 'binary_sensor' },
+    ],
+  },
   show_empty: false,
 };
 const ac = convertAutoEntities(autoCards);
-check('another card becomes a card template repeated per entity', ac.card, {
-  type: 'custom:decluttering-card-plus',
-  template: CONVERTED_CARD,
-  for_each_from: { entities: 'camera.*' },
+check('a card_param: cards grid repeats its cards', ac.templates[CONVERTED_ROWS], {
+  variables: [{ name: 'source', default: { entities: 'camera.*' } }],
+  let: { row: { entity: '[[entity]]', type: 'picture-entity' } },
+  card: { type: 'grid', columns: 2, cards: ['[[row|repeat:source]]'] },
 });
-check('the card gets the entity filled in', ac.templates[CONVERTED_CARD].card, {
-  type: 'grid',
-  columns: 2,
-  entity: '[[entity]]',
+check('and one decluttering card uses it', ac.card, {
+  type: 'custom:decluttering-card-plus',
+  template: CONVERTED_ROWS,
 });
 check(
   'a state filter is dropped',
@@ -143,6 +195,94 @@ check(
   'show_empty is noted',
   ac.notes.some((n) => /empty/.test(n)),
   true,
+);
+check(
+  'the note names the list that repeats',
+  ac.notes.some((n) => /cards:/.test(n)),
+  true,
+);
+
+const glance = convertAutoEntities({
+  type: 'custom:auto-entities',
+  card: { type: 'glance', title: 'Glance', entities: ['sensor.old'] },
+  filter: { include: [{ domain: 'light' }] },
+});
+check('a glance is one glance whose entities repeat', glance.templates[CONVERTED_ROWS].card, {
+  type: 'glance',
+  title: 'Glance',
+  entities: ['[[row|repeat:source]]'],
+});
+for (const type of ['map', 'history-graph', 'logbook', 'statistics-graph', 'picture-glance']) {
+  const out = convertAutoEntities({
+    type: 'custom:auto-entities',
+    card: { type, title: 'T' },
+    filter: { include: [{ domain: 'sensor' }] },
+  });
+  check(`a ${type} card's entities repeat`, out.templates[CONVERTED_ROWS].card, {
+    type,
+    title: 'T',
+    entities: ['[[row|repeat:source]]'],
+  });
+}
+const vstack = convertAutoEntities({
+  type: 'custom:auto-entities',
+  card: { type: 'vertical-stack' },
+  card_param: 'cards',
+  filter: { include: [{ domain: 'light', options: { type: 'custom:mushroom-light-card' } }] },
+});
+check('a vertical-stack repeats cards', vstack.templates[CONVERTED_ROWS].card, {
+  type: 'vertical-stack',
+  cards: ['[[row|repeat:source]]'],
+});
+check('a custom card in the options is needed', vstack.needs, ['custom:mushroom-light-card']);
+const chips = convertAutoEntities({
+  type: 'custom:auto-entities',
+  card: { type: 'custom:mushroom-chips-card' },
+  card_param: 'chips',
+  filter: { include: [{ domain: 'light', options: { type: 'entity' } }] },
+});
+check('any card_param is the list that repeats', chips.templates[CONVERTED_ROWS].card, {
+  type: 'custom:mushroom-chips-card',
+  chips: ['[[row|repeat:source]]'],
+});
+check('the wrapped custom card is needed', chips.needs, ['custom:mushroom-chips-card']);
+
+// ---- auto-entities, this.entity_id in options becomes [[entity]] (#296)
+const thisId = convertAutoEntities({
+  type: 'custom:auto-entities',
+  card: { type: 'entities' },
+  filter: {
+    include: [
+      {
+        domain: 'light',
+        options: {
+          tap_action: { action: 'more-info', entity: 'this.entity_id' },
+          hold_action: { action: 'call-service', data: { entity_id: ['this.entity_id'] } },
+          name: 'Light this.entity_id here',
+        },
+      },
+    ],
+  },
+});
+check(
+  'this.entity_id becomes [[entity]] anywhere in the options, inside text too',
+  thisId.templates[CONVERTED_ROWS].let,
+  {
+    row: {
+      entity: '[[entity]]',
+      tap_action: { action: 'more-info', entity: '[[entity]]' },
+      hold_action: { action: 'call-service', data: { entity_id: ['[[entity]]'] } },
+      name: 'Light [[entity]] here',
+    },
+  },
+);
+check(
+  'a word that only starts the same is left',
+  convertAutoEntities({
+    type: 'custom:auto-entities',
+    filter: { include: [{ domain: 'light', options: { name: 'this.entity_ids' } }] },
+  }).templates[CONVERTED_ROWS].let.row.name,
+  'this.entity_ids',
 );
 check('a card that is not auto-entities is nothing', convertAutoEntities({ type: 'entities' }), undefined);
 

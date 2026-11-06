@@ -1042,7 +1042,7 @@
   "convert.sort_dropped": "Le tri par {method} n'a pas d'équivalent et a été omis ; les copies sont triées par nom.",
   "convert.show_empty": "show_empty: false n'a pas d'équivalent ici ; donnez à la carte un bloc empty: pour afficher quelque chose quand rien ne correspond.",
   "convert.rows_repeat": "Les lignes de la carte entities sont une ligne répétée par entité trouvée dans le registre ; elle se construit une fois et suit le registre, pas l'état en direct.",
-  "convert.card_per_entity": "Une copie de la carte par entité trouvée dans le registre, avec for_each_from ; elle se construit une fois et suit le registre, pas l'état en direct.",
+  "convert.list_repeat": "La liste {key}: de la carte est une entrée répétée par entité trouvée dans le registre ; elle se construit une fois et suit le registre, pas l'état en direct.",
   "convert.needs": "Ce modèle a besoin de {types}.",
   "undo.op.convert": "installation d'un modèle converti",
   "convert.clash": "Ce tableau de bord a déjà {names}. Appuyez de nouveau sur Installer pour le remplacer par la version convertie.",

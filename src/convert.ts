@@ -1,6 +1,6 @@
 /*
  * Converting from other cards (idea 59): a button-card template becomes a decluttering
- * template, an auto-entities card becomes a repeating decluttering card. Pure functions; the
+ * template, an auto-entities card becomes a decluttering card whose list repeats. Pure functions; the
  * Share tab only calls them and hands the result to the import that already exists.
  *
  * Neither conversion pretends to more than it is. A `[[[ ]]]` block that does anything but
@@ -36,39 +36,84 @@ const isMapping = (value: unknown): value is Record<string, any> =>
 const RETURNS_VARIABLE =
   /^\s*\[\[\[\s*return\s+variables(?:\.([A-Za-z_$][\w$]*)|\[\s*['"]([^'"]+)['"]\s*\])\s*;?\s*\]\]\]\s*$/;
 const ANY_JS = /\[\[\[[\s\S]*?\]\]\]/;
+// Every variable a kept JavaScript block reads, `variables.name` or `variables['name']`.
+const READS_VARIABLE = /\bvariables(?:\s*\.\s*([A-Za-z_$][\w$]*)|\s*\[\s*['"]([^'"]+)['"]\s*\])/g;
 
-function convertValue(value: unknown, read: Set<string>, kept: string[], path: string): unknown {
+interface Reads {
+  /** Variables a plain return turned into a placeholder. */
+  plain: Set<string>;
+  /** Variables JavaScript left for button-card still reads from its own `variables:`. */
+  js: Set<string>;
+  /** Where JavaScript was left, as paths. */
+  kept: string[];
+}
+
+function convertValue(value: unknown, reads: Reads, path: string): unknown {
   if (typeof value === 'string') {
     const match = RETURNS_VARIABLE.exec(value);
     if (match) {
       const name = match[1] ?? match[2];
-      read.add(name);
+      reads.plain.add(name);
       return `[[${name}]]`;
     }
-    if (ANY_JS.test(value)) kept.push(path);
+    if (ANY_JS.test(value)) {
+      reads.kept.push(path);
+      READS_VARIABLE.lastIndex = 0;
+      for (let each = READS_VARIABLE.exec(value); each; each = READS_VARIABLE.exec(value))
+        reads.js.add(each[1] ?? each[2]);
+    }
     return value;
   }
-  if (Array.isArray(value)) return value.map((item, index) => convertValue(item, read, kept, `${path}[${index}]`));
+  if (Array.isArray(value)) return value.map((item, index) => convertValue(item, reads, `${path}[${index}]`));
   if (isMapping(value)) {
     const out: Record<string, unknown> = {};
     for (const [key, each] of Object.entries(value))
-      out[key] = convertValue(each, read, kept, path ? `${path}.${key}` : key);
+      out[key] = convertValue(each, reads, path ? `${path}.${key}` : key);
     return out;
   }
   return value;
+}
+
+const parentNames = (template: unknown): string[] =>
+  (Array.isArray(template) ? template : template !== undefined ? [template] : []).filter(
+    (parent): parent is string => typeof parent === 'string',
+  );
+
+/** Whether `name` is in the `variables:` of a body or any pasted template it builds on. */
+function declaredAlong(
+  name: string,
+  body: Record<string, any>,
+  entries: Record<string, any>,
+  seen: Set<string>,
+): boolean {
+  if (isMapping(body.variables) && name in body.variables) return true;
+  for (const parent of parentNames(body.template)) {
+    if (seen.has(parent) || !isMapping(entries[parent])) continue;
+    seen.add(parent);
+    if (declaredAlong(name, entries[parent], entries, seen)) return true;
+  }
+  return false;
 }
 
 /** One button-card template body as a decluttering template. */
 function convertButtonCardTemplate(
   name: string,
   body: Record<string, any>,
-  allNames: string[],
+  entries: Record<string, any>,
   notes: string[],
 ): TemplateConfig {
+  const allNames = Object.keys(entries);
   const { variables, template, ...rest } = body;
-  const read = new Set<string>();
-  const kept: string[] = [];
-  const card = convertValue({ type: 'custom:button-card', ...rest }, read, kept, '') as Record<string, unknown>;
+  const reads: Reads = { plain: new Set(), js: new Set(), kept: [] };
+  const card = convertValue({ type: 'custom:button-card', ...rest }, reads, '') as Record<string, unknown>;
+  // JavaScript kept for button-card reads `variables.*` from the card, so the card hands each
+  // one it reads the value the template was given. On a mapping, so a child's card merges its
+  // own over its parent's and each level's JavaScript finds what it reads.
+  if (reads.js.size) {
+    const passed: Record<string, string> = {};
+    for (const each of reads.js) passed[each] = `[[${each}]]`;
+    card.variables = passed;
+  }
 
   const declarations: VariableDeclaration[] = [];
   if (isMapping(variables)) {
@@ -76,14 +121,15 @@ function convertButtonCardTemplate(
       declarations.push(value === undefined || value === null ? { name: each } : { name: each, default: value });
     }
   }
-  for (const each of read) {
-    if (!declarations.some((declaration) => declaration.name === each)) declarations.push({ name: each });
+  // A name a parent declares stays the parent's: a bare declaration here would take its default away.
+  for (const each of [...reads.plain, ...reads.js]) {
+    if (declarations.some((declaration) => declaration.name === each)) continue;
+    if (declaredAlong(each, body, entries, new Set([name]))) continue;
+    declarations.push({ name: each });
   }
 
   const out: TemplateConfig = {};
-  const parents = (Array.isArray(template) ? template : template !== undefined ? [template] : []).filter(
-    (parent): parent is string => typeof parent === 'string',
-  );
+  const parents = parentNames(template);
   if (parents.length) {
     // A parent that is also being converted keeps its name; one that is not cannot be followed.
     const known = parents.filter((parent) => allNames.includes(parent));
@@ -93,7 +139,8 @@ function convertButtonCardTemplate(
   }
   if (declarations.length) out.variables = declarations;
   out.card = card;
-  if (kept.length) notes.push(localize('convert.js_kept', { name, count: kept.length, paths: kept.join(', ') }));
+  if (reads.kept.length)
+    notes.push(localize('convert.js_kept', { name, count: reads.kept.length, paths: reads.kept.join(', ') }));
   return out;
 }
 
@@ -117,7 +164,7 @@ export function convertButtonCardTemplates(parsed: unknown): Conversion | undefi
   const notes: string[] = [];
   const names = Object.keys(entries);
   const templates: Record<string, TemplateConfig> = {};
-  for (const name of names) templates[name] = convertButtonCardTemplate(name, entries[name], names, notes);
+  for (const name of names) templates[name] = convertButtonCardTemplate(name, entries[name], entries, notes);
   return { templates, from: 'button-card', notes, dropped: [], needs: ['custom:button-card'] };
 }
 
@@ -165,16 +212,32 @@ const FILTER_TO_REPEAT: Record<string, string> = {
 // Filters that read something only live state knows.
 const STATE_FILTERS = ['state', 'attributes', 'last_changed', 'last_updated', 'last_triggered', 'not', 'or', 'and'];
 
-// The names the conversion writes; a dashboard with them already gets a free spelling from the import.
+// The name the conversion writes; a dashboard with it already gets a free spelling from the import.
 export const CONVERTED_ROWS = 'converted_rows';
-export const CONVERTED_CARD = 'converted_card';
+
+// auto-entities' `this.entity_id`, which it swaps for each entity's id anywhere in the options.
+const THIS_ENTITY_ID = /\bthis\.entity_id\b/g;
+
+/** The options with every `this.entity_id` - a whole value or inside text - made `[[entity]]`. */
+function withEntityPlaceholder(value: unknown): unknown {
+  if (typeof value === 'string') return value.replace(THIS_ENTITY_ID, '[[entity]]');
+  if (Array.isArray(value)) return value.map(withEntityPlaceholder);
+  if (isMapping(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, each] of Object.entries(value)) out[key] = withEntityPlaceholder(each);
+    return out;
+  }
+  return value;
+}
 
 /**
- * A `custom:auto-entities` card. An entities card becomes a template holding an entities
- * card whose rows are one `[[row|repeat:source]]`, spliced in per entity the registry finds,
- * and a decluttering card using it; any other card becomes a card template repeated with
- * `for_each_from`. One include rule converts; more than one is noted and only the first is
- * used, because a repeat has one source. Undefined when the card is not auto-entities.
+ * A `custom:auto-entities` card. auto-entities fills one list of the card it wraps - its
+ * `card_param`, `entities` unless it says otherwise: the rows of an entities card, the
+ * entities of a glance, map, history-graph, logbook, statistics-graph or picture-glance,
+ * the cards of a stack or grid. That card becomes a template whose list is one
+ * `[[row|repeat:source]]`, spliced in per entity the registry finds, and a decluttering card
+ * uses it. One include rule converts; more than one is noted and only the first is used,
+ * because a repeat has one source. Undefined when the card is not auto-entities.
  */
 export function convertAutoEntities(parsed: unknown): Conversion | undefined {
   if (!isMapping(parsed) || parsed.type !== 'custom:auto-entities') return undefined;
@@ -221,40 +284,31 @@ export function convertAutoEntities(parsed: unknown): Conversion | undefined {
   }
   if (parsed.show_empty === false) notes.push(localize('convert.show_empty'));
 
-  const rowOptions = isMapping(rule.options) ? rule.options : {};
+  const rowOptions = isMapping(rule.options) ? (withEntityPlaceholder(rule.options) as Record<string, unknown>) : {};
   const inner = isMapping(parsed.card) ? parsed.card : { type: 'entities' };
+  const param = typeof parsed.card_param === 'string' && parsed.card_param ? parsed.card_param : 'entities';
 
-  if (inner.type === 'entities' || inner.type === undefined) {
-    // The source is a declared variable so a card can narrow it; the row body is the template's own.
-    const { entities: _entities, ...cardRest } = inner;
-    void _entities;
-    const template: TemplateConfig = {
-      variables: [{ name: 'source', default: source }],
-      let: { row: { entity: '[[entity]]', ...rowOptions } },
-      card: { type: 'entities', ...cardRest, entities: ['[[row|repeat:source]]'] },
-    };
-    const card: Record<string, unknown> = { type: 'custom:decluttering-card-plus', template: CONVERTED_ROWS };
-    notes.push(localize('convert.rows_repeat'));
-    return { templates: { [CONVERTED_ROWS]: template }, card, from: 'auto-entities', notes, dropped, needs: [] };
-  }
-
+  // The source is a declared variable so a card can narrow it; the entry body is the template's own.
+  const { [param]: _list, ...cardRest } = inner;
+  void _list;
   const template: TemplateConfig = {
-    variables: [{ name: 'entity', type: 'entity' }],
-    card: { ...inner, entity: '[[entity]]', ...rowOptions },
+    variables: [{ name: 'source', default: source }],
+    let: { row: { entity: '[[entity]]', ...rowOptions } },
+    card: { type: 'entities', ...cardRest, [param]: ['[[row|repeat:source]]'] },
   };
-  const card: Record<string, unknown> = {
-    type: 'custom:decluttering-card-plus',
-    template: CONVERTED_CARD,
-    for_each_from: source,
-  };
-  notes.push(localize('convert.card_per_entity'));
+  const card: Record<string, unknown> = { type: 'custom:decluttering-card-plus', template: CONVERTED_ROWS };
+  notes.push(
+    inner.type === 'entities' || inner.type === undefined
+      ? localize('convert.rows_repeat')
+      : localize('convert.list_repeat', { key: param }),
+  );
   return {
-    templates: { [CONVERTED_CARD]: template },
+    templates: { [CONVERTED_ROWS]: template },
     card,
     from: 'auto-entities',
     notes,
     dropped,
-    needs: customTypesIn(inner),
+    needs: customTypesIn([inner, rowOptions]),
   };
 }
 
