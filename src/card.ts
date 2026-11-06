@@ -60,6 +60,7 @@ import {
   sourceContext,
   warnUnlisted,
 } from './shared';
+import { shouldDefer, whenIdle, whenVisible } from './idle';
 import { warn } from './warnings';
 import { onPreviewHold, PreviewHoldEvent, previewEditorOpen, previewPaused, requiredUnset } from './preview-hold';
 import { withAlerts } from './checks';
@@ -142,6 +143,10 @@ export class DeclutteringCard extends DeclutteringElement {
   private _rebuildTimer?: ReturnType<typeof setTimeout>;
   private _rebuildWarnedFor?: unknown;
   private _timeWarnedFor?: DeclutteringCardConfig;
+  // A first build waiting for idle time (idea 10): what to build, and the config it is for.
+  private _deferred?: { templateConfig: TemplateConfig; config: DeclutteringCardConfig; token: unknown };
+  private _deferStop?: () => void;
+  private _builtOnce = false;
 
   // What `on_error:` is filled in from: the card's own variables, and its template once found.
   private _fallbackSource?: { variables?: VariablesConfig[]; template?: TemplateConfig; name?: string };
@@ -188,6 +193,8 @@ export class DeclutteringCard extends DeclutteringElement {
     if (this._lastConfig && hasMobileVariables(this._lastConfig) && mobileThreshold(this._lastConfig) === undefined) {
       this._watchViewport();
     }
+    // On the page at last: now it can be said whether the card is on screen.
+    if (this._deferred) this._watchForBuild();
   }
 
   public disconnectedCallback(): void {
@@ -196,6 +203,9 @@ export class DeclutteringCard extends DeclutteringElement {
     this._holdStop = undefined;
     this._categoriesStop?.();
     this._categoriesStop = undefined;
+    // Off the page, nothing is on screen; put back, connectedCallback watches again.
+    this._deferStop?.();
+    this._deferStop = undefined;
     this._breakpoints?.disconnect();
     this._stopMedia?.();
     this._stopMedia = undefined;
@@ -261,6 +271,8 @@ export class DeclutteringCard extends DeclutteringElement {
         this._error = (err as Error)?.message ?? String(err);
       }
     }
+    // A preview waits for nothing: told it is one, a deferred card builds at once.
+    if (changedProperties.has('preview') && this.preview && this._deferred) this._buildDeferred();
   }
 
   // The editors live in a chunk of their own, fetched the first time one is opened (idea 4).
@@ -283,6 +295,10 @@ export class DeclutteringCard extends DeclutteringElement {
    */
   public setConfig(config: DeclutteringCardConfig): void {
     this._lastConfig = config;
+    // A build still waiting is for a config this one replaces.
+    this._deferStop?.();
+    this._deferStop = undefined;
+    this._deferred = undefined;
     this._held = undefined;
     if (previewPaused() && config !== this._builtAnyway && this._mayHold(config)) {
       this._hold({ reason: 'paused' });
@@ -379,7 +395,7 @@ export class DeclutteringCard extends DeclutteringElement {
     if (templateConfig) {
       this._pendingConfig = undefined;
       this._noteLibrary(ll);
-      this._applyTemplate(templateConfig, config);
+      this._buildOrDefer(templateConfig, config);
       return;
     }
     if (!mayBorrowTemplates(ll)) {
@@ -545,6 +561,73 @@ export class DeclutteringCard extends DeclutteringElement {
     try {
       this._rebuild();
     } catch (err) {
+      this._error = (err as Error)?.message ?? String(err);
+    }
+  }
+
+  /* ------------------------------------------------------------ idle first build (idea 10) */
+
+  /*
+   * Builds now, or - a card not yet on the page, not a preview, not debugging, never built
+   * before - keeps what to build and waits to be told whether it is on screen. The size the
+   * template asks for is answered meanwhile, so the section lays the card out at the right
+   * height before there is a card inside.
+   */
+  private _buildOrDefer(templateConfig: TemplateConfig, config: DeclutteringCardConfig): void {
+    const state = {
+      inDialog: !!editDialogOf(this),
+      preview: this.preview,
+      builtBefore: this._builtOnce,
+      group: templateConfig.group !== undefined,
+      canObserve: typeof requestAnimationFrame !== 'undefined',
+    };
+    if (!shouldDefer(config, state)) {
+      this._applyTemplate(templateConfig, config);
+      return;
+    }
+    this._gridOptions = config.grid_options ?? (templateConfig as { grid_options?: unknown }).grid_options;
+    if (this._gridOptions !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (this as any).getGridOptions = (): unknown => this._gridOptions;
+    }
+    this._deferred = { templateConfig, config, token: this._lastConfig };
+    if (this.isConnected) this._watchForBuild();
+  }
+
+  // Once on the page: on screen builds now, off screen builds in idle time, two seconds at most.
+  private _watchForBuild(): void {
+    this._deferStop?.();
+    if (!this._deferred) return;
+    if (editDialogOf(this) || this.preview) {
+      this._buildDeferred();
+      return;
+    }
+    const stopWatching = whenVisible(this, (visible) => {
+      if (visible) {
+        this._buildDeferred();
+        return;
+      }
+      this._deferStop = whenIdle(() => {
+        // A mark, so the timeline in the browser's performance tools - and a test - can see
+        // which builds waited for idle time.
+        performance.mark?.('decluttering-card-plus:idle-build');
+        this._buildDeferred();
+      });
+    });
+    this._deferStop = stopWatching;
+  }
+
+  private _buildDeferred(): void {
+    const waiting = this._deferred;
+    this._deferStop?.();
+    this._deferStop = undefined;
+    this._deferred = undefined;
+    // A newer config has been given since: its own build is what counts.
+    if (!waiting || waiting.token !== this._lastConfig) return;
+    try {
+      this._applyTemplate(waiting.templateConfig, waiting.config);
+    } catch (err) {
+      // Outside setConfig nobody catches a throw, so the card says it itself.
       this._error = (err as Error)?.message ?? String(err);
     }
   }
@@ -778,6 +861,7 @@ export class DeclutteringCard extends DeclutteringElement {
     config: DeclutteringCardConfig,
     picker?: TemplatePicker,
   ): void {
+    this._builtOnce = true;
     this._fallbackSource = { variables: config.variables, template: templateConfig, name: config.template };
     this._fromRegistry = undefined;
     this._registry = undefined;
