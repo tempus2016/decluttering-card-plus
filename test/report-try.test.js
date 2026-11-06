@@ -7,20 +7,25 @@ const deepReplace = require('../.test-build/deep-replace.js').default;
 const { newTrace } = require('../.test-build/trace.js');
 const { tryScopes, tryInReport } = require('../.test-build/report-try.js');
 const { formatReport } = require('../.test-build/report.js');
+const { withStateScope } = require('../.test-build/variables.js');
 
 const { check } = require('./check');
 
 console.warn = () => {};
 
-const HASS = {
-  states: {
-    'camera.front_porch': {
-      entity_id: 'camera.front_porch',
-      state: 'idle',
-      attributes: { friendly_name: 'Front porch' },
+// attr: reads only an entity the card rebuilds on, as |state does (idea 39).
+const HASS = withStateScope(
+  {
+    states: {
+      'camera.front_porch': {
+        entity_id: 'camera.front_porch',
+        state: 'idle',
+        attributes: { friendly_name: 'Front porch' },
+      },
     },
   },
-};
+  ['camera.front_porch'],
+);
 
 // What element.ts keeps on each section: the build's own call, quiet, or an item fill's values in its place.
 const evaluate = (variables, template, name) => (content, onMissing, values) =>

@@ -2016,10 +2016,14 @@ check(
 
 {
   const vars = () => [{ m: { a: 1 } }, { l: ['a', 'b'] }, { e: 'light.x' }];
-  const listHass = {
-    states: { 'light.x': { state: 'on', attributes: { list_attr: [1, 2], obj_attr: { k: 'v' } } } },
-    entities: {},
-  };
+  // attr: reads only an entity the card rebuilds on, as |state does (idea 39).
+  const listHass = withStateScope(
+    {
+      states: { 'light.x': { state: 'on', attributes: { list_attr: [1, 2], obj_attr: { k: 'v' } } } },
+      entities: {},
+    },
+    ['light.x'],
+  );
   const run = (card) => deepReplace(vars(), {}, card, undefined, listHass);
   check(
     'default: and or: on a set mapping or list leave the value as a plain placeholder would',
