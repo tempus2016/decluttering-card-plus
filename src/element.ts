@@ -99,7 +99,7 @@ import { canRepeat, ignoredRepeatOptions } from './repeat-kinds';
 import { manyConfig, MANY_TYPE } from './row-repeat';
 import { itemLabel, skippedConfig, templateVisibility } from './visibility';
 import './skipped';
-import { ErrorDetail, findCardPath, templateEditPath, unsetDetail, withTemplate } from './error-card';
+import { checkDetail, ErrorDetail, findCardPath, templateEditPath, unsetDetail, withTemplate } from './error-card';
 import { ChipAction } from './edit-chip-pure';
 import './edit-chip';
 import { inMasonry, MASONRY_UNIT, MASONRY_WAITING_SIZE, skeletonHeight, skeletonRows } from './skeleton';
@@ -892,13 +892,7 @@ export abstract class DeclutteringElement extends LitElement {
     }
     this._strictOutcome(hush ? STRICT_OFF : levels, unresolved, said);
     if (!hush && this._refuseIfStrict(unresolved)) return;
-    const failedCheck = alerts.find((alert) => alert.level === 'error');
-    if (!hush && levels.errors === 'fail' && failedCheck) {
-      this._dropThing();
-      this._errorDetail = undefined;
-      this._error = localize('error.check_stopped', { message: failedCheck.message }, this._hass);
-      return;
-    }
+    if (!hush && this._refuseForCheck(alerts)) return;
     if (instance && !hush && this._holdForRequired(unresolved, templateConfig)) return;
     this._setResolved(thingType, this._withGridOptions(thingType, built), styles, inherited);
   }
@@ -1451,7 +1445,33 @@ export abstract class DeclutteringElement extends LitElement {
       localize('errorcard.required', undefined, this._hass),
     );
     this._error = localize(unresolved.length === 1 ? 'error.strict_one' : 'error.strict_many', { which }, this._hass);
+    this._reportRefusal();
     return true;
+  }
+
+  /*
+   * A failed `error` check counts to `strict:` (#389 with #390): under `errors: fail` the card
+   * is refused the way one with a variable left unset is, with the error card, the check's
+   * own message as what it says. A repeat is refused as a whole by any copy's failed check.
+   */
+  protected _refuseForCheck(alerts: Alert[]): boolean {
+    const failed = alerts.find((alert) => alert.level === 'error');
+    if (this._strictLevels.errors !== 'fail' || !failed) return false;
+    this._dropThing();
+    this._errorDetail = checkDetail(this._templateName);
+    this._error = localize('error.check_stopped', { message: failed.message }, this._hass);
+    this._reportRefusal();
+    return true;
+  }
+
+  /*
+   * A refused card makes no card inside, so there is nothing left for its report to wait for:
+   * the report is the build written down so far, shown at once rather than left waiting.
+   */
+  private _reportRefusal(): void {
+    if (!this._reportMode) return;
+    this._reportFor = undefined;
+    this._reportResult = { reports: this._lastReport ? [this._lastReport] : [], neverBuilt: [] };
   }
 
   // Styles always resolve against the real template config, so a declared default or a
@@ -1618,7 +1638,10 @@ export abstract class DeclutteringElement extends LitElement {
     items: unknown[],
     picker?: TemplatePicker,
   ): void {
-    // A repeat is not held to `strict:` levels, as it was never refused by `strict: true`.
+    /*
+     * Cleared until the copies are built. A repeat is not refused for a variable left unset,
+     * as it never was by `strict: true`; its checks count to `strict:` once they are read.
+     */
     this._strictOutcome(STRICT_OFF, [], []);
     /*
      * Each copy's template: the card's own, or - choosing by domain - the one its entity
@@ -1766,13 +1789,17 @@ export abstract class DeclutteringElement extends LitElement {
       return;
     }
     this._forceReport(this._alerts, templateConfig);
+    // As for a single card, the levels hush keeps quiet until the section is known.
+    const levels = hush ? STRICT_OFF : this._strictLevels;
+    // A report `strict:` may show needs the build written down, without it going to the console.
+    const tracing = this._trace || levels.errors === 'report' || levels.warnings === 'report';
 
     // The card's own `card:` block is laid over every copy alike.
     // Each copy hands down its own item's values, so it is stamped here rather than as a whole.
     const started = performance.now();
     const sections: TraceSection[] = [];
     // Only the card's own name can stand for every copy; a template's names each copy apart.
-    if (this._trace) {
+    if (tracing) {
       const own =
         config.name === undefined
           ? undefined
@@ -1782,7 +1809,7 @@ export abstract class DeclutteringElement extends LitElement {
     let missed = false;
     const cards = shown.map(({ item, name, template }, index) => {
       const { variables, content } = copies[index];
-      const trace = this._trace ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
+      const trace = tracing ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
       // What the item and its position set, as opposed to what the card set for every copy.
       // The item beats the card, and the card beats the position, as forEachVariables orders them.
       const names = (list: unknown): string[] => ownVariables(list).map((entry) => Object.keys(entry)[0]);
@@ -1844,7 +1871,16 @@ export abstract class DeclutteringElement extends LitElement {
     this._missedBeforeLibrary = missed;
     this._noteBuild(config.template, config, cards.length, started);
     this._copyCount = cards.length;
-    if (this._trace) this._logBuild(started, sections, templateConfig);
+    if (tracing) this._logBuild(started, sections, templateConfig);
+    /*
+     * The copies' checks count to `strict:` (#389 with #390) as a single card's do: every
+     * copy's failed warn check goes in the one notice, and a failed error check under
+     * `errors: fail` refuses the whole card, as a strict refusal of any card would.
+     */
+    const said =
+      levels.warnings === 'ignore' ? [] : this._alerts.filter((a) => a.level === 'warn').map((a) => a.message);
+    this._strictOutcome(levels, [], said);
+    if (!hush && this._refuseForCheck(this._alerts)) return;
 
     // Rows and picture elements: every copy to the one wrapper, nothing laid out here.
     if (repeatKind !== 'card') {

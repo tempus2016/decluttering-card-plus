@@ -8,7 +8,7 @@ import { closestTemplate, isTemplateCardType, totalUsages } from './templates';
  * failed, the nearest name and how common it is, and what the card can do about it. The
  * message itself is still the one the console gets; this is the structure around it.
  */
-export type ErrorKind = 'missing_template' | 'custom_missing' | 'unset' | 'other';
+export type ErrorKind = 'missing_template' | 'custom_missing' | 'unset' | 'check' | 'other';
 
 export interface ErrorLine {
   key: string;
@@ -63,6 +63,14 @@ export function unsetDetail(template: string | undefined, names: string[], requi
     unset: names,
     line: { key: names[0] ?? '', value: '', note: required },
   };
+}
+
+/*
+ * A strict card a failed `error` check refused (#389 with #390). The check's own message is
+ * what the card says, so the error itself is the message the error card shows.
+ */
+export function checkDetail(template: string | undefined): ErrorDetail {
+  return { kind: 'check', template };
 }
 
 /** The config with its template swapped for the nearest one, the one key changed. */

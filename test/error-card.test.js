@@ -5,6 +5,7 @@ const {
   missingTemplateDetail,
   customMissingDetail,
   unsetDetail,
+  checkDetail,
   withTemplate,
   findCardPath,
   templateEditPath,
@@ -69,6 +70,10 @@ check('an unset variable is the line', unsetDetail('sensor_line', ['entity'], 'r
   template: 'sensor_line',
   unset: ['entity'],
   line: { key: 'entity', value: '', note: 'required by the template' },
+});
+check('a failed check names only the template, its message being the error', checkDetail('camera_card'), {
+  kind: 'check',
+  template: 'camera_card',
 });
 check('withTemplate changes the one key', withTemplate({ type: 'x', template: 'a', variables: [1] }, 'b'), {
   type: 'x',
