@@ -3,6 +3,7 @@
     "outDir": ".test-build",
     "module": "commonjs",
     "target": "es2017",
+    "lib": ["es2017", "es2018", "es2018.intl", "es2020.intl", "dom"],
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "esModuleInterop": true,
@@ -68,6 +69,7 @@
     "src/code-hooks.ts",
     "src/options-from.ts",
     "src/family.ts",
-    "src/compare.ts"
+    "src/compare.ts",
+    "src/dates.ts"
   ]
 }

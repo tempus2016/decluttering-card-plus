@@ -5,6 +5,7 @@ import { localize } from './localize';
 import { warn } from './warnings';
 import { cardExists, iconExists, integrationExists } from './installed';
 import { toYaml } from './yaml';
+import { AGE_UNITS, age, formatDate, parseDate, relative } from './dates';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -653,7 +654,7 @@ export function takesStructure(step: string, value: unknown): boolean {
 }
 
 // The steps whose answer is a number, so a whole value they end goes in as a real one.
-const NUMBER_RESULTS = new Set([...Object.keys(ARITHMETIC), ROUND_STEP, COUNT_STEP, 'find']);
+const NUMBER_RESULTS = new Set([...Object.keys(ARITHMETIC), ROUND_STEP, COUNT_STEP, 'find', 'age']);
 
 // How a number is written, generously: what people type, and what a sensor reports.
 const NUMBER_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?\s*$/i;
@@ -753,6 +754,62 @@ function isNumberStep(step: string): boolean {
   return colon === -1 ? NUMBER_BARE_STEPS.includes(step) : NUMBER_PARAM_STEPS.includes(step.slice(0, colon));
 }
 
+/*
+ * The language the viewer has chosen, as Home Assistant carries it on hass.locale.
+ */
+function languageOf(hass: any): string {
+  return String(hass?.locale?.language ?? hass?.language ?? 'en');
+}
+
+/*
+ * Dates and times (idea 38). `relative` says how long ago, `format:` writes to a pattern,
+ * `age` and `age:unit` give a number the number steps can go on with. The moment is read
+ * from an ISO string or an epoch; anything else is left as it was, and the console says why
+ * once, as a number step does with a word.
+ */
+const RELATIVE_STEP = 'relative';
+const FORMAT_STEP = 'format';
+const AGE_STEP = 'age';
+
+const DATE_BARE_STEPS = [RELATIVE_STEP, AGE_STEP];
+const DATE_PARAM_STEPS = [FORMAT_STEP, AGE_STEP];
+
+function isDateStep(step: string): boolean {
+  const colon = step.indexOf(':');
+  return colon === -1 ? DATE_BARE_STEPS.includes(step) : DATE_PARAM_STEPS.includes(step.slice(0, colon));
+}
+
+function dateStep(step: string, text: string, hass?: any): string | undefined {
+  if (!isDateStep(step)) return undefined;
+  const colon = step.indexOf(':');
+  const name = colon === -1 ? step : step.slice(0, colon);
+  const arg = colon === -1 ? undefined : step.slice(colon + 1);
+  const date = parseDate(text);
+  if (!date) {
+    warnOnce('warn.not_a_date', step, text, hass);
+    return text;
+  }
+  const now = new Date();
+  if (name === RELATIVE_STEP) return relative(date, now, languageOf(hass));
+  if (name === FORMAT_STEP) {
+    if (!arg) {
+      warnOnce('warn.bad_date_argument', step, text, hass);
+      return text;
+    }
+    return formatDate(date, arg, languageOf(hass));
+  }
+  const since = age(date, now, arg ?? 'seconds');
+  if (since === undefined) {
+    warnOnce('warn.bad_date_argument', step, `${text} (${AGE_UNITS.join(', ')})`, hass);
+    return text;
+  }
+  return numberText(since);
+}
+
+// Every new step, for the grammar and the lint: written bare, and written with an argument.
+const EXTRA_BARE_STEPS = [...DATE_BARE_STEPS];
+const EXTRA_PARAM_STEPS = [...DATE_PARAM_STEPS];
+
 /** The name a step goes by, without its argument. */
 export function stepName(step: string): string {
   const colon = step.indexOf(':');
@@ -805,6 +862,7 @@ const TRANSFORM_NAMES = [
   ...NUMBER_BARE_STEPS,
   ...LIST_BARE_STEPS,
   FLAT_STEP,
+  ...EXTRA_BARE_STEPS,
 ].join('|');
 
 /*
@@ -1274,7 +1332,7 @@ export function isStructureStep(step: string): boolean {
   return STRUCTURE_PARAM_STEPS.includes(stepName(step));
 }
 
-const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP];
+const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP, ...EXTRA_PARAM_STEPS];
 
 /*
  * An arithmetic argument stops short of an opening bracket as well, so `add:[[offset]]`
@@ -1385,6 +1443,8 @@ export function applyTransform(
     }
     const numeric = numberStep(name, input, hass);
     if (numeric !== undefined) return numeric;
+    const dated = dateStep(name, input, hass);
+    if (dated !== undefined) return dated;
     const parameterised = paramTransform(name);
     if (parameterised) return parameterised.fn(input, parameterised.arg);
     return TRANSFORMS[name](input);
@@ -1574,6 +1634,7 @@ export function applyTransform(
     const known =
       isResolver(name) ||
       isNumberStep(name) ||
+      isDateStep(name) ||
       !!paramTransform(name) ||
       (Object.prototype.hasOwnProperty.call(TRANSFORMS, name) && !!TRANSFORMS[name]);
     if (!known) return undefined;
@@ -2260,11 +2321,18 @@ export function usesInstalled(
  * Whether the template asks for a translation, whose answer changes when Home Assistant
  * loads more of them or the language changes - not when the registry does.
  */
+/** Whether the template says how long ago something was, which goes stale unless the card rebuilds (idea 38). */
+export function usesTimeStep(template: TemplateConfig | undefined): boolean {
+  return usesStep(template, (step) => step === RELATIVE_STEP || stepName(step) === AGE_STEP);
+}
+
 export function usesTranslate(
   template: TemplateConfig | undefined,
   itemTemplates?: Record<string, TemplateConfig>,
 ): boolean {
-  return usesStep(template, (step) => step === 'translate', itemTemplates);
+  // The date steps read the viewer's locale too, which travels with hass.localize when the
+  // language changes (idea 38).
+  return usesStep(template, (step) => step === 'translate' || isDateStep(step), itemTemplates);
 }
 
 /**
@@ -2620,6 +2688,7 @@ export const KNOWN_STEPS: string[] = [
     ...NUMBER_BARE_STEPS,
     ...LIST_BARE_STEPS,
     FLAT_STEP,
+    ...EXTRA_BARE_STEPS,
     ...Object.keys(RESOLVERS),
   ]),
 ];
@@ -2631,6 +2700,7 @@ export const KNOWN_PARAM_STEPS: string[] = [
   ...LIST_PARAM_STEPS,
   CONTAINS_STEP,
   ...STRUCTURE_PARAM_STEPS,
+  ...EXTRA_PARAM_STEPS,
   ATTRIBUTE_PREFIX.slice(0, -1),
   OR_PREFIX.slice(0, -1),
   DEFAULT_PREFIX.slice(0, -1),

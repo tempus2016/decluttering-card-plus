@@ -33,6 +33,7 @@ import {
   getDeclarations,
   usesInstalled,
   usesResolver,
+  usesTimeStep,
   usesTranslate,
   withInheritedVariables,
 } from './variables';
@@ -128,6 +129,7 @@ export class DeclutteringCard extends DeclutteringElement {
   private _rebuildSeen?: (string | undefined)[];
   private _rebuildTimer?: ReturnType<typeof setTimeout>;
   private _rebuildWarnedFor?: unknown;
+  private _timeWarnedFor?: DeclutteringCardConfig;
 
   // What `on_error:` is filled in from: the card's own variables, and its template once found.
   private _fallbackSource?: { variables?: VariablesConfig[]; template?: TemplateConfig; name?: string };
@@ -671,6 +673,20 @@ export class DeclutteringCard extends DeclutteringElement {
     // dashboard, said once in the console and listed in the health panel. Choosing by
     // domain, it is said of the templates the copies actually get.
     if (!picker) warnIfDeprecated(config.template, templateConfig, this._hass);
+    /*
+     * A time said in words - `relative`, `age` - is right when the card builds and wrong a
+     * minute later unless the card builds again, so a card using one and following nothing
+     * is told so, once per config (idea 38).
+     */
+    if (!this._rebuildOn.length && this._timeWarnedFor !== this._lastConfig && usesTimeStep(templateConfig)) {
+      this._timeWarnedFor = this._lastConfig;
+      warn({
+        kind: 'rebuild_on',
+        message: localize('warn.stale_time_step', { template: config.template ?? BY_DOMAIN_KEY }, this._hass),
+        template: config.template,
+        card: typeof config.name === 'string' ? config.name : undefined,
+      });
+    }
 
     /*
      * A resolver reads the registry, and the registry can arrive after the card has first

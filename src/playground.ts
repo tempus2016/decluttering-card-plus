@@ -59,7 +59,7 @@ export const SAMPLE_HOUSE = {
     'light.kitchen_ceiling': {
       entity_id: 'light.kitchen_ceiling',
       state: 'on',
-      attributes: { friendly_name: 'Kitchen ceiling', brightness: 180 },
+      attributes: { friendly_name: 'Kitchen ceiling', brightness: 180, last_seen: '2026-10-24T07:42:11+01:00' },
     },
     'sensor.garden_temperature': {
       entity_id: 'sensor.garden_temperature',

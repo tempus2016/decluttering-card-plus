@@ -875,5 +875,8 @@
   "compare.source_trash_replaced": "En la papelera: como estaba {when}",
   "compare.ago_minute": "hace {count} minutos",
   "compare.ago_hour": "hace {count} horas",
-  "compare.ago_day": "hace {count} días"
+  "compare.ago_day": "hace {count} días",
+  "warn.not_a_date": "decluttering-card-plus: |{step} trabaja con una fecha - una marca de tiempo ISO o una época - pero recibió \"{value}\", así que el valor se deja como estaba.",
+  "warn.bad_date_argument": "decluttering-card-plus: |{step} necesita tras los dos puntos un patrón para format, o una unidad para age - seconds, minutes, hours, days o weeks -, así que \"{value}\" se deja como estaba.",
+  "warn.stale_time_step": "decluttering-card-plus: una tarjeta que usa {template} da forma a un tiempo con |relative o |age pero no incluye nada en rebuild_on:, así que las palabras no se actualizarán. Incluye la entidad cuyo tiempo lee."
 }

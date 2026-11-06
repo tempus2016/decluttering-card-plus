@@ -50,6 +50,8 @@ const {
   isCondition,
   conditionTarget,
   KNOWN_PARAM_STEPS,
+  KNOWN_STEPS,
+  KNOWN_PARAM_STEPS,
 } = require('../.test-build/variables.js');
 
 const { check } = require('./check');
@@ -1698,4 +1700,62 @@ const knownStepForTest = (step) => KNOWN_PARAM_STEPS.includes(step.slice(0, step
     [knownStepForTest('unless:x'), knownStepForTest('switch:a=b')],
     [true, true],
   );
+}
+
+/* --------------------------------------------------- idea 38: date and time steps */
+{
+  const en = { locale: { language: 'en', number_format: 'language' } };
+  const de = { locale: { language: 'de', number_format: 'language' } };
+  const warnedBefore = console.warn;
+  const said = [];
+  console.warn = (m) => said.push(m);
+
+  check('format: writes a timestamp to a pattern', applyTransform('format:YYYY', '2026-10-24T07:42:11Z', en), '2026');
+  check(
+    'age:days counts the days since, as a number',
+    Number(applyTransform('age:days', String(Date.now() / 1000 - 3 * 86400), en)) > 2.99,
+    true,
+  );
+  check('age counts seconds when bare', Number(applyTransform('age', String(Date.now() / 1000 - 90), en)) >= 90, true);
+  check(
+    'relative says how long ago',
+    applyTransform('relative', String(Date.now() / 1000 - 18 * 60), en),
+    '18 minutes ago',
+  );
+  check(
+    'relative in the viewer language',
+    applyTransform('relative', String(Date.now() / 1000 - 18 * 60), de),
+    'vor 18 Minuten',
+  );
+  check('a word is not a date and is left as it was', applyTransform('relative', 'on', en), 'on');
+  check('which the console says once', said.filter((m) => m.includes('works on a date')).length, 1);
+  check(
+    'age with a unit nobody knows is left as it was',
+    applyTransform('age:fortnights', '2026-10-24T07:42:11Z', en),
+    '2026-10-24T07:42:11Z',
+  );
+  check('and age counts as a number for a whole value', yieldsNumber('attr:last_seen|age:days'), true);
+  check(
+    'a chain can go on from age with the number steps',
+    applyTransform('age:hours|round', String(Date.now() / 1000 - 7200), en),
+    '2',
+  );
+
+  check(
+    'the new steps are known to the lint lists',
+    ['relative', 'age'].every((s) => KNOWN_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'and the ones with arguments',
+    ['format', 'age'].every((s) => KNOWN_PARAM_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'a template using relative rebuilds with the locale',
+    usesTranslate({ card: { a: '[[e|attr:x|relative]]' } }),
+    true,
+  );
+  check('while a plain one does not', usesTranslate({ card: { a: '[[n|upper]]' } }), false);
+  console.warn = warnedBefore;
 }

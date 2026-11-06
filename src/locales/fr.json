@@ -875,5 +875,8 @@
   "compare.source_trash_replaced": "Dans la corbeille : telle qu'elle était {when}",
   "compare.ago_minute": "il y a {count} minutes",
   "compare.ago_hour": "il y a {count} heures",
-  "compare.ago_day": "il y a {count} jours"
+  "compare.ago_day": "il y a {count} jours",
+  "warn.not_a_date": "decluttering-card-plus : |{step} travaille sur une date - un horodatage ISO ou une époque - mais a reçu \"{value}\", la valeur est donc laissée telle quelle.",
+  "warn.bad_date_argument": "decluttering-card-plus : |{step} a besoin après les deux-points d'un motif pour format, ou d'une unité pour age - seconds, minutes, hours, days ou weeks -, \"{value}\" est donc laissé tel quel.",
+  "warn.stale_time_step": "decluttering-card-plus : une carte utilisant {template} met en forme un temps avec |relative ou |age mais ne liste rien dans rebuild_on:, les mots ne suivront donc pas. Listez l'entité dont elle lit le temps."
 }
