@@ -43,6 +43,12 @@ export interface VariableDeclaration {
   show_if?: string | string[];
   /** Hides the field in the card editor while any of these holds. */
   hide_if?: string | string[];
+  /** A dropdown of what this source finds - the same source `for_each_from:` takes (#404). */
+  options_from?: any;
+  /** With `options_from:`, what each option sets the variable to, filled in per thing found. */
+  option_value?: string;
+  /** With `options_from:`, what each option shows; the value when unset. */
+  option_label?: string;
 }
 
 /**

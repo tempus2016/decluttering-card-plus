@@ -45,6 +45,7 @@ import {
   normaliseVariables,
 } from './variables';
 import { exampleSets } from './examples';
+import { hasOptionsFrom, optionsFromSelector } from './options-from';
 import { copyLabel, isRegistrySource, registryNames, resolveRegistryItems } from './registry';
 import { categoryRegistry, loadCategories, wantsCategories } from './categories';
 import { renderTemplateOnce, sourceTemplate, TemplateRender, templateList } from './template-source';
@@ -471,6 +472,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
   private _renderingTemplates = new Set<string>();
+  // #404: each `options_from:` dropdown's choices, worked out once while this editor is open.
+  private _optionsFrom = new Map<string, unknown>();
   // The card as the dialog opened it, which is what an eject replaces on the dashboard.
   private _openedWith?: DeclutteringCardConfig;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -509,6 +512,25 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     // A card-valued variable renders Home Assistant's own card editor and picker, which
     // are lazy-loaded - free after the first editor anywhere has loaded them.
     await loadCardEditorPicker();
+  }
+
+  /*
+   * A declaration's control, with `options_from:` looked up the first time it is drawn while
+   * hass is here and kept for as long as the editor is open (#404).
+   */
+  private _selectorFor(declaration: VariableDeclaration): unknown {
+    if (!hasOptionsFrom(declaration)) return declarationSelector(declaration);
+    const key = JSON.stringify([
+      declaration.options_from,
+      declaration.option_value,
+      declaration.option_label,
+      declaration.selector,
+    ]);
+    const cached = this._optionsFrom.get(key);
+    if (cached) return cached;
+    const selector = optionsFromSelector(declaration, this.hass);
+    if (this.hass) this._optionsFrom.set(key, selector);
+    return selector;
   }
 
   public setConfig(config: DeclutteringCardConfig): void {
@@ -1886,8 +1908,9 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
         helper: fromCopy
           ? localize('editor.repeat.from_each_copy_helper', undefined, this.hass)
           : declaration.description,
-        // A declared selector, then what its `type:` stands for, then its allowed values.
-        selector: declarationSelector(declaration),
+        // Found options (#404), then a declared selector, then what its `type:` stands for,
+        // then its allowed values.
+        selector: this._selectorFor(declaration),
         required: declaration.required === true && !fromCopy,
         disabled: fromCopy,
       };
