@@ -63,6 +63,14 @@ import { warn } from './warnings';
 import { onPreviewHold, PreviewHoldEvent, previewEditorOpen, previewPaused, requiredUnset } from './preview-hold';
 import { withAlerts } from './checks';
 import { withSlotVariables } from './slots';
+import {
+  hasMobileVariables,
+  isMobileViewport,
+  isMobileWidth,
+  mobileThreshold,
+  MOBILE_VIEWPORT_QUERY,
+  withMobileVariables,
+} from './breakpoints';
 
 /*
  * Home Assistant's `title` translations - every integration's name - asked for once per
@@ -140,6 +148,12 @@ export class DeclutteringCard extends DeclutteringElement {
   private _buildingFallback = false;
   // Set when `on_error:` itself could not be shown, which leaves the error showing instead of looping.
   private _fallbackFailed = false;
+  // `variables_mobile:` (idea 42): whether the card last counted as narrow, and what tells it
+  // when that changes - the screen's media query, or an observer of the card's own width when
+  // `mobile_below:` asks for that. Only ever made for a card that has mobile values.
+  private _mobile = false;
+  private _breakpoints?: ResizeObserver;
+  private _stopMedia?: () => void;
 
   /*
    * Asks the hui-card or hui-badge around this card to leave it on the page while it is
@@ -167,6 +181,10 @@ export class DeclutteringCard extends DeclutteringElement {
     // which stops the card hearing about categories (below); put back, it starts again.
     if (this._hass && this._fromRegistry) this._loadLabelsIfWanted(this._hass);
     this._listenForInstalled();
+    if (this._breakpoints) this._breakpoints.observe(this);
+    if (this._lastConfig && hasMobileVariables(this._lastConfig) && mobileThreshold(this._lastConfig) === undefined) {
+      this._watchViewport();
+    }
   }
 
   public disconnectedCallback(): void {
@@ -175,6 +193,9 @@ export class DeclutteringCard extends DeclutteringElement {
     this._holdStop = undefined;
     this._categoriesStop?.();
     this._categoriesStop = undefined;
+    this._breakpoints?.disconnect();
+    this._stopMedia?.();
+    this._stopMedia = undefined;
     this._installedStop?.();
     this._installedStop = undefined;
   }
@@ -299,6 +320,9 @@ export class DeclutteringCard extends DeclutteringElement {
     config = withInheritedVariables(config);
     // `slots:` are variables the card fills a template's slots with (idea 35).
     config = withSlotVariables(config);
+    // `variables_mobile:` lays its values over the card's while the card is narrow (idea 42).
+    this._watchBreakpoint(config);
+    config = withMobileVariables(config, this._mobile);
 
     // Said here rather than thrown: Home Assistant collapses a card that throws in
     // setConfig to "Configuration error" with the reason hidden, and the reason - which
@@ -437,6 +461,65 @@ export class DeclutteringCard extends DeclutteringElement {
         ${localize('card.preview_render_now', undefined, this._hass)}
       </ha-button>
     </ha-alert>`;
+  }
+
+  /*
+   * Watches for the card turning narrow while it has mobile values, and builds again the
+   * once that changes - not on every pixel. The screen decides unless `mobile_below:` asks
+   * for the card's own width, in which case nothing measured yet counts as wide, as the
+   * column count does: the first build is the desktop one and a narrow card builds again
+   * as soon as it is measured.
+   */
+  private _watchBreakpoint(config: DeclutteringCardConfig): void {
+    if (!hasMobileVariables(config)) {
+      this._breakpoints?.disconnect();
+      this._breakpoints = undefined;
+      this._stopMedia?.();
+      this._stopMedia = undefined;
+      this._mobile = false;
+      return;
+    }
+    const threshold = mobileThreshold(config);
+    if (threshold === undefined) {
+      this._breakpoints?.disconnect();
+      this._breakpoints = undefined;
+      this._mobile = isMobileViewport();
+      this._watchViewport();
+      return;
+    }
+    this._stopMedia?.();
+    this._stopMedia = undefined;
+    if (typeof ResizeObserver === 'undefined') {
+      this._mobile = false;
+      return;
+    }
+    this._breakpoints ??= new ResizeObserver(() => {
+      const written = mobileThreshold(this._lastConfig);
+      if (written === undefined) return;
+      this._crossed(isMobileWidth(this.clientWidth, written));
+    });
+    this._breakpoints.disconnect();
+    this._breakpoints.observe(this);
+    this._mobile = isMobileWidth(this.clientWidth, threshold);
+  }
+
+  // The screen's own narrow query, heard once per card for as long as it is on the page.
+  private _watchViewport(): void {
+    if (this._stopMedia || typeof matchMedia !== 'function') return;
+    const query = matchMedia(MOBILE_VIEWPORT_QUERY);
+    const heard = (): void => this._crossed(query.matches);
+    query.addEventListener('change', heard);
+    this._stopMedia = () => query.removeEventListener('change', heard);
+  }
+
+  private _crossed(mobile: boolean): void {
+    if (mobile === this._mobile) return;
+    this._mobile = mobile;
+    try {
+      this._rebuild();
+    } catch (err) {
+      this._error = (err as Error)?.message ?? String(err);
+    }
   }
 
   /* ------------------------------------------------------------ on_error */

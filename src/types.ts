@@ -48,6 +48,10 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   rebuild_on?: string | string[];
   /** Cards of the card's own, by slot name, put where the template left a `[[name|slot]]`. */
   slots?: Record<string, unknown>;
+  /** Values laid over `variables` while the screen is a phone's - or, with `mobile_below`, while the card itself is narrower than that. */
+  variables_mobile?: VariablesConfig[] | Record<string, unknown>;
+  /** A card width, in pixels, below which `variables_mobile` applies instead of the screen deciding. */
+  mobile_below?: number;
 }
 
 export interface DeclutteringTemplateConfig extends LovelaceCardConfig, TemplateConfig {
