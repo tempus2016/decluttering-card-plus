@@ -83,6 +83,7 @@ import {
 } from './checks';
 import { isRegistrySource } from './registry';
 import { STRICT_OFF, StrictLevels } from './strict';
+import { isPageTemplate } from './page-template';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -563,6 +564,10 @@ export abstract class DeclutteringElement extends LitElement {
     const thingType = getThingType(templateConfig);
     if (!thingType) {
       const defined = THING_TYPE_KEYS.filter((key) => (templateConfig as Record<string, unknown>)[key] !== undefined);
+      // A page template (idea 33) builds a dashboard, which no card can hold.
+      if (isPageTemplate(templateConfig)) {
+        throw new Error(localize('error.page_template_as_card', { template: templateName ?? '' }, this._hass));
+      }
       throw new Error(
         defined.length
           ? localize('error.defines_both', { first: defined[0], second: defined[1] }, this._hass)

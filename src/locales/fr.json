@@ -882,5 +882,9 @@
   "warn.stale_time_step": "decluttering-card-plus : une carte utilisant {template} met en forme un temps avec |relative ou |age mais ne liste rien dans rebuild_on:, les mots ne suivront donc pas. Listez l'entité dont elle lit le temps.",
   "warn.bad_plural_argument": "decluttering-card-plus : |{step} a besoin d'au moins deux mots après les deux-points, singulier puis pluriel, \"{value}\" est donc laissé tel quel.",
   "warn.not_a_colour": "decluttering-card-plus : |{step} travaille sur une couleur - hex, rgb() ou un nom CSS - mais a reçu \"{value}\", la valeur est donc laissée telle quelle.",
-  "warn.colour_from_theme": "decluttering-card-plus : |{step} ne peut rien dériver d'une variable de thème, qui n'a de valeur qu'au rendu de la page, \"{value}\" est donc transmis tel qu'écrit."
+  "warn.colour_from_theme": "decluttering-card-plus : |{step} ne peut rien dériver d'une variable de thème, qui n'a de valeur qu'au rendu de la page, \"{value}\" est donc transmis tel qu'écrit.",
+  "error.page_template_missing": "La page nomme un modèle \"{template}\" absent des decluttering_templates de la stratégie et de tout tableau de bord emprunté.",
+  "error.page_template_kind": "La page nomme \"{template}\", qui ne construit pas de tableau de bord. Un modèle de page a son contenu sous dashboard:.",
+  "error.page_with_views": "Ce tableau de bord a ses propres vues à côté de page: {template}. Un modèle de page construit tout le tableau de bord : retirez les vues ou la page.",
+  "error.page_template_as_card": "\"{template}\" est un modèle de page - il construit tout un tableau de bord sous dashboard: - aucune carte ne peut donc l'utiliser. Pointez-y le page: d'une stratégie de tableau de bord."
 }

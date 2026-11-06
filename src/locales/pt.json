@@ -882,5 +882,9 @@
   "warn.stale_time_step": "decluttering-card-plus: um cartão que usa {template} dá forma a um tempo com |relative ou |age mas não lista nada em rebuild_on:, por isso as palavras não acompanham. Liste a entidade cujo tempo lê.",
   "warn.bad_plural_argument": "decluttering-card-plus: |{step} precisa de pelo menos duas palavras depois dos dois pontos, singular e depois plural, por isso \"{value}\" fica como estava.",
   "warn.not_a_colour": "decluttering-card-plus: |{step} trabalha com uma cor - hex, rgb() ou um nome CSS - mas recebeu \"{value}\", por isso o valor fica como estava.",
-  "warn.colour_from_theme": "decluttering-card-plus: |{step} não consegue derivar de uma variável de tema, que só tem valor quando a página é pintada, por isso \"{value}\" passa tal como está escrito."
+  "warn.colour_from_theme": "decluttering-card-plus: |{step} não consegue derivar de uma variável de tema, que só tem valor quando a página é pintada, por isso \"{value}\" passa tal como está escrito.",
+  "error.page_template_missing": "A página nomeia um modelo \"{template}\" que não está nos decluttering_templates da estratégia nem em nenhum painel emprestado.",
+  "error.page_template_kind": "A página nomeia \"{template}\", que não constrói um painel. Um modelo de página tem o seu conteúdo sob dashboard:.",
+  "error.page_with_views": "Este painel tem vistas próprias ao lado de page: {template}. Um modelo de página constrói o painel inteiro; retire as vistas ou a página.",
+  "error.page_template_as_card": "\"{template}\" é um modelo de página - constrói um painel inteiro sob dashboard: - por isso nenhum cartão o pode usar. Aponte para ele o page: de uma estratégia de painel."
 }

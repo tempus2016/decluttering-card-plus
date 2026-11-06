@@ -130,6 +130,8 @@ export interface TemplateConfig {
   badge?: any;
   /** Cards that take their places in the section one by one, as if each were written there. */
   group?: any;
+  /** A whole dashboard, for a dashboard strategy's `page:` to build. Not a card. */
+  dashboard?: any;
   style?: string;
   /** How much of a sections grid a card built from this template asks for. */
   grid_options?: any;

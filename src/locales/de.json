@@ -882,5 +882,9 @@
   "warn.stale_time_step": "decluttering-card-plus: eine Karte mit {template} formt eine Zeit mit |relative oder |age, führt aber nichts in rebuild_on: auf, die Worte bleiben also stehen. Trag die Entität ein, deren Zeit gelesen wird.",
   "warn.bad_plural_argument": "decluttering-card-plus: |{step} braucht nach dem Doppelpunkt mindestens zwei Wörter, Singular dann Plural, \"{value}\" bleibt also wie es war.",
   "warn.not_a_colour": "decluttering-card-plus: |{step} arbeitet mit einer Farbe – Hex, rgb() oder ein CSS-Name –, bekam aber \"{value}\", der Wert bleibt also wie er war.",
-  "warn.colour_from_theme": "decluttering-card-plus: |{step} kann nichts aus einer Theme-Variablen ableiten, die erst beim Zeichnen der Seite einen Wert hat, \"{value}\" wird also unverändert durchgereicht."
+  "warn.colour_from_theme": "decluttering-card-plus: |{step} kann nichts aus einer Theme-Variablen ableiten, die erst beim Zeichnen der Seite einen Wert hat, \"{value}\" wird also unverändert durchgereicht.",
+  "error.page_template_missing": "Die Seite nennt eine Vorlage \"{template}\", die weder in decluttering_templates der Strategie noch auf einem geliehenen Dashboard steht.",
+  "error.page_template_kind": "Die Seite nennt \"{template}\", die kein Dashboard baut. Eine Seitenvorlage hat ihren Inhalt unter dashboard:.",
+  "error.page_with_views": "Dieses Dashboard hat eigene Ansichten neben page: {template}. Eine Seitenvorlage baut das ganze Dashboard - entweder die Ansichten oder die Seite entfernen.",
+  "error.page_template_as_card": "\"{template}\" ist eine Seitenvorlage - sie baut ein ganzes Dashboard unter dashboard: - also kann keine Karte sie verwenden. Stattdessen page: einer Dashboard-Strategie darauf zeigen lassen."
 }

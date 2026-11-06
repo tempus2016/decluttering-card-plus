@@ -882,5 +882,9 @@
   "warn.stale_time_step": "decluttering-card-plus: een kaart met {template} vormt een tijd met |relative of |age maar noemt niets in rebuild_on:, dus de woorden blijven achter. Noem de entiteit waarvan de tijd gelezen wordt.",
   "warn.bad_plural_argument": "decluttering-card-plus: |{step} heeft na de dubbele punt minstens twee woorden nodig, enkelvoud dan meervoud, dus \"{value}\" blijft zoals het was.",
   "warn.not_a_colour": "decluttering-card-plus: |{step} werkt op een kleur - hex, rgb() of een CSS-naam - maar kreeg \"{value}\", dus de waarde blijft zoals ze was.",
-  "warn.colour_from_theme": "decluttering-card-plus: |{step} kan niets afleiden van een themavariabele, die pas een waarde heeft als de pagina tekent, dus \"{value}\" gaat door zoals het er staat."
+  "warn.colour_from_theme": "decluttering-card-plus: |{step} kan niets afleiden van een themavariabele, die pas een waarde heeft als de pagina tekent, dus \"{value}\" gaat door zoals het er staat.",
+  "error.page_template_missing": "De pagina noemt een sjabloon \"{template}\" dat niet in decluttering_templates van de strategie staat en op geen enkel geleend dashboard.",
+  "error.page_template_kind": "De pagina noemt \"{template}\", dat geen dashboard bouwt. Een paginasjabloon heeft zijn inhoud onder dashboard:.",
+  "error.page_with_views": "Dit dashboard heeft eigen weergaven naast page: {template}. Een paginasjabloon bouwt het hele dashboard; haal de weergaven of de pagina weg.",
+  "error.page_template_as_card": "\"{template}\" is een paginasjabloon - het bouwt een heel dashboard onder dashboard: - dus geen enkele kaart kan het gebruiken. Laat page: van een dashboardstrategie ernaar wijzen."
 }

@@ -3,7 +3,8 @@ import { forEachItems, forEachVariables, normaliseVariables, POSITION_NAMES } fr
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import { sourceTemplate, TemplateRender } from './template-source';
 import { CONSUMER_TYPES, itemTemplatesOf } from './templates';
-import { VariablesConfig } from './types';
+import { TemplateConfig, VariablesConfig } from './types';
+import { buildPage, errorDashboard, pageOf } from './page-template';
 
 // What a strategy's substitutions are handed for `with:` and `repeat:` (#227): the item
 // templates ride on the context the card already builds, and the context itself serves a
@@ -242,7 +243,7 @@ export function wantsLabels(config: any): boolean {
  */
 
 /** The dashboard strategy's own keys - everything else it says goes to the dashboard's root. */
-const DASHBOARD_OWN_KEYS = ['type', 'variables', 'views'];
+const DASHBOARD_OWN_KEYS = ['type', 'variables', 'views', 'page', 'decluttering_page'];
 
 /** The custom type both strategies answer to, and the one a nested view strategy is recognised by. */
 export const STRATEGY_TYPE = 'custom:decluttering-card-plus';
@@ -389,8 +390,23 @@ function fillPlain(content: any, values: VariablesConfig[], hass: any, context?:
   return view;
 }
 
-/** The dashboard a dashboard strategy config describes, with every repeated view written out. */
-export function generateDashboard(config: any, hass?: any, context?: SourceContext): any {
+/**
+ * The dashboard a dashboard strategy config describes, with every repeated view written out.
+ * A strategy asking for a `page:` (idea 33) first becomes the dashboard its page template
+ * builds, which then goes through the same writing-out; `pageTemplates` is every template
+ * the page can be, borrowed ones included, which only the strategy element can fetch.
+ */
+export function generateDashboard(
+  config: any,
+  hass?: any,
+  context?: SourceContext,
+  pageTemplates?: Record<string, TemplateConfig>,
+): any {
+  if (pageOf(config)) {
+    const page = buildPage(config, pageTemplates ?? config?.decluttering_templates ?? {}, hass);
+    if ('error' in page) return errorDashboard(page.error);
+    return generateDashboard({ ...page.dashboard, type: STRATEGY_TYPE }, hass, context);
+  }
   const shared = normaliseVariables(config?.variables);
   // The strategy's own item templates are what a `with:` or `repeat:` in the views it writes
   // names - a plain card's list is never filled in again after this, so they are needed here.

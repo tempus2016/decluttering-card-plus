@@ -882,5 +882,9 @@
   "warn.stale_time_step": "decluttering-card-plus: a card using {template} shapes a time with |relative or |age but lists nothing in rebuild_on:, so the words will not keep up. List the entity whose time it reads.",
   "warn.bad_plural_argument": "decluttering-card-plus: |{step} needs at least two words after the colon, singular then plural, so \"{value}\" is left as it was.",
   "warn.not_a_colour": "decluttering-card-plus: |{step} works on a colour - a hex, an rgb() or a CSS name - but was given \"{value}\", so the value is left as it was.",
-  "warn.colour_from_theme": "decluttering-card-plus: |{step} cannot derive from a theme variable, which has no value until the page paints, so \"{value}\" is passed through as written."
+  "warn.colour_from_theme": "decluttering-card-plus: |{step} cannot derive from a theme variable, which has no value until the page paints, so \"{value}\" is passed through as written.",
+  "error.page_template_missing": "The page names a template \"{template}\" that is not in the strategy's decluttering_templates or on any dashboard it borrows from.",
+  "error.page_template_kind": "The page names \"{template}\", which does not build a dashboard. A page template has its content under dashboard:.",
+  "error.page_with_views": "This dashboard has views of its own beside page: {template}. A page template builds the whole dashboard, so take the views out or the page.",
+  "error.page_template_as_card": "\"{template}\" is a page template - it builds a whole dashboard under dashboard: - so no card can use it. Point a dashboard strategy's page: at it instead."
 }

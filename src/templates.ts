@@ -191,6 +191,8 @@ export function checkDashboard(
       .sort()
       .map(([template, entry]) => ({ template, names: [...entry.names].sort(), count: entry.count })),
     unusedTemplates: available
+      // A page template (idea 33) is used by a strategy's page:, which no card names.
+      .filter((name) => !('dashboard' in (templates[name] ?? {})))
       .filter((name) => totalUsages(ll, name) === 0 && !extendedNames(ll).has(name))
       .filter((name) => !(itemNames.includes(name) && heads.has(name)))
       .sort(),

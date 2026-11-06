@@ -1,5 +1,6 @@
 import { HomeAssistant } from 'custom-card-helpers';
 import { collectAllTemplates, itemTemplatesOf } from './templates';
+import { pageOf } from './page-template';
 import { loadLabels } from './labels';
 import { loadCategories, wantsCategories } from './categories';
 import { renderTemplateOnce } from './template-source';
@@ -61,7 +62,9 @@ export class DeclutteringDashboardStrategy extends HTMLElement {
       renderTemplateOnce(hass, template),
     );
     for (const [template, render] of Object.entries(rendered)) warnUnlisted(template, render, hass);
-    return generateDashboard(config, hass, { rendered });
+    // A page (idea 33) may name a template this strategy borrows, which only hass can fetch.
+    const pageTemplates = pageOf(config) ? await collectAllTemplates(hass, config) : undefined;
+    return generateDashboard(config, hass, { rendered }, pageTemplates);
   }
 }
 
