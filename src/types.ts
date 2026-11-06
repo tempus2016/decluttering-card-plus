@@ -144,6 +144,10 @@ export interface TemplateConfig {
   /** Conditions on the variables that decide whether a copy is built at all - `variable:` with
    *  `exists`, `equals`, `not_equals`, `in`, `not_in` or `matches`. Every one must hold. */
   visibility?: unknown;
+  /** Which version of itself the template is, for the health panel and the shared store. Not enforced. */
+  version?: number | string;
+  /** What changed in each version, keyed by version - the health panel reads a variable's story from these. */
+  changes?: Record<string, string | string[]>;
 }
 
 /** One of a template's `checks:` (#389). */

@@ -890,5 +890,8 @@
   "warn.repeat_options_ignored": "decluttering-card-plus : {options} n'ont pas de sens pour un {kind} répété (\"{template}\") et sont ignorés.",
   "visibility.closed_unset": "{variable} n'est pas définie",
   "visibility.closed_value": "{variable} vaut \"{value}\" ({condition})",
-  "visibility.not_built": "{label}, non construite"
+  "visibility.not_built": "{label}, non construite",
+  "tools.health_dropped_since": " Supprimée dans la version {version} : \"{note}\".",
+  "tools.health_rename_to": "Renommer en {name}",
+  "tools.health_older_elsewhere": "\"{template}\" sur {dashboard} est en version {there} ; celui de ce tableau de bord est en version {here}."
 }

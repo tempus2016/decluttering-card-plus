@@ -890,5 +890,8 @@
   "warn.repeat_options_ignored": "decluttering-card-plus: {options} mean nothing for a repeated {kind} (\"{template}\") and are ignored - rows run down the card and elements sit where their style puts them.",
   "visibility.closed_unset": "{variable} is unset",
   "visibility.closed_value": "{variable} is \"{value}\" ({condition})",
-  "visibility.not_built": "{label}, not built"
+  "visibility.not_built": "{label}, not built",
+  "tools.health_dropped_since": " Dropped in version {version}: \"{note}\".",
+  "tools.health_rename_to": "Rename to {name}",
+  "tools.health_older_elsewhere": "\"{template}\" on {dashboard} is version {there}; this dashboard's is version {here}."
 }

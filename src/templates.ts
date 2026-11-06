@@ -1463,6 +1463,31 @@ export function borrowedFrom(name: string): string | undefined {
   return BORROWED_FROM.get(name);
 }
 
+/**
+ * The templates this dashboard borrows, as their lenders wrote them, with the lender each
+ * came from - for the health panel to compare versions against (idea 43). Later lenders
+ * override earlier ones, as collectAllTemplates merges them.
+ */
+export async function borrowedTemplateSources(
+  hass: HomeAssistant | undefined,
+  ll: LovelaceConfig | null | undefined,
+): Promise<{ templates: Record<string, TemplateConfig>; from: Record<string, string> }> {
+  const out = { templates: {} as Record<string, TemplateConfig>, from: {} as Record<string, string> };
+  if (!hass || !mayBorrowTemplates(ll)) return out;
+  let sources = getTemplateSources(ll);
+  if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
+  sources = withLibrary(sources);
+  const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
+  configs.forEach((config, index) => {
+    if (!config) return;
+    for (const [name, template] of Object.entries(collectRawTemplates(config))) {
+      out.templates[name] = template;
+      out.from[name] = sources[index];
+    }
+  });
+  return out;
+}
+
 /** A single template from this dashboard, without going to the network. */
 export function findTemplate(
   ll: LovelaceConfig | null | undefined,

@@ -890,5 +890,8 @@
   "warn.repeat_options_ignored": "decluttering-card-plus: {options} betekenen niets voor een herhaalde {kind} (\"{template}\") en worden genegeerd.",
   "visibility.closed_unset": "{variable} is niet ingesteld",
   "visibility.closed_value": "{variable} is \"{value}\" ({condition})",
-  "visibility.not_built": "{label}, niet gebouwd"
+  "visibility.not_built": "{label}, niet gebouwd",
+  "tools.health_dropped_since": " Vervallen in versie {version}: \"{note}\".",
+  "tools.health_rename_to": "Hernoemen naar {name}",
+  "tools.health_older_elsewhere": "\"{template}\" op {dashboard} is versie {there}; die van dit dashboard is versie {here}."
 }

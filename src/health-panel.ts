@@ -9,10 +9,13 @@ import {
   checkDashboard,
   extendsLoops,
   deprecatedInUse,
+  borrowedTemplateSources,
 } from './templates';
 import { checkExamples } from './examples';
 import { localize, onLanguageLoaded } from './localize';
 import { checkUnreadVariables } from './unread';
+import { olderElsewhere, renameVariableOnCards, withVersionNotes } from './version-check';
+import { pageDashboard, rewriteDashboards } from './shared';
 import { BUILD_LOG, slowestBuilds } from './trace';
 
 /*
@@ -44,6 +47,8 @@ export class DeclutteringHealthPanel extends LitElement {
   // Every example on the dashboard built once per dashboard config, not on every render -
   // the panel re-renders on each state change Home Assistant sends.
   private _examplesChecked?: { ll: unknown; borrowed?: string[]; failed: ReturnType<typeof checkExamples> };
+  // What the lenders wrote, for the version comparison (idea 43); fetched once per dashboard config.
+  @state() private _lenders?: { ll: unknown; templates: Record<string, TemplateConfig>; from: Record<string, string> };
 
   static get styles(): CSSResult {
     return css`
@@ -90,6 +95,15 @@ export class DeclutteringHealthPanel extends LitElement {
         }
       });
     }
+    if (borrowing && this._lenders?.ll !== ll) {
+      this._lenders = { ll, templates: {}, from: {} };
+      void borrowedTemplateSources(this.hass, ll).then((lent) => {
+        if (this._lenders?.ll === ll) this._lenders = { ll, ...lent };
+      });
+    }
+    const older = this._lenders
+      ? olderElsewhere(collectTemplates(ll), this._lenders.templates, this._lenders.from)
+      : [];
     const pending = borrowing && !this._borrowed?.names;
     const full = checkDashboard(ll, borrowing ? (this._borrowed?.names ?? []) : []);
     const report = pending ? { ...full, missingTemplates: [] } : full;
@@ -106,7 +120,9 @@ export class DeclutteringHealthPanel extends LitElement {
       };
     }
     const failedExamples = pending ? [] : (this._examplesChecked?.failed ?? []);
-    const unread = checkUnreadVariables(ll, this._borrowed?.templates ?? collectTemplates(ll));
+    const known = this._borrowed?.templates ?? collectTemplates(ll);
+    // Each finding carries the change note that explains it, when its template keeps one (idea 43).
+    const unread = withVersionNotes(checkUnreadVariables(ll, known), known);
     const healthy =
       !report.missingTemplates.length &&
       !report.unsetVariables.length &&
@@ -114,7 +130,8 @@ export class DeclutteringHealthPanel extends LitElement {
       !loops.length &&
       !retired.length &&
       !failedExamples.length &&
-      !unread.length;
+      !unread.length &&
+      !older.length;
     return html`
       <ha-expansion-panel outlined>
         <span slot="header">${localize('tools.health_header', undefined, this.hass)}</span>
@@ -202,7 +219,41 @@ export class DeclutteringHealthPanel extends LitElement {
                         each.where === 'variables'
                           ? ''
                           : localize(`tools.health_unread_${each.where}`, undefined, this.hass)
-                      }${each.closest ? localize('error.did_you_mean', { closest: each.closest }, this.hass) : ''}
+                      }${each.closest ? localize('error.did_you_mean', { closest: each.closest }, this.hass) : ''}${
+                        each.since
+                          ? localize(
+                              'tools.health_dropped_since',
+                              { version: each.since.version, note: each.since.note },
+                              this.hass,
+                            )
+                          : ''
+                      }
+                      ${
+                        each.since?.replacement
+                          ? html`<ha-button
+                              slot="action"
+                              @click=${() =>
+                                this._renameOnCards(
+                                  each.view.index,
+                                  each.template,
+                                  each.name,
+                                  each.since?.replacement ?? '',
+                                )}
+                            >
+                              ${localize('tools.health_rename_to', { name: each.since.replacement }, this.hass)}
+                            </ha-button>`
+                          : ''
+                      }
+                    </ha-alert>`,
+                )}
+                ${older.map(
+                  (each) =>
+                    html`<ha-alert alert-type="info">
+                      ${localize(
+                        'tools.health_older_elsewhere',
+                        { template: each.template, dashboard: each.dashboard, here: each.here, there: each.there },
+                        this.hass,
+                      )}
                     </ha-alert>`,
                 )}
                 ${
@@ -217,6 +268,14 @@ export class DeclutteringHealthPanel extends LitElement {
         ${this._renderTimings()}
       </ha-expansion-panel>
     `;
+  }
+
+  /** The health panel's one-click rename (idea 43): every card of that template on that view, undoable from the toast. */
+  private _renameOnCards(view: number, template: string, from: string, to: string): void {
+    if (!to) return;
+    void rewriteDashboards(this, this.hass, 'rename_variable', [
+      { urlPath: pageDashboard(), build: (ll) => renameVariableOnCards(ll, view, template, from, to) },
+    ]);
   }
 
   /*
