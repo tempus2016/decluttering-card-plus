@@ -255,6 +255,8 @@
   "warn.refused_resolver": "Een resolver leest zijn waarde als entiteits-id en vraagt het aan Home Assistant – hij heeft er dus een nodig die bestaat en draagt wat er gevraagd werd.",
   "warn.refused_condition": "Een if:-stap houdt een waarde alleen zolang de voorwaarde klopt. Voeg ? toe om de optie anders weg te laten, of een default: om er iets anders te tonen.",
   "warn.refused_json": "json maakt van de waarde van de variabele zelf JSON-tekst, dus het moet als eerste in de keten staan. Er is geen stap die tekst weer omzet in een mapping of een lijst.",
+  "warn.refused_raw": "raw geeft de waarde van de variabele zoals die geschreven is, voordat er iets anders mee gebeurt, dus het moet als eerste in de keten staan.",
+  "warn.refused_yaml": "yaml maakt van de waarde van de variabele zelf YAML-tekst, dus het moet als eerste in de keten staan. Er is geen stap die tekst weer omzet in een mapping of een lijst.",
   "warn.unresolved": "decluttering-card-plus: {whose} gebruikt {which}, waar niets een waarde aan geeft, dus het wordt weergegeven zoals geschreven. Stel het in op de kaart, of geef het een standaard in het sjabloon. Om die haken met opzet te schrijven, escape je ze als [[{escape}]].",
   "warn.no_item_template": "decluttering-card-plus: {whose} gebruikt {which}, maar er is hier geen itemsjabloon met de naam {names}, dus het wordt weergegeven zoals geschreven. Controleer de naam, dat het sjabloon een item:-inhoud heeft in plaats van card:, en dat het in de decluttering_templates van dit dashboard staat.",
   "warn.unresolved_template": "sjabloon \"{name}\"",

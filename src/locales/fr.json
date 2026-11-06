@@ -255,6 +255,8 @@
   "warn.refused_resolver": "Un résolveur lit sa valeur comme un id d'entité et interroge Home Assistant, il lui en faut donc un qui existe et porte ce qui est demandé.",
   "warn.refused_condition": "Une étape if: ne garde une valeur que tant que sa condition est remplie. Ajoutez ? pour retirer l'option sinon, ou un default: pour afficher autre chose à sa place.",
   "warn.refused_json": "json transforme la valeur de la variable elle-même en texte JSON, il doit donc venir en premier dans la chaîne. Aucune étape ne retransforme du texte en dictionnaire ou en liste.",
+  "warn.refused_raw": "raw donne la valeur de la variable telle qu'elle a été écrite, avant toute autre opération, il doit donc venir en premier dans la chaîne.",
+  "warn.refused_yaml": "yaml transforme la valeur de la variable elle-même en texte YAML, il doit donc venir en premier dans la chaîne. Aucune étape ne retransforme du texte en dictionnaire ou en liste.",
   "warn.unresolved": "decluttering-card-plus : {whose} utilise {which}, auquel rien ne donne de valeur, il est donc affiché tel qu'écrit. Définissez-le sur la carte, ou donnez-lui un défaut dans le modèle. Pour écrire ces crochets exprès, échappez-les en [[{escape}]].",
   "warn.no_item_template": "decluttering-card-plus : {whose} utilise {which}, mais il n'y a ici aucun modèle d'élément nommé {names}, il est donc affiché tel qu'écrit. Vérifiez le nom, que le modèle a un corps item: et non card:, et qu'il figure dans les decluttering_templates de ce tableau de bord.",
   "warn.unresolved_template": "le modèle \"{name}\"",

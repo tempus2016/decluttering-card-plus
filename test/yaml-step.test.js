@@ -59,6 +59,11 @@ check(
   warnings.some((w) => /yaml/.test(w) && /first/.test(w)),
   true,
 );
+check(
+  'with the reason yaml has to come first, not the one for a mapping or a list',
+  warnings.some((w) => w.includes("yaml turns the variable's own value into YAML text") && !/only shapes text/.test(w)),
+  true,
+);
 
 check('yaml with no value stays visible', deepReplace([{ other: 1 }], {}, { a: '[[nope|yaml]]' }), {
   a: '[[nope|yaml]]',

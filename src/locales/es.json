@@ -255,6 +255,8 @@
   "warn.refused_resolver": "Un resolutor lee su valor como un id de entidad y pregunta a Home Assistant, así que necesita uno que exista y lleve lo que se pidió.",
   "warn.refused_condition": "Un paso if: conserva un valor solo mientras se cumple su condición. Añade ? para quitar la opción cuando no se cumpla, o un default: para mostrar algo en su lugar.",
   "warn.refused_json": "json convierte el propio valor de la variable en texto JSON, así que tiene que ir primero en la cadena. No hay ningún paso que vuelva a convertir texto en un mapeo o una lista.",
+  "warn.refused_raw": "raw da el valor de la variable tal como se escribió, antes de hacerle nada más, así que tiene que ir primero en la cadena.",
+  "warn.refused_yaml": "yaml convierte el propio valor de la variable en texto YAML, así que tiene que ir primero en la cadena. No hay ningún paso que vuelva a convertir texto en un mapeo o una lista.",
   "warn.unresolved": "decluttering-card-plus: {whose} usa {which}, a lo que nada da valor, así que se muestra tal como está escrito. Defínelo en la tarjeta, o dale un valor por defecto en la plantilla. Para escribir esos corchetes a propósito, escápalos como [[{escape}]].",
   "warn.no_item_template": "decluttering-card-plus: {whose} usa {which}, pero aquí no hay ninguna plantilla de elemento llamada {names}, así que se muestra tal como está escrito. Revisa el nombre, que la plantilla tenga un cuerpo item: en lugar de card:, y que esté en las decluttering_templates de este panel.",
   "warn.unresolved_template": "la plantilla \"{name}\"",

@@ -82,6 +82,19 @@ check(
   warnings.some((w) => /raw/.test(w) && /first/.test(w)),
   true,
 );
+check(
+  'with the reason raw has to come first, not the one for a mapping or a list',
+  warnings.some((w) => w.includes("raw gives the variable's value as it was written") && !/only shapes text/.test(w)),
+  true,
+);
+
+warnings.length = 0;
+deepReplace([{ camera_entity: 'camera.hall' }], {}, { a: '[[camera_entity|upper|raw]]' });
+check(
+  'a scalar with raw after a transform says the same, not the transform reason',
+  warnings.some((w) => /can only be the first step/.test(w) && !/only shapes text/.test(w)),
+  true,
+);
 
 check(
   'raw with a default stands in when nothing is set',

@@ -61,7 +61,7 @@ import { closestStep, knownStep } from './closest';
 // rebuild on, a `map:` had no pair for the value, or a `with:` or `repeat:` could not fill
 // in. The reason carries the difference so the wording never has to - the wording is
 // translated.
-type RefusalReason = 'shape' | 'missing' | 'closed' | 'json' | 'unlisted' | 'map' | 'structure';
+type RefusalReason = 'shape' | 'missing' | 'closed' | 'json' | 'raw' | 'yaml' | 'unlisted' | 'map' | 'structure';
 
 // The lookup step, whose "no pair for this value" is told apart from Home Assistant having nothing.
 const MAP_STEP = 'map';
@@ -617,10 +617,10 @@ function substitutePass(
         return refuse(match, written as string, localize('warn.json_not_first'), 'json');
       }
       if (chain.split('|').lastIndexOf(RAW_STEP) > 0) {
-        return refuse(match, written as string, localize('warn.raw_not_first'), 'shape');
+        return refuse(match, written as string, localize('warn.raw_not_first'), 'raw');
       }
       if (chain.split('|').lastIndexOf(YAML_STEP) > 0) {
-        return refuse(match, written as string, localize('warn.yaml_not_first'), 'shape');
+        return refuse(match, written as string, localize('warn.yaml_not_first'), 'yaml');
       }
       if (!transformable(chain)) return refuse(match, written as string);
       if (whole) {
@@ -1509,6 +1509,8 @@ function deepReplace(
       reasons.has('missing') ? localize('warn.refused_resolver') : '',
       reasons.has('closed') ? localize('warn.refused_condition') : '',
       reasons.has('json') ? localize('warn.refused_json') : '',
+      reasons.has('raw') ? localize('warn.refused_raw') : '',
+      reasons.has('yaml') ? localize('warn.refused_yaml') : '',
       reasons.has('unlisted') ? localize('warn.refused_unlisted') : '',
       reasons.has('map') ? localize('warn.refused_map') : '',
       // A `with:` or `repeat:` refusal already says in its own words what was wrong.

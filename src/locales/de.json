@@ -255,6 +255,8 @@
   "warn.refused_resolver": "Ein Resolver liest seinen Wert als Entitäts-ID und fragt Home Assistant – er braucht also eine, die existiert und das Gefragte auch hat.",
   "warn.refused_condition": "Ein if:-Schritt behält einen Wert nur, solange seine Bedingung zutrifft. Füge ? hinzu, damit die Option sonst wegfällt, oder ein default:, um stattdessen etwas anzuzeigen.",
   "warn.refused_json": "json macht aus dem Wert der Variable selbst JSON-Text, deshalb muss es als Erstes in der Kette stehen. Es gibt keinen Schritt, der Text wieder in ein Mapping oder eine Liste verwandelt.",
+  "warn.refused_raw": "raw gibt den Wert der Variable so, wie er geschrieben wurde, bevor irgendetwas anderes damit geschieht, deshalb muss es als Erstes in der Kette stehen.",
+  "warn.refused_yaml": "yaml macht aus dem Wert der Variable selbst YAML-Text, deshalb muss es als Erstes in der Kette stehen. Es gibt keinen Schritt, der Text wieder in ein Mapping oder eine Liste verwandelt.",
   "warn.unresolved": "decluttering-card-plus: {whose} verwendet {which}, dem nichts einen Wert gibt, es wird also wie geschrieben dargestellt. Setze es auf der Karte, oder gib ihm in der Vorlage einen Standard. Um die Klammern absichtlich zu schreiben, escape sie als [[{escape}]].",
   "warn.no_item_template": "decluttering-card-plus: {whose} verwendet {which}, aber hier gibt es keine Element-Vorlage namens {names}, es wird also wie geschrieben dargestellt. Prüfe den Namen, dass die Vorlage einen item:-Inhalt statt card: hat und dass sie in den decluttering_templates dieses Dashboards steht.",
   "warn.unresolved_template": "Vorlage \"{name}\"",
