@@ -88,6 +88,7 @@
     "src/gallery.ts",
     "src/stats.ts",
     "src/idle.ts",
-    "src/cli-lint.ts"
+    "src/cli-lint.ts",
+    "src/convert.ts"
   ]
 }

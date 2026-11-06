@@ -57,6 +57,8 @@ import { isDefinedHere, anyRisk, newRisks, SECOND_PRESS_MS, saveDashboardWith, a
 import { GalleryEntry, galleryEntries } from '../gallery';
 import { GalleryStatus } from '../gallery-dialog';
 import { GALLERY_TAG } from '../shared';
+import { asImport, convert, Conversion } from '../convert';
+import { toYaml } from '../yaml';
 import { TEMPLATE_EDITOR_STYLES } from './styles';
 import { CompareSource, agoParts, compareSources, diffStats, templateBody } from '../compare';
 
@@ -135,6 +137,17 @@ export class DeclutteringTemplateShareTab extends LitElement {
   // The template gallery (idea 52): open, and which tile is picked.
   @state() private _galleryOpen = false;
   @state() private _gallerySelected?: string;
+
+  // Convert from another card (idea 59): what was pasted, and what it converted to, if anything.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _convertValue?: any;
+  private _convertParses = true;
+  @state() private _conversion?: Conversion;
+  @state() private _convertClash?: string[];
+  @state() private _convertInstalled?: string[];
+  private _convertArmedAt = 0;
+  @state() private _convertTried = false;
+  @state() private _convertCopyState: '' | 'done' | 'failed' = '';
 
   @state() public _toolError?: string;
 
@@ -280,7 +293,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
               </ha-button>`
             : html``
         }
-        ${this._renderTrash()} ${this._renderCompare()}
+        ${this._renderConvert()} ${this._renderTrash()} ${this._renderCompare()}
 
         <h3>${localize('share.library_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.library_hint', undefined, this.hass)}</p>
@@ -1515,6 +1528,132 @@ export class DeclutteringTemplateShareTab extends LitElement {
       this._communitySelected = shared.id;
       await this._installShared(shared);
     }
+  }
+
+  /*
+   * Convert from another card (idea 59). A button-card template or an auto-entities card is
+   * pasted, the decluttering version is shown beside it, and Install hands that to the
+   * import above - which asks about name clashes and risks exactly as it does for a paste.
+   */
+  private _renderConvert(): TemplateResult {
+    const conversion = this._conversion;
+    return html`
+      <h3>${localize('convert.header', undefined, this.hass)}</h3>
+      <p class="hint">${localize('convert.hint', undefined, this.hass)}</p>
+      <ha-yaml-editor id="convert" .hass=${this.hass} @value-changed=${this._convertChanged}></ha-yaml-editor>
+      ${
+        this._convertTried && !conversion
+          ? html`<ha-alert alert-type="warning">${localize('convert.nothing', undefined, this.hass)}</ha-alert>`
+          : html``
+      }
+      ${
+        conversion
+          ? html`
+              <p class="hint">${localize('convert.result', undefined, this.hass)}</p>
+              <ha-yaml-editor
+                id="converted"
+                .hass=${this.hass}
+                .defaultValue=${asImport(conversion)}
+                read-only
+              ></ha-yaml-editor>
+              ${
+                conversion.card
+                  ? html`<p class="hint">${localize('convert.card_result', undefined, this.hass)}</p>
+                      <ha-yaml-editor .hass=${this.hass} .defaultValue=${conversion.card} read-only></ha-yaml-editor>`
+                  : html``
+              }
+              ${conversion.notes.map((note) => html`<ha-alert alert-type="info">${note}</ha-alert>`)}
+              ${conversion.dropped.map((note) => html`<ha-alert alert-type="warning">${note}</ha-alert>`)}
+              ${
+                conversion.needs.length
+                  ? html`<ha-alert alert-type="info">
+                      ${localize('convert.needs', { types: conversion.needs.join(', ') }, this.hass)}
+                    </ha-alert>`
+                  : html``
+              }
+              <ha-button @click=${this._copyConversion}>
+                ${
+                  this._convertCopyState === 'done'
+                    ? localize('share.copied', undefined, this.hass)
+                    : this._convertCopyState === 'failed'
+                      ? localize('share.copy_failed', undefined, this.hass)
+                      : localize('convert.copy', undefined, this.hass)
+                }
+              </ha-button>
+              <ha-button .disabled=${this._busy} @click=${(): void => void this._installConversion()}>
+                ${localize(this._convertClash ? 'share.install_anyway' : 'convert.install', undefined, this.hass)}
+              </ha-button>
+              ${
+                this._convertClash
+                  ? html`<ha-alert alert-type="warning">
+                      ${localize('convert.clash', { names: this._convertClash.join(', ') }, this.hass)}
+                    </ha-alert>`
+                  : html``
+              }
+              ${
+                this._convertInstalled
+                  ? html`<ha-alert alert-type="success">
+                      ${localize('convert.installed', { names: this._convertInstalled.join(', ') }, this.hass)}
+                    </ha-alert>`
+                  : html``
+              }
+            `
+          : html``
+      }
+    `;
+  }
+
+  private _convertChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    this._convertValue = ev.detail.value;
+    this._convertParses = ev.detail.isValid !== false;
+    this._convertCopyState = '';
+    this._convertTried = this._convertValue !== undefined && this._convertValue !== null && this._convertValue !== '';
+    this._conversion = this._convertParses && this._convertTried ? convert(this._convertValue) : undefined;
+    this._convertClash = undefined;
+    this._convertInstalled = undefined;
+  }
+
+  private async _copyConversion(): Promise<void> {
+    if (!this._conversion) return;
+    const text = [toYaml(asImport(this._conversion)), this._conversion.card ? toYaml(this._conversion.card) : '']
+      .filter(Boolean)
+      .join('\n---\n');
+    this._convertCopyState = (await copyText(text)) ? 'done' : 'failed';
+  }
+
+  // The conversion goes through the import, so a name clash or a risk is asked about the same way.
+  /*
+   * Install lands every converted template in decluttering_templates (idea 59): the main
+   * one and the ones it builds on. A name the dashboard already has is said first, and the
+   * second press replaces it. The card being edited is left alone - this is an install, not
+   * an import into the dialog - and the save can be undone like any other rewrite.
+   */
+  private async _installConversion(): Promise<void> {
+    const conversion = this._conversion;
+    if (!conversion || this._busy) return;
+    const names = Object.keys(conversion.templates);
+    const existing = Object.keys(collectTemplates(this._savedLovelace));
+    const clashes = names.filter((name) => existing.includes(name));
+    if (clashes.length && !this._convertClash) {
+      this._convertClash = clashes;
+      this._convertArmedAt = Date.now();
+      return;
+    }
+    if (this._convertClash && Date.now() - this._convertArmedAt < SECOND_PRESS_MS) return;
+    const saved = await this._saveDashboard(
+      (config) =>
+        names.reduce(
+          (built, name) =>
+            existing.includes(name)
+              ? replaceTemplate(built, name, conversion.templates[name] as Record<string, unknown>)
+              : addTemplateToRoot(built, name, conversion.templates[name]),
+          config,
+        ),
+      'convert',
+    );
+    this._convertClash = undefined;
+    if (saved) this._convertInstalled = names;
   }
 
   private _importChanged(ev: CustomEvent): void {
