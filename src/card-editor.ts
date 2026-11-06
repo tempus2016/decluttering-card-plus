@@ -119,6 +119,7 @@ import {
   currentViewIndex,
   dialogPlace,
   editDialogOf,
+  inSectionStrategyEditor,
   getThingType,
   isVariablesShape,
   loadCardEditorPicker,
@@ -1167,8 +1168,17 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     const layout = this._editingPlace().section !== undefined ? 'grid' : undefined;
     const modes = previewModes(thingType);
     const mode: PreviewMode = modes.includes(this._previewMode) ? this._previewMode : 'yaml';
+    /*
+     * Not as a section strategy's options (#400): Home Assistant writes what the editor
+     * fires as the section's strategy, so the built card landed there as a strategy type
+     * that does not exist, and the section broke.
+     */
     const canEject =
-      !items?.length && !isRegistrySource(this._config.for_each_from) && resolved && typeof resolved === 'object';
+      !items?.length &&
+      !isRegistrySource(this._config.for_each_from) &&
+      resolved &&
+      typeof resolved === 'object' &&
+      !inSectionStrategyEditor(this);
     const paused = previewPauseOn();
     // Built anyway with Render now: shown as it is until the next edit.
     const anyway = this._builtAnyway === this._config;
