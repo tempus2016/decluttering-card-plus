@@ -1258,8 +1258,9 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
      */
     if (isDefinedHere('ha-generic-picker')) {
       const all = this._pickerItems;
+      // Drawn inside the picker's own shadow root, where this editor's styles do not reach.
       const rowRenderer = (item: ComboItem): TemplateResult => html`
-        <div class="pick-row">
+        <div class="pick-row" style="padding: 6px 16px">
           <div class="pick-name">
             <span>${item.primary}</span>
             <small
