@@ -1,0 +1,276 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json",
+  "title": "A Decluttering Card Plus template",
+  "$ref": "#/definitions/TemplateConfig",
+  "definitions": {
+    "TemplateConfig": {
+      "type": "object",
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "What the template is for, shown to whoever uses it."
+        },
+        "name": {
+          "description": "What `debug: console` calls a card built from this template; it can use the card's variables.",
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "category": {
+          "type": "string",
+          "description": "Groups templates in the picker - \"Rooms\", \"Badges\" - for dashboards with many."
+        },
+        "publish": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "description": "Lists the template as a card of its own in Home Assistant's add-card dialog; a string names the entry."
+        },
+        "deprecated": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "description": "Says the template is on its way out - `true`, or a message saying what to use instead. Not inherited."
+        },
+        "examples": {
+          "description": "Sets of variables the template is shown working with: checked by the health panel, offered by the editors."
+        },
+        "on_error": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "hide"
+            },
+            {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          ],
+          "description": "What a card using this template shows instead of an error, unless the card says otherwise."
+        },
+        "suggest_for": {
+          "description": "Which entities Home Assistant's add-card dialog offers this template for."
+        },
+        "extends": {
+          "description": "The template this one builds on: its content underneath, this one's last word on top. A list builds on several, left to right, each later one over the ones before.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "variables": {
+          "description": "The variables the template takes, described so its editor can offer real controls.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/VariableDeclaration"
+              },
+              "description": "The variables the template takes, described so its editor can offer real controls."
+            },
+            {
+              "type": "object",
+              "description": "The same declarations keyed by name: a scalar or list is the default, a mapping is the whole declaration, null is a bare name.",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/VariableDeclaration"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "default": {
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "defaults": {
+          "description": "`default:` spelled plural, read the same - the two are merged, `default:` winning a name both set.",
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "let": {
+          "description": "Values the template computes for itself from the others - `room_slug: '[[room|slug]]'` written once instead of the chain repeated everywhere. Template internals: an instance cannot override one.",
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "item": {
+          "description": "A piece of config rather than a card - one entry of a camera card's `cameras:`, say - filled in where a placeholder asks for it: `[[name|with:...]]` once, `[[name|repeat:...]]` once per item. Takes `default:`, `let:` and `variables:` like any template."
+        },
+        "card": {
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "row": {
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "element": {
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "badge": {
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "group": {
+          "description": "Cards that take their places in the section one by one, as if each were written there.",
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "style": {
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "grid_options": {
+          "description": "How much of a sections grid a card built from this template asks for.",
+          "$ref": "#/$defs/config_with_placeholders"
+        }
+      }
+    },
+    "VariableDeclaration": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "selector": {
+          "description": "A Home Assistant selector, in the same shape ha-form takes."
+        },
+        "default": {},
+        "defaults": {
+          "description": "`default:` spelled plural, read the same; `default:` wins when both are written."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the template is unusable without it. Warns; it never blocks a save."
+        },
+        "pattern": {
+          "type": "string",
+          "description": "A regular expression the value must match. Warns; it never blocks a save."
+        },
+        "allowed": {
+          "type": "array",
+          "items": {},
+          "description": "The values this variable can take. Warns; it never blocks a save."
+        },
+        "group": {
+          "type": "string",
+          "description": "Declarations sharing a group fold into one collapsible section of the editor."
+        },
+        "type": {
+          "type": "string",
+          "description": "What kind of value it takes - see VARIABLE_TYPES - which picks its editor control."
+        },
+        "domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "`type: entity`: the domains it may come from, one or a list."
+        },
+        "device_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "`type: entity`: the device class it must have, one or a list."
+        },
+        "min": {
+          "type": "number",
+          "description": "`type: number`: the range, the step between values, and the unit shown beside it."
+        },
+        "max": {
+          "type": "number"
+        },
+        "step": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "multiline": {
+          "type": "boolean",
+          "description": "`type: text`: a box with room for more than one line."
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "VariablesConfig": {
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "text_with_placeholders": {
+      "type": "string",
+      "pattern": "^(?:[^\\[]|\\[(?!\\[)|\\[\\[!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|(?:area|area_icon|area_id|bool|capitalize|count|device|device_class|device_id|domain|exists|first|floor|floor_icon|friendly_name|icon|join|json|kebab|labels|last|lower|manufacturer|model|object_id|round|slug|split|state|title|translate|trim|upper|(?:add|attr|contains|default|div|find|if|join|map|max|mod|mul|or|pad|prefix|repeat|replace|round|split|sub|suffix|with):[^|\\]]*))*\\??\\]\\])*$",
+      "description": "Text, with any number of [[placeholders]]. Each placeholder is a variable name, then steps the card knows, then an optional ?."
+    },
+    "config_with_placeholders": {
+      "description": "Card, row, badge or element configuration. Strings in it may hold [[placeholders]].",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/text_with_placeholders"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/config_with_placeholders"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/config_with_placeholders"
+          }
+        }
+      ]
+    }
+  }
+}

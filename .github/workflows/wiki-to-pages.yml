@@ -52,6 +52,7 @@ jobs:
                 repo/docs-theme/assets \
                 repo/docs-theme/builder.html \
                 repo/docs-theme/playground.html \
+                repo/docs-theme/schema \
                 site/
 
       # No configure-pages step: url and baseurl are set in docs-theme/_config.yml, so the

@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tempus2016.github.io/decluttering-card-plus/schema/dashboard.json",
+  "title": "A Home Assistant dashboard with Decluttering Card Plus templates",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "decluttering_templates": {
+      "type": "object",
+      "description": "Templates by name. Each is a card, row, badge, element or group with [[placeholders]] for what changes.",
+      "additionalProperties": {
+        "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json"
+      }
+    },
+    "decluttering_defaults": {
+      "description": "Values every template on this dashboard falls back to, as a list of single-key mappings or one mapping.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "type": "object"
+        }
+      ]
+    },
+    "decluttering_variables": {
+      "description": "Variable declarations shared by every template; a template takes one up by naming it.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json#/definitions/VariableDeclaration"
+          }
+        },
+        {
+          "type": "object"
+        }
+      ]
+    },
+    "decluttering_let": {
+      "description": "Values worked out once for the whole dashboard, read by every template.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "type": "object"
+        }
+      ]
+    },
+    "decluttering_templates_from": {
+      "description": "Dashboards to borrow templates from, by url path; \"*\" for all of them.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "views": {
+      "type": "array",
+      "description": "The views. A view, section or card inside is not checked by this schema beyond its decluttering cards.",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}
