@@ -66,6 +66,7 @@
     "src/card-editor/template-picker.ts",
     "src/card-editor/generic-picker.ts",
     "src/code-hooks.ts",
-    "src/options-from.ts"
+    "src/options-from.ts",
+    "src/family.ts"
   ]
 }

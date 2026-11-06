@@ -391,7 +391,6 @@
   "editor.start_from_example": "Start from example {number}",
   "warn.on_error": "decluttering-card-plus: {message} Showing this card's on_error: instead.",
   "error.custom_element_missing": "The card this builds needs {types}, which is not installed or has not loaded.",
-  "picker.legacy_template_description": "Compatibility alias for existing custom:decluttering-template configurations.",
 
   "warn.state_unlisted": "{entity} is not in this card's rebuild_on",
   "warn.refused_unlisted": "|state only reads an entity the card lists in rebuild_on:, which is what makes the card build again when that state changes. Add the entity there.",
@@ -468,7 +467,6 @@
   "share.installed_update_anyway": "Update anyway",
   "share.installed_risks": "Before updating, note that the post’s version:",
   "share.installed_risks_new": "Compared with your installed copy, the post’s version also:",
-  "picker.legacy_template_description": "Compatibility alias for existing custom:decluttering-template configurations.",
 
   "diff.skipped": "… {count} unchanged lines",
   "diff.no_change": "No difference: before and after are the same.",
@@ -847,5 +845,15 @@
   "lint.check_key_unknown": "\"{key}\" is not something a check reads, so it does nothing. A check takes name, condition, fail_on, message, level and continue_rendering.",
   "lint.check_level_unknown": "\"{level}\" is not a level, so the check is treated as a warning. Write info, warn or error.",
   "lint.check_no_condition": "This check has no condition, so it never fails.",
-  "lint.check_condition_malformed": "\"{condition}\" is not a condition this card can read, so the check is passed over. Write a variable's name, !name, name=text, name!=text, text with placeholders in it, or true or false."
+  "lint.check_condition_malformed": "\"{condition}\" is not a condition this card can read, so the check is passed over. Write a variable's name, !name, name=text, name!=text, text with placeholders in it, or true or false.",
+  "family.header": "Family",
+  "family.hint": "Built with extends: {templates} templates, {cards} cards between them. Click a template to open the view that holds it.",
+  "family.layers_header": "How {name} is built",
+  "family.from": "from {name}",
+  "family.sets": "sets {keys}",
+  "family.changes": "changes {keys}",
+  "family.adds": "adds {keys}",
+  "family.drops": "drops {keys}",
+  "family.missing_parent": "extends {name}, which is not here",
+  "family.deprecated": "deprecated"
 }

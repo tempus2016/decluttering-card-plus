@@ -391,7 +391,6 @@
   "editor.start_from_example": "Mit Beispiel {number} starten",
   "warn.on_error": "decluttering-card-plus: {message} Stattdessen wird das on_error: dieser Karte angezeigt.",
   "error.custom_element_missing": "Die Karte, die hier gebaut wird, braucht {types}, und das ist nicht installiert oder nicht geladen.",
-  "picker.legacy_template_description": "Kompatibilitäts-Alias für bestehende custom:decluttering-template-Konfigurationen.",
 
   "warn.state_unlisted": "{entity} steht nicht in rebuild_on dieser Karte",
   "warn.refused_unlisted": "|state liest nur eine Entität, die die Karte in rebuild_on: aufführt – genau das sorgt dafür, dass die Karte neu gebaut wird, wenn sich dieser Zustand ändert. Trag die Entität dort ein.",
@@ -468,7 +467,6 @@
   "share.installed_update_anyway": "Trotzdem aktualisieren",
   "share.installed_risks": "Vor dem Aktualisieren beachten – die Version im Beitrag:",
   "share.installed_risks_new": "Gegenüber deiner installierten Kopie tut die Version im Beitrag zusätzlich Folgendes:",
-  "picker.legacy_template_description": "Kompatibilitäts-Alias für bestehende custom:decluttering-template-Konfigurationen.",
 
   "diff.skipped": "… {count} unveränderte Zeilen",
   "diff.no_change": "Kein Unterschied: Vorher und Nachher sind gleich.",
@@ -847,5 +845,15 @@
   "lint.check_key_unknown": "\"{key}\" liest eine Prüfung nicht, daher bewirkt es nichts. Eine Prüfung nimmt name, condition, fail_on, message, level und continue_rendering.",
   "lint.check_level_unknown": "\"{level}\" ist keine Stufe, daher gilt die Prüfung als Warnung. Schreibe info, warn oder error.",
   "lint.check_no_condition": "Diese Prüfung hat keine Bedingung, daher schlägt sie nie fehl.",
-  "lint.check_condition_malformed": "\"{condition}\" ist keine Bedingung, die diese Karte lesen kann, daher wird die Prüfung übergangen. Schreibe den Namen einer Variable, !name, name=text, name!=text, Text mit Platzhaltern oder true oder false."
+  "lint.check_condition_malformed": "\"{condition}\" ist keine Bedingung, die diese Karte lesen kann, daher wird die Prüfung übergangen. Schreibe den Namen einer Variable, !name, name=text, name!=text, Text mit Platzhaltern oder true oder false.",
+  "family.header": "Familie",
+  "family.hint": "Mit extends gebaut: {templates} Vorlagen, zusammen {cards} Karten. Eine Vorlage anklicken öffnet die Ansicht, die sie enthält.",
+  "family.layers_header": "Wie {name} aufgebaut ist",
+  "family.from": "von {name}",
+  "family.sets": "setzt {keys}",
+  "family.changes": "ändert {keys}",
+  "family.adds": "ergänzt {keys}",
+  "family.drops": "entfernt {keys}",
+  "family.missing_parent": "erweitert {name}, das nicht vorhanden ist",
+  "family.deprecated": "veraltet"
 }

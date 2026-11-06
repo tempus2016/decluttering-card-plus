@@ -391,7 +391,6 @@
   "editor.start_from_example": "Começar a partir do exemplo {number}",
   "warn.on_error": "decluttering-card-plus: {message} Em vez disso, é mostrado o on_error: deste cartão.",
   "error.custom_element_missing": "O cartão construído aqui precisa de {types}, que não está instalado ou não foi carregado.",
-  "picker.legacy_template_description": "Nome alternativo de compatibilidade para configurações custom:decluttering-template existentes.",
 
   "warn.state_unlisted": "{entity} não está no rebuild_on deste cartão",
   "warn.refused_unlisted": "|state só lê uma entidade que o cartão lista em rebuild_on:, que é o que faz o cartão ser reconstruído quando esse estado muda. Adicione a entidade aí.",
@@ -468,7 +467,6 @@
   "share.installed_update_anyway": "Atualizar na mesma",
   "share.installed_risks": "Antes de atualizar, note que a versão da publicação:",
   "share.installed_risks_new": "Em comparação com a sua cópia instalada, a versão da publicação também:",
-  "picker.legacy_template_description": "Nome alternativo de compatibilidade para configurações custom:decluttering-template existentes.",
 
   "diff.skipped": "… {count} linhas sem alterações",
   "diff.no_change": "Nenhuma diferença: o antes e o depois são iguais.",
@@ -847,5 +845,15 @@
   "lint.check_key_unknown": "\"{key}\" não é algo que uma verificação leia, por isso não faz nada. Uma verificação aceita name, condition, fail_on, message, level e continue_rendering.",
   "lint.check_level_unknown": "\"{level}\" não é um nível, por isso a verificação é tratada como um aviso. Escreva info, warn ou error.",
   "lint.check_no_condition": "Esta verificação não tem condição, por isso nunca falha.",
-  "lint.check_condition_malformed": "\"{condition}\" não é uma condição que este cartão saiba ler, por isso a verificação é ignorada. Escreva o nome de uma variável, !nome, nome=texto, nome!=texto, texto com marcadores, ou true ou false."
+  "lint.check_condition_malformed": "\"{condition}\" não é uma condição que este cartão saiba ler, por isso a verificação é ignorada. Escreva o nome de uma variável, !nome, nome=texto, nome!=texto, texto com marcadores, ou true ou false.",
+  "family.header": "Família",
+  "family.hint": "Construída com extends: {templates} modelos, {cards} cartões no total. Clique num modelo para abrir a vista que o contém.",
+  "family.layers_header": "Como {name} é construído",
+  "family.from": "de {name}",
+  "family.sets": "define {keys}",
+  "family.changes": "altera {keys}",
+  "family.adds": "acrescenta {keys}",
+  "family.drops": "remove {keys}",
+  "family.missing_parent": "estende {name}, que não está aqui",
+  "family.deprecated": "obsoleto"
 }

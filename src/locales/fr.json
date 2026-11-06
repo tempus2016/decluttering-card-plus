@@ -391,7 +391,6 @@
   "editor.start_from_example": "Partir de l'exemple {number}",
   "warn.on_error": "decluttering-card-plus : {message} Le on_error: de cette carte est affiché à la place.",
   "error.custom_element_missing": "La carte construite ici a besoin de {types}, qui n'est pas installé ou ne s'est pas chargé.",
-  "picker.legacy_template_description": "Alias de compatibilité pour les configurations custom:decluttering-template existantes.",
 
   "warn.state_unlisted": "{entity} n'est pas dans le rebuild_on de cette carte",
   "warn.refused_unlisted": "|state ne lit qu'une entité que la carte liste dans rebuild_on:, ce qui permet à la carte de se reconstruire quand cet état change. Ajoutez-y l'entité.",
@@ -468,7 +467,6 @@
   "share.installed_update_anyway": "Mettre à jour quand même",
   "share.installed_risks": "Avant de mettre à jour, notez que la version du message :",
   "share.installed_risks_new": "Par rapport à votre copie installée, la version du message en plus :",
-  "picker.legacy_template_description": "Alias de compatibilité pour les configurations custom:decluttering-template existantes.",
 
   "diff.skipped": "… {count} lignes inchangées",
   "diff.no_change": "Aucune différence : avant et après sont identiques.",
@@ -847,5 +845,15 @@
   "lint.check_key_unknown": "« {key} » n'est pas lu par une vérification, il ne fait donc rien. Une vérification prend name, condition, fail_on, message, level et continue_rendering.",
   "lint.check_level_unknown": "« {level} » n'est pas un niveau, la vérification est donc traitée comme un avertissement. Écrivez info, warn ou error.",
   "lint.check_no_condition": "Cette vérification n'a pas de condition, elle n'échoue donc jamais.",
-  "lint.check_condition_malformed": "« {condition} » n'est pas une condition que cette carte sait lire, la vérification est donc ignorée. Écrivez le nom d'une variable, !nom, nom=texte, nom!=texte, un texte avec des espaces réservés, ou true ou false."
+  "lint.check_condition_malformed": "« {condition} » n'est pas une condition que cette carte sait lire, la vérification est donc ignorée. Écrivez le nom d'une variable, !nom, nom=texte, nom!=texte, un texte avec des espaces réservés, ou true ou false.",
+  "family.header": "Famille",
+  "family.hint": "Construite avec extends : {templates} modèles, {cards} cartes au total. Cliquez sur un modèle pour ouvrir la vue qui le contient.",
+  "family.layers_header": "Comment {name} est construit",
+  "family.from": "de {name}",
+  "family.sets": "définit {keys}",
+  "family.changes": "modifie {keys}",
+  "family.adds": "ajoute {keys}",
+  "family.drops": "retire {keys}",
+  "family.missing_parent": "étend {name}, qui n'est pas ici",
+  "family.deprecated": "obsolète"
 }

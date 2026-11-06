@@ -391,7 +391,6 @@
   "editor.start_from_example": "Begin met voorbeeld {number}",
   "warn.on_error": "decluttering-card-plus: {message} In plaats daarvan wordt de on_error: van deze kaart getoond.",
   "error.custom_element_missing": "De kaart die hier gebouwd wordt heeft {types} nodig, en dat is niet geïnstalleerd of niet geladen.",
-  "picker.legacy_template_description": "Compatibiliteitsalias voor bestaande custom:decluttering-template-configuraties.",
 
   "warn.state_unlisted": "{entity} staat niet in de rebuild_on van deze kaart",
   "warn.refused_unlisted": "|state leest alleen een entiteit die de kaart in rebuild_on: noemt; dat zorgt ervoor dat de kaart opnieuw wordt opgebouwd als die status verandert. Zet de entiteit daar.",
@@ -468,7 +467,6 @@
   "share.installed_update_anyway": "Toch bijwerken",
   "share.installed_risks": "Let op vóór het bijwerken – de versie in het bericht:",
   "share.installed_risks_new": "Vergeleken met jouw geïnstalleerde kopie doet de versie in het bericht ook het volgende:",
-  "picker.legacy_template_description": "Compatibiliteitsalias voor bestaande custom:decluttering-template-configuraties.",
 
   "diff.skipped": "… {count} ongewijzigde regels",
   "diff.no_change": "Geen verschil: voor en na zijn hetzelfde.",
@@ -847,5 +845,15 @@
   "lint.check_key_unknown": "\"{key}\" wordt door een controle niet gelezen, dus het doet niets. Een controle neemt name, condition, fail_on, message, level en continue_rendering.",
   "lint.check_level_unknown": "\"{level}\" is geen niveau, dus de controle telt als waarschuwing. Schrijf info, warn of error.",
   "lint.check_no_condition": "Deze controle heeft geen voorwaarde, dus hij mislukt nooit.",
-  "lint.check_condition_malformed": "\"{condition}\" is geen voorwaarde die deze kaart kan lezen, dus de controle wordt overgeslagen. Schrijf de naam van een variabele, !naam, naam=tekst, naam!=tekst, tekst met plaatshouders, of true of false."
+  "lint.check_condition_malformed": "\"{condition}\" is geen voorwaarde die deze kaart kan lezen, dus de controle wordt overgeslagen. Schrijf de naam van een variabele, !naam, naam=tekst, naam!=tekst, tekst met plaatshouders, of true of false.",
+  "family.header": "Familie",
+  "family.hint": "Gebouwd met extends: {templates} sjablonen, samen {cards} kaarten. Klik op een sjabloon om de weergave te openen die het bevat.",
+  "family.layers_header": "Hoe {name} is opgebouwd",
+  "family.from": "van {name}",
+  "family.sets": "stelt {keys} in",
+  "family.changes": "wijzigt {keys}",
+  "family.adds": "voegt {keys} toe",
+  "family.drops": "laat {keys} weg",
+  "family.missing_parent": "breidt {name} uit, dat hier niet is",
+  "family.deprecated": "verouderd"
 }

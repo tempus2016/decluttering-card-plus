@@ -391,7 +391,6 @@
   "editor.start_from_example": "Empezar desde el ejemplo {number}",
   "warn.on_error": "decluttering-card-plus: {message} Se muestra en su lugar el on_error: de esta tarjeta.",
   "error.custom_element_missing": "La tarjeta que se construye necesita {types}, que no está instalado o no se ha cargado.",
-  "picker.legacy_template_description": "Alias de compatibilidad para configuraciones custom:decluttering-template existentes.",
 
   "warn.state_unlisted": "{entity} no está en rebuild_on de esta tarjeta",
   "warn.refused_unlisted": "|state solo lee una entidad que la tarjeta incluye en rebuild_on:, que es lo que hace que la tarjeta se vuelva a construir cuando cambia ese estado. Añade la entidad ahí.",
@@ -468,7 +467,6 @@
   "share.installed_update_anyway": "Actualizar igualmente",
   "share.installed_risks": "Antes de actualizar, ten en cuenta que la versión de la publicación:",
   "share.installed_risks_new": "Comparada con tu copia instalada, la versión de la publicación además:",
-  "picker.legacy_template_description": "Alias de compatibilidad para configuraciones custom:decluttering-template existentes.",
 
   "diff.skipped": "… {count} líneas sin cambios",
   "diff.no_change": "Ninguna diferencia: el antes y el después son iguales.",
@@ -847,5 +845,15 @@
   "lint.check_key_unknown": "\"{key}\" no es algo que lea una comprobación, así que no hace nada. Una comprobación admite name, condition, fail_on, message, level y continue_rendering.",
   "lint.check_level_unknown": "\"{level}\" no es un nivel, así que la comprobación se trata como un aviso. Escribe info, warn o error.",
   "lint.check_no_condition": "Esta comprobación no tiene condición, así que nunca falla.",
-  "lint.check_condition_malformed": "\"{condition}\" no es una condición que esta tarjeta sepa leer, así que la comprobación se pasa por alto. Escribe el nombre de una variable, !nombre, nombre=texto, nombre!=texto, texto con marcadores o true o false."
+  "lint.check_condition_malformed": "\"{condition}\" no es una condición que esta tarjeta sepa leer, así que la comprobación se pasa por alto. Escribe el nombre de una variable, !nombre, nombre=texto, nombre!=texto, texto con marcadores o true o false.",
+  "family.header": "Familia",
+  "family.hint": "Construida con extends: {templates} plantillas, {cards} tarjetas en total. Pulsa una plantilla para abrir la vista que la contiene.",
+  "family.layers_header": "Cómo se construye {name}",
+  "family.from": "de {name}",
+  "family.sets": "establece {keys}",
+  "family.changes": "cambia {keys}",
+  "family.adds": "añade {keys}",
+  "family.drops": "quita {keys}",
+  "family.missing_parent": "extiende {name}, que no está aquí",
+  "family.deprecated": "obsoleta"
 }
