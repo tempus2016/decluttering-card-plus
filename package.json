@@ -84,5 +84,8 @@
     "branches": 80,
     "functions": 90,
     "lines": 95
+  },
+  "bin": {
+    "decluttering-card-plus": "bin/dcp-lint.js"
   }
 }
