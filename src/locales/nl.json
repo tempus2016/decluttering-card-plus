@@ -886,5 +886,6 @@
   "error.page_template_missing": "De pagina noemt een sjabloon \"{template}\" dat niet in decluttering_templates van de strategie staat en op geen enkel geleend dashboard.",
   "error.page_template_kind": "De pagina noemt \"{template}\", dat geen dashboard bouwt. Een paginasjabloon heeft zijn inhoud onder dashboard:.",
   "error.page_with_views": "Dit dashboard heeft eigen weergaven naast page: {template}. Een paginasjabloon bouwt het hele dashboard; haal de weergaven of de pagina weg.",
-  "error.page_template_as_card": "\"{template}\" is een paginasjabloon - het bouwt een heel dashboard onder dashboard: - dus geen enkele kaart kan het gebruiken. Laat page: van een dashboardstrategie ernaar wijzen."
+  "error.page_template_as_card": "\"{template}\" is een paginasjabloon - het bouwt een heel dashboard onder dashboard: - dus geen enkele kaart kan het gebruiken. Laat page: van een dashboardstrategie ernaar wijzen.",
+  "warn.repeat_options_ignored": "decluttering-card-plus: {options} betekenen niets voor een herhaalde {kind} (\"{template}\") en worden genegeerd."
 }

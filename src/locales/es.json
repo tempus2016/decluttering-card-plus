@@ -886,5 +886,6 @@
   "error.page_template_missing": "La página nombra una plantilla \"{template}\" que no está en decluttering_templates de la estrategia ni en ningún panel del que tome prestado.",
   "error.page_template_kind": "La página nombra \"{template}\", que no construye un panel. Una plantilla de página tiene su contenido bajo dashboard:.",
   "error.page_with_views": "Este panel tiene vistas propias junto a page: {template}. Una plantilla de página construye todo el panel; quite las vistas o la página.",
-  "error.page_template_as_card": "\"{template}\" es una plantilla de página - construye todo un panel bajo dashboard: - así que ninguna tarjeta puede usarla. Apunte a ella desde page: de una estrategia de panel."
+  "error.page_template_as_card": "\"{template}\" es una plantilla de página - construye todo un panel bajo dashboard: - así que ninguna tarjeta puede usarla. Apunte a ella desde page: de una estrategia de panel.",
+  "warn.repeat_options_ignored": "decluttering-card-plus: {options} no significan nada para un {kind} repetido (\"{template}\") y se ignoran."
 }

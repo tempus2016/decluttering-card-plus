@@ -886,5 +886,6 @@
   "error.page_template_missing": "A página nomeia um modelo \"{template}\" que não está nos decluttering_templates da estratégia nem em nenhum painel emprestado.",
   "error.page_template_kind": "A página nomeia \"{template}\", que não constrói um painel. Um modelo de página tem o seu conteúdo sob dashboard:.",
   "error.page_with_views": "Este painel tem vistas próprias ao lado de page: {template}. Um modelo de página constrói o painel inteiro; retire as vistas ou a página.",
-  "error.page_template_as_card": "\"{template}\" é um modelo de página - constrói um painel inteiro sob dashboard: - por isso nenhum cartão o pode usar. Aponte para ele o page: de uma estratégia de painel."
+  "error.page_template_as_card": "\"{template}\" é um modelo de página - constrói um painel inteiro sob dashboard: - por isso nenhum cartão o pode usar. Aponte para ele o page: de uma estratégia de painel.",
+  "warn.repeat_options_ignored": "decluttering-card-plus: {options} não significam nada para um {kind} repetido (\"{template}\") e são ignorados."
 }

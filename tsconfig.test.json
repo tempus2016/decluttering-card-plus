@@ -12,6 +12,7 @@
   "files": [
     "src/deep-replace.ts",
     "src/page-template.ts",
+    "src/repeat-kinds.ts",
     "src/templates.ts",
     "src/share.ts",
     "src/variables.ts",

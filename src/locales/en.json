@@ -886,5 +886,6 @@
   "error.page_template_missing": "The page names a template \"{template}\" that is not in the strategy's decluttering_templates or on any dashboard it borrows from.",
   "error.page_template_kind": "The page names \"{template}\", which does not build a dashboard. A page template has its content under dashboard:.",
   "error.page_with_views": "This dashboard has views of its own beside page: {template}. A page template builds the whole dashboard, so take the views out or the page.",
-  "error.page_template_as_card": "\"{template}\" is a page template - it builds a whole dashboard under dashboard: - so no card can use it. Point a dashboard strategy's page: at it instead."
+  "error.page_template_as_card": "\"{template}\" is a page template - it builds a whole dashboard under dashboard: - so no card can use it. Point a dashboard strategy's page: at it instead.",
+  "warn.repeat_options_ignored": "decluttering-card-plus: {options} mean nothing for a repeated {kind} (\"{template}\") and are ignored - rows run down the card and elements sit where their style puts them."
 }

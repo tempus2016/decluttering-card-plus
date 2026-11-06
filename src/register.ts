@@ -8,6 +8,7 @@ import { localize } from './localize';
 import { DeclutteringCard } from './card';
 import { DeclutteringLazyCopy } from './lazy-copy';
 import { CARD_TAG, LAZY_COPY_TAG, TEMPLATE_TAG, defineElement } from './shared';
+import { DeclutteringMany, MANY_TAG } from './row-repeat';
 import { DeclutteringDashboardStrategy, DeclutteringSectionStrategy, DeclutteringViewStrategy } from './strategies';
 import { DeclutteringTemplate } from './template-card';
 
@@ -180,6 +181,8 @@ if (defineElement(SECTION_STRATEGY_TAG, DeclutteringSectionStrategy)) {
 }
 
 defineElement(LAZY_COPY_TAG, DeclutteringLazyCopy);
+
+defineElement(MANY_TAG, DeclutteringMany);
 
 if (defineElement(TEMPLATE_TAG, DeclutteringTemplate)) {
   customCards.push({

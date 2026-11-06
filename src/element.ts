@@ -84,6 +84,8 @@ import {
 import { isRegistrySource } from './registry';
 import { STRICT_OFF, StrictLevels } from './strict';
 import { isPageTemplate } from './page-template';
+import { canRepeat, ignoredRepeatOptions } from './repeat-kinds';
+import { manyConfig, MANY_TYPE } from './row-repeat';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -235,6 +237,8 @@ export abstract class DeclutteringElement extends LitElement {
   private _columnsShown?: number;
   // The size a repeat was last mentioned at, so a rebuild does not say it all over again.
   private _manyWarnedFor?: number;
+  // The config whose ignored repeat options were last mentioned (idea 34).
+  private _ignoredWarnedFor?: unknown;
   // Whether the copies on show include some still waiting to come into view.
   protected _lazyShown = false;
   private _widths?: ResizeObserver;
@@ -469,6 +473,10 @@ export abstract class DeclutteringElement extends LitElement {
        * option to paint on, and the height above stops applying.
        */
       :host(.decluttering-fit-contents) {
+        display: contents;
+      }
+      /* Repeated rows or picture elements paint through their wrapper; the host has no box. */
+      :host(.decluttering-many) {
         display: contents;
       }
       /*
@@ -1244,22 +1252,40 @@ export abstract class DeclutteringElement extends LitElement {
         ? picker.pick(forEachVariables(item, config.variables))
         : { name: config.template, template: templateConfig }),
     }));
-    // Without choosing, the one template is checked whether or not there are copies, as it
-    // always has been: a repeat of a row template is a mistake even while the list is empty.
+    /*
+     * What kind of thing the copies are. A card's copies go in a stack; a row's or a picture
+     * element's go to one wrapper that takes the single slot Home Assistant gives them and
+     * paints every copy in it (idea 34). A badge has nowhere for a second copy to go, and is
+     * refused. Choosing by domain, every copy has to be of the one kind, since there is one
+     * slot. Without choosing, the one template is checked whether or not there are copies,
+     * as it always has been: a repeat of a badge template is a mistake even while the list
+     * is empty.
+     */
+    const kind = getThingType(templateConfig);
+    const repeatKind: 'card' | 'row' | 'element' = canRepeat(kind) ? kind : 'card';
     for (const copy of picker ? chosen : [{ name: config.template, template: templateConfig }]) {
-      if (getThingType(copy.template) === 'card') continue;
-      /*
-       * Only a card can repeat. Home Assistant gives a row, a badge or a picture element a
-       * single slot to fill, so there is nowhere for a second copy to go - the way to
-       * repeat rows is a card template holding them, which repeats as a card like anything
-       * else. Choosing by domain, every copy has to be a card for the same reason.
-       */
-      const kind = getThingType(copy.template) ?? localize('error.a_different_kind', undefined, this._hass);
+      const copyKind = getThingType(copy.template);
+      if (canRepeat(copyKind) && (!picker || copyKind === repeatKind)) continue;
+      const said = copyKind ?? localize('error.a_different_kind', undefined, this._hass);
       throw new Error(
         picker
-          ? localize('error.by_domain_not_card', { template: copy.name, kind }, this._hass)
-          : localize('error.for_each_not_card', { template: config.template, kind }, this._hass),
+          ? localize('error.by_domain_not_card', { template: copy.name, kind: said }, this._hass)
+          : localize('error.for_each_not_card', { template: config.template, kind: said }, this._hass),
       );
+    }
+    const ignored = ignoredRepeatOptions(config as Record<string, unknown>, repeatKind);
+    if (ignored.length && this._ignoredWarnedFor !== config) {
+      this._ignoredWarnedFor = config;
+      warn({
+        kind: 'other',
+        message: localize(
+          'warn.repeat_options_ignored',
+          { options: ignored.join(', '), kind: repeatKind, template: config.template },
+          this._hass,
+        ),
+        template: config.template,
+        card: typeof config.name === 'string' ? config.name : undefined,
+      });
     }
     /*
      * A template can say which of its variables it cannot do without, and an item that
@@ -1279,8 +1305,8 @@ export abstract class DeclutteringElement extends LitElement {
       this._lazyShown = false;
       this._widths?.disconnect();
       this._setResolved(
-        'card',
-        this._withGridOptions('card', config.empty as LovelaceThingConfig),
+        repeatKind,
+        this._withGridOptions(repeatKind, config.empty as LovelaceThingConfig),
         this._resolveStyles(templateConfig, config.variables, config.style, config.template),
         () => this._handDown(config.variables, templateConfig, config.template),
       );
@@ -1388,7 +1414,7 @@ export abstract class DeclutteringElement extends LitElement {
           { ...this._buildExtras(), haNames },
         ),
         config,
-        'card',
+        repeatKind,
       );
       if (trace) {
         const copyName = this._traceName(variables, template, name, config);
@@ -1415,6 +1441,24 @@ export abstract class DeclutteringElement extends LitElement {
     this._missedBeforeLibrary = missed;
     this._noteBuild(config.template, config, cards.length, started);
     if (this._trace) this._logBuild(started, sections, templateConfig);
+
+    // Rows and picture elements: every copy to the one wrapper, nothing laid out here.
+    if (repeatKind !== 'card') {
+      this._forEach = undefined;
+      this._lazyShown = false;
+      this._widths?.disconnect();
+      // A skipped copy's slot is a card, which has no place in a list of rows or a picture, so
+      // here the copies the template ruled out are simply absent, in edit mode too.
+      const manyStyles = this._resolveStyles(templateConfig, config.variables, config.style, config.template);
+      this._setResolved(
+        repeatKind,
+        manyConfig(repeatKind, cards) as LovelaceThingConfig,
+        manyStyles,
+        undefined,
+        !!picker,
+      );
+      return;
+    }
 
     /*
      * `lazy: true`: past the first few, each copy goes into the stack as a placeholder that
@@ -1721,6 +1765,8 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     // Only a card is laid out as a box in the first place, so only a card has one to give
     // up. A badge is already out of the way, and an element is positioned inside the card.
     this.classList.toggle('decluttering-fit-contents', this._thingType === 'card' && this._fitContents);
+    // Repeated rows or elements: the wrapper takes the slot, so this host has no box of its own.
+    this.classList.toggle('decluttering-many', this._thingConfig?.type === MANY_TYPE);
     this.classList.toggle('decluttering-report', this._reportMode || this._strictReporting || !!this._strictNotice);
 
     return html`

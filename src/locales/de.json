@@ -886,5 +886,6 @@
   "error.page_template_missing": "Die Seite nennt eine Vorlage \"{template}\", die weder in decluttering_templates der Strategie noch auf einem geliehenen Dashboard steht.",
   "error.page_template_kind": "Die Seite nennt \"{template}\", die kein Dashboard baut. Eine Seitenvorlage hat ihren Inhalt unter dashboard:.",
   "error.page_with_views": "Dieses Dashboard hat eigene Ansichten neben page: {template}. Eine Seitenvorlage baut das ganze Dashboard - entweder die Ansichten oder die Seite entfernen.",
-  "error.page_template_as_card": "\"{template}\" ist eine Seitenvorlage - sie baut ein ganzes Dashboard unter dashboard: - also kann keine Karte sie verwenden. Stattdessen page: einer Dashboard-Strategie darauf zeigen lassen."
+  "error.page_template_as_card": "\"{template}\" ist eine Seitenvorlage - sie baut ein ganzes Dashboard unter dashboard: - also kann keine Karte sie verwenden. Stattdessen page: einer Dashboard-Strategie darauf zeigen lassen.",
+  "warn.repeat_options_ignored": "decluttering-card-plus: {options} haben für ein wiederholtes {kind} (\"{template}\") keine Bedeutung und werden ignoriert."
 }
