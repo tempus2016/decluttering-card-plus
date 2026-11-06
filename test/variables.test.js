@@ -10,6 +10,7 @@ const {
   isFallback,
   orTarget,
   hasRequiredVariables,
+  POSITION_NAMES,
   isOptional,
   withoutOptional,
   isResolver,
@@ -1866,3 +1867,32 @@ const knownStepForTest = (step) => KNOWN_PARAM_STEPS.includes(step.slice(0, step
   );
   console.warn = warnedBefore;
 }
+
+/* ------------------------------------------------- where a copy stands (idea 37) */
+
+check(
+  'every copy of a repeat is told its place: index from one, index0, count, first and last',
+  forEachVariables({ a: 1 }, undefined, 0, 3).slice(1),
+  [{ index: 1 }, { index0: 0 }, { count: 3 }, { first: true }, { last: false }],
+);
+check('the last copy says so, and only the last', forEachVariables({}, undefined, 2, 3).slice(-2), [
+  { first: false },
+  { last: true },
+]);
+check(
+  'first and last are real booleans, so |bool and if: read them',
+  [typeof forEachVariables({}, undefined, 0, 1)[3].first, typeof forEachVariables({}, undefined, 0, 1)[4].last],
+  ['boolean', 'boolean'],
+);
+check(
+  'an item that sets first itself comes before the position, so it wins',
+  forEachVariables({ first: 'mine' }, undefined, 0, 1)[0],
+  { first: 'mine' },
+);
+check('the five position names, for the checks that have to know them', POSITION_NAMES, [
+  'index',
+  'index0',
+  'count',
+  'first',
+  'last',
+]);
