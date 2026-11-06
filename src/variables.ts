@@ -890,7 +890,6 @@ function localeStep(step: string, text: string, hass?: any): string | undefined 
   }
 }
 
-
 /*
  * Colours (idea 41). `lighten:20`, `darken:20`, `alpha:0.12`, `mix:#ff9800,50` and
  * `contrast` derive from one colour; a value that is not a colour is left as it was with a
