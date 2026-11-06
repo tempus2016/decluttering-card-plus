@@ -38,6 +38,7 @@ import { localize, onLanguageLoaded } from './localize';
 import { VERSION } from './version';
 import { toYaml } from './yaml';
 import { formatReport } from './report';
+import { ReportNode, highlightParts, issueFromReport, reportTree, searchTree } from './report-tree';
 import {
   BUILD_LOG,
   BuildTrace,
@@ -75,6 +76,7 @@ import {
   thingContent,
   pageDashboard,
   rewriteDashboards,
+  textField,
 } from './shared';
 import { loadEditors } from './editors-loader';
 import { dialogButtons } from './dialog-compat';
@@ -228,12 +230,22 @@ export abstract class DeclutteringElement extends LitElement {
   // The build this card is the outermost of, still open while cards inside it are missing.
   private _expansionId?: string;
   @state() protected _reportResult?: ExpansionResult;
-  private _reportCache?: { result: ExpansionResult; error?: string; unredacted: boolean; text: string };
+  private _reportCache?: {
+    result: ExpansionResult;
+    error?: string;
+    unredacted: boolean;
+    text: string;
+    nodes: ReportNode[];
+  };
   @state() private _reportCopied = false;
   // `redact: false` (#217): the report keeps everything as the card has it.
   protected _reportUnredacted = false;
-  // The report on the card as Markdown source rather than formatted.
-  @state() private _reportRaw = false;
+  // How the report is shown on the card: as a folding tree (idea 51), formatted, or as its Markdown.
+  @state() private _reportView: 'tree' | 'formatted' | 'markdown' = 'tree';
+  // What is being looked for in the tree.
+  @state() private _reportQuery = '';
+  // What happened when Copy as GitHub issue was pressed.
+  @state() private _reportIssue: '' | 'opened' | 'copied' = '';
   protected _openTemplates: string[] = [];
   // The entities this card rebuilds on, which are also the only ones `|state` can read.
   protected _rebuildOn: string[] = [];
@@ -555,6 +567,60 @@ export abstract class DeclutteringElement extends LitElement {
         overflow: auto;
         -webkit-user-select: text;
         user-select: text;
+      }
+      .report .search {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 8px 0;
+      }
+      .report .search > * {
+        flex: 1;
+      }
+      .report .search span {
+        flex: none;
+        color: var(--secondary-text-color);
+        font-size: 0.9em;
+      }
+      .report .tree {
+        font-size: 0.9em;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      .report .tree details {
+        margin: 0 0 2px;
+      }
+      .report .tree details details {
+        margin-left: 18px;
+      }
+      .report .tree summary {
+        padding: 4px 6px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .report .tree summary:hover {
+        background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.06);
+      }
+      .report .tree summary small,
+      .report .tree .leaf small {
+        color: var(--secondary-text-color);
+        margin-left: 8px;
+      }
+      .report .tree .leaf {
+        padding: 2px 6px 2px 24px;
+        word-break: break-word;
+      }
+      .report .tree .leaf.warn {
+        color: var(--warning-color, #b26a00);
+      }
+      .report .tree pre {
+        margin: 4px 0 8px 18px;
+      }
+      .report mark {
+        background: var(--warning-color, #ffcc66);
+        color: inherit;
+        border-radius: 2px;
+        padding: 0 1px;
       }
       .report pre {
         margin: 8px 0 0;
@@ -1012,7 +1078,19 @@ export abstract class DeclutteringElement extends LitElement {
       },
       this._hass,
     );
-    this._reportCache = { result, error: this._error, unredacted, text };
+    const nodes = reportTree(
+      {
+        reports: result.reports,
+        full: result.full === undefined ? undefined : withoutStamps(result.full),
+        built:
+          result.full === undefined && !this._error && this._thingConfig ? withoutStamps(this._thingConfig) : undefined,
+        neverBuilt: result.neverBuilt,
+        error: this._error,
+        unredacted,
+      },
+      this._hass,
+    );
+    this._reportCache = { result, error: this._error, unredacted, text, nodes };
     return text;
   }
 
@@ -1031,6 +1109,95 @@ export abstract class DeclutteringElement extends LitElement {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }
+
+  /** The report as nodes, from the same cache as the text. */
+  private get _reportNodes(): ReportNode[] {
+    if (this._reportText === undefined) return [];
+    return this._reportCache?.nodes ?? [];
+  }
+
+  // `text` with every occurrence of what is being searched for marked.
+  private _marked(text: string): TemplateResult | string {
+    const query = this._reportQuery.trim();
+    if (!query) return text;
+    return html`${highlightParts(text, query).map((part) => (part.hit ? html`<mark>${part.text}</mark>` : part.text))}`;
+  }
+
+  private _renderNode(node: ReportNode): TemplateResult {
+    const meta = node.meta ? html`<small>${this._marked(node.meta)}</small>` : '';
+    if (node.kind === 'leaf') {
+      return html`<div class="leaf ${node.warn ? 'warn' : ''}">${this._marked(node.title)} ${meta}</div>`;
+    }
+    if (node.kind === 'code') {
+      return html`<details ?open=${node.open === true}>
+        <summary>${this._marked(node.title)} ${meta}</summary>
+        <pre>${this._marked(node.text ?? '')}</pre>
+      </details>`;
+    }
+    return html`<details class=${node.kind} ?open=${node.open === true}>
+      <summary>${this._marked(node.title)} ${meta}</summary>
+      ${(node.children ?? []).map((child) => this._renderNode(child))}
+    </details>`;
+  }
+
+  private _renderTree(): TemplateResult {
+    const { nodes, matches } = searchTree(this._reportNodes, this._reportQuery);
+    const field = textField({
+      label: localize('report.search', undefined, this._hass),
+      value: this._reportQuery,
+      onInput: (value: string): void => {
+        this._reportQuery = value;
+      },
+    });
+    return html`
+      <div class="search">
+        ${field}
+        <span role="status" aria-live="polite">
+          ${
+            matches === undefined
+              ? ''
+              : matches
+                ? localize('report.search_matches', { count: matches }, this._hass)
+                : localize('report.search_none', undefined, this._hass)
+          }
+        </span>
+      </div>
+      <div class="tree">${nodes.map((node) => this._renderNode(node))}</div>
+    `;
+  }
+
+  /*
+   * Opens a new GitHub issue with the bug report form filled in from this report. The whole
+   * report rides in the address when it fits; otherwise it goes to the clipboard and the form
+   * says to paste it. Nothing is sent anywhere: the form is the user's to read and submit.
+   */
+  private async _copyIssue(): Promise<void> {
+    const text = this._reportText;
+    const result = this._reportResult;
+    if (text === undefined || !result) return;
+    const hass = this._hass as unknown as { config?: { version?: string } } | undefined;
+    const first = result.reports[0];
+    const warnings: string[] = [];
+    for (const report of result.reports)
+      for (const section of report.sections) warnings.push(...section.trace.warnings);
+    const issue = issueFromReport(
+      {
+        version: VERSION,
+        haVersion: hass?.config?.version,
+        browser: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        templateName: first?.template?.name ?? this._templateName,
+        templateYaml: first?.template ? toYaml(first.template.config) : undefined,
+        cardYaml: this._thingConfig ? toYaml(withoutStamps(this._thingConfig)) : undefined,
+        warnings,
+        report: text,
+      },
+      this._hass,
+    );
+    if (!issue.fits) await copyText(text);
+    window.open(issue.url, '_blank', 'noopener');
+    this._reportIssue = issue.fits ? 'opened' : 'copied';
+    setTimeout(() => (this._reportIssue = ''), 6000);
   }
 
   /*
@@ -1087,12 +1254,47 @@ export abstract class DeclutteringElement extends LitElement {
         ${ready ? this._renderTry() : ''}
         ${
           ready
-            ? html`<details>
+            ? html`<details open>
                 <summary>${localize('report.show', undefined, this._hass)}</summary>
-                <ha-button class="view" @click=${() => (this._reportRaw = !this._reportRaw)}>
-                  ${localize(this._reportRaw ? 'report.show_formatted' : 'report.show_markdown', undefined, this._hass)}
-                </ha-button>
-                ${this._reportRaw ? html`<pre>${text}</pre>` : this._renderFormatted(text)}
+                <div class="actions">
+                  ${(['tree', 'formatted', 'markdown'] as const).map(
+                    (view) =>
+                      html`<ha-button
+                        class="view"
+                        .disabled=${this._reportView === view}
+                        @click=${(): void => {
+                          this._reportView = view;
+                        }}
+                      >
+                        ${localize(
+                          view === 'tree'
+                            ? 'report.show_tree'
+                            : view === 'formatted'
+                              ? 'report.show_formatted'
+                              : 'report.show_markdown',
+                          undefined,
+                          this._hass,
+                        )}
+                      </ha-button>`,
+                  )}
+                  <ha-button @click=${this._copyIssue}>${localize('report.issue', undefined, this._hass)}</ha-button>
+                </div>
+                <p role="status" aria-live="polite">
+                  ${
+                    this._reportIssue === 'opened'
+                      ? localize('report.issue_opened', undefined, this._hass)
+                      : this._reportIssue === 'copied'
+                        ? localize('report.issue_copied', undefined, this._hass)
+                        : ''
+                  }
+                </p>
+                ${
+                  this._reportView === 'tree'
+                    ? this._renderTree()
+                    : this._reportView === 'markdown'
+                      ? html`<pre>${text}</pre>`
+                      : this._renderFormatted(text)
+                }
               </details>`
             : ''
         }

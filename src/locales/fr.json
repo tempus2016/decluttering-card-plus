@@ -947,5 +947,14 @@
   "health_card.said": "{count} avertissements pendant la construction de cette page",
   "health_card.badge_count": "{count} à vérifier",
   "health_card.badge_clean": "Tout va bien",
-  "health_card.badge_label": "Modèles"
+  "health_card.badge_label": "Modèles",
+  "report.search": "Chercher dans le rapport",
+  "report.search_matches": "{count} résultats",
+  "report.search_none": "Rien dans le rapport n'en parle.",
+  "report.show_tree": "Afficher en arborescence",
+  "report.issue": "Copier comme issue GitHub",
+  "report.issue_what": "Décrivez ce que vous attendiez et ce que vous avez vu à la place. Le rapport de débogage de la carte est ci-dessous.",
+  "report.issue_pasted": "Décrivez ce que vous attendiez et ce que vous avez vu à la place, puis collez ici le rapport de débogage : il est dans le presse-papiers, car il était trop long pour l'adresse.",
+  "report.issue_opened": "Le formulaire d'issue s'est ouvert avec le rapport rempli. Relisez-le avant de l'envoyer.",
+  "report.issue_copied": "Le rapport était trop long pour l'adresse ; il est dans le presse-papiers : collez-le dans le formulaire qui s'est ouvert."
 }

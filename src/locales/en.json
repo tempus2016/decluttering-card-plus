@@ -947,5 +947,14 @@
   "health_card.said": "{count} warnings said while building this page",
   "health_card.badge_count": "{count} to look at",
   "health_card.badge_clean": "All fine",
-  "health_card.badge_label": "Templates"
+  "health_card.badge_label": "Templates",
+  "report.search": "Find in report",
+  "report.search_matches": "{count} matches",
+  "report.search_none": "Nothing in the report mentions that.",
+  "report.show_tree": "Show it as a tree",
+  "report.issue": "Copy as GitHub issue",
+  "report.issue_what": "Describe what you expected and what you saw instead. The debug report the card wrote is below.",
+  "report.issue_pasted": "Describe what you expected and what you saw instead, then paste the debug report here: it is on your clipboard, because it was too long for the address.",
+  "report.issue_opened": "The issue form has opened with the report filled in. Read it before you send it.",
+  "report.issue_copied": "The report was too long for the address, so it is on your clipboard: paste it into the form that has opened."
 }

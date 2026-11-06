@@ -947,5 +947,14 @@
   "health_card.said": "{count} waarschuwingen bij het bouwen van deze pagina",
   "health_card.badge_count": "{count} om te bekijken",
   "health_card.badge_clean": "Alles in orde",
-  "health_card.badge_label": "Sjablonen"
+  "health_card.badge_label": "Sjablonen",
+  "report.search": "Zoeken in het rapport",
+  "report.search_matches": "{count} treffers",
+  "report.search_none": "Niets in het rapport noemt dat.",
+  "report.show_tree": "Als boom tonen",
+  "report.issue": "Kopiëren als GitHub-issue",
+  "report.issue_what": "Beschrijf wat u verwachtte en wat u in plaats daarvan zag. Het debugrapport van de kaart staat hieronder.",
+  "report.issue_pasted": "Beschrijf wat u verwachtte en wat u in plaats daarvan zag, en plak dan hier het debugrapport: het staat op uw klembord, omdat het te lang was voor het adres.",
+  "report.issue_opened": "Het issueformulier is geopend met het rapport ingevuld. Lees het voor u het verstuurt.",
+  "report.issue_copied": "Het rapport was te lang voor het adres en staat dus op uw klembord: plak het in het geopende formulier."
 }

@@ -947,5 +947,14 @@
   "health_card.said": "{count} Warnungen beim Aufbau dieser Seite",
   "health_card.badge_count": "{count} zu prüfen",
   "health_card.badge_clean": "Alles in Ordnung",
-  "health_card.badge_label": "Vorlagen"
+  "health_card.badge_label": "Vorlagen",
+  "report.search": "Im Bericht suchen",
+  "report.search_matches": "{count} Treffer",
+  "report.search_none": "Nichts im Bericht erwähnt das.",
+  "report.show_tree": "Als Baum zeigen",
+  "report.issue": "Als GitHub-Issue kopieren",
+  "report.issue_what": "Beschreiben Sie, was Sie erwartet haben und was stattdessen zu sehen war. Der Debug-Bericht der Karte steht darunter.",
+  "report.issue_pasted": "Beschreiben Sie, was Sie erwartet haben und was stattdessen zu sehen war, und fügen Sie dann den Debug-Bericht hier ein: Er liegt in der Zwischenablage, weil er für die Adresse zu lang war.",
+  "report.issue_opened": "Das Issue-Formular ist mit dem Bericht geöffnet. Lesen Sie ihn, bevor Sie ihn absenden.",
+  "report.issue_copied": "Der Bericht war für die Adresse zu lang und liegt daher in der Zwischenablage: Fügen Sie ihn in das geöffnete Formular ein."
 }

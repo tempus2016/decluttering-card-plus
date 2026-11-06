@@ -947,5 +947,14 @@
   "health_card.said": "{count} avisos al construir esta página",
   "health_card.badge_count": "{count} por revisar",
   "health_card.badge_clean": "Todo bien",
-  "health_card.badge_label": "Plantillas"
+  "health_card.badge_label": "Plantillas",
+  "report.search": "Buscar en el informe",
+  "report.search_matches": "{count} coincidencias",
+  "report.search_none": "Nada en el informe menciona eso.",
+  "report.show_tree": "Mostrar como árbol",
+  "report.issue": "Copiar como issue de GitHub",
+  "report.issue_what": "Describe lo que esperabas y lo que viste en su lugar. El informe de depuración de la tarjeta está debajo.",
+  "report.issue_pasted": "Describe lo que esperabas y lo que viste en su lugar, y pega aquí el informe de depuración: está en el portapapeles porque era demasiado largo para la dirección.",
+  "report.issue_opened": "El formulario del issue se ha abierto con el informe rellenado. Léelo antes de enviarlo.",
+  "report.issue_copied": "El informe era demasiado largo para la dirección, así que está en el portapapeles: pégalo en el formulario que se ha abierto."
 }

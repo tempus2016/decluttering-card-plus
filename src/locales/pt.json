@@ -947,5 +947,14 @@
   "health_card.said": "{count} avisos ao construir esta página",
   "health_card.badge_count": "{count} a rever",
   "health_card.badge_clean": "Tudo bem",
-  "health_card.badge_label": "Modelos"
+  "health_card.badge_label": "Modelos",
+  "report.search": "Procurar no relatório",
+  "report.search_matches": "{count} resultados",
+  "report.search_none": "Nada no relatório menciona isso.",
+  "report.show_tree": "Mostrar como árvore",
+  "report.issue": "Copiar como issue do GitHub",
+  "report.issue_what": "Descreva o que esperava e o que viu em vez disso. O relatório de depuração do cartão está abaixo.",
+  "report.issue_pasted": "Descreva o que esperava e o que viu em vez disso e cole aqui o relatório de depuração: está na área de transferência, porque era demasiado longo para o endereço.",
+  "report.issue_opened": "O formulário do issue abriu com o relatório preenchido. Leia-o antes de o enviar.",
+  "report.issue_copied": "O relatório era demasiado longo para o endereço, por isso está na área de transferência: cole-o no formulário que abriu."
 }

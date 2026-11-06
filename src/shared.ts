@@ -1,3 +1,4 @@
+import { html, TemplateResult } from 'lit';
 import { HomeAssistant, fireEvent, LovelaceConfig } from 'custom-card-helpers';
 import { TemplateConfig, VariablesConfig, LovelaceThingType } from './types';
 import { viewIndexFromPath, groupCard } from './templates';
@@ -275,4 +276,43 @@ export function getThingType(templateConfig: TemplateConfig): LovelaceThingType 
 export function thingContent(templateConfig: TemplateConfig): any {
   if (templateConfig.group !== undefined) return groupCard(templateConfig.group);
   return templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
+}
+
+/** Whether this page has defined a custom element - which Home Assistant's own elements come and go with releases. */
+export const isDefinedHere = (tag: string): boolean => !!customElements.get(tag);
+
+export interface TextFieldOptions {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onInput: (value: string) => void;
+  onKeydown?: (ev: KeyboardEvent) => void;
+}
+
+/*
+ * A one-line text input. Home Assistant 2026.7 stopped registering ha-textfield and draws
+ * its inputs with ha-input instead; an unregistered element is an empty inline box, so
+ * every name field in the editors simply vanished, with nothing in the console. The
+ * card still supports Home Assistants that only have ha-textfield, so this asks which one
+ * the page has each time it draws. Both take `value`, `label` and `disabled`, and both send
+ * `input` with the element as the target, so the rest is the same either way.
+ */
+export function textField(options: TextFieldOptions): TemplateResult {
+  const changed = (ev: Event): void => options.onInput((ev.target as HTMLInputElement).value ?? '');
+  const keydown = (ev: KeyboardEvent): void => options.onKeydown?.(ev);
+  return isDefinedHere('ha-input')
+    ? html`<ha-input
+        label=${options.label}
+        .value=${options.value}
+        .disabled=${options.disabled === true}
+        @input=${changed}
+        @keydown=${keydown}
+      ></ha-input>`
+    : html`<ha-textfield
+        label=${options.label}
+        .value=${options.value}
+        .disabled=${options.disabled === true}
+        @input=${changed}
+        @keydown=${keydown}
+      ></ha-textfield>`;
 }

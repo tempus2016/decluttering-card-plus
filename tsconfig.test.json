@@ -83,6 +83,7 @@
     "src/dates.ts",
     "src/colour.ts",
     "src/card-editor/presets.ts",
-    "src/initial-tab.ts"
+    "src/initial-tab.ts",
+    "src/report-tree.ts"
   ]
 }

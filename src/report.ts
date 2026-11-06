@@ -159,6 +159,7 @@ const SHORTEST_SECRET = 4;
  * mapping. A transform's copy of one is in the placeholders. Longest first, so a secret that
  * contains another is taken out whole.
  */
+/** Every value held under a secret-looking name, longest first, for redacting wherever it recurs. */
 export function secretValues(reports: TraceReport[]): string[] {
   const found = new Set<string>();
   const add = (value: unknown, secret: boolean): void => {
