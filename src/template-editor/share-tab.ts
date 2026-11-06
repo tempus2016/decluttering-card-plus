@@ -143,6 +143,8 @@ export class DeclutteringTemplateShareTab extends LitElement {
   private _convertValue?: any;
   private _convertParses = true;
   @state() private _conversion?: Conversion;
+  // Bumped per conversion: ha-yaml-editor reads defaultValue once, so a new one draws new editors.
+  private _conversionKey = 0;
   @state() private _convertClash?: string[];
   @state() private _convertInstalled?: string[];
   private _convertArmedAt = 0;
@@ -1550,18 +1552,26 @@ export class DeclutteringTemplateShareTab extends LitElement {
         conversion
           ? html`
               <p class="hint">${localize('convert.result', undefined, this.hass)}</p>
-              <ha-yaml-editor
-                id="converted"
-                .hass=${this.hass}
-                .defaultValue=${asImport(conversion)}
-                read-only
-              ></ha-yaml-editor>
-              ${
-                conversion.card
-                  ? html`<p class="hint">${localize('convert.card_result', undefined, this.hass)}</p>
-                      <ha-yaml-editor .hass=${this.hass} .defaultValue=${conversion.card} read-only></ha-yaml-editor>`
-                  : html``
-              }
+              ${keyed(
+                this._conversionKey,
+                html`<ha-yaml-editor
+                    id="converted"
+                    .hass=${this.hass}
+                    .defaultValue=${asImport(conversion)}
+                    read-only
+                  ></ha-yaml-editor>
+                  ${
+                    conversion.card
+                      ? html`<p class="hint">${localize('convert.card_result', undefined, this.hass)}</p>
+                          <ha-yaml-editor
+                            id="converted-card"
+                            .hass=${this.hass}
+                            .defaultValue=${conversion.card}
+                            read-only
+                          ></ha-yaml-editor>`
+                      : html``
+                  }`,
+              )}
               ${conversion.notes.map((note) => html`<ha-alert alert-type="info">${note}</ha-alert>`)}
               ${conversion.dropped.map((note) => html`<ha-alert alert-type="warning">${note}</ha-alert>`)}
               ${
@@ -1610,6 +1620,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     this._convertCopyState = '';
     this._convertTried = this._convertValue !== undefined && this._convertValue !== null && this._convertValue !== '';
     this._conversion = this._convertParses && this._convertTried ? convert(this._convertValue) : undefined;
+    this._conversionKey += 1;
     this._convertClash = undefined;
     this._convertInstalled = undefined;
   }

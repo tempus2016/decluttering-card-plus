@@ -1043,7 +1043,7 @@
   "convert.sort_dropped": "Ordenar por {method} no tiene equivalente y se omitió; las copias se ordenan por nombre.",
   "convert.show_empty": "show_empty: false no tiene equivalente aquí; da a la tarjeta un bloque empty: para mostrar algo cuando nada coincide.",
   "convert.rows_repeat": "Las filas de la tarjeta entities son una fila repetida por cada entidad del registro; se construye una vez y sigue al registro, no al estado en vivo.",
-  "convert.card_per_entity": "Una copia de la tarjeta por cada entidad del registro, con for_each_from; se construye una vez y sigue al registro, no al estado en vivo.",
+  "convert.list_repeat": "La lista {key}: de la tarjeta es una entrada repetida por cada entidad del registro; se construye una vez y sigue al registro, no al estado en vivo.",
   "convert.needs": "Esta plantilla necesita {types}.",
   "undo.op.convert": "instalar una plantilla convertida",
   "convert.clash": "Este panel ya tiene {names}. Pulsa Instalar otra vez para sustituirlo por la versión convertida.",

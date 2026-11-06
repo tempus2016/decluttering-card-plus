@@ -1043,7 +1043,7 @@
   "convert.sort_dropped": "Sorteren op {method} heeft geen equivalent en is weggelaten; de kopieën sorteren op naam.",
   "convert.show_empty": "show_empty: false heeft hier geen equivalent; geef de kaart een empty:-blok om iets te tonen als niets past.",
   "convert.rows_repeat": "De rijen van de entities-kaart zijn één rij, herhaald per entiteit in het register; de kaart wordt eenmaal gebouwd en volgt het register, niet de live toestand.",
-  "convert.card_per_entity": "Eén kopie van de kaart per entiteit in het register, met for_each_from; de kaart wordt eenmaal gebouwd en volgt het register, niet de live toestand.",
+  "convert.list_repeat": "De lijst {key}: van de kaart is één item, herhaald per entiteit in het register; de kaart wordt eenmaal gebouwd en volgt het register, niet de live toestand.",
   "convert.needs": "Dit sjabloon heeft {types} nodig.",
   "undo.op.convert": "een omgezet sjabloon installeren",
   "convert.clash": "Dit dashboard heeft {names} al. Druk nogmaals op Installeren om het te vervangen door de omgezette versie.",

@@ -1043,7 +1043,7 @@
   "convert.sort_dropped": "Sortieren nach {method} hat keine Entsprechung und wurde weggelassen; die Kopien sortieren nach Name.",
   "convert.show_empty": "show_empty: false hat hier keine Entsprechung; geben Sie der Karte einen empty:-Block, der etwas zeigt, wenn nichts passt.",
   "convert.rows_repeat": "Die Zeilen der Entitätenkarte sind eine Zeile, pro gefundener Entität wiederholt; sie wird einmal gebaut und folgt der Registry, nicht dem Live-Zustand.",
-  "convert.card_per_entity": "Eine Kopie der Karte pro gefundener Entität, mit for_each_from; sie wird einmal gebaut und folgt der Registry, nicht dem Live-Zustand.",
+  "convert.list_repeat": "Die Liste {key}: der Karte ist ein Eintrag, pro gefundener Entität wiederholt; sie wird einmal gebaut und folgt der Registry, nicht dem Live-Zustand.",
   "convert.needs": "Diese Vorlage braucht {types}.",
   "undo.op.convert": "Installieren einer umgewandelten Vorlage",
   "convert.clash": "Dieses Dashboard hat bereits {names}. Erneut auf Installieren drücken, um es durch die umgewandelte Version zu ersetzen.",

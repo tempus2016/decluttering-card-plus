@@ -1043,7 +1043,7 @@
   "convert.sort_dropped": "Sorting by {method} has no equivalent and was left out; the copies sort by name.",
   "convert.show_empty": "show_empty: false has no equivalent here; give the card an empty: block to show something when nothing matches.",
   "convert.rows_repeat": "The entities card's rows are one row repeated per entity the registry finds; it builds once and follows the registry, not live state.",
-  "convert.card_per_entity": "One copy of the card per entity the registry finds, with for_each_from; it builds once and follows the registry, not live state.",
+  "convert.list_repeat": "The card's {key}: list is one entry repeated per entity the registry finds; it builds once and follows the registry, not live state.",
   "convert.needs": "This template needs {types}.",
   "undo.op.convert": "installing a converted template",
   "convert.clash": "This dashboard already has {names}. Press Install again to replace it with the converted version.",

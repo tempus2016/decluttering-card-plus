@@ -1043,7 +1043,7 @@
   "convert.sort_dropped": "Ordenar por {method} não tem equivalente e foi deixado de fora; as cópias ordenam por nome.",
   "convert.show_empty": "show_empty: false não tem equivalente aqui; dê ao cartão um bloco empty: para mostrar algo quando nada corresponde.",
   "convert.rows_repeat": "As linhas do cartão entities são uma linha repetida por entidade que o registo encontra; constrói-se uma vez e segue o registo, não o estado em direto.",
-  "convert.card_per_entity": "Uma cópia do cartão por entidade que o registo encontra, com for_each_from; constrói-se uma vez e segue o registo, não o estado em direto.",
+  "convert.list_repeat": "A lista {key}: do cartão é uma entrada repetida por entidade que o registo encontra; constrói-se uma vez e segue o registo, não o estado em direto.",
   "convert.needs": "Este modelo precisa de {types}.",
   "undo.op.convert": "instalar um modelo convertido",
   "convert.clash": "Este painel já tem {names}. Carregue em Instalar outra vez para o substituir pela versão convertida.",
