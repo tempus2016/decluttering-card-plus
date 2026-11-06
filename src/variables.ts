@@ -1034,6 +1034,10 @@ const TRANSFORM_NAMES = [
  */
 export const RESOLVERS: Record<string, (entityId: string, hass: any) => string | undefined> = {
   state: (entityId, hass) => (stateAllowed(hass, entityId) ? hass?.states?.[entityId]?.state : undefined),
+  // When the state last changed, and when it or an attribute last did (idea 38): read under
+  // the same rebuild_on rule as the state, and made for `|relative`, `|format:` and `|age`.
+  last_changed: (entityId, hass) => (stateAllowed(hass, entityId) ? hass?.states?.[entityId]?.last_changed : undefined),
+  last_updated: (entityId, hass) => (stateAllowed(hass, entityId) ? hass?.states?.[entityId]?.last_updated : undefined),
   friendly_name: (entityId, hass) => {
     const entity = hass?.entities?.[entityId];
     return hass?.states?.[entityId]?.attributes?.friendly_name ?? entity?.name ?? entity?.original_name;
@@ -1135,7 +1139,7 @@ export const STATE_STEP = 'state';
 
 /** Whether a step reads the entity's state - the state itself, or one of its attributes (idea 39). */
 export function readsState(step: string): boolean {
-  return step === STATE_STEP || step.startsWith(ATTRIBUTE_PREFIX);
+  return step === STATE_STEP || step === 'last_changed' || step === 'last_updated' || step.startsWith(ATTRIBUTE_PREFIX);
 }
 
 /*

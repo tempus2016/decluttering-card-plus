@@ -1904,3 +1904,24 @@ check('the five position names, for the checks that have to know them', POSITION
   'first',
   'last',
 ]);
+
+{
+  const { withStateScope: scope, applyTransform: run } = require('../.test-build/variables.js');
+  const hass = scope(
+    {
+      states: {
+        'light.x': { state: 'on', last_changed: '2026-11-01T10:00:00Z', last_updated: '2026-11-02T10:00:00Z' },
+      },
+    },
+    ['light.x'],
+  );
+  check(
+    'last_changed and last_updated read the state times, under rebuild_on (idea 38)',
+    [
+      run('last_changed', 'light.x', hass),
+      run('last_updated', 'light.x', hass),
+      run('last_changed', 'light.x', { states: hass.states }),
+    ],
+    ['2026-11-01T10:00:00Z', '2026-11-02T10:00:00Z', undefined],
+  );
+}
