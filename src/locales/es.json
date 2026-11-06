@@ -61,6 +61,7 @@
   "editor.untitled_view": "una vista sin título",
   "editor.matches_header_one": "Coincide con {what} ahora mismo",
   "editor.matches_header_many": "Coincide con {count} {what} ahora mismo",
+  "editor.rebuild_on_hint": "Esta tarjeta no lista {names} en \"Reconstruir cuando cambien\" (rebuild_on, en Avanzado), así que un marcador no puede leer su estado ni un atributo. Añádela ahí, o escribe un nombre de variable.",
   "editor.matches_none": "Nada coincide con esto ahora mismo, así que la tarjeta no muestra nada{but}. Comprueba el dominio, el área o la etiqueta contra lo que Home Assistant tiene de verdad.",
   "editor.matches_none_but_empty": " salvo lo que definiste abajo",
   "editor.matches_more": "y {count} más.",
@@ -393,8 +394,8 @@
   "error.custom_element_missing": "La tarjeta que se construye necesita {types}, que no está instalado o no se ha cargado.",
 
   "warn.state_unlisted": "{entity} no está en rebuild_on de esta tarjeta",
-  "warn.refused_unlisted": "|state solo lee una entidad que la tarjeta incluye en rebuild_on:, que es lo que hace que la tarjeta se vuelva a construir cuando cambia ese estado. Añade la entidad ahí.",
-  "warn.state_unlisted_unset": "decluttering-card-plus: {which} pide el estado de una entidad que esta tarjeta no incluye en rebuild_on:, así que se muestra tal como está escrito. Incluye la entidad en rebuild_on: de la tarjeta y la tarjeta se volverá a construir cada vez que cambie su estado.",
+  "warn.refused_unlisted": "|state y |attr: solo leen una entidad que la tarjeta incluye en rebuild_on:, que es lo que hace que la tarjeta se vuelva a construir cuando cambia ese estado. Añade la entidad ahí.",
+  "warn.state_unlisted_unset": "decluttering-card-plus: {which} pide el estado, o un atributo, de una entidad que esta tarjeta no incluye en rebuild_on:, así que se muestra tal como está escrito. Incluye la entidad en rebuild_on: de la tarjeta y la tarjeta se volverá a construir cada vez que cambie su estado.",
   "warn.rebuild_on_not_entity": "decluttering-card-plus: la tarjeta que usa \"{template}\" incluye {which} en rebuild_on:, que no es un ID de entidad, así que no se vigila.",
   "warn.many_copies_lazy": "decluttering-card-plus: la plantilla \"{template}\" se está repitiendo {count} veces en una sola tarjeta. Es mucho que construir y mucho que desplazar - acota sobre qué repite, o añade lazy: true para que solo se construyan las copias cercanas a la pantalla.",
   "editor.lazy_label": "Construir las copias al desplazarse hasta ellas",

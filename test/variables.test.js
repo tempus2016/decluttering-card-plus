@@ -51,7 +51,9 @@ const {
   conditionTarget,
   KNOWN_PARAM_STEPS,
   KNOWN_STEPS,
-  KNOWN_PARAM_STEPS,
+  withStateScope,
+  unlistedState,
+  readsState,
 } = require('../.test-build/variables.js');
 
 const { check } = require('./check');
@@ -741,8 +743,26 @@ check(
   applyTransform('device', 'light.hall', houseHass),
   'Hall Lamp Module',
 );
-check('attr reads one named attribute', applyTransform('attr:brightness', 'light.hall', houseHass), '128');
-check('attr works for a text attribute too', applyTransform('attr:icon', 'light.hall', houseHass), 'mdi:lamp');
+// An attribute is read under the |state rule (idea 39): only for an entity the card rebuilds on.
+const followedHouse = withStateScope(houseHass, ['light.hall']);
+check('attr reads one named attribute', applyTransform('attr:brightness', 'light.hall', followedHouse), '128');
+check('attr works for a text attribute too', applyTransform('attr:icon', 'light.hall', followedHouse), 'mdi:lamp');
+check(
+  'attr gives nothing for an entity the card does not follow',
+  applyTransform('attr:brightness', 'light.hall', houseHass),
+  undefined,
+);
+check(
+  'and unlistedState names that entity for attr: as for state',
+  unlistedState('attr:brightness', 'light.hall', houseHass),
+  'light.hall',
+);
+check(
+  'while a followed entity is not unlisted',
+  unlistedState('attr:brightness', 'light.hall', followedHouse),
+  undefined,
+);
+check('readsState knows both', [readsState('state'), readsState('attr:x'), readsState('upper')], [true, true, false]);
 
 check(
   'a resolver runs before a transform that follows it',
@@ -758,7 +778,7 @@ check(
 );
 check(
   'an attribute it does not carry resolves to nothing',
-  applyTransform('attr:nope', 'light.hall', houseHass),
+  applyTransform('attr:nope', 'light.hall', followedHouse),
   undefined,
 );
 check('no area on it resolves to nothing', applyTransform('area', 'light.nope', houseHass), undefined);

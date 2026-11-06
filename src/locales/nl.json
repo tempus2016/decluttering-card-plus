@@ -61,6 +61,7 @@
   "editor.untitled_view": "een naamloze weergave",
   "editor.matches_header_one": "Komt nu overeen met {what}",
   "editor.matches_header_many": "Komt nu overeen met {count} {what}",
+  "editor.rebuild_on_hint": "Deze kaart noemt {names} niet onder \"Opnieuw bouwen als deze veranderen\" (rebuild_on, in Geavanceerd), dus een plaatshouder kan de staat of een attribuut ervan niet lezen. Voeg hem daar toe, of schrijf een variabelenaam.",
   "editor.matches_none": "Hier komt nu niets mee overeen, dus de kaart toont niets{but}. Controleer domein, ruimte of label tegen wat Home Assistant werkelijk heeft.",
   "editor.matches_none_but_empty": " behalve wat je hieronder hebt ingesteld",
   "editor.matches_more": "en {count} meer.",
@@ -393,8 +394,8 @@
   "error.custom_element_missing": "De kaart die hier gebouwd wordt heeft {types} nodig, en dat is niet geïnstalleerd of niet geladen.",
 
   "warn.state_unlisted": "{entity} staat niet in de rebuild_on van deze kaart",
-  "warn.refused_unlisted": "|state leest alleen een entiteit die de kaart in rebuild_on: noemt; dat zorgt ervoor dat de kaart opnieuw wordt opgebouwd als die status verandert. Zet de entiteit daar.",
-  "warn.state_unlisted_unset": "decluttering-card-plus: {which} vraagt de status van een entiteit die deze kaart niet in rebuild_on: noemt, dus het wordt weergegeven zoals het er staat. Zet de entiteit in rebuild_on: op de kaart, dan wordt de kaart opnieuw opgebouwd zodra de status ervan verandert.",
+  "warn.refused_unlisted": "|state en |attr: lezen alleen een entiteit die de kaart in rebuild_on: noemt; dat zorgt ervoor dat de kaart opnieuw wordt opgebouwd als die status verandert. Zet de entiteit daar.",
+  "warn.state_unlisted_unset": "decluttering-card-plus: {which} vraagt de status, of een attribuut, van een entiteit die deze kaart niet in rebuild_on: noemt, dus het wordt weergegeven zoals het er staat. Zet de entiteit in rebuild_on: op de kaart, dan wordt de kaart opnieuw opgebouwd zodra de status ervan verandert.",
   "warn.rebuild_on_not_entity": "decluttering-card-plus: de kaart die \"{template}\" gebruikt noemt {which} in rebuild_on:. Dat is geen entiteits-ID, dus het wordt niet gevolgd.",
   "warn.many_copies_lazy": "decluttering-card-plus: het sjabloon \"{template}\" wordt op één kaart {count} keer herhaald. Dat is veel om te bouwen en veel om te scrollen – beperk waar het over herhaalt, of voeg lazy: true toe zodat alleen de kopieën bij het scherm worden opgebouwd.",
   "editor.lazy_label": "Kopieën opbouwen als je ernaartoe scrolt",

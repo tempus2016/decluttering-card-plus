@@ -61,6 +61,7 @@
   "editor.untitled_view": "une vue sans titre",
   "editor.matches_header_one": "Correspond à {what} pour le moment",
   "editor.matches_header_many": "Correspond à {count} {what} pour le moment",
+  "editor.rebuild_on_hint": "Cette carte ne liste pas {names} sous « Reconstruire quand ceux-ci changent » (rebuild_on, dans Avancé) : un espace réservé ne peut donc lire ni son état ni un attribut. Ajoutez-la là, ou écrivez un nom de variable.",
   "editor.matches_none": "Rien ne correspond à ceci pour l'instant, la carte n'affiche donc rien{but}. Vérifiez le domaine, la pièce ou l'étiquette par rapport à ce que Home Assistant a réellement.",
   "editor.matches_none_but_empty": " à part ce que vous avez défini ci-dessous",
   "editor.matches_more": "et {count} de plus.",
@@ -393,8 +394,8 @@
   "error.custom_element_missing": "La carte construite ici a besoin de {types}, qui n'est pas installé ou ne s'est pas chargé.",
 
   "warn.state_unlisted": "{entity} n'est pas dans le rebuild_on de cette carte",
-  "warn.refused_unlisted": "|state ne lit qu'une entité que la carte liste dans rebuild_on:, ce qui permet à la carte de se reconstruire quand cet état change. Ajoutez-y l'entité.",
-  "warn.state_unlisted_unset": "decluttering-card-plus : {which} demande l'état d'une entité que cette carte ne liste pas dans rebuild_on:, il est donc affiché tel qu'écrit. Listez l'entité dans rebuild_on: sur la carte, et la carte se reconstruit à chaque changement de son état.",
+  "warn.refused_unlisted": "|state et |attr: ne lisent qu'une entité que la carte liste dans rebuild_on:, ce qui permet à la carte de se reconstruire quand cet état change. Ajoutez-y l'entité.",
+  "warn.state_unlisted_unset": "decluttering-card-plus : {which} demande l'état, ou un attribut, d'une entité que cette carte ne liste pas dans rebuild_on:, il est donc affiché tel qu'écrit. Listez l'entité dans rebuild_on: sur la carte, et la carte se reconstruit à chaque changement de son état.",
   "warn.rebuild_on_not_entity": "decluttering-card-plus : la carte qui utilise \"{template}\" liste {which} dans rebuild_on:, qui n'est pas un identifiant d'entité, donc il n'est pas surveillé.",
   "warn.many_copies_lazy": "decluttering-card-plus : le modèle \"{template}\" est répété {count} fois sur une seule carte. C'est beaucoup à construire et beaucoup à faire défiler - restreignez ce sur quoi il répète, ou ajoutez lazy: true pour ne construire que les copies proches de l'écran.",
   "editor.lazy_label": "Construire les copies en les faisant défiler",

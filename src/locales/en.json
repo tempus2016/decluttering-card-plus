@@ -61,6 +61,7 @@
   "editor.untitled_view": "an untitled view",
   "editor.matches_header_one": "Matches one {what} right now",
   "editor.matches_header_many": "Matches {count} {what} right now",
+  "editor.rebuild_on_hint": "This card does not list {names} under \"Rebuild when these change\" (rebuild_on, in Advanced), so a placeholder cannot read its state or an attribute of it. Add it there, or write a variable name instead.",
   "editor.matches_none": "Nothing matches this right now, so the card renders nothing{but}. Check the domain, area or label against what Home Assistant actually has.",
   "editor.matches_none_but_empty": " but what you set below",
   "editor.matches_more": "and {count} more.",
@@ -393,8 +394,8 @@
   "error.custom_element_missing": "The card this builds needs {types}, which is not installed or has not loaded.",
 
   "warn.state_unlisted": "{entity} is not in this card's rebuild_on",
-  "warn.refused_unlisted": "|state only reads an entity the card lists in rebuild_on:, which is what makes the card build again when that state changes. Add the entity there.",
-  "warn.state_unlisted_unset": "decluttering-card-plus: {which} asks for the state of an entity this card does not list in rebuild_on:, so it is rendered as written. List the entity in rebuild_on: on the card, and the card builds again whenever its state changes.",
+  "warn.refused_unlisted": "|state and |attr: only read an entity the card lists in rebuild_on:, which is what makes the card build again when that state changes. Add the entity there.",
+  "warn.state_unlisted_unset": "decluttering-card-plus: {which} asks for the state, or an attribute, of an entity this card does not list in rebuild_on:, so it is rendered as written. List the entity in rebuild_on: on the card, and the card builds again whenever its state changes.",
   "warn.rebuild_on_not_entity": "decluttering-card-plus: the card using \"{template}\" lists {which} in rebuild_on:, which is not an entity id, so it is not watched.",
   "warn.many_copies_lazy": "decluttering-card-plus: the template \"{template}\" is being repeated {count} times on one card. That is a lot to build and a lot to scroll - narrow what it repeats over, or add lazy: true so only the copies near the screen are built.",
   "editor.lazy_label": "Build copies as they scroll into view",

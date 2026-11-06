@@ -61,6 +61,7 @@
   "editor.untitled_view": "uma vista sem título",
   "editor.matches_header_one": "Corresponde a {what} neste momento",
   "editor.matches_header_many": "Corresponde a {count} {what} neste momento",
+  "editor.rebuild_on_hint": "Este cartão não lista {names} em \"Reconstruir quando estas mudarem\" (rebuild_on, em Avançado), por isso um marcador não consegue ler o seu estado nem um atributo. Adicione-a lá, ou escreva um nome de variável.",
   "editor.matches_none": "Nada corresponde a isto neste momento, por isso o cartão não mostra nada{but}. Verifique o domínio, a área ou a etiqueta contra o que o Home Assistant realmente tem.",
   "editor.matches_none_but_empty": " além do que definiu abaixo",
   "editor.matches_more": "e mais {count}.",
@@ -393,8 +394,8 @@
   "error.custom_element_missing": "O cartão construído aqui precisa de {types}, que não está instalado ou não foi carregado.",
 
   "warn.state_unlisted": "{entity} não está no rebuild_on deste cartão",
-  "warn.refused_unlisted": "|state só lê uma entidade que o cartão lista em rebuild_on:, que é o que faz o cartão ser reconstruído quando esse estado muda. Adicione a entidade aí.",
-  "warn.state_unlisted_unset": "decluttering-card-plus: {which} pede o estado de uma entidade que este cartão não lista em rebuild_on:, por isso é mostrado tal como está escrito. Liste a entidade em rebuild_on: no cartão e o cartão é reconstruído sempre que o estado dela mudar.",
+  "warn.refused_unlisted": "|state e |attr: só leem uma entidade que o cartão lista em rebuild_on:, que é o que faz o cartão ser reconstruído quando esse estado muda. Adicione a entidade aí.",
+  "warn.state_unlisted_unset": "decluttering-card-plus: {which} pede o estado, ou um atributo, de uma entidade que este cartão não lista em rebuild_on:, por isso é mostrado tal como está escrito. Liste a entidade em rebuild_on: no cartão e o cartão é reconstruído sempre que o estado dela mudar.",
   "warn.rebuild_on_not_entity": "decluttering-card-plus: o cartão que usa \"{template}\" lista {which} em rebuild_on:, que não é um ID de entidade, por isso não é vigiado.",
   "warn.many_copies_lazy": "decluttering-card-plus: o modelo \"{template}\" está a ser repetido {count} vezes num só cartão. É muito para construir e muito para percorrer - restrinja aquilo sobre que repete, ou acrescente lazy: true para que só sejam construídas as cópias perto do ecrã.",
   "editor.lazy_label": "Construir as cópias ao chegar a elas",

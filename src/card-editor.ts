@@ -141,6 +141,9 @@ function matchedWhat(source: unknown, count: number, hass: unknown): string {
   return localize(`editor.matches_${kind}_${count === 1 ? 'one' : 'many'}`, undefined, hass as undefined);
 }
 
+// What looks like an entity id, which a placeholder reads rather than a variable.
+const ENTITY_ID_LIKE = /^[a-z0-9_]+\.[a-z0-9_]+$/i;
+
 // How many matches the editor lists before it stops. Enough to see the filter is right,
 // few enough that a sweep of the whole house does not fill the dialog.
 const MATCHES_SHOWN = 12;
@@ -2116,7 +2119,12 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     // unset is not worth a word - but a value it still holds is, since it still goes in.
     const hidden = this._hiddenNames(template, getDeclarations(template));
     const needed = required.filter((name) => !hidden.has(name));
-    const optional = missing.filter((name) => !required.includes(name) && !hidden.has(name));
+    // An entity id in a placeholder reads Home Assistant, not a variable: unset, it means
+    // the card does not rebuild on that entity, which is what the hint has to say (round 1, A2).
+    const unlisted = missing.filter((name) => !required.includes(name) && ENTITY_ID_LIKE.test(name));
+    const optional = missing.filter(
+      (name) => !required.includes(name) && !hidden.has(name) && !unlisted.includes(name),
+    );
     const own = new Set(ownVariables(this._config?.variables).map(variableName));
     const hiddenButSet = [...hidden].filter((name) => own.has(name));
     /*
@@ -2185,6 +2193,13 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
                 { names: needed.join(', ') },
                 this.hass,
               )}
+            </ha-alert>`
+          : html``
+      }
+      ${
+        unlisted.length
+          ? html`<ha-alert alert-type="warning">
+              ${localize('editor.rebuild_on_hint', { names: unlisted.join(', ') }, this.hass)}
             </ha-alert>`
           : html``
       }

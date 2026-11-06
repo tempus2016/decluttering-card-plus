@@ -980,6 +980,11 @@ const ENTITY_ID_SHAPE = /^([a-z0-9_]+)\.([a-z0-9_]+)$/i;
 /** The resolver that reads an entity's state, which only works for what a card rebuilds on. */
 export const STATE_STEP = 'state';
 
+/** Whether a step reads the entity's state - the state itself, or one of its attributes (idea 39). */
+export function readsState(step: string): boolean {
+  return step === STATE_STEP || step.startsWith(ATTRIBUTE_PREFIX);
+}
+
 /*
  * Which entities a build may read the state of: the card's `rebuild_on:` list, carried on
  * the hass the build is handed rather than threaded through every call in between. A
@@ -1233,6 +1238,9 @@ function resolve(step: string, entityId: string, hass: any): string | undefined 
   if (step.startsWith(ATTRIBUTE_PREFIX)) {
     const name = step.slice(ATTRIBUTE_PREFIX.length);
     if (SENSITIVE_ATTRIBUTES.has(name)) return undefined;
+    // An attribute is part of the state, and read under the same rule (idea 39): only for an
+    // entity the card rebuilds on, or a brightness read once would be wrong a minute later.
+    if (!stateAllowed(hass, entityId)) return undefined;
     const attribute = hass?.states?.[entityId]?.attributes?.[name];
     if (attribute === undefined || attribute === null) return undefined;
     // A list reads as the `join` step would write it, and a mapping as its JSON - String()
@@ -1689,7 +1697,7 @@ export function unlistedState(
   read?: (name: string) => unknown,
 ): string | undefined {
   const steps = chain ? chain.split('|') : [];
-  const at = steps.indexOf(STATE_STEP);
+  const at = steps.findIndex(readsState);
   if (at === -1) return undefined;
   // Whatever the steps before it make of the value is the entity it is asked of.
   const entity = applyTransform(steps.slice(0, at).join('|') || undefined, value, hass, values, read);

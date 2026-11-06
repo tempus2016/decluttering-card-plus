@@ -61,6 +61,7 @@
   "editor.untitled_view": "einer unbenannten Ansicht",
   "editor.matches_header_one": "Trifft gerade auf {what} zu",
   "editor.matches_header_many": "Trifft gerade auf {count} {what} zu",
+  "editor.rebuild_on_hint": "Diese Karte führt {names} nicht unter \"Neu aufbauen, wenn sich diese ändern\" (rebuild_on, in Erweitert), daher kann ein Platzhalter weder den Zustand noch ein Attribut davon lesen. Dort eintragen, oder stattdessen einen Variablennamen schreiben.",
   "editor.matches_none": "Darauf trifft gerade nichts zu, die Karte stellt also nichts dar{but}. Prüfe Domain, Bereich oder Label gegen das, was Home Assistant tatsächlich hat.",
   "editor.matches_none_but_empty": " außer dem, was du unten festgelegt hast",
   "editor.matches_more": "und {count} weitere.",
@@ -393,8 +394,8 @@
   "error.custom_element_missing": "Die Karte, die hier gebaut wird, braucht {types}, und das ist nicht installiert oder nicht geladen.",
 
   "warn.state_unlisted": "{entity} steht nicht in rebuild_on dieser Karte",
-  "warn.refused_unlisted": "|state liest nur eine Entität, die die Karte in rebuild_on: aufführt – genau das sorgt dafür, dass die Karte neu gebaut wird, wenn sich dieser Zustand ändert. Trag die Entität dort ein.",
-  "warn.state_unlisted_unset": "decluttering-card-plus: {which} fragt nach dem Zustand einer Entität, die diese Karte nicht in rebuild_on: aufführt, und wird deshalb so angezeigt, wie es geschrieben steht. Trag die Entität in rebuild_on: der Karte ein, dann wird die Karte bei jeder Zustandsänderung neu gebaut.",
+  "warn.refused_unlisted": "|state und |attr: lesen nur eine Entität, die die Karte in rebuild_on: aufführt – genau das sorgt dafür, dass die Karte neu gebaut wird, wenn sich dieser Zustand ändert. Trag die Entität dort ein.",
+  "warn.state_unlisted_unset": "decluttering-card-plus: {which} fragt nach dem Zustand oder einem Attribut einer Entität, die diese Karte nicht in rebuild_on: aufführt, und wird deshalb so angezeigt, wie es geschrieben steht. Trag die Entität in rebuild_on: der Karte ein, dann wird die Karte bei jeder Zustandsänderung neu gebaut.",
   "warn.rebuild_on_not_entity": "decluttering-card-plus: Die Karte mit \"{template}\" führt {which} in rebuild_on: auf. Das ist keine Entitäts-ID und wird daher nicht beobachtet.",
   "warn.many_copies_lazy": "decluttering-card-plus: die Vorlage \"{template}\" wird auf einer Karte {count}-mal wiederholt. Das ist viel zu bauen und viel zu scrollen – grenze ein, worüber sie wiederholt, oder ergänze lazy: true, damit nur die Kopien in der Nähe des Bildschirms gebaut werden.",
   "editor.lazy_label": "Kopien erst beim Hineinscrollen bauen",

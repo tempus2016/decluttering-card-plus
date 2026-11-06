@@ -39,7 +39,7 @@ import {
   PLACEHOLDER,
   insideButtonCardJs,
   resolveVariables,
-  STATE_STEP,
+  readsState,
   restoreHaText,
   stateScope,
   unlistedState,
@@ -807,7 +807,7 @@ function fallbackPass(
     // A state the card does not rebuild on keeps its brackets here too, a `default:` or
     // not. Unset, the name is the entity - `[[sensor.x|state|default:off]]`.
     const [name, ...steps] = withoutOptional(inside).split('|');
-    if (steps.includes(STATE_STEP) && unlistedState(steps.join('|'), values[name] ?? name, hass, values, read)) {
+    if (steps.some(readsState) && unlistedState(steps.join('|'), values[name] ?? name, hass, values, read)) {
       return undefined;
     }
     const text = resolveFallback(inside, values, hass, read, shield);
@@ -1537,7 +1537,7 @@ function deepReplace(
    * `[[sensor.x|state]]` with nothing called sensor.x is an entity the card does not
    * rebuild on, rather than a variable somebody forgot - so it says that instead.
    */
-  const asksState = (inside: string): boolean => withoutOptional(inside).split('|').slice(1).includes(STATE_STEP);
+  const asksState = (inside: string): boolean => withoutOptional(inside).split('|').slice(1).some(readsState);
   const unlistedNames = unresolved.filter(asksState);
   if (unlistedNames.length) {
     const which = unlistedNames.map((name) => `[[${name}]]`).join(', ');
