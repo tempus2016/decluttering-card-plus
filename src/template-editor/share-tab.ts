@@ -54,11 +54,22 @@ import {
 import { readDashboard } from '../undo';
 import { rewriteDashboards, saverFor } from '../shared';
 import { isDefinedHere, anyRisk, newRisks, SECOND_PRESS_MS, saveDashboardWith, announce } from './common';
+import { GalleryEntry, galleryEntries } from '../gallery';
+import { GalleryStatus } from '../gallery-dialog';
+import { GALLERY_TAG } from '../shared';
 import { TEMPLATE_EDITOR_STYLES } from './styles';
 import { CompareSource, agoParts, compareSources, diffStats, templateBody } from '../compare';
 
 // The sharing-details fields that need a line of explanation under them.
 const DETAIL_HELPERS = ['readme', 'related', 'setup', 'requires_entities', 'requires_homeassistant', 'requires_card'];
+
+type GalleryElement = HTMLElement & {
+  hass?: HomeAssistant;
+  entries: GalleryEntry[];
+  open: boolean;
+  selectedKey?: string;
+  status?: GalleryStatus;
+};
 
 export class DeclutteringTemplateShareTab extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
@@ -120,6 +131,10 @@ export class DeclutteringTemplateShareTab extends LitElement {
   private _importArmedAt = 0;
 
   @state() private _copyState: '' | 'done' | 'failed' = '';
+
+  // The template gallery (idea 52): open, and which tile is picked.
+  @state() private _galleryOpen = false;
+  @state() private _gallerySelected?: string;
 
   @state() public _toolError?: string;
 
@@ -269,7 +284,14 @@ export class DeclutteringTemplateShareTab extends LitElement {
 
         <h3>${localize('share.library_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.library_hint', undefined, this.hass)}</p>
-        ${this._renderLibrary()}
+        <ha-button
+          @click=${(): void => {
+            this._galleryOpen = true;
+          }}
+        >
+          ${localize('gallery.open', undefined, this.hass)}
+        </ha-button>
+        ${this._renderGallery()} ${this._renderLibrary()}
 
         <h3>${localize('share.community_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.community_hint', undefined, this.hass)}</p>
@@ -1367,6 +1389,132 @@ export class DeclutteringTemplateShareTab extends LitElement {
         : [];
     const templates = [value, ...includes];
     return html`${this._renderAbout(value)} ${this._renderUnmet(templates)} ${this._renderSetup(templates)}`;
+  }
+
+  /* ---------------------------------------------------------------- gallery (idea 52) */
+
+  private _galleryEntries(): GalleryEntry[] {
+    return galleryEntries(
+      {
+        library: LIBRARY,
+        community: this._community?.entries,
+        installed: collectTemplates(this._savedLovelace),
+      },
+      (name) => localize(`library.${name}.summary`, undefined, this.hass),
+      this.hass,
+    );
+  }
+
+  // What a tile means for this dashboard, worked out the way the two sections below work it out.
+  private _galleryStatus(entry: GalleryEntry | undefined): GalleryStatus {
+    const base: GalleryStatus = {
+      already: false,
+      armed: false,
+      busy: this._busy,
+      needs: [],
+      brings: [],
+      missingCards: [],
+      risks: [],
+      destination: this._libraryDestination,
+      communityLoaded: this._community !== undefined,
+      communityLoading: this._communityLoading,
+    };
+    if (!entry) return base;
+    if (entry.source === 'library') {
+      const existing = Object.keys(collectTemplates(this._savedLovelace));
+      const library = libraryEntry(entry.name);
+      const needs = library ? libraryNeeds(library, existing) : [];
+      return {
+        ...base,
+        already: existing.includes(entry.name),
+        armed: this._installPending === entry.name,
+        needs,
+        missingCards: missingCustomCards(
+          [library?.template, ...needs.map((each) => libraryEntry(each)?.template)].filter(
+            (each) => each !== undefined,
+          ),
+          isDefinedHere,
+        ),
+      };
+    }
+    if (entry.source === 'community') {
+      const existing = this._communityExisting();
+      const shared = this._community?.entries.find((each) => each.id === entry.communityId);
+      const risks = shared ? communityRisks(shared) : undefined;
+      return {
+        ...base,
+        // A clash is not a stop: the shared install picks a free name, as the section says.
+        already: false,
+        armed: !!shared && this._installPending === `community:${shared.id}:${shared.updated}`,
+        brings: Object.keys(entry.includes).filter((each) => !existing.includes(each)),
+        missingCards: missingCustomCards([entry.template, ...Object.values(entry.includes)], isDefinedHere),
+        risks: risks ? this._riskSentences(risks) : [],
+        busy: this._busy || this._communityKnown === undefined,
+      };
+    }
+    return { ...base, already: true };
+  }
+
+  private _riskSentences(risks: CommunityRisks): string[] {
+    const out: string[] = [];
+    if (risks.actions.length)
+      out.push(localize('share.community_risk_actions', { list: risks.actions.join(', ') }, this.hass));
+    if (risks.urls.length) out.push(localize('share.community_risk_urls', { list: risks.urls.join(', ') }, this.hass));
+    if (risks.embeds) out.push(localize('share.community_risk_embeds', undefined, this.hass));
+    if (risks.scripts) out.push(localize('share.community_risk_scripts', undefined, this.hass));
+    if (risks.placeholders) out.push(localize('share.community_risk_placeholders', undefined, this.hass));
+    if (risks.overlay) out.push(localize('share.community_risk_overlay', undefined, this.hass));
+    return out;
+  }
+
+  // The dialog element, made once: re-creating it on every render swapped the old
+  // ha-dialog out, whose `closed` fired on removal and shut the gallery on the first click.
+  private _galleryDialog?: GalleryElement;
+
+  private _renderGallery(): TemplateResult {
+    if (!this._galleryOpen) return html``;
+    const entries = this._galleryEntries();
+    const selected = entries.find((entry) => entry.key === this._gallerySelected);
+    if (!this._galleryDialog) {
+      // Drawn by tag name so this tab does not import the dialog's class: both arrive in the editors chunk.
+      const dialog = document.createElement(GALLERY_TAG) as GalleryElement;
+      dialog.addEventListener('gallery-closed', () => {
+        this._galleryOpen = false;
+        this._installPending = undefined;
+      });
+      dialog.addEventListener('gallery-select', (ev) => {
+        this._gallerySelected = (ev as CustomEvent).detail?.key;
+        this._installPending = undefined;
+      });
+      dialog.addEventListener('gallery-load-community', () => void this._loadCommunity(false));
+      dialog.addEventListener(
+        'gallery-install',
+        (ev) => void this._installFromGallery((ev as CustomEvent).detail?.key),
+      );
+      this._galleryDialog = dialog;
+    }
+    const dialog = this._galleryDialog;
+    dialog.hass = this.hass;
+    dialog.entries = entries;
+    dialog.open = true;
+    dialog.selectedKey = this._gallerySelected;
+    dialog.status = this._galleryStatus(selected);
+    return html`${dialog}`;
+  }
+
+  // Install goes through the library's and the shared store's own installs, second press and all.
+  private async _installFromGallery(key: string | undefined): Promise<void> {
+    const entry = this._galleryEntries().find((each) => each.key === key);
+    if (!entry) return;
+    if (entry.source === 'library') {
+      this._librarySelected = entry.name;
+      await this._install(entry.name);
+    } else if (entry.source === 'community') {
+      const shared = this._community?.entries.find((each) => each.id === entry.communityId);
+      if (!shared) return;
+      this._communitySelected = shared.id;
+      await this._installShared(shared);
+    }
   }
 
   private _importChanged(ev: CustomEvent): void {

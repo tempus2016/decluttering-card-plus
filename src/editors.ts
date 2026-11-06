@@ -8,7 +8,8 @@
 import { DeclutteringCardEditor } from './card-editor';
 import { DeclutteringTemplateEditor } from './template-editor';
 import { DeclutteringHealthPanel } from './health-panel';
-import { CARD_EDITOR_TAG, HEALTH_TAG, TEMPLATE_EDITOR_TAG, defineElement } from './shared';
+import { DeclutteringGalleryDialog } from './gallery-dialog';
+import { CARD_EDITOR_TAG, GALLERY_TAG, HEALTH_TAG, TEMPLATE_EDITOR_TAG, defineElement } from './shared';
 
 defineElement(CARD_EDITOR_TAG, DeclutteringCardEditor);
 
@@ -16,4 +17,6 @@ defineElement(TEMPLATE_EDITOR_TAG, DeclutteringTemplateEditor);
 
 defineElement(HEALTH_TAG, DeclutteringHealthPanel);
 
-export { DeclutteringCardEditor, DeclutteringTemplateEditor, DeclutteringHealthPanel };
+defineElement(GALLERY_TAG, DeclutteringGalleryDialog);
+
+export { DeclutteringCardEditor, DeclutteringTemplateEditor, DeclutteringHealthPanel, DeclutteringGalleryDialog };

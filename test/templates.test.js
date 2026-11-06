@@ -2525,3 +2525,35 @@ collectAllTemplates(hass, borrower).then((all) => {
   }
   check('no template for the domain is an ordinary error', plain instanceof MissingTemplateError, false);
 }
+
+// addCardToView on a sections view: a card in the view's own cards: list is never drawn there.
+{
+  const card = { type: 'custom:decluttering-template-plus', template: 'x', card: { type: 'tile' } };
+  const sectioned = {
+    views: [
+      {
+        type: 'sections',
+        sections: [
+          { type: 'grid', cards: [{ type: 'a' }] },
+          { type: 'grid', cards: [] },
+        ],
+      },
+    ],
+  };
+  const out = addCardToView(sectioned, 0, card);
+  check('a sections view takes the card into its last section', out.views[0].sections[1].cards, [card]);
+  check(
+    'and leaves its first section and its cards: list alone',
+    [out.views[0].sections[0].cards.length, out.views[0].cards],
+    [1, undefined],
+  );
+  check(
+    'a sections view with no section yet gets one',
+    addCardToView({ views: [{ type: 'sections', sections: [] }] }, 0, card).views[0].sections,
+    [{ type: 'grid', cards: [card] }],
+  );
+  check('a masonry view still takes it in cards:', addCardToView({ views: [{ cards: [] }] }, 0, card).views[0].cards, [
+    card,
+  ]);
+  check('the original is not changed', sectioned.views[0].sections[1].cards, []);
+}

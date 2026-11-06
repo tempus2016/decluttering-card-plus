@@ -27,6 +27,9 @@ export function defineElement(tag: string, cls: CustomElementConstructor): boole
 // The Dashboard health panel both editors show.
 export const HEALTH_TAG = 'decluttering-card-plus-health';
 
+// The template gallery dialog the Share tab opens (idea 52).
+export const GALLERY_TAG = 'decluttering-card-plus-gallery';
+
 /*
  * Which view this card is being rendered in, read off the URL: the card only renders
  * while its view is showing. Outside a dashboard URL - an editor preview, say - there is
@@ -233,8 +236,10 @@ export async function undoFrom(
   return outcome;
 }
 
+// Guarded, so the pure helpers in this module can be required by the node tests.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const HELPERS = (window as any).loadCardHelpers ? (window as any).loadCardHelpers() : undefined;
+const pageWindow: any = typeof window !== 'undefined' ? window : undefined;
+export const HELPERS = pageWindow?.loadCardHelpers ? pageWindow.loadCardHelpers() : undefined;
 
 export async function loadCardEditorPicker(): Promise<void> {
   // Ensure hui-card-element-editor and hui-card-picker are loaded.

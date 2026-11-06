@@ -1766,8 +1766,25 @@ export function addCardToView(ll: any, viewIndex: number, card: any): any {
 
   return {
     ...ll,
-    views: views.map((view: any, index: number) =>
-      index === viewIndex ? { ...view, cards: [...(view.cards ?? []), card] } : view,
+    views: views.map((view: any, index: number) => (index === viewIndex ? withCardAdded(view, card) : view)),
+  };
+}
+
+/*
+ * A sections view draws only its sections: a card put in its `cards:` list is kept in the YAML
+ * and never shown, not even in edit mode, so a template installed there could not be found
+ * again. It goes in the last section instead, or a new one when the view has none yet.
+ */
+function withCardAdded(view: any, card: any): any {
+  const sectioned = view?.type === 'sections' || Array.isArray(view?.sections);
+  if (!sectioned) return { ...view, cards: [...(view.cards ?? []), card] };
+  const sections: any[] = Array.isArray(view.sections) ? view.sections : [];
+  if (!sections.length) return { ...view, sections: [{ type: 'grid', cards: [card] }] };
+  const last = sections.length - 1;
+  return {
+    ...view,
+    sections: sections.map((section, index) =>
+      index === last ? { ...section, cards: [...(section?.cards ?? []), card] } : section,
     ),
   };
 }

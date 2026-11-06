@@ -84,6 +84,7 @@
     "src/colour.ts",
     "src/card-editor/presets.ts",
     "src/initial-tab.ts",
-    "src/report-tree.ts"
+    "src/report-tree.ts",
+    "src/gallery.ts"
   ]
 }
