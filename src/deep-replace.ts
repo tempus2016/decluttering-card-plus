@@ -17,6 +17,7 @@ import {
   normaliseVariables,
   FLAT_STEP,
   REPEAT_STEP,
+  SLOT_STEP,
   stepName,
   CONSUMER_TYPES,
   ESCAPE,
@@ -1259,6 +1260,16 @@ function deepReplace(
       if (flat && stepName(step) !== REPEAT_STEP) return { refused: localize('warn.flat_after_repeat') };
       if (rest.length && !flat) return { refused: localize('warn.step_not_alone', { step: `${stepName(step)}:` }) };
       if (depth >= MAX_EXPAND_DEPTH) return { refused: localize('warn.fills_itself', { name }) };
+      /*
+       * `slot` (idea 35) puts the variable's own value into the list it sits in: a list of
+       * cards entry for entry, a mapping as one. Nothing to fill in, so nothing is looked up
+       * beyond the value - and a name nothing sets is left standing, to be reported unset.
+       */
+      if (stepName(step) === SLOT_STEP) {
+        if (!Object.prototype.hasOwnProperty.call(values, name)) return undefined;
+        const held = values[name];
+        return { value: held, splice: Array.isArray(held) };
+      }
       const found = bodyOf(name);
       if (!found) return undefined;
       const kind = stepName(step);

@@ -46,6 +46,8 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   lazy_eager?: number;
   /** Entities whose state changes rebuild the card - and the only ones `|state` can read. */
   rebuild_on?: string | string[];
+  /** Cards of the card's own, by slot name, put where the template left a `[[name|slot]]`. */
+  slots?: Record<string, unknown>;
 }
 
 export interface DeclutteringTemplateConfig extends LovelaceCardConfig, TemplateConfig {

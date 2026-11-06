@@ -989,11 +989,19 @@ export function isJsonNumber(text: string): boolean {
   return JSON_NUMBER.test(text);
 }
 
+/*
+ * `slot` (idea 35): puts a list-valued variable into the list it sits in, entry for entry,
+ * so a template can leave a place for cards a card supplies. Settled by the structural
+ * expansion in deep-replace.ts rather than by a transform, like `with:` and `repeat:`.
+ */
+export const SLOT_STEP = 'slot';
+
 const TRANSFORM_NAMES = [
   ...Object.keys(TRANSFORMS),
   JSON_STEP,
   RAW_STEP,
   YAML_STEP,
+  SLOT_STEP,
   BOOL_STEP,
   IF_EXISTS_STEP,
   EXISTS_STEP,
@@ -1475,9 +1483,12 @@ export const WITH_STEP = 'with';
 export const REPEAT_STEP = 'repeat';
 export const STRUCTURE_PARAM_STEPS = [WITH_STEP, REPEAT_STEP];
 
+/** Every structural step: the two that take an argument, and `slot`, which takes none. */
+export const STRUCTURE_STEPS = [...STRUCTURE_PARAM_STEPS, SLOT_STEP];
+
 /** Whether a step is one of the structural ones above, whatever its argument. */
 export function isStructureStep(step: string): boolean {
-  return STRUCTURE_PARAM_STEPS.includes(stepName(step));
+  return STRUCTURE_STEPS.includes(stepName(step));
 }
 
 const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP, ...EXTRA_PARAM_STEPS];
@@ -2839,6 +2850,7 @@ export const KNOWN_STEPS: string[] = [
     STATE_STEP,
     // Bare, as `[[row|with]]` and `[[row|repeat]]` (#314); with an argument they are below.
     ...STRUCTURE_PARAM_STEPS,
+    SLOT_STEP,
     ...NUMBER_BARE_STEPS,
     ...LIST_BARE_STEPS,
     FLAT_STEP,

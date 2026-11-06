@@ -13,6 +13,7 @@
     "src/deep-replace.ts",
     "src/page-template.ts",
     "src/repeat-kinds.ts",
+    "src/slots.ts",
     "src/templates.ts",
     "src/share.ts",
     "src/variables.ts",

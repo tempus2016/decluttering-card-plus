@@ -27,6 +27,7 @@ import { STRICT_KEY } from './strict';
 import { closestTemplate } from './closest';
 
 export { closestTemplate };
+import { withSlotVariables } from './slots';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -163,7 +164,8 @@ export function checkDashboard(
           ...structureNames(template, normaliseVariables(node.variables)),
           ...itemNames,
         ].map((name) => ({ [name]: null }));
-        const problems = diagnoseInstance(node.variables, template, supplements);
+        // A card's `slots:` are variables by another name (idea 35), so they count as set.
+        const problems = diagnoseInstance(withSlotVariables(node).variables, template, supplements);
         if (problems.missing.length) {
           const entry = unset.get(node.template) ?? { names: new Set<string>(), count: 0 };
           for (const name of problems.missing) entry.names.add(name);

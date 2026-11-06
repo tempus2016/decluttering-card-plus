@@ -62,6 +62,7 @@ import {
 import { warn } from './warnings';
 import { onPreviewHold, PreviewHoldEvent, previewEditorOpen, previewPaused, requiredUnset } from './preview-hold';
 import { withAlerts } from './checks';
+import { withSlotVariables } from './slots';
 
 /*
  * Home Assistant's `title` translations - every integration's name - asked for once per
@@ -292,6 +293,8 @@ export class DeclutteringCard extends DeclutteringElement {
     // Whatever the card around it handed down, read from here on as if written on this card.
     this._handedDown = handedDownNames(config);
     config = withInheritedVariables(config);
+    // `slots:` are variables the card fills a template's slots with (idea 35).
+    config = withSlotVariables(config);
 
     // Said here rather than thrown: Home Assistant collapses a card that throws in
     // setConfig to "Configuration error" with the reason hidden, and the reason - which
