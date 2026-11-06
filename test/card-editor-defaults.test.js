@@ -66,3 +66,49 @@ check('a changed value is not', isShownValue('blue', 'red'), false);
 check('a copy of a shown list is still the shown one', isShownValue(['a', 'b'], ['a', 'b']), true);
 check('a changed list is not', isShownValue(['a'], ['a', 'b']), false);
 check('a cleared field is not the shown value', isShownValue(undefined, 'red'), false);
+
+// #404: a default made with an item template is filled in from the dashboard's item templates.
+{
+  const hass = {
+    states: {
+      'binary_sensor.porch_car_occupancy': {
+        entity_id: 'binary_sensor.porch_car_occupancy',
+        state: 'off',
+        attributes: {},
+      },
+      'binary_sensor.porch_cat_occupancy': {
+        entity_id: 'binary_sensor.porch_cat_occupancy',
+        state: 'off',
+        attributes: {},
+      },
+    },
+    entities: {
+      'binary_sensor.porch_car_occupancy': { entity_id: 'binary_sensor.porch_car_occupancy' },
+      'binary_sensor.porch_cat_occupancy': { entity_id: 'binary_sensor.porch_cat_occupancy' },
+    },
+  };
+  const itemTemplates = {
+    detect_row: {
+      default: { kind: '[[entity|object_id|replace:_occupancy|replace:porch_]]' },
+      item: { type: '[[kind]]', entity: '[[entity]]' },
+    },
+    detect_list: {
+      default: { filter: { entities: 'binary_sensor.porch_*_occupancy' } },
+      item: ['[[detect_row|repeat:filter]]'],
+    },
+  };
+  const tpl = template([
+    { name: 'detections', selector: { object: { multiple: true } }, default: '[[detect_list|with]]' },
+  ]);
+  check('a with: default is left blank without the item templates', shown(['detections'], [], tpl, hass), {});
+  check(
+    'a with: default is filled in from the item templates (#404)',
+    shown(['detections'], [], tpl, hass, { itemTemplates }),
+    {
+      detections: [
+        { type: 'car', entity: 'binary_sensor.porch_car_occupancy' },
+        { type: 'cat', entity: 'binary_sensor.porch_cat_occupancy' },
+      ],
+    },
+  );
+}

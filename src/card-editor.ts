@@ -1928,11 +1928,14 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const unset = declarations
       .filter((declaration) => !(declaration.name in values) && !isCardDeclaration(declaration))
       .map((declaration) => declaration.name);
+    // With the dashboard's item templates, as the card builds with them (#404).
+    const shownLl = this._lovelace ?? getLovelaceConfig();
     const defaults = shownDefaults(
       unset,
       this._config?.variables,
       this._templates?.[this._config?.template as string],
       this.hass,
+      { itemTemplates: itemTemplatesOf(shownLl), context: sourceContext(shownLl) },
     );
     for (const declaration of declarations) {
       if (!(declaration.name in values)) {
