@@ -5,6 +5,7 @@ import { sourceTemplate, TemplateRender } from './template-source';
 import { CONSUMER_TYPES, itemTemplatesOf } from './templates';
 import { TemplateConfig, VariablesConfig } from './types';
 import { buildPage, errorDashboard, pageOf } from './page-template';
+import { wantsCategories } from './categories';
 
 // What a strategy's substitutions are handed for `with:` and `repeat:` (#227): the item
 // templates ride on the context the card already builds, and the context itself serves a
@@ -403,9 +404,9 @@ export function generateDashboard(
   pageTemplates?: Record<string, TemplateConfig>,
 ): any {
   if (pageOf(config)) {
-    const page = buildPage(config, pageTemplates ?? config?.decluttering_templates ?? {}, hass);
-    if ('error' in page) return errorDashboard(page.error);
-    return generateDashboard({ ...page.dashboard, type: STRATEGY_TYPE }, hass, context);
+    const page = pageDashboard(config, hass, pageTemplates);
+    if ('error' in page) return page.error;
+    return generateDashboard(page.config, hass, context);
   }
   const shared = normaliseVariables(config?.variables);
   // The strategy's own item templates are what a `with:` or `repeat:` in the views it writes
@@ -446,6 +447,52 @@ export function generateDashboard(
 /** Whether a repeated view reads labels, which have to be fetched before the dashboard is written. */
 export function dashboardWantsLabels(config: any): boolean {
   return /label/i.test(JSON.stringify(config?.views ?? null));
+}
+
+/**
+ * The strategy config a `page:` (idea 33) stands for: the dashboard its page template
+ * builds, written as a strategy of its own so its views are repeated like any others - or,
+ * when the page cannot be built, the dashboard that says why, which is written as it is.
+ */
+export function pageDashboard(
+  config: any,
+  hass?: any,
+  pageTemplates?: Record<string, TemplateConfig>,
+): { config: any } | { error: any } {
+  const page = buildPage(config, pageTemplates ?? config?.decluttering_templates ?? {}, hass);
+  if ('error' in page) return { error: errorDashboard(page.error) };
+  return { config: { ...page.dashboard, type: STRATEGY_TYPE } };
+}
+
+/** What writing a dashboard out waits on, which only the strategy element can reach. */
+export interface DashboardFetches {
+  render: (template: string) => Promise<TemplateRender>;
+  labels: () => Promise<void>;
+  categories: () => Promise<void>;
+  // Every template a page can be, borrowed ones included.
+  templates: () => Promise<Record<string, TemplateConfig>>;
+  onRendered?: (template: string, render: TemplateRender) => void;
+}
+
+/**
+ * The dashboard strategy's whole run. A page is built first, so what the views it builds
+ * repeat over - Jinja, labels, categories - is fetched from those views, not from the
+ * strategy's own, which a page leaves empty.
+ */
+export async function writeDashboard(config: any, hass: any, fetch: DashboardFetches): Promise<any> {
+  let source = config;
+  if (pageOf(config)) {
+    const page = pageDashboard(config, hass, await fetch.templates());
+    if ('error' in page) return page.error;
+    source = page.config;
+  }
+  if (dashboardWantsLabels(source)) await fetch.labels();
+  if (wantsCategories(source?.views)) await fetch.categories();
+  // A view repeat reads the same sources a section repeat does, so its Jinja lists are
+  // rendered the same way - once each, here, where a strategy may wait.
+  const rendered = await renderStrategyTemplates({ sections: source?.views }, fetch.render);
+  for (const [template, render] of Object.entries(rendered)) fetch.onRendered?.(template, render);
+  return generateDashboard(source, hass, { rendered });
 }
 
 /** The card options that shape a repeat inside one card, and mean nothing once each copy has a section. */

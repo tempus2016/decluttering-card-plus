@@ -1,18 +1,16 @@
 import { HomeAssistant } from 'custom-card-helpers';
 import { collectAllTemplates, itemTemplatesOf } from './templates';
-import { pageOf } from './page-template';
 import { loadLabels } from './labels';
 import { loadCategories, wantsCategories } from './categories';
 import { renderTemplateOnce } from './template-source';
 import {
-  dashboardWantsLabels,
-  generateDashboard,
   generateSection,
   generateView,
   renderStrategyTemplates,
   sectionStubTemplate,
   STRATEGY_TYPE,
   wantsLabels,
+  writeDashboard,
 } from './strategy';
 import { publishedStub } from './picker';
 import { getLovelaceConfig } from './utils';
@@ -54,17 +52,14 @@ export class DeclutteringDashboardStrategy extends HTMLElement {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static async generate(config: any, hass: HomeAssistant): Promise<unknown> {
-    if (dashboardWantsLabels(config)) await loadLabels(hass);
-    if (wantsCategories(config?.views)) await loadCategories(hass);
-    // A view repeat reads the same sources a section repeat does, so its Jinja lists are
-    // rendered the same way - once each, here, where a strategy may wait.
-    const rendered = await renderStrategyTemplates({ sections: config?.views }, (template) =>
-      renderTemplateOnce(hass, template),
-    );
-    for (const [template, render] of Object.entries(rendered)) warnUnlisted(template, render, hass);
     // A page (idea 33) may name a template this strategy borrows, which only hass can fetch.
-    const pageTemplates = pageOf(config) ? await collectAllTemplates(hass, config) : undefined;
-    return generateDashboard(config, hass, { rendered }, pageTemplates);
+    return writeDashboard(config, hass, {
+      render: (template) => renderTemplateOnce(hass, template),
+      labels: () => loadLabels(hass),
+      categories: () => loadCategories(hass),
+      templates: () => collectAllTemplates(hass, config),
+      onRendered: (template, render) => warnUnlisted(template, render, hass),
+    });
   }
 }
 

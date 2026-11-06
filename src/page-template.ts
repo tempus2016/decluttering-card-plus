@@ -2,6 +2,9 @@ import { TemplateConfig, VariablesConfig } from './types';
 import deepReplace from './deep-replace';
 import { normaliseVariables } from './variables';
 import { localize } from './localize';
+import { declutteringKeys, splitDeclutteringKeys, withoutRepeatContent } from './page-body';
+
+export { declutteringKeys, splitDeclutteringKeys, withoutRepeatContent };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -50,15 +53,6 @@ export function isPageTemplate(template: TemplateConfig | undefined): boolean {
   return !!template && typeof template === 'object' && DASHBOARD_KIND in template;
 }
 
-/** The keys a strategy carries that the dashboard it writes must keep: everything decluttering. */
-export function declutteringKeys(config: unknown): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries((config as Record<string, unknown>) ?? {})) {
-    if (key.startsWith('decluttering_')) out[key] = value;
-  }
-  return out;
-}
-
 export type PageBuild = { dashboard: Record<string, unknown> } | { error: string };
 
 /** A dashboard with one view that says what went wrong, for a page that could not be built. */
@@ -89,9 +83,18 @@ export function buildPage(
     return { error: localize('error.page_template_kind', { template: page.template }, hass) };
   }
   const body = (template as any)[DASHBOARD_KIND];
-  const built = deepReplace(normaliseVariables(page.variables), template, body, page.template, hass, false);
+  const variables = normaliseVariables(page.variables);
+  // The template keys inside the body are definitions, filled in by each card that uses them.
+  const { held, rest } = splitDeclutteringKeys(body);
+  // Quietly: a repeat's `[[entity]]`, `[[index]]`... are filled by the writing-out after
+  // this, which warns about what is still unset then. What the page itself leaves unset is
+  // still said, from the body with every repeat's content taken out.
+  const built = deepReplace(variables, template, rest, page.template, hass, true);
+  deepReplace(variables, template, withoutRepeatContent(rest), page.template, hass, false);
   const dashboard: Record<string, unknown> =
-    built && typeof built === 'object' && !Array.isArray(built) ? { ...(built as Record<string, unknown>) } : {};
+    built && typeof built === 'object' && !Array.isArray(built)
+      ? { ...(built as Record<string, unknown>), ...held }
+      : {};
   // The template's own decluttering keys come first; the strategy's win, as the nearer.
   Object.assign(dashboard, declutteringKeys(config));
   return { dashboard };
