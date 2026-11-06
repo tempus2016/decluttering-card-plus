@@ -882,8 +882,23 @@ export abstract class DeclutteringElement extends LitElement {
      * shown, it is still a card that has been handed a config it cannot use - and one that
      * asks a server for something has already asked by then.
      */
+    /*
+     * The template's own checks (#389) count to `strict:` (#390) as well: a failed warn check
+     * is one of the build's warnings, and a failed error check fails the card under
+     * `errors: fail` the way an unset variable does.
+     */
+    if (levels.warnings !== 'ignore') {
+      for (const alert of alerts) if (alert.level === 'warn') said.push(alert.message);
+    }
     this._strictOutcome(hush ? STRICT_OFF : levels, unresolved, said);
     if (!hush && this._refuseIfStrict(unresolved)) return;
+    const failedCheck = alerts.find((alert) => alert.level === 'error');
+    if (!hush && levels.errors === 'fail' && failedCheck) {
+      this._dropThing();
+      this._errorDetail = undefined;
+      this._error = localize('error.check_stopped', { message: failedCheck.message }, this._hass);
+      return;
+    }
     if (instance && !hush && this._holdForRequired(unresolved, templateConfig)) return;
     this._setResolved(thingType, this._withGridOptions(thingType, built), styles, inherited);
   }

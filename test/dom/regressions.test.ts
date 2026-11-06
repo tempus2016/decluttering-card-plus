@@ -419,7 +419,8 @@ describe('strict level by level (#390)', () => {
     stubLovelace({ decluttering_templates: unset, views: [{ cards: [] }] });
     const el = card({ template: 't', strict: true }, stubHass());
     document.body.appendChild(el);
-    await until(() => !!shadow(el, 'ha-alert[alert-type="error"]'), 2000, 'the strict refusal');
+    // A card's refusal is the error card (idea 49).
+    await until(() => !!shadow(el, '.error-card'), 2000, 'the strict refusal');
     expect(inner(el), 'nothing built in its place').to.equal(null);
   });
 
@@ -466,7 +467,7 @@ describe('strict level by level (#390)', () => {
     stubLovelace({ decluttering_templates: unset, decluttering_strict: { errors: 'fail' }, views: [{ cards: [] }] });
     const refused = card({ template: 't' }, stubHass());
     document.body.appendChild(refused);
-    await until(() => !!shadow(refused, 'ha-alert[alert-type="error"]'), 2000, 'the dashboard-wide refusal');
+    await until(() => !!shadow(refused, '.error-card'), 2000, 'the dashboard-wide refusal');
     const own = card({ template: 't', strict: false }, stubHass());
     document.body.appendChild(own);
     await until(() => !!inner(own), 2000, 'the card that turned it off');
@@ -490,6 +491,40 @@ describe('strict level by level (#390)', () => {
     const section = stubSection(0, 0);
     const el = card({ template: 't' }, stubHass());
     section.appendChild(el);
-    await until(() => !!shadow(el, 'ha-alert[alert-type="error"]'), 2000, 'the section refusal');
+    await until(() => !!shadow(el, '.error-card'), 2000, 'the section refusal');
+  });
+});
+
+describe('checks count to strict (#389 with #390)', () => {
+  const shadow = (el: any, selector: string): any => el.shadowRoot?.querySelector(selector);
+  const templates = (level: string): Record<string, any> => ({
+    t: {
+      checks: [{ condition: '[[camera|contains:dummy]]', level, message: '[[camera]] is a dummy.' }],
+      card: { type: 'markdown', content: '[[camera]]' },
+    },
+  });
+
+  it('a failed warn check is one of the warnings strict: {warnings: notice} shows', async () => {
+    stubLovelace({ decluttering_templates: templates('warn'), views: [{ cards: [] }] });
+    const el = card(
+      { template: 't', variables: [{ camera: 'camera.dummy' }], strict: { warnings: 'notice' } },
+      stubHass({ 'camera.dummy': 'idle' }),
+    );
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.strict-notice'), 2000, 'the notice');
+    expect(shadow(el, '.strict-notice').textContent).to.include('camera.dummy is a dummy.');
+    expect(!!inner(el), 'the card renders under it').to.equal(true);
+  });
+
+  it('a failed error check fails the card under strict: {errors: fail}', async () => {
+    stubLovelace({ decluttering_templates: templates('error'), views: [{ cards: [] }] });
+    const el = card(
+      { template: 't', variables: [{ camera: 'camera.dummy' }], strict: { errors: 'fail' } },
+      stubHass({ 'camera.dummy': 'idle' }),
+    );
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, 'ha-alert[alert-type="error"]'), 2000, 'the refusal');
+    expect(shadow(el, 'ha-alert[alert-type="error"]').textContent).to.include('camera.dummy is a dummy.');
+    expect(inner(el), 'nothing built').to.equal(null);
   });
 });

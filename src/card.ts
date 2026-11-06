@@ -452,6 +452,7 @@ export class DeclutteringCard extends DeclutteringElement {
   private _hold(held: NonNullable<DeclutteringCard['_held']>): void {
     this._dropThing();
     this._error = undefined;
+    this._errorDetail = undefined;
     this._held = held;
   }
 
@@ -1066,6 +1067,7 @@ export class DeclutteringCard extends DeclutteringElement {
       const items = resolveRegistryItems(hass, from, context);
       this._setForEach(source.templateConfig, source.config, items, source.picker);
       this._error = undefined;
+      this._errorDetail = undefined;
     } catch (err) {
       // Thrown from outside setConfig, where Home Assistant would catch it, so the card
       // has to report it itself rather than leaving the old copies on screen.

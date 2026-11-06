@@ -168,7 +168,8 @@ describe('strict (#407)', () => {
     document.body.appendChild(el);
     await settle();
     expect(inner(el), 'no card inside').to.equal(null);
-    expect(notice(el)?.getAttribute('alert-type')).to.equal('error');
+    // A card's refusal is the error card that names the variable (idea 49).
+    expect(!!el.shadowRoot?.querySelector('.error-card'), 'the error card').to.equal(true);
     el.remove();
   });
 });
