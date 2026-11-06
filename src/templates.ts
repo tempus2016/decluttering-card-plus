@@ -437,6 +437,18 @@ const DOMAIN_OF = /^([a-z0-9_]+)\./i;
  * brackets. So that entity comes back as `entity`, for the card to build with under its
  * own variables (withPickedEntity): the card's values still win, as they always do.
  */
+/** A template a card asked for by name - directly or through template_by_domain - that is not there. */
+export class MissingTemplateError extends Error {
+  constructor(
+    message: string,
+    public readonly template: string,
+    public readonly available: string[],
+  ) {
+    super(message);
+    this.name = 'MissingTemplateError';
+  }
+}
+
 export function pickTemplate(
   config: { template?: unknown; template_by_domain?: unknown },
   variables: VariablesConfig[] | undefined,
@@ -465,7 +477,11 @@ export function pickTemplate(
   }
   const template = lookup(name);
   if (!template) {
-    throw new Error(localize('error.template_missing', { template: name }, hass) + didYouMean(name, available));
+    throw new MissingTemplateError(
+      localize('error.template_missing', { template: name }, hass) + didYouMean(name, available),
+      name,
+      available,
+    );
   }
   const passed = normaliseVariables(variables).some((entry) => Object.keys(entry)[0] === 'entity');
   return !passed && typeof entity === 'string' ? { name, template, entity } : { name, template };

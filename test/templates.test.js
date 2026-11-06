@@ -46,6 +46,7 @@ const {
   byDomainOf,
   templatesNamedBy,
   pickTemplate,
+  MissingTemplateError,
   withPickedEntity,
 } = require('../.test-build/templates.js');
 
@@ -2497,4 +2498,30 @@ collectAllTemplates(hass, borrower).then((all) => {
     require('node:assert/strict').deepEqual(itemTemplatesOf(far).far, { item: { x: 1 } });
     require('node:assert/strict').equal(borrowedKnown(far), true);
   });
+}
+
+// A template picked by domain that is not there is a MissingTemplateError carrying the name
+// and the names there are, so the card can draw its error card rather than throw (idea 49).
+{
+  let caught;
+  try {
+    pickTemplate(
+      { template_by_domain: { light: 'lampp' } },
+      [{ entity: 'light.a' }],
+      (name) => ({ lamp: {} })[name],
+      undefined,
+      ['lamp'],
+    );
+  } catch (err) {
+    caught = err;
+  }
+  check('a missing picked template is a MissingTemplateError', caught instanceof MissingTemplateError, true);
+  check('naming the template and what there is', [caught.template, caught.available], ['lampp', ['lamp']]);
+  let plain;
+  try {
+    pickTemplate({ template_by_domain: { light: 'lamp' } }, [{ entity: 'sun.sun' }], () => ({}));
+  } catch (err) {
+    plain = err;
+  }
+  check('no template for the domain is an ordinary error', plain instanceof MissingTemplateError, false);
 }

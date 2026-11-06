@@ -26,6 +26,7 @@ import {
   pickTemplate,
   withPickedEntity,
   warnIfDeprecated,
+  MissingTemplateError,
 } from './templates';
 import { trashHass, watchForTrash } from './trash';
 import {
@@ -71,6 +72,7 @@ import {
   MOBILE_VIEWPORT_QUERY,
   withMobileVariables,
 } from './breakpoints';
+import { customMissingDetail, missingTemplateDetail } from './error-card';
 
 /*
  * Home Assistant's `title` translations - every integration's name - asked for once per
@@ -339,6 +341,8 @@ export class DeclutteringCard extends DeclutteringElement {
       throw new Error(localize('error.no_lovelace'));
     }
     this._error = undefined;
+    this._errorDetail = undefined;
+    this._errorConfig = this._lastConfig;
     this._rebuildOn = rebuildOnEntities(config.rebuild_on);
     this._warnRebuildOn(config);
     /*
@@ -377,10 +381,19 @@ export class DeclutteringCard extends DeclutteringElement {
       return;
     }
     if (!mayBorrowTemplates(ll)) {
-      throw new Error(
-        localize('error.template_missing', { template: config.template }, this._hass) +
-          didYouMean(config.template, Object.keys(collectTemplates(ll))),
+      // Said rather than thrown (idea 49): thrown, Home Assistant draws its own red card in
+      // this one's place, and the line, the nearest name and the fix could not be offered.
+      const available = Object.keys(collectTemplates(ll));
+      this._errorDetail = missingTemplateDetail(
+        ll,
+        config.template,
+        available,
+        localize('errorcard.not_found', undefined, this._hass),
       );
+      this._error =
+        localize('error.template_missing', { template: config.template }, this._hass) +
+        didYouMean(config.template, available);
+      return;
     }
     // The template may live on a dashboard this one borrows from, or on the library
     // dashboard every one borrows from, which has to be fetched.
@@ -564,6 +577,7 @@ export class DeclutteringCard extends DeclutteringElement {
       card: typeof this._lastConfig?.name === 'string' ? this._lastConfig.name : undefined,
     });
     this._error = undefined;
+    this._errorDetail = undefined;
     this._stopRepeat();
     const template = this._fallbackSource?.template;
     const kind: LovelaceThingType = this._inBadgeRow
@@ -617,24 +631,27 @@ export class DeclutteringCard extends DeclutteringElement {
         this._displayHidden();
       }
     }
-    if (this._onError()) void this._checkDefined(config);
+    void this._checkDefined(config);
   }
 
   /*
    * A card that builds a custom card nobody installed is the one failure Home Assistant
-   * reports rather than this card - by drawing its own error where the card should be. With
-   * `on_error:` set it is caught here instead, after the same short wait Home Assistant
-   * gives a resource still loading. If the element does turn up later, the card builds again.
+   * reports rather than this card - by drawing its own error where the card should be. It is
+   * caught here instead, after the same short wait Home Assistant gives a resource still
+   * loading, so the error card can name the type and the template (idea 49) and `on_error:`
+   * can stand in. If the element does turn up later, the card builds again.
    */
   private async _checkDefined(config: LovelaceThingConfig): Promise<void> {
     const tags = customTags(config);
     if (!tags.length) return;
     const missing = await undefinedElements(tags);
     if (!missing.length || this._thingConfig !== config) return;
-    const message = localize(
-      'error.custom_element_missing',
-      { types: missing.map((tag) => `custom:${tag}`).join(', ') },
-      this._hass,
+    const types = missing.map((tag) => `custom:${tag}`);
+    const message = localize('error.custom_element_missing', { types: types.join(', ') }, this._hass);
+    this._errorDetail = customMissingDetail(
+      this._templateName,
+      types,
+      localize('errorcard.not_registered', undefined, this._hass),
     );
     if (config === this._fallbackConfig) {
       this._fallbackFailed = true;
@@ -666,7 +683,7 @@ export class DeclutteringCard extends DeclutteringElement {
     if (named.every(ready) || !mayBorrowTemplates(ll)) {
       this._pendingConfig = undefined;
       this._noteLibrary(ll);
-      this._applyByDomain(local, config);
+      this._applyByDomainOrSay(local, config);
       return;
     }
     this._pendingConfig = config;
@@ -680,6 +697,29 @@ export class DeclutteringCard extends DeclutteringElement {
    * falls back on stands for the whole card where one has to, in its styles, its size and
    * its `empty:`.
    */
+  /*
+   * Picking by domain can fail - no template for the entity's domain and no default, or a
+   * named template that is not there. Said rather than thrown, as a plain missing template is
+   * (idea 49): thrown out of setConfig, Home Assistant draws its own red card in this one's
+   * place and `on_error:` never gets its turn.
+   */
+  private _applyByDomainOrSay(templates: Record<string, TemplateConfig>, config: DeclutteringCardConfig): void {
+    try {
+      this._applyByDomain(templates, config);
+    } catch (err) {
+      if (err instanceof MissingTemplateError) {
+        this._templateName = err.template;
+        this._errorDetail = missingTemplateDetail(
+          getLovelaceConfig(),
+          err.template,
+          err.available,
+          localize('errorcard.not_found', undefined, this._hass),
+        );
+      }
+      this._error = (err as Error)?.message ?? String(err);
+    }
+  }
+
   private _applyByDomain(templates: Record<string, TemplateConfig>, config: DeclutteringCardConfig): void {
     const available = Object.keys(templates);
     const lookup = (name: string | undefined): TemplateConfig | undefined =>
@@ -1089,12 +1129,8 @@ export class DeclutteringCard extends DeclutteringElement {
       collectAllTemplates(hass, ll, place.view, undefined, place.section)
         .then((all) => {
           // Thrown from outside setConfig, where nobody would catch it, so the card says it.
-          try {
-            this._applyByDomain(all, config);
-            this._loadLabelsIfWanted(hass);
-          } catch (err) {
-            this._error = (err as Error)?.message ?? String(err);
-          }
+          this._applyByDomainOrSay(all, config);
+          if (!this._error) this._loadLabelsIfWanted(hass);
         })
         .catch((err) => {
           this._error = localize(
@@ -1115,11 +1151,15 @@ export class DeclutteringCard extends DeclutteringElement {
           // Only a dashboard that names somewhere to borrow from is told it was looked for there.
           const key = getTemplateSources(ll).length ? 'error.template_missing_anywhere' : 'error.template_missing';
           const missing = localize(key, { template: config.template }, hass);
+          const notFound = localize('errorcard.not_found', undefined, hass);
+          this._errorDetail = missingTemplateDetail(ll, config.template, [], notFound);
           this._error = missing;
           // Every name there is, borrowed ones included, is known by the time this runs.
           // Not added once `on_error:` has taken the error's place - it has been said.
           collectAllTemplates(hass, ll).then((all) => {
-            if (this._error === missing) this._error = missing + didYouMean(config.template, Object.keys(all));
+            if (this._error !== missing) return;
+            this._errorDetail = missingTemplateDetail(ll, config.template, Object.keys(all), notFound);
+            this._error = missing + didYouMean(config.template, Object.keys(all));
           });
         }
       })

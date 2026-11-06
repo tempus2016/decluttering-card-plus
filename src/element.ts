@@ -19,6 +19,7 @@ import {
   BY_DOMAIN_KEY,
   withPickedEntity,
   itemTemplatesOf,
+  replaceCard,
 } from './templates';
 import {
   forEachVariables,
@@ -69,6 +70,8 @@ import {
   parentOf,
   sourceContext,
   thingContent,
+  pageDashboard,
+  rewriteDashboards,
 } from './shared';
 import { warn } from './warnings';
 import {
@@ -88,6 +91,7 @@ import { canRepeat, ignoredRepeatOptions } from './repeat-kinds';
 import { manyConfig, MANY_TYPE } from './row-repeat';
 import { itemLabel, skippedConfig, templateVisibility } from './visibility';
 import './skipped';
+import { ErrorDetail, findCardPath, templateEditPath, unsetDetail, withTemplate } from './error-card';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -248,6 +252,12 @@ export abstract class DeclutteringElement extends LitElement {
   @state() private _style?: string;
 
   @state() protected _error?: string;
+  // What the error card says beyond the message (idea 49), and the card config it is about.
+  @state() protected _errorDetail?: ErrorDetail;
+  protected _errorConfig?: DeclutteringCardConfig;
+  @state() private _errorOpen = false;
+  // The error the card last laid itself out for, so the section is told once per error (idea 49).
+  private _errorLayoutFor?: string;
 
   /** Whether this card was asked to give up its box in the layout. */
   @state() protected _fitContents = false;
@@ -422,6 +432,51 @@ export abstract class DeclutteringElement extends LitElement {
         height: 100%;
       }
       /* The report sits under the card, outside the space the layout gave it. */
+      /* The error card (idea 49). */
+      .error-card {
+        padding: 12px 16px;
+        border-left: 4px solid var(--error-color, #db4437);
+      }
+      .error-card .title {
+        font-weight: 500;
+        font-size: 1.05em;
+        margin-bottom: 4px;
+      }
+      .error-card p {
+        margin: 4px 0;
+        color: var(--secondary-text-color);
+        font-size: 0.95em;
+      }
+      .error-card .line {
+        display: block;
+        margin: 8px 0;
+        padding: 6px 8px;
+        border-radius: 6px;
+        background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
+        font-family: var(--ha-font-family-code, monospace);
+        font-size: 0.85em;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .error-card .line .note {
+        color: var(--error-color, #db4437);
+      }
+      .error-card .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .error-card .passed,
+      .error-card details pre {
+        margin: 8px 0 0;
+        font-family: var(--ha-font-family-code, monospace);
+        font-size: 0.8em;
+        white-space: pre-wrap;
+        word-break: break-word;
+        -webkit-user-select: text;
+        user-select: text;
+      }
       :host(.decluttering-report) {
         height: auto;
       }
@@ -1106,6 +1161,11 @@ export abstract class DeclutteringElement extends LitElement {
     if (this._strictLevels.errors !== 'fail' || !unresolved.length) return false;
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
     this._dropThing();
+    this._errorDetail = unsetDetail(
+      this._templateName,
+      unresolved,
+      localize('errorcard.required', undefined, this._hass),
+    );
     this._error = localize(unresolved.length === 1 ? 'error.strict_one' : 'error.strict_many', { which }, this._hass);
     return true;
   }
@@ -1623,6 +1683,7 @@ export abstract class DeclutteringElement extends LitElement {
     }
 
     this._thing = thing;
+    this._errorLayoutFor = undefined;
     this._forwardGridApi(thing);
     if (this._hass) thing.hass = this._hass;
     this._watchForHiding(thing);
@@ -1787,6 +1848,13 @@ export abstract class DeclutteringElement extends LitElement {
 
   protected render(): TemplateResult | void {
     if (this._error) {
+      // A card gets the error card that names the line and offers the fix (idea 49); a row, a
+      // badge or an element has no room for one and keeps the alert.
+      const asCard = this._thingType === undefined || this._thingType === 'card';
+      if (asCard && this._errorDetail) {
+        this._takeErrorLayout();
+        return html`${this._renderErrorCard(this._errorDetail)} ${this._renderReport()}`;
+      }
       return html` <ha-alert alert-type="error">${this._error}</ha-alert> ${this._renderReport()} `;
     }
 
@@ -1837,6 +1905,149 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
       }
       ${this._renderStrictNotice()} ${this._thing} ${this._renderReport()}
     `;
+  }
+
+  /*
+   * The error card (idea 49): what could not be built, the line that failed in context, the
+   * nearest name with how common it is, and - for an admin with the dashboard in edit mode -
+   * the buttons that do the fix. A viewer sees the message and the line.
+   */
+  /*
+   * A card that failed after its inner card was built - a custom card nobody installed - had
+   * already told the section that card's size: half a row in a sections grid, one row high, with
+   * the error card overflowing the cell. The error card is laid out like one that never built:
+   * no forwarded grid size, so the section's full-width default applies, no fixed height, and
+   * the section told once to measure again. A later successful build puts the card's own size
+   * back through _setThing.
+   */
+  private _takeErrorLayout(): void {
+    const error = this._error ?? '';
+    if (this._errorLayoutFor === error) return;
+    this._errorLayoutFor = error;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const self = this as any;
+    const hadSize = typeof self.getGridOptions === 'function' || typeof self.getLayoutOptions === 'function';
+    // The card's own grid_options still stand: they are what the user asked for this slot.
+    delete self.getGridOptions;
+    delete self.getLayoutOptions;
+    if (this._errorConfig?.grid_options !== undefined)
+      self.getGridOptions = (): unknown => this._errorConfig?.grid_options;
+    this.classList.remove('decluttering-card', 'decluttering-fit-contents', 'decluttering-badge');
+    this.classList.add('decluttering-container');
+    if (!hadSize) return;
+    requestAnimationFrame(() => {
+      if (this.isConnected && this._errorLayoutFor === error && sectionOf(this)) {
+        this.dispatchEvent(new Event('card-updated', { bubbles: true, composed: true }));
+      }
+    });
+  }
+
+  private _renderErrorCard(detail: ErrorDetail): TemplateResult {
+    const hass = this._hass;
+    const admin = this._previewing && !!(hass as unknown as { user?: { is_admin?: boolean } })?.user?.is_admin;
+    const title = detail.template
+      ? localize('errorcard.title', { template: detail.template }, hass)
+      : localize('errorcard.title_plain', undefined, hass);
+    const message =
+      detail.kind === 'missing_template'
+        ? localize('errorcard.missing_message', undefined, hass)
+        : detail.kind === 'custom_missing'
+          ? localize('errorcard.custom_message', undefined, hass)
+          : detail.kind === 'unset'
+            ? localize('errorcard.unset_message', undefined, hass)
+            : this._error;
+    const closest = detail.closest;
+    const suggestion = closest
+      ? localize(
+          closest.uses === 0
+            ? 'errorcard.did_you_mean_none'
+            : closest.uses === 1
+              ? 'errorcard.did_you_mean_one'
+              : 'errorcard.did_you_mean',
+          { closest: closest.name, count: closest.uses },
+          hass,
+        )
+      : '';
+    const ll = getLovelaceConfig();
+    const ownPath = this._errorConfig ? findCardPath(ll, this._errorConfig) : undefined;
+    const templatePath = detail.template ? templateEditPath(ll, detail.template) : undefined;
+    const variables = this._errorConfig?.variables;
+    const passed =
+      variables && (Array.isArray(variables) ? variables.length : Object.keys(variables).length)
+        ? toYaml(variables)
+        : localize('errorcard.nothing_passed', undefined, hass);
+    return html`
+      <ha-card class="error-card">
+        <div class="title">${title}</div>
+        <p>${message}</p>
+        ${
+          detail.line
+            ? html`<code class="line"
+                >${detail.line.key}: ${detail.line.value} <span class="note">← ${detail.line.note}</span></code
+              >`
+            : ''
+        }
+        ${suggestion ? html`<p>${suggestion}</p>` : ''}
+        ${detail.kind === 'custom_missing' ? html`<p>${localize('errorcard.install_hint', undefined, hass)}</p>` : ''}
+        ${
+          admin
+            ? html`<div class="actions">
+                ${
+                  detail.kind === 'missing_template' && closest
+                    ? html`<ha-button @click=${() => this._useClosest(closest.name)}>
+                        ${localize('errorcard.use', { closest: closest.name }, hass)}
+                      </ha-button>`
+                    : ''
+                }
+                ${
+                  ownPath
+                    ? html`<ha-button @click=${() => this._openEditor(ownPath)}>
+                        ${
+                          detail.kind === 'unset' && detail.unset?.length
+                            ? localize('errorcard.set_variable', { name: detail.unset[0] }, hass)
+                            : localize('errorcard.fix', undefined, hass)
+                        }
+                      </ha-button>`
+                    : ''
+                }
+                ${
+                  detail.kind === 'custom_missing' && templatePath
+                    ? html`<ha-button @click=${() => this._openEditor(templatePath)}>
+                        ${localize('errorcard.open_template', undefined, hass)}
+                      </ha-button>`
+                    : ''
+                }
+                <ha-button @click=${() => (this._errorOpen = !this._errorOpen)}>
+                  ${localize('errorcard.show_passed', undefined, hass)}
+                </ha-button>
+              </div>`
+            : ''
+        }
+        ${
+          this._errorOpen
+            ? html`<pre class="passed">${passed}</pre>
+                <details>
+                  <summary>${localize('errorcard.details', undefined, hass)}</summary>
+                  <pre>${this._error}</pre>
+                </details>`
+            : ''
+        }
+      </ha-card>
+    `;
+  }
+
+  /** Use the nearest template: the one key rewritten and saved, undoable from the toast. */
+  private _useClosest(closest: string): void {
+    const original = this._errorConfig;
+    if (!original) return;
+    void rewriteDashboards(this, this._hass, 'use_closest', [
+      { urlPath: pageDashboard(), build: (ll) => replaceCard(ll, original, withTemplate(original, closest)) },
+    ]);
+  }
+
+  /** Home Assistant's own edit dialog for the card at `path`, which the view around this one opens. */
+  private _openEditor(path: number[]): void {
+    this.dispatchEvent(new CustomEvent('ll-edit-card', { detail: { path }, bubbles: true, composed: true }));
   }
 
   private static async _createThing(

@@ -17,6 +17,7 @@
     "src/visibility.ts",
     "src/breakpoints.ts",
     "src/version-check.ts",
+    "src/error-card.ts",
     "src/templates.ts",
     "src/share.ts",
     "src/variables.ts",

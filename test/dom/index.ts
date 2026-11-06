@@ -15,6 +15,7 @@ import './watch-target.test';
 import './code-mirror-classes.test';
 import './preview-hold.test';
 import './editor-fixes.test';
+import './fixes.test';
 import { run } from './runner';
 
 declare global {
