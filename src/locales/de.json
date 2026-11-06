@@ -879,5 +879,6 @@
   "compare.ago_day": "vor {count} Tagen",
   "warn.not_a_date": "decluttering-card-plus: |{step} arbeitet mit einem Datum – einem ISO-Zeitstempel oder einer Epoche –, bekam aber \"{value}\", der Wert bleibt also wie er war.",
   "warn.bad_date_argument": "decluttering-card-plus: |{step} braucht nach dem Doppelpunkt ein Muster bei format oder eine Einheit bei age – seconds, minutes, hours, days oder weeks –, \"{value}\" bleibt also wie es war.",
-  "warn.stale_time_step": "decluttering-card-plus: eine Karte mit {template} formt eine Zeit mit |relative oder |age, führt aber nichts in rebuild_on: auf, die Worte bleiben also stehen. Trag die Entität ein, deren Zeit gelesen wird."
+  "warn.stale_time_step": "decluttering-card-plus: eine Karte mit {template} formt eine Zeit mit |relative oder |age, führt aber nichts in rebuild_on: auf, die Worte bleiben also stehen. Trag die Entität ein, deren Zeit gelesen wird.",
+  "warn.bad_plural_argument": "decluttering-card-plus: |{step} braucht nach dem Doppelpunkt mindestens zwei Wörter, Singular dann Plural, \"{value}\" bleibt also wie es war."
 }

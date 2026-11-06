@@ -879,5 +879,6 @@
   "compare.ago_day": "{count} dagen geleden",
   "warn.not_a_date": "decluttering-card-plus: |{step} werkt op een datum - een ISO-tijdstempel of een epoch - maar kreeg \"{value}\", dus de waarde blijft zoals ze was.",
   "warn.bad_date_argument": "decluttering-card-plus: |{step} heeft na de dubbele punt een patroon nodig voor format, of een eenheid voor age - seconds, minutes, hours, days of weeks -, dus \"{value}\" blijft zoals het was.",
-  "warn.stale_time_step": "decluttering-card-plus: een kaart met {template} vormt een tijd met |relative of |age maar noemt niets in rebuild_on:, dus de woorden blijven achter. Noem de entiteit waarvan de tijd gelezen wordt."
+  "warn.stale_time_step": "decluttering-card-plus: een kaart met {template} vormt een tijd met |relative of |age maar noemt niets in rebuild_on:, dus de woorden blijven achter. Noem de entiteit waarvan de tijd gelezen wordt.",
+  "warn.bad_plural_argument": "decluttering-card-plus: |{step} heeft na de dubbele punt minstens twee woorden nodig, enkelvoud dan meervoud, dus \"{value}\" blijft zoals het was."
 }

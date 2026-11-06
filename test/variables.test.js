@@ -1779,3 +1779,54 @@ const knownStepForTest = (step) => KNOWN_PARAM_STEPS.includes(step.slice(0, step
   check('while a plain one does not', usesTranslate({ card: { a: '[[n|upper]]' } }), false);
   console.warn = warnedBefore;
 }
+
+/* --------------------------------------------------- idea 40: plural and number steps in the viewer language */
+{
+  const en = { locale: { language: 'en', number_format: 'language' } };
+  const de = { locale: { language: 'de', number_format: 'language' } };
+  const plain = { locale: { language: 'en', number_format: 'none' } };
+  const commaDecimal = { locale: { language: 'de', number_format: 'comma_decimal' } };
+  const warnedBefore = console.warn;
+  const said = [];
+  console.warn = (m) => said.push(m);
+
+  check('plural picks the singular for one', applyTransform('plural:light,lights', '1', en), 'light');
+  check('and the plural for three', applyTransform('plural:light,lights', '3', en), 'lights');
+  check('and for zero', applyTransform('plural:light,lights', '0', en), 'lights');
+  check('a count feeds plural', applyTransform('count|plural:light,lights', ['a', 'b'], en), 'lights');
+  check('plural with a word is left as it was', applyTransform('plural:light,lights', 'many', en), 'many');
+  check('plural with one form is left as it was', applyTransform('plural:light', '3', en), '3');
+  check('format_number uses the viewer separators', applyTransform('format_number:1', '12345.678', en), '12,345.7');
+  check('in German', applyTransform('format_number:1', '12345.678', de), '12.345,7');
+  check('as money', applyTransform('format_number:currency=GBP', '4.5', en), '£4.50');
+  check(
+    'with no decimals asked for, as the locale writes it',
+    applyTransform('format_number', '1234.5', en),
+    '1,234.5',
+  );
+  check('number_format none writes it plain', applyTransform('format_number:1', '12345.678', plain), '12345.7');
+  check(
+    'number_format comma_decimal wins over the language',
+    applyTransform('format_number:1', '12345.678', commaDecimal),
+    '12,345.7',
+  );
+  check('format_number with a word is left as it was', applyTransform('format_number', 'lots', en), 'lots');
+
+  check(
+    'the new steps are known to the lint lists',
+    ['format_number'].every((s) => KNOWN_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'and the ones with arguments',
+    ['plural', 'format_number'].every((s) => KNOWN_PARAM_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'a template using format_number rebuilds with the locale',
+    usesTranslate({ card: { a: '[[n|format_number]]' } }),
+    true,
+  );
+  check('while a plain one does not', usesTranslate({ card: { a: '[[n|upper]]' } }), false);
+  console.warn = warnedBefore;
+}

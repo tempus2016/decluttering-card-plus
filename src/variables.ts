@@ -755,10 +755,28 @@ function isNumberStep(step: string): boolean {
 }
 
 /*
- * The language the viewer has chosen, as Home Assistant carries it on hass.locale.
+ * The language and number formatting the viewer has chosen, as Home Assistant carries them
+ * on hass.locale. Home Assistant lets the number format differ from the language - a German
+ * speaker reading English numbers - and the steps here follow that choice the way its own
+ * cards do.
  */
 function languageOf(hass: any): string {
   return String(hass?.locale?.language ?? hass?.language ?? 'en');
+}
+
+function numberLocaleOf(hass: any): string | undefined {
+  switch (hass?.locale?.number_format) {
+    case 'comma_decimal':
+      return 'en';
+    case 'decimal_comma':
+      return 'de';
+    case 'space_comma':
+      return 'fr';
+    case 'none':
+      return undefined;
+    default:
+      return languageOf(hass);
+  }
 }
 
 /*
@@ -806,9 +824,74 @@ function dateStep(step: string, text: string, hass?: any): string | undefined {
   return numberText(since);
 }
 
+/*
+ * Words and numbers in the viewer's language (idea 40). `plural:light,lights` picks a form
+ * by the number before it, with the browser's plural rules - languages with more forms list
+ * more words. `format_number` writes a number with the viewer's separators, `format_number:1`
+ * to one decimal, `format_number:currency=GBP` as money.
+ */
+const PLURAL_STEP = 'plural';
+const FORMAT_NUMBER_STEP = 'format_number';
+
+const PLURAL_CATEGORIES = ['zero', 'one', 'two', 'few', 'many', 'other'];
+
+function isLocaleStep(step: string): boolean {
+  const colon = step.indexOf(':');
+  const name = colon === -1 ? step : step.slice(0, colon);
+  return name === FORMAT_NUMBER_STEP || (colon !== -1 && name === PLURAL_STEP);
+}
+
+function localeStep(step: string, text: string, hass?: any): string | undefined {
+  if (!isLocaleStep(step)) return undefined;
+  const colon = step.indexOf(':');
+  const name = colon === -1 ? step : step.slice(0, colon);
+  const arg = colon === -1 ? '' : step.slice(colon + 1);
+  const value = asNumber(text);
+  if (value === undefined) {
+    warnOnce('warn.not_a_number', step, text, hass);
+    return text;
+  }
+  if (name === PLURAL_STEP) {
+    const forms = arg.split(',').map((form) => form.trim());
+    if (forms.length < 2) {
+      warnOnce('warn.bad_plural_argument', step, text, hass);
+      return text;
+    }
+    let category = 'other';
+    try {
+      category = new Intl.PluralRules(languageOf(hass)).select(value);
+    } catch {
+      category = value === 1 ? 'one' : 'other';
+    }
+    // Two forms are singular and plural; more follow the categories in order, as far as they go.
+    if (forms.length === 2) return category === 'one' ? forms[0] : forms[1];
+    const at = Math.min(PLURAL_CATEGORIES.indexOf(category), forms.length - 1);
+    return forms[Math.max(at, 0)];
+  }
+  const locale = numberLocaleOf(hass);
+  const options: Intl.NumberFormatOptions = {};
+  if (/^\d+$/.test(arg)) {
+    options.minimumFractionDigits = Number(arg);
+    options.maximumFractionDigits = Number(arg);
+  } else if (arg.startsWith('currency=')) {
+    options.style = 'currency';
+    options.currency = arg.slice('currency='.length).toUpperCase();
+  } else if (arg) {
+    warnOnce('warn.bad_number_argument', step, text, hass);
+    return text;
+  }
+  if (locale === undefined) options.useGrouping = false;
+  try {
+    return new Intl.NumberFormat(locale ?? 'en', options).format(value);
+  } catch {
+    warnOnce('warn.bad_number_argument', step, text, hass);
+    return text;
+  }
+}
+
 // Every new step, for the grammar and the lint: written bare, and written with an argument.
-const EXTRA_BARE_STEPS = [...DATE_BARE_STEPS];
-const EXTRA_PARAM_STEPS = [...DATE_PARAM_STEPS];
+const EXTRA_BARE_STEPS = [...DATE_BARE_STEPS, FORMAT_NUMBER_STEP];
+const EXTRA_PARAM_STEPS = [...DATE_PARAM_STEPS, PLURAL_STEP, FORMAT_NUMBER_STEP];
 
 /** The name a step goes by, without its argument. */
 export function stepName(step: string): string {
@@ -1453,6 +1536,8 @@ export function applyTransform(
     if (numeric !== undefined) return numeric;
     const dated = dateStep(name, input, hass);
     if (dated !== undefined) return dated;
+    const worded = localeStep(name, input, hass);
+    if (worded !== undefined) return worded;
     const parameterised = paramTransform(name);
     if (parameterised) return parameterised.fn(input, parameterised.arg);
     return TRANSFORMS[name](input);
@@ -1643,6 +1728,7 @@ export function applyTransform(
       isResolver(name) ||
       isNumberStep(name) ||
       isDateStep(name) ||
+      isLocaleStep(name) ||
       !!paramTransform(name) ||
       (Object.prototype.hasOwnProperty.call(TRANSFORMS, name) && !!TRANSFORMS[name]);
     if (!known) return undefined;
@@ -2338,9 +2424,9 @@ export function usesTranslate(
   template: TemplateConfig | undefined,
   itemTemplates?: Record<string, TemplateConfig>,
 ): boolean {
-  // The date steps read the viewer's locale too, which travels with hass.localize when the
-  // language changes (idea 38).
-  return usesStep(template, (step) => step === 'translate' || isDateStep(step), itemTemplates);
+  // The date, plural and number steps read the viewer's locale too, which travels with
+  // hass.localize when the language changes (ideas 38, 40).
+  return usesStep(template, (step) => step === 'translate' || isDateStep(step) || isLocaleStep(step), itemTemplates);
 }
 
 /**

@@ -697,16 +697,16 @@ export class DeclutteringCard extends DeclutteringElement {
      */
     const { itemTemplates } = this._buildExtras();
     const resolvers = picker ? picker.resolvers : usesResolver(templateConfig, itemTemplates);
-    this._fromResolvers = resolvers
-      ? {
-          templateConfig,
-          config,
-          picker,
-          translates: usesTranslate(templateConfig, itemTemplates),
-          installs: usesInstalled(templateConfig, itemTemplates),
-        }
-      : undefined;
+    const translates = !!usesTranslate(templateConfig, itemTemplates);
+    const installs = !!usesInstalled(templateConfig, itemTemplates);
+    // A template that reads the viewer's language or locale - `|translate`, `|format_number`
+    // - is recorded too, even with nothing to resolve, so it builds again when the language
+    // changes rather than keeping its first wording for good (idea 40).
+    this._fromResolvers =
+      resolvers || translates ? { templateConfig, config, picker, translates, installs } : undefined;
     this._listenForInstalled();
+    // What was just built is up to date with the hass in hand; only a later change rebuilds.
+    this._resolverRegistry = this._hass ? this._resolverKey(this._hass, translates, installs) : undefined;
 
     // A single mapping counts as a list of one, the same forgiveness `variables` gets. A
     // written-out list wins over a registry source: it is the more particular of the two,
@@ -751,6 +751,21 @@ export class DeclutteringCard extends DeclutteringElement {
   }
 
   /*
+   * What a build depends on besides the states it lists: the registry, and - for a template
+   * that translates or formats for the viewer - hass.localize, which Home Assistant replaces
+   * when the language changes or more translations load, and only then. Only a template
+   * that translates pays for that part of the key.
+   */
+  private _resolverKey(hass: HomeAssistant, translates: boolean, installs = false): unknown[] {
+    return [
+      ...registryKey(hass),
+      ...(translates ? [(hass as { localize?: unknown })?.localize] : []),
+      // What is installed moves without the registry: components load, cards and icon sets register.
+      ...(installs ? installedKey(hass) : []),
+    ];
+  }
+
+  /*
    * A template whose placeholders ask Home Assistant for something is built again when the
    * registry changes, so a name that was not known yet at first render turns up rather
    * than leaving the placeholder on the card for good. Guarded the same way the registry
@@ -763,12 +778,7 @@ export class DeclutteringCard extends DeclutteringElement {
     // `|translate` reads hass.localize, which is replaced when more translations load or
     // the language changes - and only then, so it joins the key without costing a rebuild
     // per state change. Only for a template that translates, so nobody else pays for it.
-    const key = [
-      ...registryKey(hass),
-      ...(pending.translates ? [(hass as { localize?: unknown })?.localize] : []),
-      // What is installed moves without the registry: components load, cards and icon sets register.
-      ...(pending.installs ? installedKey(hass) : []),
-    ];
+    const key = this._resolverKey(hass, !!pending.translates, !!pending.installs);
     if (sameRegistry(this._resolverRegistry, key)) return;
     this._resolverRegistry = key;
 
