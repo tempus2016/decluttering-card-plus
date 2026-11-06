@@ -88,6 +88,14 @@ export class DeclutteringFieldMenus extends LitElement {
       :host {
         display: contents;
       }
+      .origin {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+      }
       .btn {
         position: fixed;
         z-index: 900;
@@ -218,6 +226,14 @@ export class DeclutteringFieldMenus extends LitElement {
       this._fields = [];
       return;
     }
+    /*
+     * A dialog that is transformed becomes what position: fixed is measured from, so a button
+     * placed at a field's viewport position lands off to the side by the dialog's own offset.
+     * Where a fixed box at 0,0 really sits is that offset, whichever it is.
+     */
+    const origin = this.renderRoot.querySelector('.origin')?.getBoundingClientRect();
+    const dx = origin?.left ?? 0;
+    const dy = origin?.top ?? 0;
     const fields: Field[] = [];
     for (const selector of selectorsIn(target.shadowRoot ?? target)) {
       // A selector holding other selectors (an expandable) is a container, not a field.
@@ -234,8 +250,8 @@ export class DeclutteringFieldMenus extends LitElement {
         path,
         value: value as string | number | boolean,
         label: path.map((step) => (typeof step === 'number' ? `#${step + 1}` : step)).join(' › '),
-        top: rect.top,
-        left: rect.left,
+        top: rect.top - dy,
+        left: rect.left - dx,
         width: rect.width,
         height: rect.height,
       });
@@ -246,6 +262,7 @@ export class DeclutteringFieldMenus extends LitElement {
 
   protected render(): TemplateResult {
     return html`
+      <span class="origin"></span>
       ${this._fields.map(
         (field) => html`
           <button
