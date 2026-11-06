@@ -24,6 +24,7 @@ import {
   hasCondition,
   JSON_STEP,
   RAW_STEP,
+  YAML_STEP,
   resolveFallback,
   takesStructure,
   variableValues,
@@ -215,6 +216,12 @@ function escapeForJsonString(value: string): string {
 // A placeholder standing as the whole JSON value takes the place of its quotes too, so it
 // can become any JSON. A string is the exception: it is left for the pass below to put
 // inside the quotes that are already there.
+/** Whether a value - text, or a mapping or list with text in it - still has a placeholder to fill. */
+function holdsPlaceholder(value: unknown): boolean {
+  if (typeof value === 'string') return PLACEHOLDER.test(value);
+  return !!value && typeof value === 'object' && PLACEHOLDER.test(JSON.stringify(value));
+}
+
 function asWholeValue(value: any, match: string): string {
   // `typeof null` is 'object', and JSON.stringify(null) is 'null', which is what a bare
   // `"[[name]]"` should become - so null belongs here rather than with the strings.
@@ -474,8 +481,10 @@ function substitutePass(
        * it finds no such entity, and `exists` says no.
        */
       // `raw` is the one that wants the value exactly as written, placeholders and all (#391).
+      const head = transform.split('|')[0];
       const input =
-        typeof value === 'string' && PLACEHOLDER.test(value) && transform.split('|')[0] !== RAW_STEP
+        head !== RAW_STEP &&
+        ((typeof value === 'string' && PLACEHOLDER.test(value)) || (head === YAML_STEP && holdsPlaceholder(value)))
           ? settle(name)
           : value;
       const unlisted = unlistedState(transform, input, hass, values, read);
@@ -608,6 +617,9 @@ function substitutePass(
       }
       if (chain.split('|').lastIndexOf(RAW_STEP) > 0) {
         return refuse(match, written as string, localize('warn.raw_not_first'), 'shape');
+      }
+      if (chain.split('|').lastIndexOf(YAML_STEP) > 0) {
+        return refuse(match, written as string, localize('warn.yaml_not_first'), 'shape');
       }
       if (!transformable(chain)) return refuse(match, written as string);
       if (whole) {
@@ -1396,7 +1408,9 @@ function deepReplace(
   const settle = (name: string): unknown => {
     if (shapedInputs.has(name)) return shapedInputs.get(name);
     const raw = values[name];
-    const below = deeper(name, raw);
+    // A mapping is settled too, for `yaml` (#391): its lines are written once, from the
+    // values as they end up, rather than filled in afterwards around the YAML's own quotes.
+    const below = deeper(name, holdsPlaceholder(raw) && typeof raw === 'object' ? JSON.stringify(raw) : raw);
     const value = below
       ? deepReplace(variableArray, {}, raw, templateName, hass, true, undefined, depth, undefined, shield, true, below)
       : raw;
