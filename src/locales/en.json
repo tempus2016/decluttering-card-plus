@@ -324,7 +324,7 @@
   "report.browser": "Browser",
   "report.error": "Error",
   "report.template": "Template \"{template}\"",
-  "report.warnings": "Warnings:",
+  "report.warnings": "Warnings",
   "report.waiting": "Debug report: waiting for the cards inside this one to build.",
   "report.ready": "Debug report: how this card was built, ready to copy into an issue.",
   "report.copy": "Copy",

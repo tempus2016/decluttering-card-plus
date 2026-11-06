@@ -324,7 +324,7 @@
   "report.browser": "Navegador",
   "report.error": "Erro",
   "report.template": "Modelo \"{template}\"",
-  "report.warnings": "Avisos:",
+  "report.warnings": "Avisos",
   "report.waiting": "Relatório de depuração: à espera que os cartões dentro deste sejam construídos.",
   "report.ready": "Relatório de depuração: como este cartão foi construído, pronto a copiar para uma issue.",
   "report.copy": "Copiar",

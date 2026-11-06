@@ -324,7 +324,7 @@
   "report.browser": "Browser",
   "report.error": "Fehler",
   "report.template": "Vorlage \"{template}\"",
-  "report.warnings": "Warnungen:",
+  "report.warnings": "Warnungen",
   "report.waiting": "Debug-Bericht: Warte darauf, dass die Karten in dieser Karte erstellt werden.",
   "report.ready": "Debug-Bericht: wie diese Karte erstellt wurde, bereit zum Kopieren in ein Issue.",
   "report.copy": "Kopieren",
