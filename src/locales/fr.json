@@ -887,5 +887,8 @@
   "error.page_template_kind": "La page nomme \"{template}\", qui ne construit pas de tableau de bord. Un modèle de page a son contenu sous dashboard:.",
   "error.page_with_views": "Ce tableau de bord a ses propres vues à côté de page: {template}. Un modèle de page construit tout le tableau de bord : retirez les vues ou la page.",
   "error.page_template_as_card": "\"{template}\" est un modèle de page - il construit tout un tableau de bord sous dashboard: - aucune carte ne peut donc l'utiliser. Pointez-y le page: d'une stratégie de tableau de bord.",
-  "warn.repeat_options_ignored": "decluttering-card-plus : {options} n'ont pas de sens pour un {kind} répété (\"{template}\") et sont ignorés."
+  "warn.repeat_options_ignored": "decluttering-card-plus : {options} n'ont pas de sens pour un {kind} répété (\"{template}\") et sont ignorés.",
+  "visibility.closed_unset": "{variable} n'est pas définie",
+  "visibility.closed_value": "{variable} vaut \"{value}\" ({condition})",
+  "visibility.not_built": "{label}, non construite"
 }

@@ -86,6 +86,8 @@ import { STRICT_OFF, StrictLevels } from './strict';
 import { isPageTemplate } from './page-template';
 import { canRepeat, ignoredRepeatOptions } from './repeat-kinds';
 import { manyConfig, MANY_TYPE } from './row-repeat';
+import { itemLabel, skippedConfig, templateVisibility } from './visibility';
+import './skipped';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -340,6 +342,14 @@ export abstract class DeclutteringElement extends LitElement {
    * counts as hidden, so it gives up its place the way a card hiding itself does.
    */
   protected _hiddenByFallback = false;
+  /*
+   * Set while the template's own `visibility:` keeps this card from being built (idea 45):
+   * it counts as hidden, the way `on_error: hide` does, and gives up its place.
+   */
+  protected _hiddenByVisibility = false;
+  // How many copies of the last repeat the template's `visibility:` kept from being built,
+  // so a change of edit mode knows there are slots to draw or take away.
+  protected _skippedCopies = 0;
 
   // Told every config this element has just been handed to build, for a card to look over.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -546,7 +556,7 @@ export abstract class DeclutteringElement extends LitElement {
   // attribute. Only the first of those was checked before, so a card hiding itself by any
   // other means left this wrapper occupying space in the layout - upstream issue #58.
   private _childIsHidden(): boolean {
-    if (this._hiddenByFallback) return true;
+    if (this._hiddenByFallback || this._hiddenByVisibility) return true;
     const thing = this._thing;
     if (!thing) return false;
     if (thing.hasAttribute('hidden')) return true;
@@ -583,6 +593,30 @@ export abstract class DeclutteringElement extends LitElement {
       );
     }
     this._templateName = templateName ?? this._templateName;
+    /*
+     * The template's own `visibility:` (idea 45), read before anything is built: a card it
+     * rules out hides itself, and in edit mode draws the dashed slot that says why. A
+     * template's own preview always shows the template.
+     */
+    this._skippedCopies = 0;
+    const seen = instance ? templateVisibility(templateConfig, variables, this._buildHass) : { visible: true as const };
+    if (!seen.visible) {
+      this._skippedCopies = 1;
+      if (this._previewing) {
+        this._hiddenByVisibility = false;
+        this._thingType = thingType;
+        this._setResolved('card', skippedConfig(templateName ?? '', seen.reason) as LovelaceThingConfig, '');
+        return;
+      }
+      this._hiddenByVisibility = true;
+      this._thingType = thingType;
+      this._displayHidden();
+      return;
+    }
+    if (this._hiddenByVisibility) {
+      this._hiddenByVisibility = false;
+      this._displayHidden();
+    }
     const quiet = !!instance && this._placeUnsettled;
     this._builtQuietly = quiet;
     const hush = quiet || (!!instance && this._libraryUnsettled);
@@ -1294,13 +1328,32 @@ export abstract class DeclutteringElement extends LitElement {
      * full of holes, which is what a dummy entity id was always standing in for.
      */
     const wanted = chosen.filter((copy) => hasRequiredVariables(copy.template, copy.item, config.variables));
+    /*
+     * Then the template's own `visibility:` (idea 45): a copy it rules out is never built.
+     * Edit mode draws a dashed slot where it would have been, naming the condition, so a
+     * missing room is a visible decision rather than a silent gap.
+     */
+    const entries = wanted.map((copy, index) => {
+      const seen = templateVisibility(copy.template, forEachVariables(copy.item, config.variables), this._buildHass);
+      return seen.visible
+        ? { copy }
+        : { skipped: skippedConfig(itemLabel(copy.item, index), seen.reason) as LovelaceThingConfig };
+    });
+    const shown = entries.map((entry) => entry.copy).filter((copy) => copy !== undefined) as typeof chosen;
+    const skipped = entries.length - shown.length;
+    this._skippedCopies = skipped;
+    if (this._hiddenByVisibility) {
+      this._hiddenByVisibility = false;
+      this._displayHidden();
+    }
+    const drawSkipped = skipped > 0 && this._previewing;
 
     /*
      * A repeat that matches nothing renders nothing, which is right - a dashboard should
      * not break because a room has no motion sensor yet - but silence is indistinguishable
      * from breakage. `empty:` is how a card says "there is nothing here" on purpose.
      */
-    if (!wanted.length && config.empty) {
+    if (!shown.length && config.empty && !drawSkipped) {
       this._forEach = undefined;
       this._lazyShown = false;
       this._widths?.disconnect();
@@ -1319,15 +1372,15 @@ export abstract class DeclutteringElement extends LitElement {
      * cannot know whether it was meant - only that it is worth a look.
      */
     const repeatName = config.template ?? BY_DOMAIN_KEY;
-    if (wanted.length > MANY_COPIES && this._manyWarnedFor !== wanted.length) {
-      this._manyWarnedFor = wanted.length;
+    if (shown.length > MANY_COPIES && this._manyWarnedFor !== shown.length) {
+      this._manyWarnedFor = shown.length;
       // A repeat that is not lazy yet is pointed at the setting that helps (the _lazy
       // string); one that is already lazy only builds what is near the screen, so building
       // is not the trouble - it is told about the scrolling instead.
       const key = config.lazy === true ? 'warn.many_copies_scroll' : 'warn.many_copies_lazy';
       warn({
         kind: 'many_copies',
-        message: localize(key, { template: repeatName, count: wanted.length }, this._hass),
+        message: localize(key, { template: repeatName, count: shown.length }, this._hass),
         template: repeatName,
         card: typeof config.name === 'string' ? config.name : undefined,
       });
@@ -1342,11 +1395,11 @@ export abstract class DeclutteringElement extends LitElement {
      * is built: a copy that fails one with `continue_rendering: false` fails the whole card,
      * the way a strict refusal does, and an error anywhere shows the report.
      */
-    const copies = wanted.map(({ item, name, template, entity }, index) => {
+    const copies = shown.map(({ item, name, template, entity }, index) => {
       // Underneath everything the copy sets: the entity its template was picked by, when
       // that came from the fallback template rather than the copy - see pickTemplate.
       const variables = withPickedEntity(
-        forEachVariables(item, config.variables, index, wanted.length),
+        forEachVariables(item, config.variables, index, shown.length),
         entity,
       ) as VariablesConfig[];
       const alerts = this._runChecks(variables, template, name, hush, config);
@@ -1377,7 +1430,7 @@ export abstract class DeclutteringElement extends LitElement {
       this._traceLabel = traceLabel(repeatName, own);
     }
     let missed = false;
-    const cards = wanted.map(({ item, name, template }, index) => {
+    const cards = shown.map(({ item, name, template }, index) => {
       const { variables, content } = copies[index];
       const trace = this._trace ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
       // What the item and its position set, as opposed to what the card set for every copy.
@@ -1418,7 +1471,7 @@ export abstract class DeclutteringElement extends LitElement {
       );
       if (trace) {
         const copyName = this._traceName(variables, template, name, config);
-        const copy = localize('trace.copy', { number: index + 1, count: wanted.length }, this._hass);
+        const copy = localize('trace.copy', { number: index + 1, count: shown.length }, this._hass);
         sections.push({
           label: copyName ? `${copy}: "${copyName}"` : copy,
           variables: this._workedRows(
@@ -1471,15 +1524,18 @@ export abstract class DeclutteringElement extends LitElement {
     const buildAll = this.preview || !!this._debug || this._trace || templateConfig.group !== undefined;
     const eager = eagerCopies(cards.length, config.lazy, config.lazy_eager, buildAll);
     this._lazyShown = eager < cards.length;
-    const laidOut = this._lazyShown
+    const built = this._lazyShown
       ? cards.map((card, index) => (index < eager ? card : { type: `custom:${LAZY_COPY_TAG}`, card }))
       : cards;
+    // In edit mode the slots stand where the skipped copies would have been.
+    let next = 0;
+    const laidOut = drawSkipped ? entries.map((entry) => ('copy' in entry ? built[next++] : entry.skipped)) : built;
 
     // The styles belong to the whole card rather than to any one copy, and resolve against
     // the real template so its declared defaults still apply. Choosing by domain, each
     // template chosen brings its own, and the card's own style comes once at the end.
     const styles = picker
-      ? [...new Map(wanted.map((copy) => [copy.name, copy.template])).entries()]
+      ? [...new Map(shown.map((copy) => [copy.name, copy.template])).entries()]
           .map(([name, template]) => this._resolveStyles(template, config.variables, undefined, name))
           .join('') +
         this._resolveStyles({ ...templateConfig, style: undefined }, config.variables, config.style, config.template)
@@ -1490,7 +1546,7 @@ export abstract class DeclutteringElement extends LitElement {
       minWidth: Number(config.min_column_width) || undefined,
       styles,
       group: picker
-        ? wanted.length > 0 && wanted.every((copy) => copy.template.group !== undefined)
+        ? shown.length > 0 && shown.every((copy) => copy.template.group !== undefined)
         : templateConfig.group !== undefined,
       chained: !!picker,
     };

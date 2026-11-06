@@ -14,6 +14,7 @@
     "src/page-template.ts",
     "src/repeat-kinds.ts",
     "src/slots.ts",
+    "src/visibility.ts",
     "src/templates.ts",
     "src/share.ts",
     "src/variables.ts",

@@ -226,7 +226,11 @@ export class DeclutteringCard extends DeclutteringElement {
    */
   protected updated(changedProperties: PropertyValues): void {
     super.updated(changedProperties);
-    if (changedProperties.has('preview') && this.preview && this._lazyShown) {
+    // Entering or leaving edit mode draws or takes away the slots a template's `visibility:`
+    // left (idea 45), which only a build knows how to do.
+    const lazyToShow = this.preview && this._lazyShown;
+    const skippedToDraw = this._skippedCopies > 0;
+    if (changedProperties.has('preview') && (lazyToShow || skippedToDraw)) {
       try {
         this._rebuild();
       } catch (err) {

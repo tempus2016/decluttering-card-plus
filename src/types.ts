@@ -137,6 +137,9 @@ export interface TemplateConfig {
   style?: string;
   /** How much of a sections grid a card built from this template asks for. */
   grid_options?: any;
+  /** Conditions on the variables that decide whether a copy is built at all - `variable:` with
+   *  `exists`, `equals`, `not_equals`, `in`, `not_in` or `matches`. Every one must hold. */
+  visibility?: unknown;
 }
 
 /** One of a template's `checks:` (#389). */
