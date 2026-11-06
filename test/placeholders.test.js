@@ -22,6 +22,26 @@ check(
   }),
   ['[[entity]]', '[[name|default:[[entity|area]]]]', '[[colour]]', '[[entity|slug]]'],
 );
+// #403: button-card JavaScript with a stray `[` once froze the editor (exponential backtracking).
+{
+  const js = (line) =>
+    `[[[\n  const lastUpdate = hass.states.sensor_mg_hs_phev_trophy_last_update_time;\n  ${line}\n  return x;\n]]]`;
+  const started = Date.now();
+  const found = [
+    "const firstCharacter = 'test'[0];",
+    "const s = hass.states['sensor.mg_hs_phev_trophy_last_update_time']?.state;",
+    "if (!['unknown','unavailable'].includes(lastUpdate)) return 1;",
+    "if (scanLockKey.includes('[[')) return 2;",
+  ].map((line) => listPlaceholders({ card: { type: 'custom:button-card', custom_fields: { test: js(line) } } }));
+  check('button-card JavaScript with brackets lists quickly', Date.now() - started < 500, true);
+  // A quoted `'[['` really does open a placeholder up to the block's `]]`, as the card itself reads it.
+  check('and offers no placeholder from JavaScript indexing or arrays', found.slice(0, 3), [[], [], []]);
+  check(
+    'a real placeholder next to it is still found',
+    placeholdersIn("[[[ return 'test'[0] + '[[entity]]'; ]]] [[a|default:[[b|default:[[c]]]]]]"),
+    ['[[entity]]', '[[a|default:[[b|default:[[c]]]]]]'],
+  );
+}
 check('nothing in, nothing out', [listPlaceholders(undefined), listPlaceholders('x')], [[], []]);
 
 // The editor's playground: the template's let and defaults apply, hass is the real one.

@@ -1,7 +1,8 @@
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE, parentsOf, templatesNamedBy } from './templates';
 import { localize } from './localize';
-import { DEFAULTS_ALIAS, templateDefaults } from './variables';
-import { shareInfo, unquotedVersions } from './sharing';
+import { DEFAULTS_ALIAS, OWN_DEFAULTS, normaliseVariables, templateDefaults, usedVariables } from './variables';
+import type { VariablesConfig } from './types';
+import { requirementsOf, shareInfo, unquotedVersions } from './sharing';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -72,6 +73,46 @@ export function scanDependencies(config: any): Dependencies {
   };
 }
 
+// The name a placeholder starts with: `camera_entry` in `[[camera_entry|with:entity=x]]`.
+const PLACEHOLDER_HEAD = /\[\[!?([A-Za-z0-9_-]+)/g;
+
+/*
+ * The item templates a template fills in (#399). `with:` and `repeat:` name one as the head
+ * of a placeholder - `[[camera_entry|with:...]]`, or a bare `[[camera_entry]]` - so they are
+ * found by name among the dashboard's templates rather than by card type. A head that is no
+ * item template here is a variable, and goes unsaid.
+ */
+function itemTemplateRefs(config: any, templates: Record<string, any>): string[] {
+  const text = JSON.stringify(config ?? null);
+  const found: string[] = [];
+  for (let match = PLACEHOLDER_HEAD.exec(text); match !== null; match = PLACEHOLDER_HEAD.exec(text)) {
+    const name = match[1];
+    if (found.includes(name) || !Object.prototype.hasOwnProperty.call(templates, name)) continue;
+    const template = templates[name];
+    if (template && typeof template === 'object' && 'item' in template) found.push(name);
+  }
+  PLACEHOLDER_HEAD.lastIndex = 0;
+  return found;
+}
+
+/*
+ * A template name built from a placeholder - `template: '[[kind]]_tile'` - is picked when the
+ * card builds, so an export cannot know which one it needs (#399). It is not a name to go
+ * looking for: every template whose name fits the pattern is one it could pick.
+ */
+function isPicked(name: string): boolean {
+  return name.includes('[[');
+}
+
+function fitsPicked(pattern: string, names: string[]): string[] {
+  const parts = pattern.split(/\[\[[^\]]*\]\]/);
+  // Nothing written around the placeholder fits every template there is, which says nothing.
+  if (!parts.join('')) return [];
+  const escaped = parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.+');
+  const fits = new RegExp(`^${escaped}$`);
+  return names.filter((name) => fits.test(name));
+}
+
 /**
  * A template ready to be handed to someone else: the config as it will be written out,
  * and the things they need to know that the config cannot tell them.
@@ -99,15 +140,32 @@ export function buildExport(
 
   const { customTypes, templateRefs } = scanDependencies(config);
 
+  const bundled = new Set<string>();
+  const askedFor = new Set<string>();
+  const resolvedSelf = templates?.[config?.template];
+  const withValues = (written: any, resolved: any): any => {
+    const out = bundleValues(written, resolved);
+    for (const name of out.bundled) bundled.add(name);
+    for (const name of out.askedFor) askedFor.add(name);
+    return out.template;
+  };
+  if (resolvedSelf) {
+    const out = withValues({ ...config, default: payload.default }, resolvedSelf);
+    if (out.default !== undefined) payload.default = out.default;
+  }
+
   /*
    * With the dashboard's templates to hand, the ones this one uses ride along under
    * `includes:`, transitively - a bundle that works on arrival instead of a note saying
    * what else to go and find. The note stays for anything that could not be found.
    */
   const missing: string[] = [];
+  const picked: string[] = [];
+  // Whether any template here fitted a picked name and went along because of it.
+  let pickedFound = false;
   if (templates) {
     const includes: Record<string, any> = {};
-    const queue = [...templateRefs];
+    const queue = [...templateRefs, ...itemTemplateRefs(config, templates)];
     /*
      * The templates it names under `related:` go too, and theirs in turn, though nothing calls
      * them: that is what the list is for. One that is not here is not missing anything this
@@ -118,14 +176,21 @@ export function buildExport(
     queue.push(...related);
     while (queue.length) {
       const name = queue.shift() as string;
-      if (name in includes) continue;
+      if (name in includes || name === self) continue;
+      if (isPicked(name)) {
+        if (!picked.includes(name)) picked.push(name);
+        const fits = fitsPicked(name, Object.keys(templates)).filter((each) => each !== self);
+        if (fits.length) pickedFound = true;
+        queue.push(...fits);
+        continue;
+      }
       const found = templates[name];
       if (!found) {
         if (!related.has(name)) missing.push(name);
         continue;
       }
-      includes[name] = withoutSource(found);
-      queue.push(...scanDependencies(found).templateRefs);
+      includes[name] = withValues(asWritten(withoutSource(found)), found);
+      queue.push(...scanDependencies(found).templateRefs, ...itemTemplateRefs(found, templates));
       for (const each of shareInfo(found).related) {
         if (each === self || related.has(each)) continue;
         related.add(each);
@@ -134,18 +199,56 @@ export function buildExport(
     }
     if (Object.keys(includes).length) payload.includes = includes;
   } else {
-    missing.push(...templateRefs);
+    for (const name of templateRefs) (isPicked(name) ? picked : missing).push(name);
+  }
+
+  /*
+   * The custom cards it needs - its own and the included templates' - go into `requires:`
+   * rather than a comment (#399). A comment is gone the first time a dashboard edited in the
+   * UI saves, where `requires:` stays with the template and is checked when it is installed.
+   * Cards the author already listed are left as written.
+   */
+  const needed = new Set(customTypes);
+  for (const included of Object.values<any>(payload.includes ?? {})) {
+    for (const type of scanDependencies(included).customTypes) needed.add(type);
+  }
+  const listed = new Set<string>();
+  for (const each of requirementsOf(payload))
+    if (each.kind === 'custom_card') each.any.forEach((name) => listed.add(name));
+  const add = [...needed].map((type) => type.replace(/^custom:/, '')).filter((name) => !listed.has(name));
+  if (add.length) {
+    const written = payload.requires;
+    const requires = written && typeof written === 'object' && !Array.isArray(written) ? { ...written } : {};
+    requires.custom_cards = [...([] as unknown[]).concat(requires.custom_cards ?? []), ...add.sort()];
+    payload.requires = requires;
+    reorder(payload);
   }
 
   const notes: string[] = [];
-  if (customTypes.length) notes.push(localize('share.requires_custom_cards', { types: customTypes.join(', ') }));
   if (missing.length) {
     notes.push(localize('share.uses_other_templates', { names: missing.join(', ') }));
   }
+  if (picked.length) {
+    const key = pickedFound ? 'share.picked_templates_found' : 'share.picked_templates';
+    notes.push(localize(key, { names: picked.join(', ') }));
+  }
+  if (bundled.size) notes.push(localize('share.bundled_values', { names: [...bundled].sort().join(', ') }));
+  if (askedFor.size) notes.push(localize('share.setup_values_left_out', { names: [...askedFor].sort().join(', ') }));
   const unquoted = unquotedVersions(config);
   if (unquoted.length) notes.push(localize('share.version_unquoted', { keys: unquoted.join(', ') }));
 
   return { payload, notes };
+}
+
+// Puts the keys back in read order after one was added late, leaving the rest where they were.
+function reorder(payload: Record<string, any>): void {
+  const entries = Object.entries(payload);
+  for (const [key] of entries) delete payload[key];
+  const rank = (key: string): number => {
+    const at = EXPORT_KEY_ORDER.indexOf(key);
+    return at === -1 ? EXPORT_KEY_ORDER.length : at;
+  };
+  for (const [key, value] of entries.sort((a, b) => rank(a[0]) - rank(b[0]))) payload[key] = value;
 }
 
 /*
@@ -161,6 +264,55 @@ export function withoutSource(template: any): any {
   const rest = { ...template };
   delete rest.source;
   return rest;
+}
+
+/*
+ * The dashboard's templates come with its `decluttering_defaults` - and the library's -
+ * folded into their `default:`, which is how a card builds with them. Those values are the
+ * dashboard's, not the template's, and every one of them was riding out with every template
+ * carried under `includes:`, whether it used them or not - a password kept there with it
+ * (#399). An included template goes out with the defaults written on it and nothing else.
+ */
+function asWritten(template: any): any {
+  if (!template || typeof template !== 'object' || !(OWN_DEFAULTS in template)) return template;
+  const own = template[OWN_DEFAULTS];
+  const out = { ...template };
+  if (own === undefined || own === null || (Array.isArray(own) && !own.length)) delete out.default;
+  else out.default = own;
+  return out;
+}
+
+/*
+ * The dashboard's values a template uses, brought into its own `default:` (#399). A template
+ * that reads `[[frigate_port]]` from the dashboard's decluttering_defaults otherwise arrives
+ * with nothing for it. Only names it uses go, and only ones its own defaults do not already
+ * set, after them, so its own still win. A name in `setup:` stays behind: it is asked for on
+ * install, which is where a password or anything else personal belongs.
+ */
+function bundleValues(written: any, resolved: any): { template: any; bundled: string[]; askedFor: string[] } {
+  const none = { template: written, bundled: [], askedFor: [] };
+  if (!written || typeof written !== 'object' || !resolved || !(OWN_DEFAULTS in resolved)) return none;
+  const own = normaliseVariables(templateDefaults(written));
+  const shared = normaliseVariables(resolved.default).slice(normaliseVariables(resolved[OWN_DEFAULTS]).length);
+  if (!shared.length) return none;
+  const ownNames = new Set(own.map((entry) => Object.keys(entry)[0]));
+  const used = new Set(usedVariables({ ...written, default: [...own, ...shared] }));
+  const setup = new Set(shareInfo(written).setup);
+  const take: VariablesConfig[] = [];
+  const bundled: string[] = [];
+  const askedFor: string[] = [];
+  for (const entry of shared) {
+    const name = Object.keys(entry)[0];
+    if (!used.has(name) || ownNames.has(name) || bundled.includes(name) || askedFor.includes(name)) continue;
+    if (setup.has(name)) {
+      askedFor.push(name);
+      continue;
+    }
+    take.push(entry);
+    bundled.push(name);
+  }
+  if (!take.length) return { template: written, bundled, askedFor };
+  return { template: { ...written, default: [...own, ...take] }, bundled, askedFor };
 }
 
 /** A pasted template with any `source:` stamp taken off it and off each template it carries. */

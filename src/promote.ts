@@ -128,3 +128,62 @@ export function promoteSetting(template: any, path: SettingPath, name: string): 
     },
   };
 }
+
+export interface PromoteOptions {
+  /** The label the card editor shows; none when empty. */
+  label?: string;
+  required?: boolean;
+  /** A default other than the value the setting had. */
+  default?: unknown;
+  description?: string;
+}
+
+/**
+ * `promoteSetting` with the declaration filled in from the field menu's dialog (idea 24):
+ * the label, whether it is required, and a default other than the old value when asked.
+ */
+export function promoteSettingAs(
+  template: any,
+  path: SettingPath,
+  name: string,
+  options: PromoteOptions,
+): PromoteResult {
+  const result = promoteSetting(template, path, name);
+  if (!result.ok) return result;
+  const declared = declarationList(result.template.variables);
+  const index = declared.findIndex((entry) => entry?.name === name);
+  if (index === -1) return result;
+  const declaration: VariableDeclaration = { ...declared[index] };
+  if (options.label) declaration.label = options.label;
+  if (options.required) declaration.required = true;
+  if (options.description) declaration.description = options.description;
+  if (options.default !== undefined) declaration.default = options.default;
+  const variables = Array.isArray(result.template.variables)
+    ? declared.map((entry, at) => (at === index ? declaration : entry))
+    : { ...result.template.variables, [name]: withoutName(declaration) };
+  return { ok: true, template: { ...result.template, variables } };
+}
+
+/**
+ * The setting at `path` made to read an existing variable - `[[name]]` - without declaring
+ * anything, so two fields can share one variable rather than making `name_2`.
+ */
+export function reuseVariable(template: any, path: SettingPath, name: string): PromoteResult {
+  if (!VALID_NAME.test(name)) return { ok: false, error: 'name_invalid' };
+  const key = contentKey(template);
+  const value = key ? valueAt(template[key], path) : undefined;
+  if (!key || value === undefined || value === null || typeof value === 'object') return { ok: false, error: 'gone' };
+  return { ok: true, template: { ...template, [key]: setAt(template[key], path, `[[${name}]]`) } };
+}
+
+/** The value a setting path holds in the template's content, for the field menu to match against. */
+export function settingValue(template: any, path: SettingPath): unknown {
+  const key = contentKey(template);
+  return key ? valueAt(template[key], path) : undefined;
+}
+
+function withoutName(declaration: VariableDeclaration): Record<string, unknown> {
+  const rest: Record<string, unknown> = { ...declaration };
+  delete rest.name;
+  return rest;
+}

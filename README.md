@@ -88,7 +88,9 @@ here.
 - [Variables][wiki-variables] with defaults, fallbacks (`[[name|default:Unnamed]]`),
   conditions (`[[name|if:other]]`), transforms (`[[room|slug]]`, `[[watts|div:1000]]`),
   values read from Home Assistant (`[[entity|friendly_name]]`, its area, floor, device or
-  labels), and values a whole dashboard, view or section sets for every card in it.
+  labels), whether an integration, card or icon set is installed (`[[popup|if_card_exists]]`),
+  quoted text (`[["Kitchen"|upper]]`), and values a whole dashboard, view or section sets for
+  every card in it.
 - [Repeating a template][wiki-repeating] — one copy per item in a list, or per entity, area,
   device, floor or label Home Assistant knows about, filtered, sorted and grouped.
   [Whole sections or views][wiki-repeating-sections] can be repeated too.
@@ -96,7 +98,9 @@ here.
   card's own lists, where a nested card cannot go.
 - [Sharing templates between dashboards][wiki-sharing-between], or from one library
   dashboard to all of them, plus templates [shared by other people][discussions-share],
-  carrying their author, licence, requirements and the questions to ask on install.
+  carrying their author, licence, requirements and the questions to ask on install. An
+  export takes the item templates and dashboard values it uses with it, and lists the custom
+  cards it needs under `requires:`.
 - Templates built on templates with `extends:`, and one-off tweaks with a card's own
   `card:` block laid over what its template builds.
 - [Visibility][wiki-visibility] and [styling][wiki-styling] inside a template.
@@ -105,7 +109,10 @@ here.
   the last 20 deleted or replaced templates to restore. Variables are edited as rows, with
   help beside each field, and a template can show or hide its fields depending on the others.
   The card editor shows each field's default, sets up a repeat as a form with its filters,
-  order and a live count, and edits `template_by_domain` as a table.
+  order and a live count, and edits `template_by_domain` as a table. Templates are picked from
+  a search box with descriptions and use counts, any field on the Card tab can be made a
+  variable from its own menu, and the code editor colours placeholders and completes them
+  after `[[`.
 - A health panel for missing templates, unset variables and unused templates, and
   `debug: report` to write up what a card built, with what each variable worked out to and
   how, ready to paste into an issue.

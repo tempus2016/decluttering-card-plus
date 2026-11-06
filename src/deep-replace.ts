@@ -6,12 +6,13 @@ import { warn, WarningKind } from './warnings';
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import {
   forEachItems,
+  unwrapNestedOr,
   answersUnset,
   applyTransform,
   isEmptyMapping,
   forEachVariables,
   HA_MARK,
-  IF_EXISTS_STEP,
+  isIfExistsStep,
   isStructureStep,
   normaliseVariables,
   FLAT_STEP,
@@ -31,6 +32,7 @@ import {
   hasEscape,
   isFallback,
   orTarget,
+  quotedText,
   isJsonNumber,
   PLACEHOLDER,
   insideButtonCardJs,
@@ -329,6 +331,14 @@ function noted(trace: BuildTrace | undefined, placeholder: string, out: string, 
  */
 const SITE = new RegExp(SITE_SOURCE, 'g');
 
+// A placeholder whose name is in quotes, as a template's JSON spells it (#398).
+const QUOTED_HEAD = /\[\[(?:\\"|')/;
+
+// A placeholder as its author wrote it, for saying so: the template's JSON spells a quote `\"`.
+function shown(inside: string): string {
+  return inside.replace(/\\"/g, '"');
+}
+
 /** What one scan of the text finds at a site, as String.replace hands it over. */
 type SiteMatch = [
   match: string,
@@ -387,8 +397,14 @@ function substitutePass(
 
   const site = (...found: SiteMatch): string => {
     const [match, lead, name, rawTransform, rawOptional, trail] = found;
-    if (!byName.has(name)) return match;
-    const value = byName.get(name);
+    /*
+     * A quoted name is its own value (#398): `[["sensor.hall"|if_exists]]` needs no variable.
+     * The text here is JSON, where somebody's double quote is `\"` - a bare `"` is JSON's own,
+     * as in the list of lists `[["a"]]`, and is never read as one.
+     */
+    const literal = name.startsWith('"') ? undefined : quotedText(name);
+    if (literal === undefined && !byName.has(name)) return match;
+    const value = literal ?? byName.get(name);
     // A registry copy's value is Home Assistant's; a style shields it as it does a resolver's.
     const fromHa = !!haNames?.has(name);
     // The placeholder itself, without whichever quotes the scan took with it.
@@ -467,7 +483,7 @@ function substitutePass(
          * an optional placeholder drops out quietly, and one that stays names the entity id
          * it looked for rather than the variable it started from.
          */
-        if (steps[upTo - 1] === IF_EXISTS_STEP) {
+        if (isIfExistsStep(steps[upTo - 1])) {
           if (optional) return match;
           const id = upTo === 1 ? input : applyTransform(steps.slice(0, upTo - 1).join('|'), input, hass, values, read);
           return refuse(match, written, localize('warn.nothing_for', { value: id }), 'missing');
@@ -1250,7 +1266,7 @@ function deepReplace(
   // it come from the compiled form (idea 3); anything else - a value, a style string - is
   // stringified here as it always was.
   const built = content && typeof content === 'object' ? compile(content) : undefined;
-  let jsonConfig = built ? built.json : JSON.stringify(content);
+  let jsonConfig = built ? built.json : unwrapNestedOr(JSON.stringify(content));
   let pieces = built?.pieces;
   const haNames = extras?.haNames;
   // How much the text may still grow, counted across every fill this build makes.
@@ -1295,7 +1311,7 @@ function deepReplace(
     return out;
   };
   if (shield === undefined && hasStyleKey(content)) {
-    jsonConfig = JSON.stringify(shieldStyles(content));
+    jsonConfig = unwrapNestedOr(JSON.stringify(shieldStyles(content)));
     // The compiled sites belong to the text as written, not to this one.
     pieces = undefined;
   }
@@ -1379,6 +1395,8 @@ function deepReplace(
       // The compiled sites describe the text as written, so only the very first pass can use
       // them: a later pass, or a round after a fallback brought text in, has to scan (#235).
       pieces = undefined;
+      // A value brought in may hold an `or:[[name]]` of its own.
+      jsonConfig = unwrapNestedOr(jsonConfig);
       passes += 1;
       // Every remaining placeholder is one no variable defines, so further passes cannot help.
       if (jsonConfig === before) break;
@@ -1400,15 +1418,18 @@ function deepReplace(
    * so the passes go over that again (#235). Inside a value a condition reads, nothing comes
    * after this build to finish them, and `exists` was asked about half an entity id.
    */
+  // A quoted name is a value of its own (#398), so a template with no variables at all
+  // still has something to substitute when it has one.
+  const substitutes = variableArray.length > 0 || QUOTED_HEAD.test(jsonConfig);
   let fallbacks = false;
   for (let blanking = 0; ; blanking += 1) {
     for (let round = 0; ; round += 1) {
-      if (variableArray.length) substituteAll();
+      if (substitutes) substituteAll();
       if (!hasFallback(jsonConfig)) break;
       fallbacks = true;
       const before = jsonConfig;
       jsonConfig = fallbackPass(jsonConfig, values, read, hass, trace, shield);
-      if (jsonConfig === before || !variableArray.length || round >= MAX_FALLBACK_ROUNDS) break;
+      if (jsonConfig === before || !substitutes || round >= MAX_FALLBACK_ROUNDS) break;
       if (!PLACEHOLDER.test(jsonConfig) || budget.left <= 0) break;
     }
     // An empty optional inside another placeholder is nothing, now rather than at the end,
@@ -1419,8 +1440,8 @@ function deepReplace(
     jsonConfig = blanked;
   }
 
-  if (variableArray.length && refused.size) {
-    const each = [...refused].map(([placeholder, refusal]) => `[[${placeholder}]] (${refusal.text})`);
+  if (substitutes && refused.size) {
+    const each = [...refused].map(([placeholder, refusal]) => `[[${shown(placeholder)}]] (${refusal.text})`);
     // The ways a chain gives up read differently, so say whichever apply rather than a
     // sentence that only half fits.
     const reasons = new Set([...refused.values()].map((refusal) => refusal.reason));
@@ -1487,7 +1508,10 @@ function deepReplace(
     const [head, ...steps] = withoutOptional(inside).split('|');
     const unknown = steps.find((step) => !knownStep(step));
     if (unknown === undefined) continue;
-    const given = Object.prototype.hasOwnProperty.call(values, head) && read(head) !== undefined;
+    // A quoted name is a value of its own (#398), so it is always given.
+    const given =
+      quotedText(head) !== undefined ||
+      (Object.prototype.hasOwnProperty.call(values, head) && read(head) !== undefined);
     if (given || steps.some(isFallback)) unknownSteps.set(inside, unknown);
   }
   if (unknownSteps.size) {
@@ -1495,7 +1519,7 @@ function deepReplace(
       .map(([inside, step]) => {
         const closest = closestStep(step);
         return (
-          localize('warn.unknown_step_one', { placeholder: `[[${inside}]]`, step }) +
+          localize('warn.unknown_step_one', { placeholder: `[[${shown(inside)}]]`, step: shown(step) }) +
           (closest ? localize('error.did_you_mean', { closest }) : '')
         );
       })
@@ -1517,11 +1541,11 @@ function deepReplace(
     (inside) => !asksState(inside) && !unknownSteps.has(inside) && !noTemplate.includes(inside),
   );
   if (unset.length) {
-    const which = unset.map((name) => `[[${name}]]`).join(', ');
+    const which = unset.map((name) => `[[${shown(name)}]]`).join(', ');
     const whose = templateName
       ? localize('warn.unresolved_template', { name: templateName })
       : localize('warn.unresolved_this');
-    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${unset[0]}` }), 'unset');
+    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${shown(unset[0])}` }), 'unset');
   }
 
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be
@@ -1540,7 +1564,7 @@ function deepReplace(
    */
   const hasOptional = new RegExp(`\\[\\[[^[\\]]*\\${'?'}\\]\\]`).test(jsonConfig);
   const marked = jsonConfig.includes(HA_MARK);
-  const nothingToDo = !variableArray.length && !hasOptional && !fallbacks && !hasEscape(jsonConfig) && !marked;
+  const nothingToDo = !substitutes && !hasOptional && !fallbacks && !hasEscape(jsonConfig) && !marked;
   if (nothingToDo) return content;
 
   const parsed = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig), trace?.dropped) : JSON.parse(jsonConfig);

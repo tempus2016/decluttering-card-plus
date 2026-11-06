@@ -1,6 +1,8 @@
 import { TemplateConfig, VariablesConfig } from './types';
 import {
   conditionTarget,
+  orTarget,
+  quotedText,
   ESCAPE,
   forEachItems,
   getDeclarations,
@@ -44,9 +46,12 @@ export function readsIn(value: unknown): string[] {
       const bare = inside.endsWith('?') ? inside.slice(0, -1) : inside;
       const [head, ...steps] = bare.split('|');
       const name = head.endsWith('?') ? head.slice(0, -1) : head;
-      for (const each of [name, name.split('.')[0]]) if (each && each !== STAND_IN) names.add(each);
+      // A quoted name is text, not a variable (#398).
+      if (quotedText(name) === undefined) {
+        for (const each of [name, name.split('.')[0]]) if (each && each !== STAND_IN) names.add(each);
+      }
       for (const step of steps) {
-        const target = step.startsWith('or:') ? step.slice(3) : conditionTarget(step);
+        const target = step.startsWith('or:') ? orTarget(step) : conditionTarget(step);
         if (target && target !== STAND_IN) names.add(target);
       }
       return STAND_IN;

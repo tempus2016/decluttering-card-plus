@@ -1,4 +1,4 @@
-import { LitElement, html, TemplateResult, CSSResult } from 'lit';
+import { LitElement, html, TemplateResult, CSSResult, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig, FormSchemaEntry } from './types';
@@ -15,6 +15,7 @@ import {
   withGroupCards,
   moveItem,
   itemTemplatesOf,
+  parentsOf,
 } from './templates';
 import { contentKey, listSettings, nameForSetting, namesInUse, promoteSetting, SettingPath } from './promote';
 import {
@@ -27,6 +28,7 @@ import {
 } from './variables';
 import { getLovelaceConfig, getLovelacePanel } from './utils';
 import { localize, onLanguageLoaded } from './localize';
+import { sameConfig } from './undo';
 import { definedNames, lintTemplate } from './lint';
 import { getThingType, isVariablesShape, loadCardEditorPicker, setOrDelete } from './shared';
 import { THING_STUBS, DRAG_PATH, textField, loadRowEditor, saveDashboardWith } from './template-editor/common';
@@ -36,6 +38,8 @@ import './template-editor/declarations';
 import './template-editor/example-strip';
 import './template-editor/placeholder-tool';
 import './template-editor/help-icon';
+import './template-editor/field-menus';
+import './template-editor/code-editor-hooks';
 import './template-editor/usages-tab';
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
@@ -282,12 +286,23 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
             `
           : this._selectedTab === 'card'
             ? html`
+                ${this._renderCardFromParents()}
                 <hui-card-element-editor
                   .hass=${this.hass}
                   .lovelace=${this.lovelace}
-                  .value=${this._config.card}
+                  .value=${this._cardForEditor()}
                   @config-changed=${this._cardChanged}
                 ></hui-card-element-editor>
+                <decluttering-field-menus
+                  .hass=${this.hass}
+                  .config=${this._config}
+                  @config-changed=${this._childConfigChanged}
+                ></decluttering-field-menus>
+                <decluttering-code-hooks
+                  .hass=${this.hass}
+                  .lovelace=${this._savedLovelace}
+                  .config=${this._config}
+                ></decluttering-code-hooks>
               `
             : this._selectedTab === 'change_card'
               ? html`
@@ -370,6 +385,34 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
           : html``
       }
     `;
+  }
+
+  /*
+   * A template that builds on another may write no `type:` of its own - `extends: warm_tile`
+   * and a colour - and Home Assistant's element editor throws on a card with no type. The
+   * tab then edits the card as the parents leave it, and says so: an edit here writes the
+   * whole card into this template, over the parents' version.
+   */
+  private _cardForEditor(): unknown {
+    const own = this._config?.card;
+    if (!this._config || (own && typeof own === 'object' && typeof (own as { type?: unknown }).type === 'string'))
+      return own;
+    const resolved = collectTemplates(this._savedLovelace, undefined, this._config)[this._config.template];
+    const merged = resolved?.card;
+    return merged && typeof merged === 'object' && typeof (merged as { type?: unknown }).type === 'string'
+      ? merged
+      : own;
+  }
+
+  private _renderCardFromParents(): TemplateResult {
+    const own = this._config?.card;
+    if (!this._config || (own && typeof own === 'object' && typeof (own as { type?: unknown }).type === 'string'))
+      return html``;
+    const parents = parentsOf(this._config);
+    if (!parents.length) return html``;
+    return html`<ha-alert alert-type="info">
+      ${localize('template_editor.card_from_parents', { parents: parents.join(', ') }, this.hass)}
+    </ha-alert>`;
   }
 
   /*
@@ -890,6 +933,15 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     ev.stopPropagation();
     if (!this._config) return;
 
+    /*
+     * With no card type of its own, the tab shows the card the parents leave, and Home
+     * Assistant's element editor hands that straight back as it loads. That is no edit: taking
+     * it would write the parents' card into this template and cut it off from them on save.
+     */
+    const own = this._config.card;
+    const ownType = own && typeof own === 'object' && typeof (own as { type?: unknown }).type === 'string';
+    if (!ownType && sameConfig(ev.detail.config, this._cardForEditor())) return;
+
     this._suggestion = undefined;
     this._suggestedNothing = false;
     const config = { ...this._config, card: ev.detail.config };
@@ -952,5 +1004,15 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     super.disconnectedCallback();
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
+  }
+
+  protected updated(changed: PropertyValues): void {
+    super.updated(changed);
+    // The field menus (idea 24) and the code hooks (ideas 25, 27) watch Home Assistant's card editor.
+    const cardEditor = this.renderRoot.querySelector('hui-card-element-editor') ?? undefined;
+    for (const tag of ['decluttering-field-menus', 'decluttering-code-hooks']) {
+      const watcher = this.renderRoot.querySelector(tag) as (HTMLElement & { target?: Element }) | null;
+      if (watcher && watcher.target !== cardEditor) watcher.target = cardEditor;
+    }
   }
 }

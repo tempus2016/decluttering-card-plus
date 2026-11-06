@@ -59,6 +59,9 @@
     "src/placeholders.ts",
     "src/help.ts",
     "src/card-editor/repeat-builder.ts",
-    "src/card-editor/by-domain.ts"
+    "src/card-editor/by-domain.ts",
+    "src/card-editor/template-picker.ts",
+    "src/card-editor/generic-picker.ts",
+    "src/code-hooks.ts"
   ]
 }

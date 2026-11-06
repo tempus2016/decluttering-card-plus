@@ -1,4 +1,4 @@
-import { OPTIONAL_SUFFIX, TRANSFORM_SUFFIX } from './variables';
+import { OPTIONAL_SUFFIX, TRANSFORM_SUFFIX, unwrapNestedOr } from './variables';
 
 /*
  * A template compiled once (idea 3). Substitution works on the JSON text of a template's
@@ -72,7 +72,7 @@ export function splitSites(json: string): Piece[] {
 export function compile(content: object): Compiled {
   let found = compiled.get(content);
   if (!found) {
-    const json = JSON.stringify(content);
+    const json = unwrapNestedOr(JSON.stringify(content));
     found = { json, pieces: splitSites(json) };
     compiled.set(content, found);
     compiles += 1;

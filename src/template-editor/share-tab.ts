@@ -1081,7 +1081,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     const yaml = (editor as any)?.yaml;
     if (!yaml) return;
 
-    const { notes } = buildExport(this._config);
+    const { notes } = buildExport(this._config, collectTemplates(this._savedLovelace));
     // The notes ride along as comments, so they are still there when the text is pasted
     // somewhere that cannot show them. YAML ignores them on the way back in.
     const text = [...notes.map((note) => `# ${note}`), yaml].join('\n');
@@ -1108,7 +1108,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const yaml = (this.renderRoot.querySelector('#export') as any)?.yaml;
     if (!yaml) return;
-    const { notes } = buildExport(this._config);
+    const { notes } = buildExport(this._config, collectTemplates(this._savedLovelace));
     const text = [...notes.map((note) => `# ${note}`), yaml].join('\n');
     const link = document.createElement('a');
     link.href = URL.createObjectURL(new Blob([text], { type: 'text/yaml' }));

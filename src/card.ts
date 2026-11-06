@@ -27,7 +27,8 @@ import {
   warnIfDeprecated,
 } from './templates';
 import { trashHass, watchForTrash } from './trash';
-import { forEachItems, usesResolver, usesTranslate, withInheritedVariables } from './variables';
+import { forEachItems, usesInstalled, usesResolver, usesTranslate, withInheritedVariables } from './variables';
+import { installedKey, whenInstalledChanges } from './installed';
 import { chainOf, describeCycle, describeTooDeep, findCycle, MAX_NESTING } from './cycles';
 import { customTags, OnError, onErrorOf, undefinedElements } from './on-error';
 import { isRegistrySource, registryKey, resolveRegistryItems, sameRegistry } from './registry';
@@ -83,9 +84,13 @@ export class DeclutteringCard extends DeclutteringElement {
     templateConfig: TemplateConfig;
     config: DeclutteringCardConfig;
     translates?: boolean;
+    // Asks what is installed (#397), so it builds again when a card or an icon set turns up.
+    installs?: boolean;
     picker?: TemplatePicker;
   };
   private _resolverRegistry?: unknown[];
+  // Stops this card hearing that a custom card it asked about was defined - see installed.ts.
+  private _installedStop?: () => void;
   // Stops this card hearing that the category registry was fetched again - see categories.ts.
   private _categoriesStop?: () => void;
 
@@ -126,12 +131,26 @@ export class DeclutteringCard extends DeclutteringElement {
     // Home Assistant takes cards off the page and puts them back while it lays a view out,
     // which stops the card hearing about categories (below); put back, it starts again.
     if (this._hass && this._fromRegistry) this._loadLabelsIfWanted(this._hass);
+    this._listenForInstalled();
   }
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
     this._categoriesStop?.();
     this._categoriesStop = undefined;
+    this._installedStop?.();
+    this._installedStop = undefined;
+  }
+
+  /*
+   * A custom card's script can load after a card asking `[[popup|card_exists]]` has built,
+   * and a hass update need not follow it - so the card hears about it and builds again.
+   */
+  private _listenForInstalled(): void {
+    if (!this._fromResolvers?.installs || this._installedStop || !this.isConnected) return;
+    this._installedStop = whenInstalledChanges(() => {
+      if (this._hass) this._rebuildForResolvers(this._hass);
+    });
   }
 
   constructor() {
@@ -543,8 +562,15 @@ export class DeclutteringCard extends DeclutteringElement {
     const { itemTemplates } = this._buildExtras();
     const resolvers = picker ? picker.resolvers : usesResolver(templateConfig, itemTemplates);
     this._fromResolvers = resolvers
-      ? { templateConfig, config, picker, translates: usesTranslate(templateConfig, itemTemplates) }
+      ? {
+          templateConfig,
+          config,
+          picker,
+          translates: usesTranslate(templateConfig, itemTemplates),
+          installs: usesInstalled(templateConfig, itemTemplates),
+        }
       : undefined;
+    this._listenForInstalled();
 
     // A single mapping counts as a list of one, the same forgiveness `variables` gets. A
     // written-out list wins over a registry source: it is the more particular of the two,
@@ -601,9 +627,12 @@ export class DeclutteringCard extends DeclutteringElement {
     // `|translate` reads hass.localize, which is replaced when more translations load or
     // the language changes - and only then, so it joins the key without costing a rebuild
     // per state change. Only for a template that translates, so nobody else pays for it.
-    const key = pending.translates
-      ? [...registryKey(hass), (hass as { localize?: unknown })?.localize]
-      : registryKey(hass);
+    const key = [
+      ...registryKey(hass),
+      ...(pending.translates ? [(hass as { localize?: unknown })?.localize] : []),
+      // What is installed moves without the registry: components load, cards and icon sets register.
+      ...(pending.installs ? installedKey(hass) : []),
+    ];
     if (sameRegistry(this._resolverRegistry, key)) return;
     this._resolverRegistry = key;
 

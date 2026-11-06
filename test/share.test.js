@@ -139,9 +139,37 @@ check(
 );
 
 check(
-  'an export names the custom cards the recipient needs',
-  buildExport({ template: 'a', card: { type: 'custom:button-card' } }).notes,
-  ['Requires these custom cards: custom:button-card'],
+  'an export writes the custom cards the recipient needs into requires:, not a comment',
+  (() => {
+    const out = buildExport({ template: 'a', card: { type: 'custom:button-card' } });
+    return [out.payload.requires, out.notes];
+  })(),
+  [{ custom_cards: ['button-card'] }, []],
+);
+
+check(
+  'cards the author listed stay as written, and the rest are added after them',
+  buildExport({
+    template: 'a',
+    requires: { integrations: ['frigate'], custom_cards: [{ card: 'button-card', message: 'Needs button-card' }] },
+    card: { type: 'vertical-stack', cards: [{ type: 'custom:button-card' }, { type: 'custom:mushroom-chips-card' }] },
+  }).payload.requires,
+  {
+    integrations: ['frigate'],
+    custom_cards: [{ card: 'button-card', message: 'Needs button-card' }, 'mushroom-chips-card'],
+  },
+);
+
+check(
+  'an included template needs its cards too, and requires: sits in read order',
+  (() => {
+    const out = buildExport(
+      { template: 'a', description: 'd', card: { type: 'custom:decluttering-card-plus', template: 'b' } },
+      { b: { template: 'b', card: { type: 'custom:mini-graph-card' } } },
+    );
+    return [out.payload.requires, Object.keys(out.payload)];
+  })(),
+  [{ custom_cards: ['mini-graph-card'] }, ['template', 'description', 'requires', 'card', 'includes']],
 );
 
 check(
@@ -378,4 +406,175 @@ check(
     })(),
     [{ discussion: 1 }, {}],
   );
+}
+
+/* --- #399: item templates a with: or repeat: fills in travel too --- */
+
+{
+  const templates = {
+    room: {
+      template: 'room',
+      default: [{ rows: ['a', 'b'] }],
+      card: { type: 'entities', entities: '[[row_item|repeat:rows]]', footer: '[[badge_item]]' },
+    },
+    row_item: { template: 'row_item', item: { entity: '[[value]]', name: '[[label_item|with:x=1]]' } },
+    label_item: { template: 'label_item', item: '[[x]]' },
+    badge_item: { template: 'badge_item', item: { type: 'icon' } },
+    unrelated: { template: 'unrelated', item: { type: 'icon' } },
+  };
+  const out = buildExport(templates.room, templates);
+  check(
+    'an item template named by a placeholder goes under includes, and the ones it fills in',
+    Object.keys(out.payload.includes ?? {}).sort(),
+    ['badge_item', 'label_item', 'row_item'],
+  );
+  check('and nothing is reported missing', out.notes, []);
+  check(
+    'a placeholder naming a variable, not an item template, brings nothing',
+    buildExport({ template: 't', default: [{ rows: 1 }], card: { type: 'entities', title: '[[rows]]' } }, templates)
+      .payload.includes,
+    undefined,
+  );
+  check(
+    'an item template that fills itself in is not carried inside itself',
+    buildExport(
+      { template: 'self_item', item: { more: '[[self_item?]]' } },
+      { self_item: { template: 'self_item', item: { more: '[[self_item?]]' } } },
+    ).payload.includes,
+    undefined,
+  );
+}
+
+/* --- #399: a template name picked by a variable --- */
+
+{
+  const templates = {
+    room: {
+      template: 'room',
+      card: { type: 'vertical-stack', cards: [{ type: 'custom:decluttering-card-plus', template: '[[kind]]_tile' }] },
+    },
+    light_tile: { template: 'light_tile', card: { type: 'tile' } },
+    cover_tile: { template: 'cover_tile', extends: 'base_tile', card: { type: 'tile' } },
+    base_tile: { template: 'base_tile', card: { type: 'tile' } },
+    light_row: { template: 'light_row', card: { type: 'tile' } },
+  };
+  const out = buildExport(templates.room, templates);
+  check(
+    'the templates whose names fit a picked name go along, with what they are built on',
+    Object.keys(out.payload.includes ?? {}).sort(),
+    ['base_tile', 'cover_tile', 'light_tile'],
+  );
+  check(
+    'the picked name is not reported as a template that could not be found',
+    out.notes.some((note) => note.includes('not included here')),
+    false,
+  );
+  check(
+    'it says the template is picked, and that the ones that fit went with it',
+    out.notes.some((note) => note.includes('[[kind]]_tile') && note.includes('went with it')),
+    true,
+  );
+
+  const none = buildExport(
+    { template: 't', card: { type: 'custom:decluttering-card-plus', template: '[[kind]]_card' } },
+    templates,
+  );
+  check('nothing fits: nothing goes along', none.payload.includes, undefined);
+  check(
+    'and the note says which one it needs cannot be known',
+    none.notes.some((note) => note.includes('[[kind]]_card') && note.includes('cannot be known')),
+    true,
+  );
+
+  const bare = buildExport(
+    { template: 't', card: { type: 'custom:decluttering-card-plus', template: '[[which]]' } },
+    templates,
+  );
+  check('a name that is all placeholder does not bring every template', bare.payload.includes, undefined);
+
+  const offline = buildExport({
+    template: 't',
+    card: { type: 'custom:decluttering-card-plus', template: '[[kind]]_tile' },
+  });
+  check(
+    'without the dashboard to hand, a picked name is still not called missing',
+    offline.notes.some((note) => note.includes('not included here')),
+    false,
+  );
+}
+
+/* --- #399: an included template goes out without the dashboard's defaults --- */
+
+{
+  const { collectTemplates } = require('../.test-build/templates.js');
+  const ll = {
+    decluttering_defaults: [{ frigate_password: 'hunter2' }, { unrelated: 1 }],
+    decluttering_templates: {
+      main: { template: 'main', card: { type: 'custom:decluttering-card-plus', template: 'inner' } },
+      inner: {
+        template: 'inner',
+        default: [{ icon: 'mdi:cctv' }],
+        card: { type: 'markdown', content: '[[frigate_password]] [[icon]]' },
+      },
+      bare: { template: 'bare', card: { type: 'markdown', content: '[[unrelated]]' } },
+    },
+    views: [],
+  };
+  const templates = collectTemplates(ll);
+  check(
+    'an included template keeps its own defaults, and of the dashboard ones only what it uses',
+    buildExport(ll.decluttering_templates.main, templates).payload.includes.inner.default,
+    [{ icon: 'mdi:cctv' }, { frigate_password: 'hunter2' }],
+  );
+  check(
+    'one with no defaults of its own takes only the value it uses',
+    buildExport({ template: 'm', card: { type: 'custom:decluttering-card-plus', template: 'bare' } }, templates).payload
+      .includes.bare.default,
+    [{ unrelated: 1 }],
+  );
+}
+
+/* --- #399: the dashboard values a template uses go with it --- */
+
+{
+  const { collectTemplates } = require('../.test-build/templates.js');
+  const ll = {
+    decluttering_defaults: [
+      { frigate_port: 5000 },
+      { frigate_password: 'hunter2' },
+      { host: 'http://frigate:[[frigate_port]]' },
+      { unrelated: 1 },
+      { icon: 'mdi:dashboard' },
+    ],
+    decluttering_templates: {
+      cam: {
+        template: 'cam',
+        setup: ['frigate_password'],
+        default: [{ icon: 'mdi:cctv' }],
+        card: { type: 'markdown', content: '[[host]] [[frigate_password]] [[icon]]' },
+      },
+      outer: { template: 'outer', card: { type: 'custom:decluttering-card-plus', template: 'cam' } },
+    },
+    views: [],
+  };
+  const templates = collectTemplates(ll);
+  const out = buildExport(ll.decluttering_templates.cam, templates);
+  check('a value it uses comes from the dashboard, and the ones that value uses, after its own', out.payload.default, [
+    { icon: 'mdi:cctv' },
+    { frigate_port: 5000 },
+    { host: 'http://frigate:[[frigate_port]]' },
+  ]);
+  check(
+    'the note names what came in and what was left for setup',
+    [out.notes.some((n) => n.includes('frigate_port, host')), out.notes.some((n) => n.includes('frigate_password'))],
+    [true, true],
+  );
+  check(
+    'an included template gets the values it uses too',
+    buildExport(ll.decluttering_templates.outer, templates).payload.includes.cam.default,
+    [{ icon: 'mdi:cctv' }, { frigate_port: 5000 }, { host: 'http://frigate:[[frigate_port]]' }],
+  );
+  check('without the dashboard to hand, nothing changes', buildExport(ll.decluttering_templates.cam).payload.default, [
+    { icon: 'mdi:cctv' },
+  ]);
 }
