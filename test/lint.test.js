@@ -228,14 +228,14 @@ check(
   ],
 );
 
-check('a placeholder in a key is read like one in a value', lint({ default: [{ a: 1 }], card: { '[[a|bad]]': 1 } }), [
-  'warning lint.unknown_step {"step":"bad","placeholder":"[[a|bad]]"} @card',
+check('a placeholder in a key is read like one in a value', lint({ default: [{ a: 1 }], card: { '[[a|bogus]]': 1 } }), [
+  'warning lint.unknown_step {"step":"bogus","placeholder":"[[a|bogus]]"} @card',
 ]);
 
 check(
   'the same mistake twice in one place is said once',
-  lint({ default: [{ a: 1 }], card: { name: '[[a|bad]] and [[a|bad]]' } }),
-  ['warning lint.unknown_step {"step":"bad","placeholder":"[[a|bad]]"} @card.name'],
+  lint({ default: [{ a: 1 }], card: { name: '[[a|bogus]] and [[a|bogus]]' } }),
+  ['warning lint.unknown_step {"step":"bogus","placeholder":"[[a|bogus]]"} @card.name'],
 );
 
 check(

@@ -272,6 +272,7 @@
   "warn.not_a_mapping": "{arg} no es un mapa",
   "warn.condition_closed": "su condición if: no se cumple",
   "warn.json_not_first": "json solo puede ser el primer paso",
+  "warn.raw_not_first": "raw solo puede ser el primer paso",
   "warn.kind_list": "una lista",
   "warn.kind_mapping": "un mapeo",
   "warn.override_misplaced": "decluttering-card-plus: el bloque {key}: de esta tarjeta se ignora - la plantilla \"{template}\" construye un {kind}, así que solo se superpone un bloque {kind}:.",
