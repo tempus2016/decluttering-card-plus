@@ -13,8 +13,8 @@ npm start         # rebuild on change, served for a local Home Assistant
 ```
 
 `npm run build` runs the linter first and stops if it fails, so a green build means lint and
-bundle both passed. `dist/decluttering-card-plus.js` is committed on purpose — HACS installs
-it straight from the repository — so a change to `src/` needs the bundle rebuilt in the same
+bundle both passed. `dist/decluttering-card-plus.js` is committed on purpose — the Marketplace
+(HACS before Home Assistant 2026.11) installs it straight from the repository — so a change to `src/` needs the bundle rebuilt in the same
 commit.
 
 ## Commit messages matter
@@ -59,7 +59,7 @@ was actually wrong rather than the thing that looked wrong.
 a browser console that points at a minified line can be read against the TypeScript: open the
 console's source panel with the map loaded, or paste the line and column into
 `npx source-map resolve dist/decluttering-card-plus.js.map <line> <column>`. A Home Assistant
-that got the card through HACS has only the bundle; copy the `.map` from the release beside
+that got the card through the Marketplace or HACS has only the bundle; copy the `.map` from the release beside
 it in `www/community/decluttering-card-plus/`, or load the page's resource from the release
 asset instead, and the browser picks it up.
 
