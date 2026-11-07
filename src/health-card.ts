@@ -10,7 +10,7 @@ import {
   mayBorrowTemplates,
 } from './templates';
 import { getLovelaceConfig } from './utils';
-import { currentViewIndex, pageDashboard } from './shared';
+import { currentViewIndex, pageDashboard, placedAs } from './shared';
 import { loadEditors } from './editors-loader';
 import { dialogButtons } from './dialog-compat';
 import { localize } from './localize';
@@ -62,7 +62,8 @@ export class DeclutteringHealthCard extends LitElement {
 
   public connectedCallback(): void {
     super.connectedCallback();
-    this._badge = this.parentElement?.localName === 'hui-badge';
+    // In a view's row of badges, and in the badge picker's preview, which has no hui-badge.
+    this._badge = placedAs(this) === 'badge';
     this._syncWrapperPreview();
     // Entering edit mode moves the badge into a wrapper and sets the flag, in no fixed order.
     requestAnimationFrame(() => {
@@ -167,7 +168,7 @@ export class DeclutteringHealthCard extends LitElement {
   private _open(entry: HealthEntry): void {
     const here = entry.dashboard === pageDashboard();
     const sameView = here && entry.view.index === currentViewIndex(getLovelaceConfig());
-    if (sameView && !this._badge) {
+    if (sameView && !this._badge && entry.path.length > 1) {
       this.dispatchEvent(
         new CustomEvent('ll-edit-card', { detail: { path: entry.path }, bubbles: true, composed: true }),
       );
@@ -292,7 +293,9 @@ export class DeclutteringHealthCard extends LitElement {
               : ''
         }
         <div class="footer">
-          <span class="said">${said ? localize('health_card.said', { count: said }, hass) : ''}</span>
+          <span class="said"
+            >${said ? localize(said === 1 ? 'health_card.said_one' : 'health_card.said', { count: said }, hass) : ''}</span
+          >
           <ha-button class="panel" @click=${() => this._togglePanel()}>
             ${localize('health_card.open_panel', undefined, hass)}
           </ha-button>

@@ -18,6 +18,7 @@ import './editor-fixes.test';
 import './fixes.test';
 import './gallery-dialog.test';
 import './preview-frame.test';
+import './ui-fixes.test';
 import { run } from './runner';
 
 declare global {

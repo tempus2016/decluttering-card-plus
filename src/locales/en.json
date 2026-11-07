@@ -948,6 +948,7 @@
   "health_card.open_panel": "Open the full panel",
   "health_card.clean": "Every card finds its template and every variable has a value.",
   "health_card.said": "{count} warnings said while building this page",
+  "health_card.said_one": "1 warning said while building this page",
   "health_card.badge_count": "{count} to look at",
   "health_card.badge_clean": "All fine",
   "health_card.badge_label": "Templates",

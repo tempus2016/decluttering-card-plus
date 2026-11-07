@@ -948,6 +948,7 @@
   "health_card.open_panel": "Abrir o painel completo",
   "health_card.clean": "Cada cartão encontra o seu modelo e cada variável tem um valor.",
   "health_card.said": "{count} avisos ao construir esta página",
+  "health_card.said_one": "1 aviso ao construir esta página",
   "health_card.badge_count": "{count} a rever",
   "health_card.badge_clean": "Tudo bem",
   "health_card.badge_label": "Modelos",

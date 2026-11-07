@@ -72,6 +72,7 @@ import {
   editDialogOf,
   getThingType,
   parentOf,
+  placedAs,
   sourceContext,
   thingContent,
   pageDashboard,
@@ -891,6 +892,8 @@ export abstract class DeclutteringElement extends LitElement {
       for (const alert of alerts) if (alert.level === 'warn') said.push(alert.message);
     }
     this._strictOutcome(hush ? STRICT_OFF : levels, unresolved, said);
+    // Known before any refusal, so a refused row or badge keeps the alert, not the error card.
+    this._thingType = thingType;
     if (!hush && this._refuseIfStrict(unresolved)) return;
     if (!hush && this._refuseForCheck(alerts)) return;
     if (instance && !hush && this._holdForRequired(unresolved, templateConfig)) return;
@@ -2183,10 +2186,12 @@ export abstract class DeclutteringElement extends LitElement {
     if (this._error) {
       // A card gets the error card that names the line and offers the fix (idea 49); a row, a
       // badge or an element has no room for one and keeps the alert.
-      const asCard = this._thingType === undefined || this._thingType === 'card';
+      // A template that was never found has no type to go by (or only the guess a waiting
+      // card makes), so where it sits on the page decides too.
+      const asCard = (this._thingType === undefined || this._thingType === 'card') && placedAs(this) === 'card';
       if (asCard && this._errorDetail) {
         this._takeErrorLayout();
-        return html`${this._renderErrorCard(this._errorDetail)} ${this._renderReport()}`;
+        return html`${this._renderErrorCard(this._errorDetail)} ${this._renderReport()} ${this._renderTemplateDialog()}`;
       }
       return html` <ha-alert alert-type="error">${this._error}</ha-alert> ${this._renderReport()} `;
     }

@@ -95,3 +95,24 @@ check(
   ],
   ['Hall', 'light.a', 'Kitchen', 't'],
 );
+
+{
+  const withBadges = {
+    views: [
+      {
+        title: 'Badges',
+        badges: [
+          { type: 'custom:decluttering-card-plus', template: 'nope_badge' },
+          { type: 'custom:decluttering-card-plus', template: 'media_tile', variables: [{ entity: 'light.a' }] },
+        ],
+        cards: [],
+      },
+    ],
+  };
+  const badgeReport = healthEntries(withBadges, templates, 'lovelace');
+  check(
+    "a view's badges count, as the panel lists them, and point at the view",
+    [badgeReport.counts, badgeReport.entries.map((e) => [e.kind, e.template, e.path.join('/')])],
+    [{ missing: 1, unset: 0, deprecated: 0, fine: 1, cards: 2 }, [['missing', 'nope_badge', '0']]],
+  );
+}
