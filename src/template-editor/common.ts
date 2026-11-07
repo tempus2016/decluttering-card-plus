@@ -1,9 +1,12 @@
-import { html, TemplateResult } from 'lit';
 import { HomeAssistant } from 'custom-card-helpers';
 import { CommunityRisks } from '../community';
 import { getLovelacePanel } from '../utils';
 import { localize } from '../localize';
-import { HELPERS, pageDashboard, rewriteDashboards } from '../shared';
+import { HELPERS, pageDashboard, rewriteDashboards, operationLabel, isDefinedHere, textField } from '../shared';
+
+// The one-line text input and the element check live in shared.ts (idea 55 moved them); re-exported for the tabs.
+export { isDefinedHere, textField };
+export type { TextFieldOptions } from '../shared';
 
 // What a template of each kind starts out as, when its type is chosen in the editor. One
 // of these is kept and the rest removed, so switching the type swaps the body for a
@@ -28,8 +31,6 @@ export const SEARCH_SHOWN = 50;
  * Splits a translated sentence at the one part that has to be rendered as markup - a
  * link, a `<code>` - so the words either side stay in the translator's order.
  */
-// Whether this browser has a custom card's element, which is what decides if it will render.
-export const isDefinedHere = (tag: string): boolean => !!customElements.get(tag);
 
 /** Whether a risk scan found anything worth a sentence. */
 export const anyRisk = (risks: CommunityRisks): boolean =>
@@ -59,42 +60,6 @@ export const SECOND_PRESS_MS = 500;
 // mdi:drag, the handle a list that can be dragged into order shows on each item.
 export const DRAG_PATH =
   'M7,19V17H9V19H7M11,19V17H13V19H11M15,19V17H17V19H15M7,15V13H9V15H7M11,15V13H13V15H11M15,15V13H17V15H15M7,11V9H9V11H7M11,11V9H13V11H11M15,11V9H17V11H15M7,7V5H9V7H7M11,7V5H13V7H11M15,7V5H17V7H15Z';
-
-export interface TextFieldOptions {
-  label: string;
-  value: string;
-  disabled?: boolean;
-  onInput: (value: string) => void;
-  onKeydown?: (ev: KeyboardEvent) => void;
-}
-
-/*
- * A one-line text input. Home Assistant 2026.7 stopped registering ha-textfield and draws
- * its inputs with ha-input instead; an unregistered element is an empty inline box, so
- * every name field in the editors simply vanished, with nothing in the console. The
- * card still supports Home Assistants that only have ha-textfield, so this asks which one
- * the page has each time it draws. Both take `value`, `label` and `disabled`, and both send
- * `input` with the element as the target, so the rest is the same either way.
- */
-export function textField(options: TextFieldOptions): TemplateResult {
-  const changed = (ev: Event): void => options.onInput((ev.target as HTMLInputElement).value ?? '');
-  const keydown = (ev: KeyboardEvent): void => options.onKeydown?.(ev);
-  return isDefinedHere('ha-input')
-    ? html`<ha-input
-        label=${options.label}
-        .value=${options.value}
-        .disabled=${options.disabled === true}
-        @input=${changed}
-        @keydown=${keydown}
-      ></ha-input>`
-    : html`<ha-textfield
-        label=${options.label}
-        .value=${options.value}
-        .disabled=${options.disabled === true}
-        @input=${changed}
-        @keydown=${keydown}
-      ></ha-textfield>`;
-}
 
 export async function loadRowEditor(): Promise<void> {
   // Ensure hui-row-element-editor are loaded.
@@ -139,6 +104,7 @@ export async function saveDashboardWith(
     // Through the one place every rewrite goes, so it can be undone.
     await rewriteDashboards(host, host.hass, operation, [{ urlPath: pageDashboard(), build }], dialog);
     host._undoChanged = undefined;
+    announce(host, localize('undo.toast', { operation: operationLabel(operation, host.hass) }, host.hass));
     return true;
   } catch (err) {
     host._toolError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, host.hass);
@@ -146,4 +112,33 @@ export async function saveDashboardWith(
   } finally {
     host._busy = false;
   }
+}
+
+/** What the tab strip shows beside Where used and Share (idea 31). */
+export interface TabCounts {
+  usages: number;
+  /** Cards leaving a required variable of this template unset. */
+  unset: number;
+  trash: number;
+}
+
+export function tabCounts(
+  usages: number,
+  unset: { template: string; count: number }[],
+  trash: { name: string }[] | undefined,
+  name: string,
+): TabCounts {
+  return {
+    usages,
+    unset: unset.filter((each) => each.template === name).reduce((sum, each) => sum + each.count, 0),
+    trash: (trash ?? []).filter((each) => each.name === name).length,
+  };
+}
+
+/**
+ * Says something to a screen reader (idea 55). The tabs are elements of their own, so the
+ * words travel up as an event and the editor's one live region speaks them.
+ */
+export function announce(host: HTMLElement, text: string): void {
+  host.dispatchEvent(new CustomEvent('decluttering-announce', { detail: { text }, bubbles: true, composed: true }));
 }

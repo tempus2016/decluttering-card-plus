@@ -73,7 +73,7 @@ function stageBundle() {
   if (!fs.existsSync(entry)) return false;
   const target = path.join(OUT, BUNDLE_DIR);
   fs.mkdirSync(target, { recursive: true });
-  const files = fs.readdirSync(DIST).filter((name) => name.endsWith('.js'));
+  const files = fs.readdirSync(DIST).filter((name) => /\.js(\.map)?$/.test(name));
   for (const name of files) fs.copyFileSync(path.join(DIST, name), path.join(target, name));
   const editors = files.find((name) => /\.editors-[^.]+\.js$/.test(name));
   fs.writeFileSync(

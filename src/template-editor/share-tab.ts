@@ -1,8 +1,8 @@
-import { LitElement, html, TemplateResult, CSSResult } from 'lit';
+import { LitElement, html, TemplateResult, CSSResult, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { keyed } from 'lit/directives/keyed.js';
 import { HomeAssistant, fireEvent, LovelaceConfig } from 'custom-card-helpers';
-import { DeclutteringTemplateConfig, TemplateConfig } from '../types';
+import { DeclutteringTemplateConfig, FormSchemaEntry, TemplateConfig } from '../types';
 import { buildExport, validateImport, freeName, missingCustomCards, withoutSources } from '../share';
 import { LIBRARY, libraryEntry, libraryNeeds, librarySource } from '../library';
 import {
@@ -53,11 +53,25 @@ import {
 } from '../sharing';
 import { readDashboard } from '../undo';
 import { rewriteDashboards, saverFor } from '../shared';
-import { isDefinedHere, anyRisk, newRisks, SECOND_PRESS_MS, saveDashboardWith } from './common';
+import { isDefinedHere, anyRisk, newRisks, SECOND_PRESS_MS, saveDashboardWith, announce } from './common';
+import { GalleryEntry, galleryEntries } from '../gallery';
+import { GalleryStatus } from '../gallery-dialog';
+import { GALLERY_TAG } from '../shared';
+import { asImport, convert, Conversion } from '../convert';
+import { toYaml } from '../yaml';
 import { TEMPLATE_EDITOR_STYLES } from './styles';
+import { CompareSource, agoParts, compareSources, diffStats, templateBody } from '../compare';
 
 // The sharing-details fields that need a line of explanation under them.
 const DETAIL_HELPERS = ['readme', 'related', 'setup', 'requires_entities', 'requires_homeassistant', 'requires_card'];
+
+type GalleryElement = HTMLElement & {
+  hass?: HomeAssistant;
+  entries: GalleryEntry[];
+  open: boolean;
+  selectedKey?: string;
+  status?: GalleryStatus;
+};
 
 export class DeclutteringTemplateShareTab extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
@@ -90,6 +104,15 @@ export class DeclutteringTemplateShareTab extends LitElement {
     return this._renderShare();
   }
 
+  /** The editor shows a dot on this tab while a shared update waits (idea 31). */
+  protected updated(changed: PropertyValues): void {
+    super.updated(changed);
+    if (changed.has('_updates')) {
+      const count = (this._updates ?? []).filter((each) => each.status === 'update').length;
+      this.dispatchEvent(new CustomEvent('updates-found', { detail: count, bubbles: true, composed: true }));
+    }
+  }
+
   // The Share tab's import box: what has been pasted, whether it parsed, and what is
   // wrong with it. The name clash is held separately because it is a warning the user
   // is allowed to overrule, not a reason to refuse.
@@ -110,6 +133,23 @@ export class DeclutteringTemplateShareTab extends LitElement {
   private _importArmedAt = 0;
 
   @state() private _copyState: '' | 'done' | 'failed' = '';
+
+  // The template gallery (idea 52): open, and which tile is picked.
+  @state() private _galleryOpen = false;
+  @state() private _gallerySelected?: string;
+
+  // Convert from another card (idea 59): what was pasted, and what it converted to, if anything.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _convertValue?: any;
+  private _convertParses = true;
+  @state() private _conversion?: Conversion;
+  // Bumped per conversion: ha-yaml-editor reads defaultValue once, so a new one draws new editors.
+  private _conversionKey = 0;
+  @state() private _convertClash?: string[];
+  @state() private _convertInstalled?: string[];
+  private _convertArmedAt = 0;
+  @state() private _convertTried = false;
+  @state() private _convertCopyState: '' | 'done' | 'failed' = '';
 
   @state() public _toolError?: string;
 
@@ -162,6 +202,10 @@ export class DeclutteringTemplateShareTab extends LitElement {
 
   // Templates a save took away or changed, from the user data; nothing until it has been read.
   @state() private _trash?: TrashEntry[];
+  // Compare with (idea 30): which other version is chosen, and whether Take has been pressed once.
+  @state() private _compareWith?: string;
+  @state() private _comparePending = false;
+  private _compareArmedAt = 0;
 
   @state() private _trashShown?: number;
 
@@ -251,11 +295,18 @@ export class DeclutteringTemplateShareTab extends LitElement {
               </ha-button>`
             : html``
         }
-        ${this._renderTrash()}
+        ${this._renderConvert()} ${this._renderTrash()} ${this._renderCompare()}
 
         <h3>${localize('share.library_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.library_hint', undefined, this.hass)}</p>
-        ${this._renderLibrary()}
+        <ha-button
+          @click=${(): void => {
+            this._galleryOpen = true;
+          }}
+        >
+          ${localize('gallery.open', undefined, this.hass)}
+        </ha-button>
+        ${this._renderGallery()} ${this._renderLibrary()}
 
         <h3>${localize('share.community_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.community_hint', undefined, this.hass)}</p>
@@ -924,13 +975,102 @@ export class DeclutteringTemplateShareTab extends LitElement {
       return;
     }
     if (Date.now() - this._updateArmedAt < SECOND_PRESS_MS) return;
-    const saved = await this._saveDashboard((config) => replaceTemplate(config, name, latest), 'shared_update');
+    const before = this._config?.template === name ? this._config : undefined;
+    const saved = await this._saveDashboard((config) => replaceTemplate(config, name, latest), 'shared_update', before);
     if (!saved) return;
     this._updatePending = undefined;
     this._updates = this._updates?.map((each) => (each.name === name ? { ...each, status: 'current' } : each));
     // The dialog may be open on this very template, and saving it would put the old one back.
     if (this._config?.template === name) {
       this._fireConfigChanged({ ...latest, type: this._config.type, template: name } as DeclutteringTemplateConfig);
+    }
+  }
+
+  /*
+   * Compare with (idea 30): the current template against the starter library's version, the
+   * shared post it was installed from, or the copy the trash kept - the same line diff the
+   * Where used tab draws for an edit, and a way to take the other version that can be undone.
+   */
+  private _renderCompare(): TemplateResult {
+    const config = this._config;
+    if (!config?.template) return html``;
+    const name = config.template;
+    const ago = (ms: number): string => {
+      const parts = agoParts(ms);
+      return localize(`compare.ago_${parts.unit}`, { count: parts.count }, this.hass);
+    };
+    const sources = compareSources(name, {
+      library: LIBRARY,
+      installed: this._updates,
+      trash: this._trash,
+      labels: {
+        library: (each) => localize('compare.source_library', { name: each }, this.hass),
+        shared: (title, author) => localize('compare.source_shared', { title, author }, this.hass),
+        elsewhere: (urlPath) => localize('compare.source_elsewhere', { dashboard: urlPath }, this.hass),
+        trash: (when, reason) => localize(`compare.source_trash_${reason}`, { when }, this.hass),
+        ago,
+      },
+    });
+    if (!sources.length) return html``;
+    const chosen = sources.find((each) => each.id === this._compareWith) ?? sources[0];
+    const current = templateBody(config);
+    const stats = diffStats(current, chosen.template);
+    return html`
+      <div class="compare">
+        <h3>${localize('compare.header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('compare.hint', undefined, this.hass)}</p>
+        <ha-form
+          .hass=${this.hass}
+          .data=${{ source: chosen.id }}
+          .schema=${[
+            {
+              name: 'source',
+              label: localize('compare.with', undefined, this.hass),
+              selector: {
+                select: { mode: 'dropdown', options: sources.map((each) => ({ value: each.id, label: each.label })) },
+              },
+            },
+          ]}
+          .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+          @value-changed=${(ev: CustomEvent): void => {
+            ev.stopPropagation();
+            this._compareWith = (ev.detail.value as { source?: string }).source;
+            this._comparePending = false;
+          }}
+        ></ha-form>
+        <p class="stats">
+          ${localize('compare.against', { name, label: chosen.label }, this.hass)}
+          <span class="add">+${stats.added}</span> <span class="remove">−${stats.removed}</span>
+          ${localize('compare.places', { places: stats.places }, this.hass)}
+        </p>
+        ${renderDiffWithFull(chosen.template, current, this.hass)}
+        ${
+          stats.added || stats.removed
+            ? html`<ha-button .disabled=${this._busy} @click=${(): void => void this._takeVersion(name, chosen)}>
+                ${localize(this._comparePending ? 'compare.take_confirm' : 'compare.take', undefined, this.hass)}
+              </ha-button>`
+            : html``
+        }
+      </div>
+    `;
+  }
+
+  private async _takeVersion(name: string, source: CompareSource): Promise<void> {
+    if (!this._comparePending) {
+      this._comparePending = true;
+      this._compareArmedAt = Date.now();
+      return;
+    }
+    if (Date.now() - this._compareArmedAt < SECOND_PRESS_MS) return;
+    const other = source.template;
+    // The dialog's config as it stands goes with the undo, so undoing puts the open editor back too.
+    const before = this._config?.template === name ? this._config : undefined;
+    const saved = await this._saveDashboard((config) => replaceTemplate(config, name, other), 'compare_take', before);
+    if (!saved) return;
+    this._comparePending = false;
+    // The dialog is open on this very template, and saving it would put the old one back.
+    if (this._config?.template === name) {
+      this._fireConfigChanged({ ...other, type: this._config.type, template: name } as DeclutteringTemplateConfig);
     }
   }
 
@@ -1087,6 +1227,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     const text = [...notes.map((note) => `# ${note}`), yaml].join('\n');
 
     this._copyState = (await copyText(text)) ? 'done' : 'failed';
+    announce(this, localize(this._copyState === 'done' ? 'share.copied' : 'share.copy_failed', undefined, this.hass));
     setTimeout(() => (this._copyState = ''), 3000);
   }
 
@@ -1100,6 +1241,10 @@ export class DeclutteringTemplateShareTab extends LitElement {
     if (!yaml) return;
     const { notes } = buildExport(this._config, collectTemplates(this._savedLovelace));
     this._postCopyState = (await copyText(postBody(yaml, notes, this._config?.description))) ? 'done' : 'failed';
+    announce(
+      this,
+      localize(this._postCopyState === 'done' ? 'share.copied' : 'share.copy_failed', undefined, this.hass),
+    );
     setTimeout(() => (this._postCopyState = ''), 3000);
   }
 
@@ -1259,6 +1404,267 @@ export class DeclutteringTemplateShareTab extends LitElement {
         : [];
     const templates = [value, ...includes];
     return html`${this._renderAbout(value)} ${this._renderUnmet(templates)} ${this._renderSetup(templates)}`;
+  }
+
+  /* ---------------------------------------------------------------- gallery (idea 52) */
+
+  private _galleryEntries(): GalleryEntry[] {
+    return galleryEntries(
+      {
+        library: LIBRARY,
+        community: this._community?.entries,
+        installed: collectTemplates(this._savedLovelace),
+      },
+      (name) => localize(`library.${name}.summary`, undefined, this.hass),
+      this.hass,
+    );
+  }
+
+  // What a tile means for this dashboard, worked out the way the two sections below work it out.
+  private _galleryStatus(entry: GalleryEntry | undefined): GalleryStatus {
+    const base: GalleryStatus = {
+      already: false,
+      armed: false,
+      busy: this._busy,
+      needs: [],
+      brings: [],
+      missingCards: [],
+      risks: [],
+      destination: this._libraryDestination,
+      communityLoaded: this._community !== undefined,
+      communityLoading: this._communityLoading,
+    };
+    if (!entry) return base;
+    if (entry.source === 'library') {
+      const existing = Object.keys(collectTemplates(this._savedLovelace));
+      const library = libraryEntry(entry.name);
+      const needs = library ? libraryNeeds(library, existing) : [];
+      return {
+        ...base,
+        already: existing.includes(entry.name),
+        armed: this._installPending === entry.name,
+        needs,
+        missingCards: missingCustomCards(
+          [library?.template, ...needs.map((each) => libraryEntry(each)?.template)].filter(
+            (each) => each !== undefined,
+          ),
+          isDefinedHere,
+        ),
+      };
+    }
+    if (entry.source === 'community') {
+      const existing = this._communityExisting();
+      const shared = this._community?.entries.find((each) => each.id === entry.communityId);
+      const risks = shared ? communityRisks(shared) : undefined;
+      return {
+        ...base,
+        // A clash is not a stop: the shared install picks a free name, as the section says.
+        already: false,
+        armed: !!shared && this._installPending === `community:${shared.id}:${shared.updated}`,
+        brings: Object.keys(entry.includes).filter((each) => !existing.includes(each)),
+        missingCards: missingCustomCards([entry.template, ...Object.values(entry.includes)], isDefinedHere),
+        risks: risks ? this._riskSentences(risks) : [],
+        busy: this._busy || this._communityKnown === undefined,
+      };
+    }
+    return { ...base, already: true };
+  }
+
+  private _riskSentences(risks: CommunityRisks): string[] {
+    const out: string[] = [];
+    if (risks.actions.length)
+      out.push(localize('share.community_risk_actions', { list: risks.actions.join(', ') }, this.hass));
+    if (risks.urls.length) out.push(localize('share.community_risk_urls', { list: risks.urls.join(', ') }, this.hass));
+    if (risks.embeds) out.push(localize('share.community_risk_embeds', undefined, this.hass));
+    if (risks.scripts) out.push(localize('share.community_risk_scripts', undefined, this.hass));
+    if (risks.placeholders) out.push(localize('share.community_risk_placeholders', undefined, this.hass));
+    if (risks.overlay) out.push(localize('share.community_risk_overlay', undefined, this.hass));
+    return out;
+  }
+
+  // The dialog element, made once: re-creating it on every render swapped the old
+  // ha-dialog out, whose `closed` fired on removal and shut the gallery on the first click.
+  private _galleryDialog?: GalleryElement;
+
+  private _renderGallery(): TemplateResult {
+    if (!this._galleryOpen) return html``;
+    const entries = this._galleryEntries();
+    const selected = entries.find((entry) => entry.key === this._gallerySelected);
+    if (!this._galleryDialog) {
+      // Drawn by tag name so this tab does not import the dialog's class: both arrive in the editors chunk.
+      const dialog = document.createElement(GALLERY_TAG) as GalleryElement;
+      dialog.addEventListener('gallery-closed', () => {
+        this._galleryOpen = false;
+        this._installPending = undefined;
+      });
+      dialog.addEventListener('gallery-select', (ev) => {
+        this._gallerySelected = (ev as CustomEvent).detail?.key;
+        this._installPending = undefined;
+      });
+      dialog.addEventListener('gallery-load-community', () => void this._loadCommunity(false));
+      dialog.addEventListener(
+        'gallery-install',
+        (ev) => void this._installFromGallery((ev as CustomEvent).detail?.key),
+      );
+      this._galleryDialog = dialog;
+    }
+    const dialog = this._galleryDialog;
+    dialog.hass = this.hass;
+    dialog.entries = entries;
+    dialog.open = true;
+    dialog.selectedKey = this._gallerySelected;
+    dialog.status = this._galleryStatus(selected);
+    return html`${dialog}`;
+  }
+
+  // Install goes through the library's and the shared store's own installs, second press and all.
+  private async _installFromGallery(key: string | undefined): Promise<void> {
+    const entry = this._galleryEntries().find((each) => each.key === key);
+    if (!entry) return;
+    if (entry.source === 'library') {
+      this._librarySelected = entry.name;
+      await this._install(entry.name);
+    } else if (entry.source === 'community') {
+      const shared = this._community?.entries.find((each) => each.id === entry.communityId);
+      if (!shared) return;
+      this._communitySelected = shared.id;
+      await this._installShared(shared);
+    }
+  }
+
+  /*
+   * Convert from another card (idea 59). A button-card template or an auto-entities card is
+   * pasted, the decluttering version is shown beside it, and Install hands that to the
+   * import above - which asks about name clashes and risks exactly as it does for a paste.
+   */
+  private _renderConvert(): TemplateResult {
+    const conversion = this._conversion;
+    return html`
+      <h3>${localize('convert.header', undefined, this.hass)}</h3>
+      <p class="hint">${localize('convert.hint', undefined, this.hass)}</p>
+      <ha-yaml-editor id="convert" .hass=${this.hass} @value-changed=${this._convertChanged}></ha-yaml-editor>
+      ${
+        this._convertTried && !conversion
+          ? html`<ha-alert alert-type="warning">${localize('convert.nothing', undefined, this.hass)}</ha-alert>`
+          : html``
+      }
+      ${
+        conversion
+          ? html`
+              <p class="hint">${localize('convert.result', undefined, this.hass)}</p>
+              ${keyed(
+                this._conversionKey,
+                html`<ha-yaml-editor
+                    id="converted"
+                    .hass=${this.hass}
+                    .defaultValue=${asImport(conversion)}
+                    read-only
+                  ></ha-yaml-editor>
+                  ${
+                    conversion.card
+                      ? html`<p class="hint">${localize('convert.card_result', undefined, this.hass)}</p>
+                          <ha-yaml-editor
+                            id="converted-card"
+                            .hass=${this.hass}
+                            .defaultValue=${conversion.card}
+                            read-only
+                          ></ha-yaml-editor>`
+                      : html``
+                  }`,
+              )}
+              ${conversion.notes.map((note) => html`<ha-alert alert-type="info">${note}</ha-alert>`)}
+              ${conversion.dropped.map((note) => html`<ha-alert alert-type="warning">${note}</ha-alert>`)}
+              ${
+                conversion.needs.length
+                  ? html`<ha-alert alert-type="info">
+                      ${localize('convert.needs', { types: conversion.needs.join(', ') }, this.hass)}
+                    </ha-alert>`
+                  : html``
+              }
+              <ha-button @click=${this._copyConversion}>
+                ${
+                  this._convertCopyState === 'done'
+                    ? localize('share.copied', undefined, this.hass)
+                    : this._convertCopyState === 'failed'
+                      ? localize('share.copy_failed', undefined, this.hass)
+                      : localize('convert.copy', undefined, this.hass)
+                }
+              </ha-button>
+              <ha-button .disabled=${this._busy} @click=${(): void => void this._installConversion()}>
+                ${localize(this._convertClash ? 'share.install_anyway' : 'convert.install', undefined, this.hass)}
+              </ha-button>
+              ${
+                this._convertClash
+                  ? html`<ha-alert alert-type="warning">
+                      ${localize('convert.clash', { names: this._convertClash.join(', ') }, this.hass)}
+                    </ha-alert>`
+                  : html``
+              }
+              ${
+                this._convertInstalled
+                  ? html`<ha-alert alert-type="success">
+                      ${localize('convert.installed', { names: this._convertInstalled.join(', ') }, this.hass)}
+                    </ha-alert>`
+                  : html``
+              }
+            `
+          : html``
+      }
+    `;
+  }
+
+  private _convertChanged(ev: CustomEvent): void {
+    ev.stopPropagation();
+    this._convertValue = ev.detail.value;
+    this._convertParses = ev.detail.isValid !== false;
+    this._convertCopyState = '';
+    this._convertTried = this._convertValue !== undefined && this._convertValue !== null && this._convertValue !== '';
+    this._conversion = this._convertParses && this._convertTried ? convert(this._convertValue) : undefined;
+    this._conversionKey += 1;
+    this._convertClash = undefined;
+    this._convertInstalled = undefined;
+  }
+
+  private async _copyConversion(): Promise<void> {
+    if (!this._conversion) return;
+    const text = [toYaml(asImport(this._conversion)), this._conversion.card ? toYaml(this._conversion.card) : '']
+      .filter(Boolean)
+      .join('\n---\n');
+    this._convertCopyState = (await copyText(text)) ? 'done' : 'failed';
+  }
+
+  // The conversion goes through the import, so a name clash or a risk is asked about the same way.
+  /*
+   * Install lands every converted template in decluttering_templates (idea 59): the main
+   * one and the ones it builds on. A name the dashboard already has is said first, and the
+   * second press replaces it. The card being edited is left alone - this is an install, not
+   * an import into the dialog - and the save can be undone like any other rewrite.
+   */
+  private async _installConversion(): Promise<void> {
+    const conversion = this._conversion;
+    if (!conversion || this._busy) return;
+    const names = Object.keys(conversion.templates);
+    const existing = Object.keys(collectTemplates(this._savedLovelace));
+    const clashes = names.filter((name) => existing.includes(name));
+    if (clashes.length && !this._convertClash) {
+      this._convertClash = clashes;
+      this._convertArmedAt = Date.now();
+      return;
+    }
+    if (this._convertClash && Date.now() - this._convertArmedAt < SECOND_PRESS_MS) return;
+    const saved = await this._saveDashboard(
+      (config) =>
+        names.reduce(
+          (built, name) =>
+            existing.includes(name)
+              ? replaceTemplate(built, name, conversion.templates[name] as Record<string, unknown>)
+              : addTemplateToRoot(built, name, conversion.templates[name]),
+          config,
+        ),
+      'convert',
+    );
+    this._convertClash = undefined;
+    if (saved) this._convertInstalled = names;
   }
 
   private _importChanged(ev: CustomEvent): void {

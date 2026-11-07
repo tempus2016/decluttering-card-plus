@@ -13,6 +13,12 @@ import './regressions.test';
 import './accessibility.test';
 import './watch-target.test';
 import './code-mirror-classes.test';
+import './preview-hold.test';
+import './editor-fixes.test';
+import './fixes.test';
+import './gallery-dialog.test';
+import './preview-frame.test';
+import './ui-fixes.test';
 import { run } from './runner';
 
 declare global {

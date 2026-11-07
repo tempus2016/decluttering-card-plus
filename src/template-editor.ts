@@ -1,3 +1,4 @@
+import { takeInitialTab } from './initial-tab';
 import { LitElement, html, TemplateResult, CSSResult, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'custom-card-helpers';
@@ -5,6 +6,7 @@ import { DeclutteringTemplateConfig, TemplateConfig, FormSchemaEntry } from './t
 import { suggestVariables } from './suggest';
 import {
   collectSharedDeclarations,
+  checkDashboard,
   collectTemplates,
   collectUsages,
   listPlainCards,
@@ -16,6 +18,7 @@ import {
   moveItem,
   itemTemplatesOf,
   parentsOf,
+  totalUsages,
 } from './templates';
 import { contentKey, listSettings, nameForSetting, namesInUse, promoteSetting, SettingPath } from './promote';
 import {
@@ -26,12 +29,22 @@ import {
   templateDefaults,
   VariableDeclaration,
 } from './variables';
+import { exampleVariables } from './examples';
 import { getLovelaceConfig, getLovelacePanel } from './utils';
+import deepReplace from './deep-replace';
 import { localize, onLanguageLoaded } from './localize';
 import { sameConfig } from './undo';
 import { definedNames, lintTemplate } from './lint';
-import { getThingType, isVariablesShape, loadCardEditorPicker, setOrDelete } from './shared';
-import { THING_STUBS, DRAG_PATH, textField, loadRowEditor, saveDashboardWith } from './template-editor/common';
+import { getThingType, isVariablesShape, loadCardEditorPicker, previewExamples, setOrDelete } from './shared';
+import {
+  THING_STUBS,
+  DRAG_PATH,
+  textField,
+  loadRowEditor,
+  saveDashboardWith,
+  tabCounts,
+} from './template-editor/common';
+import { TrashEntry, loadTrash, onTrashChanged } from './trash';
 import { TEMPLATE_EDITOR_STYLES } from './template-editor/styles';
 import './template-editor/share-tab';
 import './template-editor/declarations';
@@ -40,12 +53,17 @@ import './template-editor/placeholder-tool';
 import './template-editor/help-icon';
 import './template-editor/field-menus';
 import './template-editor/code-editor-hooks';
+import './preview-frame';
 import './template-editor/usages-tab';
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
   @state() private _config?: DeclutteringTemplateConfig;
 
   @state() private _selectedTab = 'settings';
+  // For the pills on the tabs (idea 31): the trash, and how many shared updates the Share tab found.
+  @state() private _trash?: TrashEntry[];
+  @state() private _updateCount = 0;
+  private _unwatchTrash?: () => void;
 
   // A pending suggestion, held between the press that works it out and the press that
   // applies it - rewriting somebody's card is not something to do on a single click.
@@ -90,6 +108,14 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   }
 
   private _loadedElements = false;
+
+  // What a screen reader is told about, as it happens: copied, saved, undone (idea 55).
+  @state() private _announcement = '';
+  private _announceTimer?: ReturnType<typeof setTimeout>;
+  private readonly _onAnnounce = (ev: Event): void => {
+    ev.stopPropagation();
+    this._announce(String((ev as CustomEvent).detail?.text ?? ''));
+  };
 
   // Shared instances, built on first use so they speak the user's language - a fresh
   // schema object per render would mark every field dirty for no reason.
@@ -177,9 +203,33 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     // `defaults:` is read as `default:`, so the field shows the two folded together.
     const defaultsData = { default: templateDefaults(this._config) };
     const declared = getDeclarations(this._config).length;
+    const pills = this._renderPills();
+    const panelLabel = localize(
+      this._selectedTab === 'card'
+        ? 'template_editor.tab_card'
+        : this._selectedTab === 'change_card'
+          ? 'template_editor.tab_change_card'
+          : this._selectedTab === 'row'
+            ? 'template_editor.tab_row'
+            : this._selectedTab === 'usages'
+              ? 'template_editor.tab_usages'
+              : this._selectedTab === 'share'
+                ? 'template_editor.tab_share'
+                : 'template_editor.tab_settings',
+      undefined,
+      this.hass,
+    );
 
     return html`
-      <ha-tab-group .active=${this._selectedTab} @click=${this._activateTab}>
+      <div class="sr-only" role="status" aria-live="polite">${this._announcement}</div>
+      <ha-tab-group
+        .active=${this._selectedTab}
+        @click=${this._activateTab}
+        @pointerdown=${this._tabPointer}
+        @keydown=${this._tabKey}
+        @wa-tab-show=${this._tabShown}
+        @sl-tab-show=${this._tabShown}
+      >
         <ha-tab-group-tab slot="nav" panel="settings">
           ${localize('template_editor.tab_settings', undefined, this.hass)}
         </ha-tab-group-tab>
@@ -201,10 +251,10 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
               : html``
         }
         <ha-tab-group-tab slot="nav" panel="usages">
-          ${localize('template_editor.tab_usages', undefined, this.hass)}
+          ${localize('template_editor.tab_usages', undefined, this.hass)} ${pills.usages}
         </ha-tab-group-tab>
         <ha-tab-group-tab slot="nav" panel="share">
-          ${localize('template_editor.tab_share', undefined, this.hass)}
+          ${localize('template_editor.tab_share', undefined, this.hass)} ${pills.share}
         </ha-tab-group-tab>
       </ha-tab-group>
       <decluttering-example-strip
@@ -213,6 +263,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
         .config=${this._config}
         @config-changed=${this._childConfigChanged}
       ></decluttering-example-strip>
+      <h3 id="panel-heading" class="sr-only" tabindex="-1">${panelLabel}</h3>
       ${
         this._selectedTab === 'settings'
           ? html`
@@ -303,6 +354,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                   .lovelace=${this._savedLovelace}
                   .config=${this._config}
                 ></decluttering-code-hooks>
+                ${this._renderCardPreview()}
               `
             : this._selectedTab === 'change_card'
               ? html`
@@ -334,6 +386,10 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                         .lovelace=${this.lovelace}
                         .config=${this._config}
                         @select-tab=${this._selectTab}
+                        @updates-found=${(ev: CustomEvent<number>): void => {
+                          ev.stopPropagation();
+                          this._updateCount = ev.detail;
+                        }}
                       ></decluttering-template-share-tab>`
                     : html``
       }
@@ -477,7 +533,12 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                 this._dragging = undefined;
               }}
             >
-              <ha-svg-icon class="handle" .path=${DRAG_PATH}></ha-svg-icon>
+              <ha-svg-icon
+                class="handle"
+                role="img"
+                aria-label=${localize('template_editor.drag_hint', undefined, this.hass)}
+                .path=${DRAG_PATH}
+              ></ha-svg-icon>
               <span>${item.label}</span>
               <span class="spacer"></span>
               <ha-icon-button
@@ -864,8 +925,66 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   private _activateTab(ev: Event): void {
     const tab = ev.composedPath().find((node) => (node as HTMLElement).localName === 'ha-tab-group-tab') as
       HTMLElement | undefined;
-    const panel = tab?.getAttribute('panel');
-    if (panel) this._selectedTab = panel;
+    this._showTab(tab?.getAttribute('panel'), (ev as MouseEvent).detail === 0);
+  }
+
+  // When the strip was last touched by a pointer: a tab shown soon after that is a click, not a key.
+  private _tabPointerAt = 0;
+
+  private _tabPointer(): void {
+    this._tabPointerAt = Date.now();
+  }
+
+  /*
+   * Enter, Space and the arrow keys switch tabs through the strip's own show event, which
+   * comes with no click (idea 55): the strip highlighted the new tab while the editor kept
+   * drawing the old panel. The event's detail names the panel; the tab element in its path
+   * is the fallback, since the name of the field has followed the underlying component
+   * through its renames.
+   */
+  private _tabShown(ev: Event): void {
+    const detail = (ev as CustomEvent).detail as { name?: string; panel?: string } | string | undefined;
+    const named = typeof detail === 'string' ? detail : (detail?.name ?? detail?.panel);
+    const tab = ev.composedPath().find((node) => (node as HTMLElement).localName === 'ha-tab-group-tab') as
+      HTMLElement | undefined;
+    // Arrow keys move along the strip and show each tab as they go; only Enter or Space,
+    // which choose one, take focus into its panel (idea 55) - or the arrows stop after one.
+    this._showTab(named ?? tab?.getAttribute('panel'), Date.now() - this._tabChooseAt < 500);
+  }
+
+  private _tabChooseAt = 0;
+
+  private _tabKey(ev: KeyboardEvent): void {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    this._tabChooseAt = Date.now();
+    // The arrows have already shown the tab, so choosing it shows nothing new: go in now.
+    const tab = ev.composedPath().find((node) => (node as HTMLElement).localName === 'ha-tab-group-tab') as
+      HTMLElement | undefined;
+    if (tab?.getAttribute('panel') === this._selectedTab) {
+      (this.renderRoot.querySelector('#panel-heading') as HTMLElement | null)?.focus();
+    }
+  }
+
+  private _showTab(panel: string | null | undefined, keyboard: boolean): void {
+    if (!panel || panel === this._selectedTab) return;
+    this._selectedTab = panel;
+    // Focus lands on the panel's heading, so the next Tab is the first control in it rather
+    // than the top of the dialog (idea 55). Only for a keyboard: a pointer click keeps its place.
+    if (keyboard) {
+      void this.updateComplete.then(() => {
+        (this.renderRoot.querySelector('#panel-heading') as HTMLElement | null)?.focus();
+      });
+    }
+  }
+
+  // Says something to a screen reader without drawing it; cleared so the same words can be said again.
+  private _announce(text: string): void {
+    if (this._announceTimer) clearTimeout(this._announceTimer);
+    this._announcement = '';
+    this._announceTimer = setTimeout(() => {
+      this._announcement = text;
+      this._announceTimer = setTimeout(() => (this._announcement = ''), 4000);
+    }, 50);
   }
 
   /** The Describe panel: name, kind, description, category. */
@@ -987,12 +1106,76 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     return saveDashboardWith(this, build, operation, dialog);
   }
 
+  private async _loadTrash(): Promise<void> {
+    if (!this.hass) return;
+    this._trash = await loadTrash(this.hass);
+  }
+
+  /** The counts the tabs wear: uses, cards leaving a variable unset, trash entries. */
+  private _renderPills(): { usages: TemplateResult; share: TemplateResult } {
+    const name = this._config?.template;
+    const ll = this._savedLovelace;
+    if (!name || !ll) return { usages: html``, share: html`` };
+    const counts = tabCounts(totalUsages(ll, name), checkDashboard(ll).unsetVariables, this._trash, name);
+    const usages =
+      counts.usages === 0
+        ? html`<span class="pill grey" title=${localize('template_editor.pill_unused', undefined, this.hass)}>0</span>`
+        : html`<span class="pill">${counts.usages}</span>${
+              counts.unset
+                ? html`<span class="pill warn"
+                    >${localize('template_editor.pill_unset', { count: counts.unset }, this.hass)}</span
+                  >`
+                : html``
+            }`;
+    const share = html`${
+      this._updateCount
+        ? html`<span class="dot" title=${localize('template_editor.pill_update', undefined, this.hass)}></span>`
+        : html``
+    }${
+      counts.trash
+        ? html`<span class="pill grey"
+            >${localize('template_editor.pill_trash', { count: counts.trash }, this.hass)}</span
+          >`
+        : html``
+    }`;
+    return { usages, share };
+  }
+
   // Stops listening for a language chunk landing (idea 4).
   private _stopLanguageListener?: () => void;
 
+  /*
+   * The card as the chosen example builds it (ideas 26, 53, 54): under the Card tab's form,
+   * so what a setting does is seen without leaving the tab, in light or dark and at a phone's
+   * width. Built the way the card editor's Result is, quietly.
+   */
+  private _renderCardPreview(): TemplateResult {
+    const config = this._config;
+    if (!config?.card || !this.hass) return html``;
+    const resolved = collectTemplates(this._savedLovelace, undefined, config)[config.template] ?? config;
+    const variables = exampleVariables(resolved, previewExamples.get(config.template)) ?? [];
+    let built: unknown;
+    try {
+      built = deepReplace(variables, resolved, resolved.card, config.template, this.hass, true);
+    } catch {
+      return html``;
+    }
+    if (!built || typeof built !== 'object') return html``;
+    return html`
+      <h4 class="preview-header">${localize('preview.header', undefined, this.hass)}</h4>
+      <decluttering-preview-frame .hass=${this.hass} .config=${built} kind="card"></decluttering-preview-frame>
+    `;
+  }
+
   async connectedCallback(): Promise<void> {
     super.connectedCallback();
+    // Opened from the chip's "Where used" (idea 47): start on that tab.
+    const asked = takeInitialTab();
+    if (asked) this._selectedTab = asked;
     this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
+    this._unwatchTrash = onTrashChanged(() => void this._loadTrash());
+    void this._loadTrash();
+    this.addEventListener('decluttering-announce', this._onAnnounce);
     if (!this._loadedElements) {
       await loadCardEditorPicker();
       await loadRowEditor();
@@ -1004,6 +1187,9 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     super.disconnectedCallback();
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
+    this.removeEventListener('decluttering-announce', this._onAnnounce);
+    this._unwatchTrash?.();
+    this._unwatchTrash = undefined;
   }
 
   protected updated(changed: PropertyValues): void {

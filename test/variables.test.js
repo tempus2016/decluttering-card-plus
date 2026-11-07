@@ -10,6 +10,7 @@ const {
   isFallback,
   orTarget,
   hasRequiredVariables,
+  POSITION_NAMES,
   isOptional,
   withoutOptional,
   isResolver,
@@ -46,6 +47,14 @@ const {
   usesTranslate,
   declarationSelector,
   VARIABLE_TYPES,
+  conditionHolds,
+  isCondition,
+  conditionTarget,
+  KNOWN_PARAM_STEPS,
+  KNOWN_STEPS,
+  withStateScope,
+  unlistedState,
+  readsState,
 } = require('../.test-build/variables.js');
 
 const { check } = require('./check');
@@ -735,8 +744,26 @@ check(
   applyTransform('device', 'light.hall', houseHass),
   'Hall Lamp Module',
 );
-check('attr reads one named attribute', applyTransform('attr:brightness', 'light.hall', houseHass), '128');
-check('attr works for a text attribute too', applyTransform('attr:icon', 'light.hall', houseHass), 'mdi:lamp');
+// An attribute is read under the |state rule (idea 39): only for an entity the card rebuilds on.
+const followedHouse = withStateScope(houseHass, ['light.hall']);
+check('attr reads one named attribute', applyTransform('attr:brightness', 'light.hall', followedHouse), '128');
+check('attr works for a text attribute too', applyTransform('attr:icon', 'light.hall', followedHouse), 'mdi:lamp');
+check(
+  'attr gives nothing for an entity the card does not follow',
+  applyTransform('attr:brightness', 'light.hall', houseHass),
+  undefined,
+);
+check(
+  'and unlistedState names that entity for attr: as for state',
+  unlistedState('attr:brightness', 'light.hall', houseHass),
+  'light.hall',
+);
+check(
+  'while a followed entity is not unlisted',
+  unlistedState('attr:brightness', 'light.hall', followedHouse),
+  undefined,
+);
+check('readsState knows both', [readsState('state'), readsState('attr:x'), readsState('upper')], [true, true, false]);
 
 check(
   'a resolver runs before a transform that follows it',
@@ -752,7 +779,7 @@ check(
 );
 check(
   'an attribute it does not carry resolves to nothing',
-  applyTransform('attr:nope', 'light.hall', houseHass),
+  applyTransform('attr:nope', 'light.hall', followedHouse),
   undefined,
 );
 check('no area on it resolves to nothing', applyTransform('area', 'light.nope', houseHass), undefined);
@@ -1658,5 +1685,243 @@ check(
       declarationShown({ name: 'a', show_if: ['[[zones]]', 'kind=x'] }, reader({ kind: 'y' })),
     ],
     [true, false],
+  );
+}
+
+const knownStepForTest = (step) => KNOWN_PARAM_STEPS.includes(step.slice(0, step.indexOf(':')));
+
+/* --------------------------------------------------- idea 36: unless: and switch: */
+{
+  const values = { short: 'yes', mode: 'off', empty: '' };
+  const read = (name) => values[name];
+  check('unless: holds while the variable is a no', conditionHolds('unless:empty', read), true);
+  check('unless: fails while the variable is a yes', conditionHolds('unless:short', read), false);
+  check('unless:! is if:', conditionHolds('unless:!short', read), true);
+  check('unless:name=text holds while it is anything else', conditionHolds('unless:mode=on', read), true);
+  check('and fails when it is that text', conditionHolds('unless:mode=off', read), false);
+  check('unless: is a condition', isCondition('unless:short'), true);
+  check('and names its target', conditionTarget('unless:mode=off'), 'mode');
+  check('a chain with unless: is gated', applyTransform('unless:short', 'Label', undefined, values), undefined);
+  check(
+    'and passes when the condition holds',
+    applyTransform('unless:empty|upper', 'Label', undefined, values),
+    'LABEL',
+  );
+  check('switch: picks the arm the value names', applyTransform('switch:on=red,off=grey,default=amber', 'on'), 'red');
+  check(
+    'switch: falls through to default=',
+    applyTransform('switch:on=red,off=grey,default=amber', 'unavailable'),
+    'amber',
+  );
+  check('switch: takes *= as well', applyTransform('switch:on=red,*=grey', 'off'), 'grey');
+  check('switch: with no arm and no default is a gap', applyTransform('switch:on=red', 'off'), undefined);
+  check('switch: can hand on to a default:', applyTransform('switch:on=red|default:blue', 'off'), 'blue');
+  check(
+    'unless: and switch: are known steps',
+    [knownStepForTest('unless:x'), knownStepForTest('switch:a=b')],
+    [true, true],
+  );
+}
+
+/* --------------------------------------------------- idea 38: date and time steps */
+{
+  const en = { locale: { language: 'en', number_format: 'language' } };
+  const de = { locale: { language: 'de', number_format: 'language' } };
+  const warnedBefore = console.warn;
+  const said = [];
+  console.warn = (m) => said.push(m);
+
+  check('format: writes a timestamp to a pattern', applyTransform('format:YYYY', '2026-10-24T07:42:11Z', en), '2026');
+  check(
+    'age:days counts the days since, as a number',
+    Number(applyTransform('age:days', String(Date.now() / 1000 - 3 * 86400), en)) > 2.99,
+    true,
+  );
+  check('age counts seconds when bare', Number(applyTransform('age', String(Date.now() / 1000 - 90), en)) >= 90, true);
+  check(
+    'relative says how long ago',
+    applyTransform('relative', String(Date.now() / 1000 - 18 * 60), en),
+    '18 minutes ago',
+  );
+  check(
+    'relative in the viewer language',
+    applyTransform('relative', String(Date.now() / 1000 - 18 * 60), de),
+    'vor 18 Minuten',
+  );
+  check('a word is not a date and is left as it was', applyTransform('relative', 'on', en), 'on');
+  check('which the console says once', said.filter((m) => m.includes('works on a date')).length, 1);
+  check(
+    'age with a unit nobody knows is left as it was',
+    applyTransform('age:fortnights', '2026-10-24T07:42:11Z', en),
+    '2026-10-24T07:42:11Z',
+  );
+  check('and age counts as a number for a whole value', yieldsNumber('attr:last_seen|age:days'), true);
+  check(
+    'a chain can go on from age with the number steps',
+    applyTransform('age:hours|round', String(Date.now() / 1000 - 7200), en),
+    '2',
+  );
+
+  check(
+    'the new steps are known to the lint lists',
+    ['relative', 'age'].every((s) => KNOWN_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'and the ones with arguments',
+    ['format', 'age'].every((s) => KNOWN_PARAM_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'a template using relative rebuilds with the locale',
+    usesTranslate({ card: { a: '[[e|attr:x|relative]]' } }),
+    true,
+  );
+  check('while a plain one does not', usesTranslate({ card: { a: '[[n|upper]]' } }), false);
+  console.warn = warnedBefore;
+}
+
+/* --------------------------------------------------- idea 40: plural and number steps in the viewer language */
+{
+  const en = { locale: { language: 'en', number_format: 'language' } };
+  const de = { locale: { language: 'de', number_format: 'language' } };
+  const plain = { locale: { language: 'en', number_format: 'none' } };
+  const commaDecimal = { locale: { language: 'de', number_format: 'comma_decimal' } };
+  const warnedBefore = console.warn;
+  const said = [];
+  console.warn = (m) => said.push(m);
+
+  check('plural picks the singular for one', applyTransform('plural:light,lights', '1', en), 'light');
+  check('and the plural for three', applyTransform('plural:light,lights', '3', en), 'lights');
+  check('and for zero', applyTransform('plural:light,lights', '0', en), 'lights');
+  check('a count feeds plural', applyTransform('count|plural:light,lights', ['a', 'b'], en), 'lights');
+  check('plural with a word is left as it was', applyTransform('plural:light,lights', 'many', en), 'many');
+  check('plural with one form is left as it was', applyTransform('plural:light', '3', en), '3');
+  {
+    const pl = { locale: { language: 'pl' } };
+    check(
+      "three forms follow the language's own categories: Polish one, few, many",
+      ['1', '3', '5', '22', '25'].map((n) => applyTransform('plural:światło,światła,świateł', n, pl)),
+      ['światło', 'światła', 'świateł', 'światła', 'świateł'],
+    );
+  }
+  check('format_number uses the viewer separators', applyTransform('format_number:1', '12345.678', en), '12,345.7');
+  check('in German', applyTransform('format_number:1', '12345.678', de), '12.345,7');
+  check('as money', applyTransform('format_number:currency=GBP', '4.5', en), '£4.50');
+  check(
+    'with no decimals asked for, as the locale writes it',
+    applyTransform('format_number', '1234.5', en),
+    '1,234.5',
+  );
+  check('number_format none writes it plain', applyTransform('format_number:1', '12345.678', plain), '12345.7');
+  check(
+    'number_format comma_decimal wins over the language',
+    applyTransform('format_number:1', '12345.678', commaDecimal),
+    '12,345.7',
+  );
+  check('format_number with a word is left as it was', applyTransform('format_number', 'lots', en), 'lots');
+
+  check(
+    'the new steps are known to the lint lists',
+    ['format_number'].every((s) => KNOWN_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'and the ones with arguments',
+    ['plural', 'format_number'].every((s) => KNOWN_PARAM_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'a template using format_number rebuilds with the locale',
+    usesTranslate({ card: { a: '[[n|format_number]]' } }),
+    true,
+  );
+  check('while a plain one does not', usesTranslate({ card: { a: '[[n|upper]]' } }), false);
+  console.warn = warnedBefore;
+}
+
+/* --------------------------------------------------- idea 41: colour steps */
+{
+  const warnedBefore = console.warn;
+  const said = [];
+  console.warn = (m) => said.push(m);
+
+  check('lighten', applyTransform('lighten:20', '#1565c0'), '#4484cd');
+  check('darken', applyTransform('darken:20', '#1565c0'), '#11519a');
+  check('alpha', applyTransform('alpha:0.12', '#1565c0'), 'rgba(21,101,192,0.12)');
+  check('contrast', applyTransform('contrast', '#1565c0'), '#ffffff');
+  check('mix', applyTransform('mix:#ff9800,50', '#1565c0'), '#8a7f60');
+  check('mix defaults to half', applyTransform('mix:#ff9800', '#1565c0'), '#8a7f60');
+  check('a named colour works', applyTransform('lighten:50', 'navy'), '#8080c0');
+  check('colour steps chain', applyTransform('lighten:20|contrast', '#1565c0'), '#000000');
+  check('not a colour is left as it was', applyTransform('lighten:20', 'amberish'), 'amberish');
+  check('a theme variable passes through', applyTransform('alpha:0.5', 'var(--primary-color)'), 'var(--primary-color)');
+  check(
+    'and the console says so',
+    said.some((m) => m.includes('theme variable')),
+    true,
+  );
+  check('a bad alpha is left as it was', applyTransform('alpha:7', '#1565c0'), '#1565c0');
+
+  check(
+    'the new steps are known to the lint lists',
+    ['contrast'].every((s) => KNOWN_STEPS.includes(s)),
+    true,
+  );
+  check(
+    'and the ones with arguments',
+    ['lighten', 'darken', 'alpha', 'mix'].every((s) => KNOWN_PARAM_STEPS.includes(s)),
+    true,
+  );
+  console.warn = warnedBefore;
+}
+
+/* ------------------------------------------------- where a copy stands (idea 37) */
+
+check(
+  'every copy of a repeat is told its place: index from one, index0, count, first and last',
+  forEachVariables({ a: 1 }, undefined, 0, 3).slice(1),
+  [{ index: 1 }, { index0: 0 }, { count: 3 }, { first: true }, { last: false }],
+);
+check('the last copy says so, and only the last', forEachVariables({}, undefined, 2, 3).slice(-2), [
+  { first: false },
+  { last: true },
+]);
+check(
+  'first and last are real booleans, so |bool and if: read them',
+  [typeof forEachVariables({}, undefined, 0, 1)[3].first, typeof forEachVariables({}, undefined, 0, 1)[4].last],
+  ['boolean', 'boolean'],
+);
+check(
+  'an item that sets first itself comes before the position, so it wins',
+  forEachVariables({ first: 'mine' }, undefined, 0, 1)[0],
+  { first: 'mine' },
+);
+check('the five position names, for the checks that have to know them', POSITION_NAMES, [
+  'index',
+  'index0',
+  'count',
+  'first',
+  'last',
+]);
+
+{
+  const { withStateScope: scope, applyTransform: run } = require('../.test-build/variables.js');
+  const hass = scope(
+    {
+      states: {
+        'light.x': { state: 'on', last_changed: '2026-11-01T10:00:00Z', last_updated: '2026-11-02T10:00:00Z' },
+      },
+    },
+    ['light.x'],
+  );
+  check(
+    'last_changed and last_updated read the state times, under rebuild_on (idea 38)',
+    [
+      run('last_changed', 'light.x', hass),
+      run('last_updated', 'light.x', hass),
+      run('last_changed', 'light.x', { states: hass.states }),
+    ],
+    ['2026-11-01T10:00:00Z', '2026-11-02T10:00:00Z', undefined],
   );
 }

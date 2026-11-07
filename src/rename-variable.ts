@@ -48,9 +48,11 @@ function renameInside(inside: string, from: string, to: string): string {
     const step = steps[index];
     if (step === `or:${from}`) steps[index] = `or:${to}`;
     else if (conditionTarget(step) === from) {
-      // `if:from`, `if:!from`, `if:from=on` and `if:from!=on` all keep their shape.
-      const not = step.startsWith('if:!') ? '!' : '';
-      steps[index] = `if:${not}${to}${step.slice(3 + not.length + from.length)}`;
+      // `if:from`, `if:!from`, `if:from=on` and `if:from!=on` all keep their shape - and so
+      // does `unless:` (idea 36), which is the same step spelled the other way round.
+      const prefix = step.startsWith('unless:') ? 'unless:' : 'if:';
+      const not = step.startsWith(`${prefix}!`) ? '!' : '';
+      steps[index] = `${prefix}${not}${to}${step.slice(prefix.length + not.length + from.length)}`;
     }
   }
   return `${steps.join('|')}${optional ? '?' : ''}`;

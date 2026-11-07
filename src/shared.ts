@@ -1,3 +1,4 @@
+import { html, TemplateResult } from 'lit';
 import { HomeAssistant, fireEvent, LovelaceConfig } from 'custom-card-helpers';
 import { TemplateConfig, VariablesConfig, LovelaceThingType } from './types';
 import { viewIndexFromPath, groupCard } from './templates';
@@ -25,6 +26,9 @@ export function defineElement(tag: string, cls: CustomElementConstructor): boole
 
 // The Dashboard health panel both editors show.
 export const HEALTH_TAG = 'decluttering-card-plus-health';
+
+// The template gallery dialog the Share tab opens (idea 52).
+export const GALLERY_TAG = 'decluttering-card-plus-gallery';
 
 /*
  * Which view this card is being rendered in, read off the URL: the card only renders
@@ -62,6 +66,27 @@ export function parentOf(node: Node): Node | null {
 }
 
 /*
+ * What a dashboard element has been placed as, read off the elements around it, looking up
+ * through shadow roots: a badge in a view's row or in the badge picker, a row of an entities
+ * card or an element of a picture-elements card, or a card. For when the config cannot
+ * say - a template that was never found has no type to go by.
+ */
+export type Placement = 'badge' | 'row' | 'card';
+const BADGE_PLACES = ['hui-badge', 'hui-badge-picker', 'hui-heading-badge'];
+const ROW_PLACES = ['hui-entities-card', 'hui-picture-elements-card'];
+export function placedAs(element: Element): Placement {
+  let node = parentOf(element);
+  while (node) {
+    const tag = (node as Element).localName ?? '';
+    if (BADGE_PLACES.includes(tag)) return 'badge';
+    if (ROW_PLACES.includes(tag) || /^hui-.*-(entity-)?row$/.test(tag)) return 'row';
+    if (tag === 'hui-card' || tag === 'hui-card-picker' || tag === 'hui-section') return 'card';
+    node = parentOf(node);
+  }
+  return 'card';
+}
+
+/*
  * Where the card being edited sits, read off the edit dialog. Home Assistant 2026.7 hands
  * the dialog the dashboard, the card's config and - in a sections view - the section's
  * config, but no indices, so the section is found by being the same object in that
@@ -94,6 +119,36 @@ export function editDialogOf(element: Element): Element | undefined {
     if ((node as Element).localName === 'hui-dialog-edit-card') return node as Element;
   }
   return undefined;
+}
+
+/*
+ * Whether an edit dialog is open on the page (#407). Home Assistant builds the dialog's
+ * preview before the card is placed in it, so a card being configured cannot yet tell it is
+ * in one - only that one is open. Dialogs live in the home-assistant element's shadow root;
+ * the dialog stays there once closed, with no `_params`. A dialog that has no such field at
+ * all (a future Home Assistant, a test) counts as open.
+ */
+export function editDialogOnPage(): boolean {
+  const root = document.querySelector('home-assistant')?.shadowRoot;
+  const dialog = root?.querySelector('hui-dialog-edit-card') ?? document.querySelector('hui-dialog-edit-card');
+  if (!dialog) return false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return !('_params' in dialog) || !!(dialog as any)._params;
+}
+
+/*
+ * Whether this editor is the options of a section strategy (#400) rather than of a card.
+ * Home Assistant mounts the card's editor there too, in its section dialog's strategy tab,
+ * and whatever the editor fires as config-changed becomes the section's `strategy:` - so
+ * anything that swaps the card for a different type of thing cannot work there.
+ */
+export function inSectionStrategyEditor(element: Element): boolean {
+  for (let node: Node | null = element; node; node = parentOf(node)) {
+    const name = (node as Element).localName;
+    if (name === 'hui-section-strategy-element-editor') return true;
+    if (name === 'hui-dialog-edit-card') return false;
+  }
+  return false;
 }
 
 // Tags this bundle owns.
@@ -232,8 +287,10 @@ export async function undoFrom(
   return outcome;
 }
 
+// Guarded, so the pure helpers in this module can be required by the node tests.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const HELPERS = (window as any).loadCardHelpers ? (window as any).loadCardHelpers() : undefined;
+const pageWindow: any = typeof window !== 'undefined' ? window : undefined;
+export const HELPERS = pageWindow?.loadCardHelpers ? pageWindow.loadCardHelpers() : undefined;
 
 export async function loadCardEditorPicker(): Promise<void> {
   // Ensure hui-card-element-editor and hui-card-picker are loaded.
@@ -275,4 +332,43 @@ export function getThingType(templateConfig: TemplateConfig): LovelaceThingType 
 export function thingContent(templateConfig: TemplateConfig): any {
   if (templateConfig.group !== undefined) return groupCard(templateConfig.group);
   return templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
+}
+
+/** Whether this page has defined a custom element - which Home Assistant's own elements come and go with releases. */
+export const isDefinedHere = (tag: string): boolean => !!customElements.get(tag);
+
+export interface TextFieldOptions {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  onInput: (value: string) => void;
+  onKeydown?: (ev: KeyboardEvent) => void;
+}
+
+/*
+ * A one-line text input. Home Assistant 2026.7 stopped registering ha-textfield and draws
+ * its inputs with ha-input instead; an unregistered element is an empty inline box, so
+ * every name field in the editors simply vanished, with nothing in the console. The
+ * card still supports Home Assistants that only have ha-textfield, so this asks which one
+ * the page has each time it draws. Both take `value`, `label` and `disabled`, and both send
+ * `input` with the element as the target, so the rest is the same either way.
+ */
+export function textField(options: TextFieldOptions): TemplateResult {
+  const changed = (ev: Event): void => options.onInput((ev.target as HTMLInputElement).value ?? '');
+  const keydown = (ev: KeyboardEvent): void => options.onKeydown?.(ev);
+  return isDefinedHere('ha-input')
+    ? html`<ha-input
+        label=${options.label}
+        .value=${options.value}
+        .disabled=${options.disabled === true}
+        @input=${changed}
+        @keydown=${keydown}
+      ></ha-input>`
+    : html`<ha-textfield
+        label=${options.label}
+        .value=${options.value}
+        .disabled=${options.disabled === true}
+        @input=${changed}
+        @keydown=${keydown}
+      ></ha-textfield>`;
 }

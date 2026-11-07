@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import {
   FLAT_STEP,
@@ -45,7 +46,7 @@ function itemNames(items: unknown[]): string[] {
  * values, with `extra` - the card's variables, say - looked in first.
  */
 export function structureNames(template: TemplateConfig | undefined, extra?: VariablesConfig[]): string[] {
-  const json = JSON.stringify(template ?? {});
+  const json = placeholderJson(template ?? {});
   if (typeof json !== 'string' || (!json.includes(`|${WITH_STEP}`) && !json.includes(`|${REPEAT_STEP}`))) return [];
   const values = variableValues([...normaliseVariables(extra), ...resolveVariables(undefined, template)]);
   const names = new Set<string>();
@@ -93,7 +94,7 @@ export function isItemTemplate(template: TemplateConfig | undefined): boolean {
  */
 export function placeholderHeads(node: unknown): Set<string> {
   const heads = new Set<string>();
-  const json = JSON.stringify(node ?? null);
+  const json = placeholderJson(node ?? null);
   if (typeof json !== 'string') return heads;
   const pattern = /\[\[!?([A-Za-z0-9_.-]+)(?=[|?\]])/g;
   for (let match = pattern.exec(json); match !== null; match = pattern.exec(json)) heads.add(match[1]);

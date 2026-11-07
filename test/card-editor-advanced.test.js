@@ -16,7 +16,12 @@ const base = { type: 'custom:decluttering-card-plus', template: 'tile' };
 
 // --- data shown for a config
 
-check('an untouched card shows the defaults', advancedData(base), { on_error_mode: 'show', debug: 'off' });
+check('an untouched card shows the defaults', advancedData(base), {
+  on_error_mode: 'show',
+  strict_errors: 'ignore',
+  strict_warnings: 'ignore',
+  debug: 'off',
+});
 
 check(
   'every advanced key is read into its field',
@@ -36,7 +41,8 @@ check(
     grid_rows: '2',
     style: 'ha-card { color: red }',
     on_error_mode: 'card',
-    strict: true,
+    strict_errors: 'fail',
+    strict_warnings: 'ignore',
     rebuild_on: ['light.a'],
     debug: 'report',
     name: 'Kitchen tile',
@@ -75,7 +81,8 @@ check(
     grid_rows: 'auto',
     style: 'ha-card {}',
     on_error_mode: 'hide',
-    strict: true,
+    strict_errors: 'fail',
+    strict_warnings: 'ignore',
     rebuild_on: ['light.a'],
     debug: 'yaml',
     name: 'N',
@@ -132,7 +139,11 @@ check(
 
 check(
   'strict off removes the key rather than writing false',
-  'strict' in applyAdvanced({ ...base, strict: true }, { on_error_mode: 'show', debug: 'off', strict: false }),
+  'strict' in
+    applyAdvanced(
+      { ...base, strict: true },
+      { on_error_mode: 'show', debug: 'off', strict_errors: 'ignore', strict_warnings: 'ignore' },
+    ),
   false,
 );
 check(
@@ -195,7 +206,18 @@ const schema = advancedSchema();
 check(
   'the schema names every field in the order the mockup shows',
   schema.map((entry) => entry.name),
-  ['grid_columns', 'grid_rows', 'style', 'on_error_mode', 'strict', 'rebuild_on', 'debug', 'name', 'inherit_variables'],
+  [
+    'grid_columns',
+    'grid_rows',
+    'style',
+    'on_error_mode',
+    'strict_errors',
+    'strict_warnings',
+    'rebuild_on',
+    'debug',
+    'name',
+    'inherit_variables',
+  ],
 );
 check('rebuild_on takes several entities', schema.find((e) => e.name === 'rebuild_on').selector.entity.multiple, true);
 check(
@@ -207,4 +229,52 @@ check(
   'on_error offers show, hide and a card of my choosing',
   schema.find((e) => e.name === 'on_error_mode').selector.select.options.map((o) => o.value),
   ['show', 'hide', 'card'],
+);
+
+// --- strict, level by level (#390)
+
+const form = (strict_errors, strict_warnings) => ({
+  on_error_mode: 'show',
+  debug: 'off',
+  strict_errors,
+  strict_warnings,
+});
+check('strict: true shows as errors fail, warnings ignore', advancedData({ ...base, strict: true }), {
+  on_error_mode: 'show',
+  strict_errors: 'fail',
+  strict_warnings: 'ignore',
+  debug: 'off',
+});
+check(
+  'the level-by-level form is read into both fields',
+  advancedData({ ...base, strict: { errors: 'report', warnings: 'notice' } }),
+  { on_error_mode: 'show', strict_errors: 'report', strict_warnings: 'notice', debug: 'off' },
+);
+check(
+  'errors fail and warnings ignore is still written strict: true',
+  applyAdvanced(base, form('fail', 'ignore')).strict,
+  true,
+);
+check('any other pair is written level by level', applyAdvanced(base, form('fail', 'notice')).strict, {
+  errors: 'fail',
+  warnings: 'notice',
+});
+check('a level left on ignore is not written', applyAdvanced(base, form('ignore', 'report')).strict, {
+  warnings: 'report',
+});
+check(
+  'an ignore the card wrote out is kept, as it overrides the dashboard',
+  applyAdvanced({ ...base, strict: { errors: 'ignore', warnings: 'notice' } }, form('ignore', 'notice')).strict,
+  { errors: 'ignore', warnings: 'notice' },
+);
+check('a level-by-level strict counts once', advancedCount({ ...base, strict: { warnings: 'notice' } }), 1);
+check(
+  'the strict dropdowns offer the modes of each level',
+  ['strict_errors', 'strict_warnings'].map((name) =>
+    schema.find((e) => e.name === name).selector.select.options.map((o) => o.value),
+  ),
+  [
+    ['ignore', 'report', 'fail'],
+    ['ignore', 'notice', 'report'],
+  ],
 );

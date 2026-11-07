@@ -23,9 +23,11 @@ import { rebuildOnEntities } from './rebuild';
 import { localize } from './localize';
 import { isItemTemplate, placeholderHeads, structureNames } from './structure';
 import { warn } from './warnings';
+import { STRICT_KEY } from './strict';
 import { closestTemplate } from './closest';
 
 export { closestTemplate };
+import { withSlotVariables } from './slots';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -162,7 +164,8 @@ export function checkDashboard(
           ...structureNames(template, normaliseVariables(node.variables)),
           ...itemNames,
         ].map((name) => ({ [name]: null }));
-        const problems = diagnoseInstance(node.variables, template, supplements);
+        // A card's `slots:` are variables by another name (idea 35), so they count as set.
+        const problems = diagnoseInstance(withSlotVariables(node).variables, template, supplements);
         if (problems.missing.length) {
           const entry = unset.get(node.template) ?? { names: new Set<string>(), count: 0 };
           for (const name of problems.missing) entry.names.add(name);
@@ -190,6 +193,8 @@ export function checkDashboard(
       .sort()
       .map(([template, entry]) => ({ template, names: [...entry.names].sort(), count: entry.count })),
     unusedTemplates: available
+      // A page template (idea 33) is used by a strategy's page:, which no card names.
+      .filter((name) => !('dashboard' in (templates[name] ?? {})))
       .filter((name) => totalUsages(ll, name) === 0 && !extendedNames(ll).has(name))
       .filter((name) => !(itemNames.includes(name) && heads.has(name)))
       .sort(),
@@ -432,6 +437,18 @@ const DOMAIN_OF = /^([a-z0-9_]+)\./i;
  * brackets. So that entity comes back as `entity`, for the card to build with under its
  * own variables (withPickedEntity): the card's values still win, as they always do.
  */
+/** A template a card asked for by name - directly or through template_by_domain - that is not there. */
+export class MissingTemplateError extends Error {
+  constructor(
+    message: string,
+    public readonly template: string,
+    public readonly available: string[],
+  ) {
+    super(message);
+    this.name = 'MissingTemplateError';
+  }
+}
+
 export function pickTemplate(
   config: { template?: unknown; template_by_domain?: unknown },
   variables: VariablesConfig[] | undefined,
@@ -460,7 +477,11 @@ export function pickTemplate(
   }
   const template = lookup(name);
   if (!template) {
-    throw new Error(localize('error.template_missing', { template: name }, hass) + didYouMean(name, available));
+    throw new MissingTemplateError(
+      localize('error.template_missing', { template: name }, hass) + didYouMean(name, available),
+      name,
+      available,
+    );
   }
   const passed = normaliseVariables(variables).some((entry) => Object.keys(entry)[0] === 'entity');
   return !passed && typeof entity === 'string' ? { name, template, entity } : { name, template };
@@ -852,7 +873,12 @@ export function hasSectionDefaults(
 ): boolean {
   if (!place) return false;
   const section = (ll as any)?.views?.[place.view]?.sections?.[place.section];
-  return normaliseVariables(section?.[DEFAULTS_KEY]).length > 0 || normaliseVariables(section?.[LET_KEY]).length > 0;
+  return (
+    normaliseVariables(section?.[DEFAULTS_KEY]).length > 0 ||
+    normaliseVariables(section?.[LET_KEY]).length > 0 ||
+    // A section's own `decluttering_strict:` (#390) changes what a card in it does, too.
+    section?.[STRICT_KEY] !== undefined
+  );
 }
 
 /**
@@ -1296,7 +1322,7 @@ export function setReadDashboardForTest(urlPath: string, config: LovelaceConfig 
   readVersion += 1;
 }
 
-function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<LovelaceConfig | null> {
+export function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Promise<LovelaceConfig | null> {
   watchForSavedDashboards(hass);
   const cached = configCache.get(urlPath);
   if (cached) return cached;
@@ -1453,6 +1479,31 @@ export function borrowedFrom(name: string): string | undefined {
   return BORROWED_FROM.get(name);
 }
 
+/**
+ * The templates this dashboard borrows, as their lenders wrote them, with the lender each
+ * came from - for the health panel to compare versions against (idea 43). Later lenders
+ * override earlier ones, as collectAllTemplates merges them.
+ */
+export async function borrowedTemplateSources(
+  hass: HomeAssistant | undefined,
+  ll: LovelaceConfig | null | undefined,
+): Promise<{ templates: Record<string, TemplateConfig>; from: Record<string, string> }> {
+  const out = { templates: {} as Record<string, TemplateConfig>, from: {} as Record<string, string> };
+  if (!hass || !mayBorrowTemplates(ll)) return out;
+  let sources = getTemplateSources(ll);
+  if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
+  sources = withLibrary(sources);
+  const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
+  configs.forEach((config, index) => {
+    if (!config) return;
+    for (const [name, template] of Object.entries(collectRawTemplates(config))) {
+      out.templates[name] = template;
+      out.from[name] = sources[index];
+    }
+  });
+  return out;
+}
+
 /** A single template from this dashboard, without going to the network. */
 export function findTemplate(
   ll: LovelaceConfig | null | undefined,
@@ -1461,6 +1512,29 @@ export function findTemplate(
   section?: number,
 ): TemplateConfig | null {
   return collectTemplates(ll, view, undefined, section)[template] ?? null;
+}
+
+/**
+ * Which dashboard a borrowed template comes from, by url path - undefined for one defined
+ * here, or one nobody has. Looked for where collectAllTemplates looks, in the same order, so
+ * the answer is the dashboard whose copy a card here actually gets (idea 47).
+ */
+export async function templateSourcePath(
+  hass: HomeAssistant | undefined,
+  ll: LovelaceConfig | null | undefined,
+  template: string,
+): Promise<string | undefined> {
+  if (collectRawTemplates(ll)[template] !== undefined || !hass || !mayBorrowTemplates(ll)) return undefined;
+  let sources = getTemplateSources(ll);
+  if (sources.includes('*')) sources = expandSources(sources, await fetchDashboardPaths(hass));
+  sources = withLibrary(sources);
+  const configs = await Promise.all(sources.map((source) => fetchDashboardConfig(hass, source)));
+  // Named sources are merged after the library, so the last one holding the name wins.
+  let found: string | undefined;
+  configs.forEach((config, index) => {
+    if (config && collectRawTemplates(config)[template] !== undefined) found = sources[index];
+  });
+  return found;
 }
 
 /** A single template from this dashboard or one it borrows from. */
@@ -1692,8 +1766,25 @@ export function addCardToView(ll: any, viewIndex: number, card: any): any {
 
   return {
     ...ll,
-    views: views.map((view: any, index: number) =>
-      index === viewIndex ? { ...view, cards: [...(view.cards ?? []), card] } : view,
+    views: views.map((view: any, index: number) => (index === viewIndex ? withCardAdded(view, card) : view)),
+  };
+}
+
+/*
+ * A sections view draws only its sections: a card put in its `cards:` list is kept in the YAML
+ * and never shown, not even in edit mode, so a template installed there could not be found
+ * again. It goes in the last section instead, or a new one when the view has none yet.
+ */
+function withCardAdded(view: any, card: any): any {
+  const sectioned = view?.type === 'sections' || Array.isArray(view?.sections);
+  if (!sectioned) return { ...view, cards: [...(view.cards ?? []), card] };
+  const sections: any[] = Array.isArray(view.sections) ? view.sections : [];
+  if (!sections.length) return { ...view, sections: [{ type: 'grid', cards: [card] }] };
+  const last = sections.length - 1;
+  return {
+    ...view,
+    sections: sections.map((section, index) =>
+      index === last ? { ...section, cards: [...(section?.cards ?? []), card] } : section,
     ),
   };
 }

@@ -1,9 +1,11 @@
+import { withSlotVariables } from './slots';
 import { LitElement, html, TemplateResult, css, CSSResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringCardConfig, TemplateConfig, VariablesConfig, FormSchemaEntry } from './types';
 import deepReplace, { fillSource } from './deep-replace';
+import './preview-frame';
 import { structureNames } from './structure';
 import {
   collectTemplates,
@@ -44,7 +46,7 @@ import {
   withStateScope,
   normaliseVariables,
 } from './variables';
-import { exampleSets } from './examples';
+import { hasOptionsFrom, optionsFromSelector } from './options-from';
 import { copyLabel, isRegistrySource, registryNames, resolveRegistryItems } from './registry';
 import { categoryRegistry, loadCategories, wantsCategories } from './categories';
 import { renderTemplateOnce, sourceTemplate, TemplateRender, templateList } from './template-source';
@@ -67,6 +69,14 @@ import { EditorHidden, editorHidden, withoutFields } from './card-editor/hide';
 import { isShownValue, shownDefaults } from './card-editor/defaults';
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { buildTime, previewLines, PreviewLine, previewModes, PreviewMode } from './card-editor/result-preview';
+import {
+  onPreviewHold,
+  previewEditorOpened,
+  previewPauseOn,
+  renderPreviewNow,
+  requiredUnset,
+  setPreviewPaused,
+} from './preview-hold';
 import {
   cardAtPath,
   dashboardHref,
@@ -103,11 +113,14 @@ import { knownDomains } from './card-editor/repeat-builder';
 import { countText, filterPickerItems, groupHeading, PickerItem, pickerItems } from './card-editor/template-picker';
 import { ComboItem, pickerList } from './card-editor/generic-picker';
 import { isDefinedHere } from './template-editor/common';
+import { applyPreset, presetConflicts, presetMatching, presetOptions } from './card-editor/presets';
 import { holdUndo } from './undo';
+import { Alert, checksOf, runChecks } from './checks';
 import {
   currentViewIndex,
   dialogPlace,
   editDialogOf,
+  inSectionStrategyEditor,
   getThingType,
   isVariablesShape,
   loadCardEditorPicker,
@@ -130,6 +143,9 @@ function matchedWhat(source: unknown, count: number, hass: unknown): string {
   const kind = keys.find((key) => written[key] !== undefined) ?? (isRegistrySource(source) ? 'entities' : 'items');
   return localize(`editor.matches_${kind}_${count === 1 ? 'one' : 'many'}`, undefined, hass as undefined);
 }
+
+// What looks like an entity id, which a placeholder reads rather than a variable.
+const ENTITY_ID_LIKE = /^[a-z0-9_]+\.[a-z0-9_]+$/i;
 
 // How many matches the editor lists before it stops. Enough to see the filter is right,
 // few enough that a sweep of the whole house does not fill the dialog.
@@ -218,6 +234,14 @@ const HOST_SELECTOR = /:host|\.decluttering-container/;
 export class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   static get styles(): CSSResult {
     return css`
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
       .description {
         margin: 0 0 8px;
         color: var(--secondary-text-color);
@@ -431,6 +455,11 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         font-size: 12px;
         color: var(--secondary-text-color);
       }
+      .presets .actions {
+        margin-top: 8px;
+        display: flex;
+        gap: 8px;
+      }
     `;
   }
 
@@ -451,6 +480,13 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _onErrorMode?: OnErrorMode;
   // Idea 19: how the result is shown, and the lines the last edit changed.
   @state() private _previewMode: PreviewMode = 'yaml';
+  /*
+   * #407: the previews can be paused from here, the dialog's and the Rendered view alike.
+   * The config last built anyway - with Render now - so the Rendered view shows it until
+   * the next edit hands a new one.
+   */
+  @state() private _builtAnyway?: DeclutteringCardConfig;
+  private _holdStops: (() => void)[] = [];
   @state() private _copied = false;
   private _lastYaml?: string;
   private _markedLines: PreviewLine[] = [];
@@ -467,10 +503,14 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _pickerFilter = '';
   private _pickerItems: PickerItem[] = [];
   private _pickerFor?: Record<string, TemplateConfig>;
+  // A preset waiting for a yes, because it would change values set by hand (idea 44).
+  @state() private _presetPending?: { index: number; names: string[] };
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
   private _renderingTemplates = new Set<string>();
+  // #404: each `options_from:` dropdown's choices, worked out once while this editor is open.
+  private _optionsFrom = new Map<string, unknown>();
   // The card as the dialog opened it, which is what an eject replaces on the dashboard.
   private _openedWith?: DeclutteringCardConfig;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -501,14 +541,44 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     super.disconnectedCallback();
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
+    for (const stop of this._holdStops) stop();
+    this._holdStops = [];
   }
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback();
+    if (!this._holdStops.length) {
+      this._holdStops = [
+        onPreviewHold((event) => {
+          if (event === 'render') this._builtAnyway = this._config;
+          this.requestUpdate();
+        }),
+        previewEditorOpened(),
+      ];
+    }
     this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
     // A card-valued variable renders Home Assistant's own card editor and picker, which
     // are lazy-loaded - free after the first editor anywhere has loaded them.
     await loadCardEditorPicker();
+  }
+
+  /*
+   * A declaration's control, with `options_from:` looked up the first time it is drawn while
+   * hass is here and kept for as long as the editor is open (#404).
+   */
+  private _selectorFor(declaration: VariableDeclaration): unknown {
+    if (!hasOptionsFrom(declaration)) return declarationSelector(declaration);
+    const key = JSON.stringify([
+      declaration.options_from,
+      declaration.option_value,
+      declaration.option_label,
+      declaration.selector,
+    ]);
+    const cached = this._optionsFrom.get(key);
+    if (cached) return cached;
+    const selector = optionsFromSelector(declaration, this.hass);
+    if (this.hass) this._optionsFrom.set(key, selector);
+    return selector;
   }
 
   public setConfig(config: DeclutteringCardConfig): void {
@@ -623,8 +693,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
             </ha-alert>`
       }
       ${this._renderResume()} ${this._renderTemplatePicker(error.template)} ${this._renderResult(template)}
-      ${this._renderSource(template)} ${this._renderStartFromExample(template)}
-      ${this._renderDiagnostics(template, readable)}
+      ${this._renderSource(template)} ${this._renderPresets(template)} ${this._renderDiagnostics(template, readable)}
       <ha-form
         .hass=${this.hass}
         .data=${data}
@@ -747,31 +816,81 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   }
 
   /*
-   * A template with examples can fill a new card in from one of them, which is quicker
-   * than reading the declarations and typing each value - and shows straight away what a
-   * working set looks like. Only for a card that sets nothing yet: an example is a place
-   * to start, not something to lay over values somebody has already chosen.
+   * Idea 44: a template's examples as presets. Usable at any time, not only for a card that
+   * sets nothing yet: picking one fills every declared field it names and keeps the rest,
+   * and asks first when it would change a value set by hand. The preset is not stored on the
+   * card - the dropdown shows a name only while the values still match one.
    */
-  private _renderStartFromExample(template: TemplateConfig | undefined): TemplateResult {
-    const sets = exampleSets(template);
-    if (!sets.length || !this._config || ownVariables(this._config.variables).length) return html``;
+  private _renderPresets(template: TemplateConfig | undefined): TemplateResult {
+    const options = presetOptions(template);
+    if (!options.length || !this._config) return html``;
+    const matching = presetMatching(template, this._config.variables);
+    const pending = this._presetPending;
     return html`
-      <div class="examples">
-        <p class="hint">${localize('editor.start_from_example_hint', undefined, this.hass)}</p>
-        ${sets.map(
-          (set, index) => html`
-            <ha-button @click=${(): void => this._startFromExample(set)}>
-              ${localize('editor.start_from_example', { number: index + 1 }, this.hass)}
-            </ha-button>
-          `,
-        )}
+      <div class="presets">
+        <ha-form
+          .hass=${this.hass}
+          .data=${{ preset: matching === undefined ? '' : String(matching) }}
+          .schema=${[
+            {
+              name: 'preset',
+              label: localize('editor.preset.label', undefined, this.hass),
+              helper:
+                matching === undefined && ownVariables(this._config.variables).length
+                  ? localize('editor.preset.none', undefined, this.hass)
+                  : localize('editor.preset.helper', undefined, this.hass),
+              selector: { select: { mode: 'dropdown', options } },
+            },
+          ]}
+          .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+          .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+          @value-changed=${(ev: CustomEvent): void => this._presetPicked(ev, template)}
+        ></ha-form>
+        ${
+          pending
+            ? html`<ha-alert alert-type="warning">
+                ${localize(
+                  'editor.preset.confirm',
+                  { preset: options[pending.index]?.label ?? '', names: pending.names.join(', ') },
+                  this.hass,
+                )}
+                <div class="actions">
+                  <ha-button @click=${(): void => this._applyPreset(template, pending.index)}>
+                    ${localize('editor.preset.apply_anyway', undefined, this.hass)}
+                  </ha-button>
+                  <ha-button
+                    @click=${(): void => {
+                      this._presetPending = undefined;
+                    }}
+                  >
+                    ${localize('editor.preset.keep', undefined, this.hass)}
+                  </ha-button>
+                </div>
+              </ha-alert>`
+            : html``
+        }
       </div>
     `;
   }
 
-  private _startFromExample(variables: VariablesConfig[]): void {
-    if (!variables.length) return;
-    fireEvent(this, 'config-changed', { config: { ...this._config, variables } as DeclutteringCardConfig });
+  private _presetPicked(ev: CustomEvent, template: TemplateConfig | undefined): void {
+    ev.stopPropagation();
+    const picked = ev.detail.value?.preset;
+    if (picked === undefined || picked === '' || !this._config) return;
+    const index = Number(picked);
+    if (!Number.isInteger(index)) return;
+    const names = presetConflicts(template, index, this._config.variables);
+    if (names.length) {
+      this._presetPending = { index, names };
+      return;
+    }
+    this._applyPreset(template, index);
+  }
+
+  private _applyPreset(template: TemplateConfig | undefined, index: number): void {
+    if (!this._config) return;
+    this._presetPending = undefined;
+    fireEvent(this, 'config-changed', { config: applyPreset(this._config, template, index) });
   }
 
   /*
@@ -964,9 +1083,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     // for_each renders the same template once per item, so one copy stands for all of
     // them - showing every copy would bury the thing you opened this to look at.
     const items = forEachItems(this._config.for_each) ?? this._registryItemsForPreview();
-    let variables = items?.length
-      ? forEachVariables(items[0], this._config.variables, 0, items.length)
-      : this._config.variables;
+    // A card's `slots:` are variables like any other to what it builds (idea 35).
+    const own = withSlotVariables(this._config).variables as VariablesConfig[] | undefined;
+    let variables = items?.length ? forEachVariables(items[0], own, 0, items.length) : own;
     // Choosing by domain, that copy is built from the template its own entity picks.
     let template = named;
     let templateName = this._config.template;
@@ -991,6 +1110,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     const content = thingContent(template);
 
     let resolved: unknown;
+    const unresolved: string[] = [];
     const started = performance.now();
     try {
       // Quietly: the editor re-renders on every keystroke, and the card itself already
@@ -1008,7 +1128,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
           templateName,
           scoped,
           true,
-          undefined,
+          (names) => unresolved.push(...names),
           0,
           undefined,
           undefined,
@@ -1049,8 +1169,21 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     const layout = this._editingPlace().section !== undefined ? 'grid' : undefined;
     const modes = previewModes(thingType);
     const mode: PreviewMode = modes.includes(this._previewMode) ? this._previewMode : 'yaml';
+    /*
+     * Not as a section strategy's options (#400): Home Assistant writes what the editor
+     * fires as the section's strategy, so the built card landed there as a strategy type
+     * that does not exist, and the section broke.
+     */
     const canEject =
-      !items?.length && !isRegistrySource(this._config.for_each_from) && resolved && typeof resolved === 'object';
+      !items?.length &&
+      !isRegistrySource(this._config.for_each_from) &&
+      resolved &&
+      typeof resolved === 'object' &&
+      !inSectionStrategyEditor(this);
+    const paused = previewPauseOn();
+    // Built anyway with Render now: shown as it is until the next edit.
+    const anyway = this._builtAnyway === this._config;
+    const needed = items?.length ? [] : requiredUnset(getDeclarations(template), unresolved);
 
     return html`
       <div class="preview">
@@ -1079,7 +1212,36 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         ${
           mode === 'rendered'
             ? html`<div class="rendered">
-                <hui-card .hass=${this.hass} .config=${resolved} .preview=${true} .layout=${layout}></hui-card>
+                ${
+                  !anyway && (paused || needed.length)
+                    ? html`<ha-alert alert-type="info">
+                        ${
+                          paused
+                            ? localize('card.preview_paused', undefined, this.hass)
+                            : localize(
+                                needed.length === 1 ? 'card.preview_required_one' : 'card.preview_required_many',
+                                { which: needed.map((name) => `[[${name}]]`).join(', ') },
+                                this.hass,
+                              )
+                        }
+                      </ha-alert>`
+                    : html`<decluttering-preview-frame
+                        .hass=${this.hass}
+                        .config=${resolved}
+                        .kind=${thingType}
+                        .layout=${layout}
+                        .renderedOnly=${true}
+                        .repeat=${
+                          items?.length
+                            ? {
+                                copies: items.length,
+                                max: Number(this._config.columns) || 1,
+                                minWidth: Number(this._config.min_column_width) || undefined,
+                              }
+                            : undefined
+                        }
+                      ></decluttering-preview-frame>`
+                }
               </div>`
             : html`<pre class="yaml">
 ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed' : ''}">${line.text}</span>`)}</pre>`
@@ -1090,6 +1252,19 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
         </p>
         <p class="hint">${hintBefore}<code>[[name]]</code>${hintAfter}</p>
         <div class="preview-actions">
+          <ha-button
+            title=${localize('editor.preview.pause_helper', undefined, this.hass)}
+            @click=${(): void => setPreviewPaused(!paused)}
+          >
+            ${localize(paused ? 'editor.preview.resume' : 'editor.preview.pause', undefined, this.hass)}
+          </ha-button>
+          ${
+            paused || needed.length
+              ? html`<ha-button @click=${(): void => renderPreviewNow()}>
+                  ${localize('card.preview_render_now', undefined, this.hass)}
+                </ha-button>`
+              : html``
+          }
           ${
             mode === 'yaml'
               ? html`<ha-button @click=${(): void => this._copyYaml(yaml)}>
@@ -1786,7 +1961,12 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
               }}
             >
               <div class="item-row">
-                <ha-svg-icon class="handle" .path=${DRAG_PATH}></ha-svg-icon>
+                <ha-svg-icon
+                  class="handle"
+                  role="img"
+                  aria-label=${localize('template_editor.drag_hint', undefined, this.hass)}
+                  .path=${DRAG_PATH}
+                ></ha-svg-icon>
                 <span class="item-name">${name(item, index)}</span>
                 <span class="spacer"></span>
                 <ha-icon-button
@@ -1886,8 +2066,9 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
         helper: fromCopy
           ? localize('editor.repeat.from_each_copy_helper', undefined, this.hass)
           : declaration.description,
-        // A declared selector, then what its `type:` stands for, then its allowed values.
-        selector: declarationSelector(declaration),
+        // Found options (#404), then a declared selector, then what its `type:` stands for,
+        // then its allowed values.
+        selector: this._selectorFor(declaration),
         required: declaration.required === true && !fromCopy,
         disabled: fromCopy,
       };
@@ -1928,11 +2109,14 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const unset = declarations
       .filter((declaration) => !(declaration.name in values) && !isCardDeclaration(declaration))
       .map((declaration) => declaration.name);
+    // With the dashboard's item templates, as the card builds with them (#404).
+    const shownLl = this._lovelace ?? getLovelaceConfig();
     const defaults = shownDefaults(
       unset,
       this._config?.variables,
       this._templates?.[this._config?.template as string],
       this.hass,
+      { itemTemplates: itemTemplatesOf(shownLl), context: sourceContext(shownLl) },
     );
     for (const declaration of declarations) {
       if (!(declaration.name in values)) {
@@ -2004,7 +2188,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const repeated = supplied.map((name) => ({ [name]: null }));
     // The card's own for_each_from and on_error are filled in from its variables as well.
     const { missing, unused, required } = diagnoseInstance(
-      this._config?.variables,
+      this._config ? withSlotVariables(this._config).variables : undefined,
       template,
       repeated,
       [this._config?.for_each_from, this._config?.on_error],
@@ -2018,7 +2202,12 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     // unset is not worth a word - but a value it still holds is, since it still goes in.
     const hidden = this._hiddenNames(template, getDeclarations(template));
     const needed = required.filter((name) => !hidden.has(name));
-    const optional = missing.filter((name) => !required.includes(name) && !hidden.has(name));
+    // An entity id in a placeholder reads Home Assistant, not a variable: unset, it means
+    // the card does not rebuild on that entity, which is what the hint has to say (round 1, A2).
+    const unlisted = missing.filter((name) => !required.includes(name) && ENTITY_ID_LIKE.test(name));
+    const optional = missing.filter(
+      (name) => !required.includes(name) && !hidden.has(name) && !unlisted.includes(name),
+    );
     const own = new Set(ownVariables(this._config?.variables).map(variableName));
     const hiddenButSet = [...hidden].filter((name) => own.has(name));
     /*
@@ -2038,7 +2227,18 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const fixedColumns = repeats && columns > 1 && !(Number(this._config?.min_column_width) > 0);
     const kind = getThingType(template);
     const misplaced = misplacedOverrides(this._config, kind);
+    const failed = this._failedChecks(template);
     return html`
+      ${failed.map(
+        (alert) =>
+          html`<ha-alert alert-type=${alert.level === 'error' ? 'error' : 'warning'}>
+            ${localize(
+              alert.name ? 'editor.check_failed_named' : 'editor.check_failed',
+              { name: alert.name ?? '', message: alert.message },
+              this.hass,
+            )}
+          </ha-alert>`,
+      )}
       ${misplaced.map(
         (key) =>
           html`<ha-alert alert-type="warning">
@@ -2080,6 +2280,13 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
           : html``
       }
       ${
+        unlisted.length
+          ? html`<ha-alert alert-type="warning">
+              ${localize('editor.rebuild_on_hint', { names: unlisted.join(', ') }, this.hass)}
+            </ha-alert>`
+          : html``
+      }
+      ${
         optional.length
           ? html`<ha-alert alert-type="warning">
               ${localize(
@@ -2108,6 +2315,33 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
           : html``
       }
     `;
+  }
+
+  /*
+   * The template's checks that fail with the card's values as they stand (#389) - the
+   * warnings and errors; an info is for the console. Read the way the card reads them, with
+   * the states it rebuilds on and the dashboard's item templates.
+   */
+  private _failedChecks(template: TemplateConfig): Alert[] {
+    if (!checksOf(template).length || !this._config) return [];
+    const ll = this._lovelace ?? getLovelaceConfig();
+    const scoped = withStateScope(this.hass, rebuildOnEntities(this._config.rebuild_on));
+    const name = this._config.template;
+    const variables = withSlotVariables(this._config).variables;
+    try {
+      return runChecks(
+        template,
+        name,
+        (content) =>
+          deepReplace(variables, template, content, name, scoped, true, undefined, 0, undefined, undefined, false, {
+            itemTemplates: itemTemplatesOf(ll),
+            context: sourceContext(ll),
+          }),
+        this.hass,
+      ).filter((alert) => alert.level !== 'info');
+    } catch {
+      return [];
+    }
   }
 
   private _valueChanged(ev: CustomEvent): void {

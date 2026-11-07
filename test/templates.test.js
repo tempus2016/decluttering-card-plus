@@ -46,6 +46,7 @@ const {
   byDomainOf,
   templatesNamedBy,
   pickTemplate,
+  MissingTemplateError,
   withPickedEntity,
 } = require('../.test-build/templates.js');
 
@@ -225,6 +226,14 @@ check(
     hasSectionDefaults(null, { view: 0, section: 0 }),
   ],
   [true, false, false, false, false],
+);
+check(
+  'a section with only decluttering_strict counts too (#390)',
+  hasSectionDefaults(
+    { views: [{ sections: [{ decluttering_strict: { warnings: 'notice' } }] }] },
+    { view: 0, section: 0 },
+  ),
+  true,
 );
 
 /* ------------------------------------------------- decluttering_let (#162) */
@@ -2489,4 +2498,62 @@ collectAllTemplates(hass, borrower).then((all) => {
     require('node:assert/strict').deepEqual(itemTemplatesOf(far).far, { item: { x: 1 } });
     require('node:assert/strict').equal(borrowedKnown(far), true);
   });
+}
+
+// A template picked by domain that is not there is a MissingTemplateError carrying the name
+// and the names there are, so the card can draw its error card rather than throw (idea 49).
+{
+  let caught;
+  try {
+    pickTemplate(
+      { template_by_domain: { light: 'lampp' } },
+      [{ entity: 'light.a' }],
+      (name) => ({ lamp: {} })[name],
+      undefined,
+      ['lamp'],
+    );
+  } catch (err) {
+    caught = err;
+  }
+  check('a missing picked template is a MissingTemplateError', caught instanceof MissingTemplateError, true);
+  check('naming the template and what there is', [caught.template, caught.available], ['lampp', ['lamp']]);
+  let plain;
+  try {
+    pickTemplate({ template_by_domain: { light: 'lamp' } }, [{ entity: 'sun.sun' }], () => ({}));
+  } catch (err) {
+    plain = err;
+  }
+  check('no template for the domain is an ordinary error', plain instanceof MissingTemplateError, false);
+}
+
+// addCardToView on a sections view: a card in the view's own cards: list is never drawn there.
+{
+  const card = { type: 'custom:decluttering-template-plus', template: 'x', card: { type: 'tile' } };
+  const sectioned = {
+    views: [
+      {
+        type: 'sections',
+        sections: [
+          { type: 'grid', cards: [{ type: 'a' }] },
+          { type: 'grid', cards: [] },
+        ],
+      },
+    ],
+  };
+  const out = addCardToView(sectioned, 0, card);
+  check('a sections view takes the card into its last section', out.views[0].sections[1].cards, [card]);
+  check(
+    'and leaves its first section and its cards: list alone',
+    [out.views[0].sections[0].cards.length, out.views[0].cards],
+    [1, undefined],
+  );
+  check(
+    'a sections view with no section yet gets one',
+    addCardToView({ views: [{ type: 'sections', sections: [] }] }, 0, card).views[0].sections,
+    [{ type: 'grid', cards: [card] }],
+  );
+  check('a masonry view still takes it in cards:', addCardToView({ views: [{ cards: [] }] }, 0, card).views[0].cards, [
+    card,
+  ]);
+  check('the original is not changed', sectioned.views[0].sections[1].cards, []);
 }

@@ -4,6 +4,7 @@
  */
 const deepReplace = require('../.test-build/deep-replace.js').default;
 const { cssSafe, fillSource } = require('../.test-build/deep-replace.js');
+const { withStateScope } = require('../.test-build/variables.js');
 
 const { check } = require('./check');
 
@@ -481,12 +482,16 @@ check('naming only the unset one', /\[\[missing\]\]/.test(warnings[0]) && !/\[\[
 
 // Placeholders that ask Home Assistant for a value, through the whole substitution rather
 // than a transform on its own.
-const hass = {
-  states: { 'light.hall': { attributes: { friendly_name: 'Hall Lamp', brightness: 128 } } },
-  entities: { 'light.hall': { area_id: 'hall', device_id: 'dev1' } },
-  devices: { dev1: { name: 'Lamp Module' } },
-  areas: { hall: { name: 'Hallway' } },
-};
+// Scoped to light.hall as a card listing it in rebuild_on would be, so attr: may read it (idea 39).
+const hass = withStateScope(
+  {
+    states: { 'light.hall': { attributes: { friendly_name: 'Hall Lamp', brightness: 128 } } },
+    entities: { 'light.hall': { area_id: 'hall', device_id: 'dev1' } },
+    devices: { dev1: { name: 'Lamp Module' } },
+    areas: { hall: { name: 'Hallway' } },
+  },
+  ['light.hall'],
+);
 
 console.warn = (m) => warnings.push(m);
 
@@ -852,9 +857,10 @@ check(
 // A camera's access_token grants an unauthenticated snapshot, so a template must not be able
 // to resolve it into a config it then puts in an outbound url. The placeholder is left as it
 // was written, exactly as an attribute the entity does not carry would be.
-const secretHass = {
-  states: { 'camera.front': { attributes: { access_token: 'sk-secret-123', brightness: 5 } } },
-};
+const secretHass = withStateScope(
+  { states: { 'camera.front': { attributes: { access_token: 'sk-secret-123', brightness: 5 } } } },
+  ['camera.front'],
+);
 check(
   'a camera access_token cannot be pulled into a config',
   deepReplace([{ cam: 'camera.front' }], {}, { url: '[[cam|attr:access_token]]' }, undefined, secretHass),
@@ -1151,12 +1157,15 @@ check(
   { type: 'tile', show: true },
 );
 
-const LOCK_HASS = {
-  states: {
-    'lock.front': { state: 'locked', attributes: { friendly_name: '[[zz?]]' } },
-    'sensor.spoof': { state: 'on', attributes: { friendly_name: 'x', spoof: '[[model|trim|json|bool]]' } },
+const LOCK_HASS = withStateScope(
+  {
+    states: {
+      'lock.front': { state: 'locked', attributes: { friendly_name: '[[zz?]]' } },
+      'sensor.spoof': { state: 'on', attributes: { friendly_name: 'x', spoof: '[[model|trim|json|bool]]' } },
+    },
   },
-};
+  ['lock.front', 'sensor.spoof'],
+);
 
 check(
   'a friendly_name shaped like an optional placeholder is text, and takes nothing with it',
@@ -1195,19 +1204,48 @@ check(
     {},
     { image: '[[e|attr:entity_picture_local]]', other: '[[e|attr:media_image_url]]' },
     undefined,
-    {
-      states: {
-        'media_player.tv': {
-          state: 'on',
-          attributes: {
-            entity_picture_local: '/api/media_player_proxy/media_player.tv?token=abc',
-            media_image_url: 'https://cdn.example/x.jpg?token=abc',
+    withStateScope(
+      {
+        states: {
+          'media_player.tv': {
+            state: 'on',
+            attributes: {
+              entity_picture_local: '/api/media_player_proxy/media_player.tv?token=abc',
+              media_image_url: 'https://cdn.example/x.jpg?token=abc',
+            },
           },
         },
       },
-    },
+      ['media_player.tv'],
+    ),
   ),
   { image: '[[e|attr:entity_picture_local]]', other: '[[e|attr:media_image_url]]' },
+);
+
+/* --------------------------------------------------- idea 39: attr: follows rebuild_on like state */
+const warnBefore39 = console.warn;
+console.warn = (m) => warnings.push(m);
+warnings.length = 0;
+check(
+  'an attribute of an entity the card does not follow is left as written',
+  deepReplace([{ e: 'light.hall' }], {}, { b: '[[e|attr:brightness]]' }, undefined, {
+    states: { 'light.hall': { attributes: { brightness: 128 } } },
+  }),
+  { b: '[[e|attr:brightness]]' },
+);
+check(
+  'and the warning says the entity is not in rebuild_on',
+  /not in this card's rebuild_on/.test(warnings.join(' ')),
+  true,
+);
+check('and names attr: alongside state in the advice', /\|attr:/.test(warnings.join(' ')), true);
+console.warn = warnBefore39;
+check(
+  'a default: does not paper over an unfollowed attribute',
+  deepReplace([{ e: 'light.hall' }], {}, { b: '[[e|attr:brightness|default:0]]' }, undefined, {
+    states: { 'light.hall': { attributes: { brightness: 128 } } },
+  }),
+  { b: '[[e|attr:brightness|default:0]]' },
 );
 
 check(
@@ -1978,10 +2016,14 @@ check(
 
 {
   const vars = () => [{ m: { a: 1 } }, { l: ['a', 'b'] }, { e: 'light.x' }];
-  const listHass = {
-    states: { 'light.x': { state: 'on', attributes: { list_attr: [1, 2], obj_attr: { k: 'v' } } } },
-    entities: {},
-  };
+  // attr: reads only an entity the card rebuilds on, as |state does (idea 39).
+  const listHass = withStateScope(
+    {
+      states: { 'light.x': { state: 'on', attributes: { list_attr: [1, 2], obj_attr: { k: 'v' } } } },
+      entities: {},
+    },
+    ['light.x'],
+  );
   const run = (card) => deepReplace(vars(), {}, card, undefined, listHass);
   check(
     'default: and or: on a set mapping or list leave the value as a plain placeholder would',
@@ -2910,4 +2952,55 @@ console.warn = realWarn;
   });
   check('an empty optional that is the whole value still drops its key', build('[[high?]]'), { keep: 1 });
   check('and inside a longer string it is still nothing', build('x[[high?]]y'), { a: 'xy', keep: 1 });
+}
+
+/* ---------------------------------- strict warnings are told to the card (#390) */
+{
+  const realWarn = console.warn;
+  console.warn = () => {};
+  const told = [];
+  const said = new Set();
+  const build = () =>
+    deepReplace(
+      [{ tap: { action: 'toggle' } }],
+      {},
+      { a: '[[tap|lower]]', b: '[[nobody]]' },
+      't',
+      undefined,
+      said,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      { onWarning: (m) => told.push(m) },
+    );
+  build();
+  check('a warning the build says is told to onWarning', told.length, 1);
+  check(
+    'and it is the refusal, not the unset placeholder, which strict counts as an error',
+    /transform/.test(told[0]),
+    true,
+  );
+  build();
+  check('a build saying it again is told again, though the console is not', told.length, 2);
+  told.length = 0;
+  deepReplace(
+    [{ tap: 'x' }],
+    {},
+    { a: '[[tap|lower]]' },
+    't',
+    undefined,
+    true,
+    undefined,
+    0,
+    undefined,
+    undefined,
+    false,
+    {
+      onWarning: (m) => told.push(m),
+    },
+  );
+  check('a quiet build tells nothing', told, []);
+  console.warn = realWarn;
 }

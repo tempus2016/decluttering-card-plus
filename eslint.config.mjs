@@ -7,6 +7,7 @@ export default [
       'dist/**',
       'docs-theme/assets/js/builder.js',
       'docs-theme/assets/js/playground.js',
+      'bin/cli-lint.cjs',
       '.test-build/**',
       '.dom-build/**',
       '.tmp/**',
@@ -22,7 +23,7 @@ export default [
   {
     // The test runner and the release scripts are plain CommonJS Node scripts, not
     // part of the bundle.
-    files: ['test/**/*.js', 'scripts/**/*.js'],
+    files: ['test/**/*.js', 'scripts/**/*.js', 'bin/**/*.js'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
     },

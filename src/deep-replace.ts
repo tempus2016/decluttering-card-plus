@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
 import { BuildTrace } from './trace';
@@ -17,12 +18,15 @@ import {
   normaliseVariables,
   FLAT_STEP,
   REPEAT_STEP,
+  SLOT_STEP,
   stepName,
   CONSUMER_TYPES,
   ESCAPE,
   gateOpen,
   hasCondition,
   JSON_STEP,
+  RAW_STEP,
+  YAML_STEP,
   resolveFallback,
   takesStructure,
   variableValues,
@@ -37,7 +41,7 @@ import {
   PLACEHOLDER,
   insideButtonCardJs,
   resolveVariables,
-  STATE_STEP,
+  readsState,
   restoreHaText,
   stateScope,
   unlistedState,
@@ -46,6 +50,7 @@ import {
   yieldsBoolean,
   yieldsList,
   yieldsNumber,
+  templatePlaceholders,
 } from './variables';
 import { closestStep, knownStep } from './closest';
 
@@ -57,7 +62,7 @@ import { closestStep, knownStep } from './closest';
 // rebuild on, a `map:` had no pair for the value, or a `with:` or `repeat:` could not fill
 // in. The reason carries the difference so the wording never has to - the wording is
 // translated.
-type RefusalReason = 'shape' | 'missing' | 'closed' | 'json' | 'unlisted' | 'map' | 'structure';
+type RefusalReason = 'shape' | 'missing' | 'closed' | 'json' | 'raw' | 'yaml' | 'unlisted' | 'map' | 'structure';
 
 // The lookup step, whose "no pair for this value" is told apart from Home Assistant having nothing.
 const MAP_STEP = 'map';
@@ -110,6 +115,15 @@ export interface BuildExtras {
   // past MAX_CONDITION_DEPTH, shared by every read of one build so the build can say so (#235).
   readDepth?: number;
   tooDeep?: Set<string>;
+  /*
+   * Told every warning the build says, even one the console has already heard, so a card's
+   * `strict: {warnings: ...}` (#390) knows what this build had to say. Not told about a
+   * placeholder left standing: that is an error to `strict:`, and is reported as one.
+   */
+  onWarning?: (message: string) => void;
+  // The templates whose cards this one sits inside, outermost first, for `__template_path__`
+  // and the names beside it (#391).
+  templateChain?: string[];
 }
 
 /*
@@ -119,6 +133,10 @@ export interface BuildExtras {
  * hundred copies is forty thousand builds for a card nobody could read (review 2026-10-25).
  */
 const MAX_FILLS = 2000;
+
+// Whether a build has any use for the template's own names, so one that does not is not given four
+// variables to carry through every pass.
+const TEMPLATE_NAME_USE = /\[\[__(?:parent_|root_)?template_(?:name|path)__/;
 
 // How far a `with:` or `repeat:` may nest inside another before it is refused - a body that
 // fills itself in would otherwise never settle.
@@ -200,10 +218,16 @@ function escapeForJsonString(value: string): string {
 // A placeholder standing as the whole JSON value takes the place of its quotes too, so it
 // can become any JSON. A string is the exception: it is left for the pass below to put
 // inside the quotes that are already there.
+/** Whether a value - text, or a mapping or list with text in it - still has a placeholder to fill. */
+function holdsPlaceholder(value: unknown): boolean {
+  if (typeof value === 'string') return PLACEHOLDER.test(value);
+  return !!value && typeof value === 'object' && PLACEHOLDER.test(placeholderJson(value));
+}
+
 function asWholeValue(value: any, match: string): string {
   // `typeof null` is 'object', and JSON.stringify(null) is 'null', which is what a bare
   // `"[[name]]"` should become - so null belongs here rather than with the strings.
-  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'object') return placeholderJson(value);
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return match;
 }
@@ -262,7 +286,7 @@ export function fillSource(
   templateConfig: TemplateConfig | undefined,
   hass?: any,
 ): unknown {
-  if (!isRegistrySource(source) || !PLACEHOLDER.test(JSON.stringify(source))) return source;
+  if (!isRegistrySource(source) || !PLACEHOLDER.test(placeholderJson(source))) return source;
   return deepReplace(variables, templateConfig ?? ({} as TemplateConfig), source, undefined, hass, true);
 }
 
@@ -458,7 +482,13 @@ function substitutePass(
        * end up, not as written: a resolver asked about the text with the brackets still in
        * it finds no such entity, and `exists` says no.
        */
-      const input = typeof value === 'string' && PLACEHOLDER.test(value) ? settle(name) : value;
+      // `raw` is the one that wants the value exactly as written, placeholders and all (#391).
+      const head = transform.split('|')[0];
+      const input =
+        head !== RAW_STEP &&
+        ((typeof value === 'string' && PLACEHOLDER.test(value)) || (head === YAML_STEP && holdsPlaceholder(value)))
+          ? settle(name)
+          : value;
       const unlisted = unlistedState(transform, input, hass, values, read);
       if (unlisted !== undefined) {
         return refuse(match, written, localize('warn.state_unlisted', { entity: unlisted }), 'unlisted');
@@ -576,7 +606,7 @@ function substitutePass(
         // any other, so `[[row|with:...?]]` leaves its list rather than putting "" in (#235).
         if (optional && (out === null || out === '')) return match;
         if (!whole) return asPartOfString(out);
-        return JSON.stringify(outcome.splice ? { [SPLICE_KEY]: out } : out);
+        return placeholderJson(outcome.splice ? { [SPLICE_KEY]: out } : out);
       }
       const chain = transform;
       // `json` reads the variable's own value, so anywhere but first it has nothing to
@@ -587,9 +617,18 @@ function substitutePass(
       if (chain.split('|').lastIndexOf(JSON_STEP) > 0) {
         return refuse(match, written as string, localize('warn.json_not_first'), 'json');
       }
+      if (chain.split('|').lastIndexOf(RAW_STEP) > 0) {
+        return refuse(match, written as string, localize('warn.raw_not_first'), 'raw');
+      }
+      if (chain.split('|').lastIndexOf(YAML_STEP) > 0) {
+        return refuse(match, written as string, localize('warn.yaml_not_first'), 'yaml');
+      }
       if (!transformable(chain)) return refuse(match, written as string);
       if (whole) {
-        const input = typeof value === 'string' && PLACEHOLDER.test(value) ? settle(name) : value;
+        const input =
+          typeof value === 'string' && PLACEHOLDER.test(value) && chain.split('|')[0] !== RAW_STEP
+            ? settle(name)
+            : value;
         const standIn = structureStandIn(chain, input, values, hass, read, shield);
         if (standIn !== undefined) return standIn;
       }
@@ -770,7 +809,7 @@ function fallbackPass(
     // A state the card does not rebuild on keeps its brackets here too, a `default:` or
     // not. Unset, the name is the entity - `[[sensor.x|state|default:off]]`.
     const [name, ...steps] = withoutOptional(inside).split('|');
-    if (steps.includes(STATE_STEP) && unlistedState(steps.join('|'), values[name] ?? name, hass, values, read)) {
+    if (steps.some(readsState) && unlistedState(steps.join('|'), values[name] ?? name, hass, values, read)) {
       return undefined;
     }
     const text = resolveFallback(inside, values, hass, read, shield);
@@ -844,7 +883,8 @@ function hasFallback(jsonConfig: string): boolean {
  */
 function missingItemTemplate(inside: string, known: (name: string) => boolean): string | undefined {
   const [head, step] = withoutOptional(inside).split('|');
-  if (step === undefined || !isStructureStep(step) || known(head)) return undefined;
+  // A slot is the card's own to fill (idea 35): left empty it is unset, not a missing item template.
+  if (step === undefined || stepName(step) === SLOT_STEP || !isStructureStep(step) || known(head)) return undefined;
   return head;
 }
 
@@ -894,7 +934,7 @@ function exposeFillValues(
 ): void {
   if (!Object.keys(itemTemplates).length) return;
   const values = variableValues(variableArray);
-  const text = JSON.stringify([content, variableArray]);
+  const text = placeholderJson([content, variableArray]);
   if (typeof text !== 'string' || !text.includes('.')) return;
   const asked = new Set<string>();
   for (let match = DOTTED_ASK.exec(text); match !== null; match = DOTTED_ASK.exec(text)) {
@@ -961,9 +1001,10 @@ function deepReplace(
   // What the console is told is also noted on the trace, for `debug: report` (#207) -
   // once per build, so a card building again still has the warning in its report even
   // when the set it keeps has heard it before.
-  const say = (message: string, kind: WarningKind = 'other'): void => {
+  const say = (message: string, kind: WarningKind = 'other', standing = false): void => {
     if (quiet === true) return;
     trace?.warnings.push(message);
+    if (!standing) extras?.onWarning?.(message);
     if (quiet instanceof Set) {
       if (quiet.has(message)) return;
       quiet.add(message);
@@ -989,6 +1030,13 @@ function deepReplace(
   for (const [name, template] of Object.entries(itemTemplates)) {
     if (!variableArray.some((entry) => Object.keys(entry)[0] === name)) {
       variableArray.push({ [name]: (template as any)?.item });
+    }
+  }
+  // The template's own names, under everything else (#391), when anything here asks for them.
+  if (TEMPLATE_NAME_USE.test(placeholderJson([content, variableArray]))) {
+    for (const entry of templatePlaceholders(templateName, extras?.templateChain)) {
+      const name = Object.keys(entry)[0];
+      if (!variableArray.some((each) => Object.keys(each)[0] === name)) variableArray.push(entry);
     }
   }
   exposeFillValues(
@@ -1094,7 +1142,7 @@ function deepReplace(
    */
   const ownItemsOf = (name: string, template: TemplateConfig): { items: unknown[]; fromHa: boolean } | undefined => {
     const own = (raw: unknown): unknown => {
-      const below = deeper(name, JSON.stringify(raw));
+      const below = deeper(name, placeholderJson(raw));
       if (!below) return raw;
       return deepReplace(
         variableArray,
@@ -1126,7 +1174,7 @@ function deepReplace(
    * another repeat's copy can filter by that copy's values (#309).
    */
   const filledSource = (name: string, source: unknown): unknown => {
-    const below = deeper(name, JSON.stringify(source));
+    const below = deeper(name, placeholderJson(source));
     if (!below) return source;
     return deepReplace(
       variableArray,
@@ -1214,6 +1262,16 @@ function deepReplace(
       if (flat && stepName(step) !== REPEAT_STEP) return { refused: localize('warn.flat_after_repeat') };
       if (rest.length && !flat) return { refused: localize('warn.step_not_alone', { step: `${stepName(step)}:` }) };
       if (depth >= MAX_EXPAND_DEPTH) return { refused: localize('warn.fills_itself', { name }) };
+      /*
+       * `slot` (idea 35) puts the variable's own value into the list it sits in: a list of
+       * cards entry for entry, a mapping as one. Nothing to fill in, so nothing is looked up
+       * beyond the value - and a name nothing sets is left standing, to be reported unset.
+       */
+      if (stepName(step) === SLOT_STEP) {
+        if (!Object.prototype.hasOwnProperty.call(values, name)) return undefined;
+        const held = values[name];
+        return { value: held, splice: Array.isArray(held) };
+      }
       const found = bodyOf(name);
       if (!found) return undefined;
       const kind = stepName(step);
@@ -1255,7 +1313,7 @@ function deepReplace(
       // A body still carrying a structural placeholder of its own name is one that fills
       // itself in: refused here, so every level says so rather than inserting another copy
       // of it on every pass until the size ceiling stops it.
-      if (JSON.stringify(value)?.includes(`[[${name}|`)) return { refused: localize('warn.fills_itself', { name }) };
+      if (placeholderJson(value)?.includes(`[[${name}|`)) return { refused: localize('warn.fills_itself', { name }) };
       return { value };
     })();
     expansions.set(key, outcome);
@@ -1266,7 +1324,7 @@ function deepReplace(
   // it come from the compiled form (idea 3); anything else - a value, a style string - is
   // stringified here as it always was.
   const built = content && typeof content === 'object' ? compile(content) : undefined;
-  let jsonConfig = built ? built.json : unwrapNestedOr(JSON.stringify(content));
+  let jsonConfig = built ? built.json : unwrapNestedOr(placeholderJson(content));
   let pieces = built?.pieces;
   const haNames = extras?.haNames;
   // How much the text may still grow, counted across every fill this build makes.
@@ -1311,7 +1369,7 @@ function deepReplace(
     return out;
   };
   if (shield === undefined && hasStyleKey(content)) {
-    jsonConfig = unwrapNestedOr(JSON.stringify(shieldStyles(content)));
+    jsonConfig = unwrapNestedOr(placeholderJson(shieldStyles(content)));
     // The compiled sites belong to the text as written, not to this one.
     pieces = undefined;
   }
@@ -1363,7 +1421,9 @@ function deepReplace(
   const settle = (name: string): unknown => {
     if (shapedInputs.has(name)) return shapedInputs.get(name);
     const raw = values[name];
-    const below = deeper(name, raw);
+    // A mapping is settled too, for `yaml` (#391): its lines are written once, from the
+    // values as they end up, rather than filled in afterwards around the YAML's own quotes.
+    const below = deeper(name, holdsPlaceholder(raw) && typeof raw === 'object' ? placeholderJson(raw) : raw);
     const value = below
       ? deepReplace(variableArray, {}, raw, templateName, hass, true, undefined, depth, undefined, shield, true, below)
       : raw;
@@ -1450,6 +1510,8 @@ function deepReplace(
       reasons.has('missing') ? localize('warn.refused_resolver') : '',
       reasons.has('closed') ? localize('warn.refused_condition') : '',
       reasons.has('json') ? localize('warn.refused_json') : '',
+      reasons.has('raw') ? localize('warn.refused_raw') : '',
+      reasons.has('yaml') ? localize('warn.refused_yaml') : '',
       reasons.has('unlisted') ? localize('warn.refused_unlisted') : '',
       reasons.has('map') ? localize('warn.refused_map') : '',
       // A `with:` or `repeat:` refusal already says in its own words what was wrong.
@@ -1490,11 +1552,11 @@ function deepReplace(
    * `[[sensor.x|state]]` with nothing called sensor.x is an entity the card does not
    * rebuild on, rather than a variable somebody forgot - so it says that instead.
    */
-  const asksState = (inside: string): boolean => withoutOptional(inside).split('|').slice(1).includes(STATE_STEP);
+  const asksState = (inside: string): boolean => withoutOptional(inside).split('|').slice(1).some(readsState);
   const unlistedNames = unresolved.filter(asksState);
   if (unlistedNames.length) {
     const which = unlistedNames.map((name) => `[[${name}]]`).join(', ');
-    say(localize('warn.state_unlisted_unset', { which }), 'state_unlisted');
+    say(localize('warn.state_unlisted_unset', { which }), 'state_unlisted', true);
   }
   /*
    * A chain with a word in it that is not a step never matches the placeholder grammar, so
@@ -1524,7 +1586,7 @@ function deepReplace(
         );
       })
       .join(' ');
-    say(localize('warn.unknown_step', { which }), 'other');
+    say(localize('warn.unknown_step', { which }), 'other', true);
   }
   const noTemplate = unresolved.filter(
     (inside) => !asksState(inside) && !unknownSteps.has(inside) && missingItemTemplate(inside, known) !== undefined,
@@ -1535,7 +1597,7 @@ function deepReplace(
     const whose = templateName
       ? localize('warn.unresolved_template', { name: templateName })
       : localize('warn.unresolved_this');
-    say(localize('warn.no_item_template', { whose, which, names }), 'unset');
+    say(localize('warn.no_item_template', { whose, which, names }), 'unset', true);
   }
   const unset = unresolved.filter(
     (inside) => !asksState(inside) && !unknownSteps.has(inside) && !noTemplate.includes(inside),
@@ -1545,7 +1607,7 @@ function deepReplace(
     const whose = templateName
       ? localize('warn.unresolved_template', { name: templateName })
       : localize('warn.unresolved_this');
-    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${shown(unset[0])}` }), 'unset');
+    say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${shown(unset[0])}` }), 'unset', true);
   }
 
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be

@@ -3,11 +3,13 @@ import {
   conditionTarget,
   orTarget,
   quotedText,
+  ALERTS_NAME,
   ESCAPE,
   getDeclarations,
   isWellFormedCondition,
   normaliseVariables,
   POSITION_NAMES,
+  TEMPLATE_PLACEHOLDERS,
   templateDefaults,
   variableName,
   visibilityConditions,
@@ -17,6 +19,9 @@ import { closestTemplate, closestStep, knownStep } from './closest';
 export { closestStep, knownStep };
 import { structureNames } from './structure';
 import { unknownHidden } from './card-editor/hide';
+import { CHECK_KEYS, CHECKS_KEY, checkLevel, conditionStep } from './checks';
+import { strictProblems } from './strict';
+import { splitDeclutteringKeys, withoutRepeatContent } from './page-body';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -41,7 +46,22 @@ export interface LintFinding {
 
 // The parts of a template that are substituted into, and so the only places a placeholder
 // does anything. A description or a label that mentions `[[name]]` is prose.
-const LINTED_KEYS = ['card', 'badge', 'row', 'element', 'group', 'style', 'let', 'default', 'grid_options', 'name'];
+const LINTED_KEYS = [
+  'card',
+  'badge',
+  'row',
+  'element',
+  'group',
+  'style',
+  'let',
+  'default',
+  'grid_options',
+  'name',
+  'alert',
+];
+
+// A page template's whole dashboard (idea 33), read apart from the rest: see lintTemplate.
+const PAGE_KEY = 'dashboard';
 
 // Innermost placeholders: no bracket inside. A lookup like `[[colours.[[level]]]]` is read
 // from the inside out, the inner one standing in as a plain word for the outer.
@@ -170,6 +190,80 @@ export function definedNames(template: TemplateConfig | undefined): string[] {
   return [...names];
 }
 
+/*
+ * `checks:` (#389): a list of mappings, each with a condition this card can read, a level it
+ * knows, and nothing it would not read. Placeholders in a message or a condition are linted
+ * like any others; a condition written the show_if way names a variable that has to exist.
+ */
+function lintChecks(template: TemplateConfig, scan: Scan): void {
+  const written = (template as any)[CHECKS_KEY];
+  if (written === undefined || written === null) return;
+  if (!Array.isArray(written)) {
+    scan.findings.push({ level: 'warning', key: 'lint.checks_not_list', params: {}, path: CHECKS_KEY });
+    return;
+  }
+  written.forEach((check: unknown, index: number) => {
+    const path = `${CHECKS_KEY}[${index}]`;
+    if (!check || typeof check !== 'object' || Array.isArray(check)) {
+      scan.findings.push({ level: 'warning', key: 'lint.check_not_mapping', params: {}, path });
+      return;
+    }
+    const entry = check as Record<string, unknown>;
+    walk(entry.message, `${path}.message`, scan);
+    for (const key of Object.keys(entry)) {
+      if (!CHECK_KEYS.includes(key)) {
+        scan.findings.push({ level: 'warning', key: 'lint.check_key_unknown', params: { key }, path });
+      }
+    }
+    if (checkLevel(entry.level) === undefined) {
+      scan.findings.push({
+        level: 'warning',
+        key: 'lint.check_level_unknown',
+        params: { level: String(entry.level) },
+        path: `${path}.level`,
+      });
+    }
+    const condition = entry.condition;
+    if (condition === undefined || condition === null || condition === '') {
+      scan.findings.push({ level: 'warning', key: 'lint.check_no_condition', params: {}, path });
+      return;
+    }
+    if (typeof condition === 'boolean' || typeof condition === 'number') return;
+    if (typeof condition !== 'string') {
+      scan.findings.push({
+        level: 'warning',
+        key: 'lint.check_condition_malformed',
+        params: { condition: JSON.stringify(condition) },
+        path: `${path}.condition`,
+      });
+      return;
+    }
+    const step = conditionStep(condition);
+    if (step === undefined) {
+      walk(condition, `${path}.condition`, scan);
+      return;
+    }
+    if (/^(?:true|false)$/i.test(condition.trim())) return;
+    if (!isWellFormedCondition(step)) {
+      scan.findings.push({
+        level: 'warning',
+        key: 'lint.check_condition_malformed',
+        params: { condition },
+        path: `${path}.condition`,
+      });
+      return;
+    }
+    const name = conditionTarget(step);
+    if (name) {
+      scan.targets.push({
+        name: name.split('.')[0],
+        placeholder: `condition: ${condition}`,
+        path: `${path}.condition`,
+      });
+    }
+  });
+}
+
 /**
  * What is wrong, or probably wrong, with the placeholders in a template: brackets that do
  * not pair up, a step in a chain nobody has heard of, an `or:` that a `default:` before it
@@ -187,6 +281,16 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
   for (const key of LINTED_KEYS) {
     const value = (template as any)[key];
     if (value !== undefined) walk(value, key, scan);
+  }
+  if ((template as any)[PAGE_KEY] !== undefined) {
+    // The page's own template keys are definitions, each linted where it is used. A repeat's
+    // content is filled for each copy from items nobody can name here - `[[entity]]`,
+    // `[[area]]` - so it is read for mistakes in how it is written, not for whose names it uses.
+    const { rest } = splitDeclutteringKeys((template as any)[PAGE_KEY]);
+    walk(withoutRepeatContent(rest), PAGE_KEY, scan);
+    const inRepeats: Scan = { findings: [], heads: new Map(), targets: [] };
+    walk(rest, PAGE_KEY, inRepeats);
+    scan.findings.push(...inRepeats.findings);
   }
   getDeclarations(template).forEach((declaration, index) => {
     if (declaration.default !== undefined) walk(declaration.default, `variables[${index}].default`, scan);
@@ -211,8 +315,18 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
     }
   });
 
+  lintChecks(template, scan);
+
   // A name a `with:` or `repeat:` gives the body it fills in is set, one copy at a time.
-  const defined = new Set([...definedNames(template), ...known, ...POSITION_NAMES, ...structureNames(template)]);
+  // `__alerts__` is set by every build of a template (#389).
+  const defined = new Set([
+    ...definedNames(template),
+    ...known,
+    ...POSITION_NAMES,
+    ...TEMPLATE_PLACEHOLDERS,
+    ...structureNames(template),
+    ALERTS_NAME,
+  ]);
   const findings = [...scan.findings];
 
   // `[[room.light]]` reaches into `room`, so a condition on `room.light` names something real
@@ -249,6 +363,11 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
   // A part of the editor named wrong is never hidden, and nothing else would say so.
   for (const unknown of unknownHidden(template)) {
     findings.push({ level: 'warning', key: 'lint.editor_hide_unknown', params: { ...unknown }, path: 'editor_hide' });
+  }
+
+  // A `strict:` level written wrong is left to the next place that sets it (#390), so it would quietly do nothing.
+  for (const problem of strictProblems((template as any).strict)) {
+    findings.push({ level: 'warning', key: 'lint.strict_unknown', params: problem, path: 'strict' });
   }
 
   // The same mistake written twice in one place is one thing to fix.

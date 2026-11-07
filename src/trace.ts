@@ -357,7 +357,19 @@ export interface TraceSection {
   variables: VariableRow[];
   trace: BuildTrace;
   built: unknown;
+  /**
+   * This build's own substitution, run again on something else: the report's Try a
+   * placeholder box (#376). `values` stands in for the variables and template, for an item
+   * template's fill, whose values are all it was given. Never written into the report.
+   */
+  evaluate?: SectionEvaluate;
 }
+
+export type SectionEvaluate = (
+  content: unknown,
+  onMissing: (names: string[]) => void,
+  values?: Record<string, unknown>[],
+) => unknown;
 
 export interface TraceReport {
   /** What the card is called: its template, and its name when it has one. */
@@ -370,6 +382,8 @@ export interface TraceReport {
   sections: TraceSection[];
   /** The template it was built from, as written, for `debug: report`. */
   template?: { name: string; config: unknown };
+  /** The template's checks that failed (#389), which the report lists ahead of everything else. */
+  alerts?: { level: string; message: string; name?: string }[];
 }
 
 // A table cell holds text: a mapping or a list goes in as its JSON, which is how it was written.
@@ -577,6 +591,7 @@ export function headline(report: TraceReport, hass?: any): string {
  */
 export function logTrace(report: TraceReport, hass?: any): void {
   console.groupCollapsed(headline(report, hass));
+  if (report.alerts?.length) console.log(localize('report.checks', undefined, hass), report.alerts);
   for (const section of report.sections) {
     if (section.label) console.groupCollapsed(section.label);
     const described = describeSection(section, hass);
@@ -609,6 +624,12 @@ export interface BuildTiming {
   /** How many copies the build made: one, or the size of a repeat. */
   copies: number;
   ms: number;
+  /** The view the card sits in, as the health panel's statistics name it (idea 60). */
+  view?: string;
+  /** Whether the card follows state (`rebuild_on:`), so a later build of it was a rebuild. */
+  follows?: boolean;
+  /** Which card on the page built it, so two cards using one template in one view count as two. */
+  card?: number;
 }
 
 /** How many builds are remembered before the oldest make way. */

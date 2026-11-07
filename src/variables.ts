@@ -1,9 +1,13 @@
+import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import { labelName } from './labels';
 import { registryIndex } from './registry-index';
 import { localize } from './localize';
 import { warn } from './warnings';
 import { cardExists, iconExists, integrationExists } from './installed';
+import { toYaml } from './yaml';
+import { AGE_UNITS, age, formatDate, parseDate, relative } from './dates';
+import { contrast, darken, isThemeVariable, lighten, mix, parseColour, toHex, toRgba } from './colour';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -43,6 +47,12 @@ export interface VariableDeclaration {
   show_if?: string | string[];
   /** Hides the field in the card editor while any of these holds. */
   hide_if?: string | string[];
+  /** A dropdown of what this source finds - the same source `for_each_from:` takes (#404). */
+  options_from?: any;
+  /** With `options_from:`, what each option sets the variable to, filled in per thing found. */
+  option_value?: string;
+  /** With `options_from:`, what each option shows; the value when unset. */
+  option_label?: string;
 }
 
 /**
@@ -444,6 +454,33 @@ export const TRANSFORMS: Record<string, (value: string) => string> = {
 export const JSON_STEP = 'json';
 
 /*
+ * `raw` gives a variable's value as it was written, before its own placeholders are filled
+ * (#391): with `camera_entity: camera.[[cam_name]]`, `[[camera_entity|raw]]` is the text
+ * `camera.[[cam_name]]`. That is not what `[[!camera_entity]]` does - the bang only writes
+ * the brackets themselves. Every `[[` in the value is escaped on the way out, so nothing
+ * fills it later and the escapes come off with the others when the build is done. It reads
+ * the value itself, so like `json` it can only come first; a mapping or a list is its JSON.
+ */
+export const RAW_STEP = 'raw';
+
+/** Text with every `[[` in it escaped, so it ends up written exactly as it is now. */
+function escapeAll(text: string): string {
+  return text.replace(/\[\[/g, `[[${ESCAPE}`);
+}
+
+/*
+ * `yaml` is `json` written the way a dashboard is (#391): a mapping or a list as the YAML
+ * lines it would be written as, for a markdown card or a message that shows what a value
+ * worked out to. Like `json` it reads the variable's own value, so it can only come first.
+ */
+export const YAML_STEP = 'yaml';
+
+/** Whether a step reads the variable's value whole and writes it out as text. */
+function writesWhole(step: string | undefined): boolean {
+  return step === JSON_STEP || step === YAML_STEP;
+}
+
+/*
  * `bool` turns a value into a yes or a no - `enabled: '[[link|bool]]'` switches a button
  * on when the card was given a link and off when it was not (discussion #142). Two things
  * set it apart from the text transforms: it has an answer for a variable nothing sets,
@@ -611,7 +648,7 @@ function itemText(item: unknown): string {
 
 /** Whether a chain starting with this step takes a mapping or a list whole, rather than as text. */
 export function takesStructure(step: string, value: unknown): boolean {
-  if (step === JSON_STEP || step === BOOL_STEP) return true;
+  if (writesWhole(step) || step === RAW_STEP || step === BOOL_STEP) return true;
   // A list is asked whether it holds the item, a mapping whether it has the key.
   if (stepName(step) === CONTAINS_STEP) return !!value && typeof value === 'object';
   // A mapping has a size, and nothing else a list step reads.
@@ -619,7 +656,7 @@ export function takesStructure(step: string, value: unknown): boolean {
 }
 
 // The steps whose answer is a number, so a whole value they end goes in as a real one.
-const NUMBER_RESULTS = new Set([...Object.keys(ARITHMETIC), ROUND_STEP, COUNT_STEP, 'find']);
+const NUMBER_RESULTS = new Set([...Object.keys(ARITHMETIC), ROUND_STEP, COUNT_STEP, 'find', 'age']);
 
 // How a number is written, generously: what people type, and what a sensor reports.
 const NUMBER_TEXT = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?\s*$/i;
@@ -719,6 +756,206 @@ function isNumberStep(step: string): boolean {
   return colon === -1 ? NUMBER_BARE_STEPS.includes(step) : NUMBER_PARAM_STEPS.includes(step.slice(0, colon));
 }
 
+/*
+ * The language and number formatting the viewer has chosen, as Home Assistant carries them
+ * on hass.locale. Home Assistant lets the number format differ from the language - a German
+ * speaker reading English numbers - and the steps here follow that choice the way its own
+ * cards do.
+ */
+function languageOf(hass: any): string {
+  return String(hass?.locale?.language ?? hass?.language ?? 'en');
+}
+
+function numberLocaleOf(hass: any): string | undefined {
+  switch (hass?.locale?.number_format) {
+    case 'comma_decimal':
+      return 'en';
+    case 'decimal_comma':
+      return 'de';
+    case 'space_comma':
+      return 'fr';
+    case 'none':
+      return undefined;
+    default:
+      return languageOf(hass);
+  }
+}
+
+/*
+ * Dates and times (idea 38). `relative` says how long ago, `format:` writes to a pattern,
+ * `age` and `age:unit` give a number the number steps can go on with. The moment is read
+ * from an ISO string or an epoch; anything else is left as it was, and the console says why
+ * once, as a number step does with a word.
+ */
+const RELATIVE_STEP = 'relative';
+const FORMAT_STEP = 'format';
+const AGE_STEP = 'age';
+
+const DATE_BARE_STEPS = [RELATIVE_STEP, AGE_STEP];
+const DATE_PARAM_STEPS = [FORMAT_STEP, AGE_STEP];
+
+function isDateStep(step: string): boolean {
+  const colon = step.indexOf(':');
+  return colon === -1 ? DATE_BARE_STEPS.includes(step) : DATE_PARAM_STEPS.includes(step.slice(0, colon));
+}
+
+function dateStep(step: string, text: string, hass?: any): string | undefined {
+  if (!isDateStep(step)) return undefined;
+  const colon = step.indexOf(':');
+  const name = colon === -1 ? step : step.slice(0, colon);
+  const arg = colon === -1 ? undefined : step.slice(colon + 1);
+  const date = parseDate(text);
+  if (!date) {
+    warnOnce('warn.not_a_date', step, text, hass);
+    return text;
+  }
+  const now = new Date();
+  if (name === RELATIVE_STEP) return relative(date, now, languageOf(hass));
+  if (name === FORMAT_STEP) {
+    if (!arg) {
+      warnOnce('warn.bad_date_argument', step, text, hass);
+      return text;
+    }
+    return formatDate(date, arg, languageOf(hass));
+  }
+  const since = age(date, now, arg ?? 'seconds');
+  if (since === undefined) {
+    warnOnce('warn.bad_date_argument', step, `${text} (${AGE_UNITS.join(', ')})`, hass);
+    return text;
+  }
+  return numberText(since);
+}
+
+/*
+ * Words and numbers in the viewer's language (idea 40). `plural:light,lights` picks a form
+ * by the number before it, with the browser's plural rules - languages with more forms list
+ * more words. `format_number` writes a number with the viewer's separators, `format_number:1`
+ * to one decimal, `format_number:currency=GBP` as money.
+ */
+const PLURAL_STEP = 'plural';
+const FORMAT_NUMBER_STEP = 'format_number';
+
+const PLURAL_CATEGORIES = ['zero', 'one', 'two', 'few', 'many', 'other'];
+
+function isLocaleStep(step: string): boolean {
+  const colon = step.indexOf(':');
+  const name = colon === -1 ? step : step.slice(0, colon);
+  return name === FORMAT_NUMBER_STEP || (colon !== -1 && name === PLURAL_STEP);
+}
+
+function localeStep(step: string, text: string, hass?: any): string | undefined {
+  if (!isLocaleStep(step)) return undefined;
+  const colon = step.indexOf(':');
+  const name = colon === -1 ? step : step.slice(0, colon);
+  const arg = colon === -1 ? '' : step.slice(colon + 1);
+  const value = asNumber(text);
+  if (value === undefined) {
+    warnOnce('warn.not_a_number', step, text, hass);
+    return text;
+  }
+  if (name === PLURAL_STEP) {
+    const forms = arg.split(',').map((form) => form.trim());
+    if (forms.length < 2) {
+      warnOnce('warn.bad_plural_argument', step, text, hass);
+      return text;
+    }
+    let category = 'other';
+    let categories = ['one', 'other'];
+    try {
+      const rules = new Intl.PluralRules(languageOf(hass));
+      category = rules.select(value);
+      categories = rules.resolvedOptions().pluralCategories;
+    } catch {
+      category = value === 1 ? 'one' : 'other';
+    }
+    // Two forms are singular and plural. More follow the language's own categories in the
+    // usual order - Polish is one, few, many, other - so `plural:światło,światła,świateł`
+    // reads 1, 3 and 5 right; a category past the last form takes the last.
+    if (forms.length === 2) return category === 'one' ? forms[0] : forms[1];
+    const own = PLURAL_CATEGORIES.filter((each) => categories.includes(each));
+    const at = Math.min(own.indexOf(category), forms.length - 1);
+    return forms[at < 0 ? forms.length - 1 : at];
+  }
+  const locale = numberLocaleOf(hass);
+  const options: Intl.NumberFormatOptions = {};
+  if (/^\d+$/.test(arg)) {
+    options.minimumFractionDigits = Number(arg);
+    options.maximumFractionDigits = Number(arg);
+  } else if (arg.startsWith('currency=')) {
+    options.style = 'currency';
+    options.currency = arg.slice('currency='.length).toUpperCase();
+  } else if (arg) {
+    warnOnce('warn.bad_step_argument', step, text, hass);
+    return text;
+  }
+  if (locale === undefined) options.useGrouping = false;
+  try {
+    return new Intl.NumberFormat(locale ?? 'en', options).format(value);
+  } catch {
+    warnOnce('warn.bad_step_argument', step, text, hass);
+    return text;
+  }
+}
+
+/*
+ * Colours (idea 41). `lighten:20`, `darken:20`, `alpha:0.12`, `mix:#ff9800,50` and
+ * `contrast` derive from one colour; a value that is not a colour is left as it was with a
+ * word in the console, and a theme variable is passed through, since its value is not known
+ * until the page paints.
+ */
+const CONTRAST_STEP = 'contrast';
+const COLOUR_PARAM_STEPS = ['lighten', 'darken', 'alpha', 'mix'];
+
+function isColourStep(step: string): boolean {
+  const colon = step.indexOf(':');
+  return colon === -1 ? step === CONTRAST_STEP : COLOUR_PARAM_STEPS.includes(step.slice(0, colon));
+}
+
+function colourStep(step: string, text: string, hass?: any): string | undefined {
+  if (!isColourStep(step)) return undefined;
+  if (isThemeVariable(text)) {
+    warnOnce('warn.colour_from_theme', step, text, hass);
+    return text;
+  }
+  const colour = parseColour(text);
+  if (!colour) {
+    warnOnce('warn.not_a_colour', step, text, hass);
+    return text;
+  }
+  const colon = step.indexOf(':');
+  const name = colon === -1 ? step : step.slice(0, colon);
+  const arg = colon === -1 ? '' : step.slice(colon + 1);
+  if (name === CONTRAST_STEP) return contrast(colour);
+  if (name === 'alpha') {
+    const alpha = Number(arg);
+    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+      warnOnce('warn.bad_step_argument', step, text, hass);
+      return text;
+    }
+    return toRgba(colour, alpha);
+  }
+  if (name === 'mix') {
+    const comma = arg.lastIndexOf(',');
+    const other = parseColour(comma === -1 ? arg : arg.slice(0, comma));
+    const percent = comma === -1 ? 50 : Number(arg.slice(comma + 1));
+    if (!other || !Number.isFinite(percent)) {
+      warnOnce('warn.not_a_colour', step, text, hass);
+      return text;
+    }
+    return toHex(mix(colour, other, percent));
+  }
+  const percent = Number(arg);
+  if (!Number.isFinite(percent)) {
+    warnOnce('warn.bad_step_argument', step, text, hass);
+    return text;
+  }
+  return toHex(name === 'lighten' ? lighten(colour, percent) : darken(colour, percent));
+}
+
+// Every new step, for the grammar and the lint: written bare, and written with an argument.
+const EXTRA_BARE_STEPS = [...DATE_BARE_STEPS, FORMAT_NUMBER_STEP, CONTRAST_STEP];
+const EXTRA_PARAM_STEPS = [...DATE_PARAM_STEPS, PLURAL_STEP, FORMAT_NUMBER_STEP, ...COLOUR_PARAM_STEPS];
+
 /** The name a step goes by, without its argument. */
 export function stepName(step: string): string {
   const colon = step.indexOf(':');
@@ -748,7 +985,7 @@ export function yieldsList(chain: string | undefined): boolean {
   for (const step of chain.split('|')) {
     if (isFallback(step) || isCondition(step)) continue;
     if (stepName(step) === SPLIT_STEP) list = true;
-    else if (isListStep(step) || isYesNoStep(step) || step === JSON_STEP) list = false;
+    else if (isListStep(step) || isYesNoStep(step) || writesWhole(step) || step === RAW_STEP) list = false;
   }
   return list;
 }
@@ -758,9 +995,19 @@ export function isJsonNumber(text: string): boolean {
   return JSON_NUMBER.test(text);
 }
 
+/*
+ * `slot` (idea 35): puts a list-valued variable into the list it sits in, entry for entry,
+ * so a template can leave a place for cards a card supplies. Settled by the structural
+ * expansion in deep-replace.ts rather than by a transform, like `with:` and `repeat:`.
+ */
+export const SLOT_STEP = 'slot';
+
 const TRANSFORM_NAMES = [
   ...Object.keys(TRANSFORMS),
   JSON_STEP,
+  RAW_STEP,
+  YAML_STEP,
+  SLOT_STEP,
   BOOL_STEP,
   IF_EXISTS_STEP,
   EXISTS_STEP,
@@ -769,6 +1016,7 @@ const TRANSFORM_NAMES = [
   ...NUMBER_BARE_STEPS,
   ...LIST_BARE_STEPS,
   FLAT_STEP,
+  ...EXTRA_BARE_STEPS,
 ].join('|');
 
 /*
@@ -787,6 +1035,10 @@ const TRANSFORM_NAMES = [
  */
 export const RESOLVERS: Record<string, (entityId: string, hass: any) => string | undefined> = {
   state: (entityId, hass) => (stateAllowed(hass, entityId) ? hass?.states?.[entityId]?.state : undefined),
+  // When the state last changed, and when it or an attribute last did (idea 38): read under
+  // the same rebuild_on rule as the state, and made for `|relative`, `|format:` and `|age`.
+  last_changed: (entityId, hass) => (stateAllowed(hass, entityId) ? hass?.states?.[entityId]?.last_changed : undefined),
+  last_updated: (entityId, hass) => (stateAllowed(hass, entityId) ? hass?.states?.[entityId]?.last_updated : undefined),
   friendly_name: (entityId, hass) => {
     const entity = hass?.entities?.[entityId];
     return hass?.states?.[entityId]?.attributes?.friendly_name ?? entity?.name ?? entity?.original_name;
@@ -885,6 +1137,11 @@ const ENTITY_ID_SHAPE = /^([a-z0-9_]+)\.([a-z0-9_]+)$/i;
 
 /** The resolver that reads an entity's state, which only works for what a card rebuilds on. */
 export const STATE_STEP = 'state';
+
+/** Whether a step reads the entity's state - the state itself, or one of its attributes (idea 39). */
+export function readsState(step: string): boolean {
+  return step === STATE_STEP || step === 'last_changed' || step === 'last_updated' || step.startsWith(ATTRIBUTE_PREFIX);
+}
 
 /*
  * Which entities a build may read the state of: the card's `rebuild_on:` list, carried on
@@ -1029,13 +1286,27 @@ function standInText(step: string): string | undefined {
  */
 const IF_PREFIX = 'if:';
 
-const IF_STEP = `${IF_PREFIX}!?[A-Za-z0-9_.-]+(?:!?=${TEXT_ARG})?`;
+/*
+ * `unless:` is `if:` turned round, spelled so that it reads (idea 36): `[[label|unless:short]]`
+ * keeps the label unless `short` is set, and `unless:mode=off` holds while `mode` is
+ * anything but off. The same grammar after the colon as `if:`, bang included.
+ */
+const UNLESS_PREFIX = 'unless:';
+
+const CONDITION_BODY = `!?[A-Za-z0-9_.-]+(?:!?=${TEXT_ARG})?`;
+
+const IF_STEP = `(?:${IF_PREFIX}|${UNLESS_PREFIX})${CONDITION_BODY}`;
 
 /** An `if:` step taken apart: the variable it reads, the text it compares with, and whether it is turned round. */
 function parseCondition(step: string): { name: string; text?: string; negated: boolean } {
-  let body = step.slice(IF_PREFIX.length);
-  const not = body.startsWith('!');
-  if (not) body = body.slice(1);
+  const unless = step.startsWith(UNLESS_PREFIX);
+  let body = step.slice(unless ? UNLESS_PREFIX.length : IF_PREFIX.length);
+  // `unless:` is one more turn: `unless:!x` is `if:x`.
+  let not = unless;
+  if (body.startsWith('!')) {
+    not = !not;
+    body = body.slice(1);
+  }
   const equals = body.indexOf('=');
   if (equals === -1) return { name: body, negated: not };
   const unequal = body[equals - 1] === '!';
@@ -1048,7 +1319,7 @@ function parseCondition(step: string): { name: string; text?: string; negated: b
 
 /** Whether a step is a condition rather than something done to the value. */
 export function isCondition(step: string): boolean {
-  return step.startsWith(IF_PREFIX);
+  return step.startsWith(IF_PREFIX) || step.startsWith(UNLESS_PREFIX);
 }
 
 /** The variable an `if:` step reads, for counting it as used. */
@@ -1125,6 +1396,9 @@ function resolve(step: string, entityId: string, hass: any): string | undefined 
   if (step.startsWith(ATTRIBUTE_PREFIX)) {
     const name = step.slice(ATTRIBUTE_PREFIX.length);
     if (SENSITIVE_ATTRIBUTES.has(name)) return undefined;
+    // An attribute is part of the state, and read under the same rule (idea 39): only for an
+    // entity the card rebuilds on, or a brightness read once would be wrong a minute later.
+    if (!stateAllowed(hass, entityId)) return undefined;
     const attribute = hass?.states?.[entityId]?.attributes?.[name];
     if (attribute === undefined || attribute === null) return undefined;
     // A list reads as the `join` step would write it, and a mapping as its JSON - String()
@@ -1188,6 +1462,24 @@ export const PARAM_TRANSFORMS: Record<string, (value: string, arg: string) => st
   },
   // Where the text starts in the value, counting from 0, and -1 when it is not in it (#210).
   find: (value, arg) => String(value.indexOf(arg)),
+  /*
+   * `switch:on=green,off=grey,default=amber` (idea 36): `map:` with the fallthrough spelled
+   * `default=`, which is how people reading it expect a switch to end. `*=` is taken too,
+   * so a `map:` can be renamed without being rewritten. A value no arm names, with no
+   * default, is a gap - reported as `map:` reports one, not silently passed through.
+   */
+  switch: (value, arg) => {
+    let fallback: string | undefined;
+    for (const pair of arg.split(',')) {
+      const equals = pair.indexOf('=');
+      if (equals === -1) continue;
+      const from = pair.slice(0, equals);
+      const to = pair.slice(equals + 1);
+      if (from === value) return to;
+      if (from === 'default' || from === '*') fallback = to;
+    }
+    return fallback;
+  },
 };
 
 /*
@@ -1201,12 +1493,15 @@ export const WITH_STEP = 'with';
 export const REPEAT_STEP = 'repeat';
 export const STRUCTURE_PARAM_STEPS = [WITH_STEP, REPEAT_STEP];
 
+/** Every structural step: the two that take an argument, and `slot`, which takes none. */
+export const STRUCTURE_STEPS = [...STRUCTURE_PARAM_STEPS, SLOT_STEP];
+
 /** Whether a step is one of the structural ones above, whatever its argument. */
 export function isStructureStep(step: string): boolean {
-  return STRUCTURE_PARAM_STEPS.includes(stepName(step));
+  return STRUCTURE_STEPS.includes(stepName(step));
 }
 
-const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP];
+const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP, ...EXTRA_PARAM_STEPS];
 
 /*
  * An arithmetic argument stops short of an opening bracket as well, so `add:[[offset]]`
@@ -1273,16 +1568,19 @@ export function applyTransform(
    */
   let haText = fromHa || (typeof value === 'string' && isHaMarked(value));
 
-  // `json` is the one step that wants the value as it was rather than as text, so it is
-  // read off the front before anything turns a mapping into "[object Object]".
-  const takesJson = steps[0] === JSON_STEP;
+  // `json`, `yaml` and `raw` want the value as it was rather than as text, so they are read
+  // off the front before anything turns a mapping into "[object Object]".
+  const takesJson = writesWhole(steps[0]) || steps[0] === RAW_STEP;
   // A mapping or a list that reaches a text step anyway is its JSON, never "[object Object]".
   let text: string | undefined =
-    takesJson || (!!value && typeof value === 'object')
-      ? JSON.stringify(value)
-      : value === undefined
-        ? undefined
-        : String(value);
+    value === undefined
+      ? undefined
+      : steps[0] === YAML_STEP
+        ? toYaml(value)
+        : (takesJson && steps[0] !== RAW_STEP) || (!!value && typeof value === 'object')
+          ? JSON.stringify(value)
+          : String(value);
+  if (steps[0] === RAW_STEP && text !== undefined) text = escapeAll(text);
 
   /*
    * Whether there is anything to show, which is not the same as whether there is a value.
@@ -1314,6 +1612,12 @@ export function applyTransform(
     }
     const numeric = numberStep(name, input, hass);
     if (numeric !== undefined) return numeric;
+    const dated = dateStep(name, input, hass);
+    if (dated !== undefined) return dated;
+    const worded = localeStep(name, input, hass);
+    if (worded !== undefined) return worded;
+    const coloured = colourStep(name, input, hass);
+    if (coloured !== undefined) return coloured;
     const parameterised = paramTransform(name);
     if (parameterised) return parameterised.fn(input, parameterised.arg);
     return TRANSFORMS[name](input);
@@ -1503,6 +1807,9 @@ export function applyTransform(
     const known =
       isResolver(name) ||
       isNumberStep(name) ||
+      isDateStep(name) ||
+      isLocaleStep(name) ||
+      isColourStep(name) ||
       !!paramTransform(name) ||
       (Object.prototype.hasOwnProperty.call(TRANSFORMS, name) && !!TRANSFORMS[name]);
     if (!known) return undefined;
@@ -1557,7 +1864,7 @@ export function unlistedState(
   read?: (name: string) => unknown,
 ): string | undefined {
   const steps = chain ? chain.split('|') : [];
-  const at = steps.indexOf(STATE_STEP);
+  const at = steps.findIndex(readsState);
   if (at === -1) return undefined;
   // Whatever the steps before it make of the value is the entity it is asked of.
   const entity = applyTransform(steps.slice(0, at).join('|') || undefined, value, hass, values, read);
@@ -1954,7 +2261,7 @@ export function variableValues(variableArray: VariablesConfig[] | VariablesConfi
 function placeholdersIn(value: unknown): string[] {
   if (value === undefined) return [];
   const names: string[] = [];
-  let json = JSON.stringify(value);
+  let json = placeholderJson(value);
   if (typeof json !== 'string') return names;
   // A fresh regex each time: a shared global one carries lastIndex between calls.
   const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
@@ -1982,8 +2289,9 @@ function scanPlaceholders(json: string, pattern: RegExp, names: string[]): void 
     if (!match[1].startsWith(ESCAPE) && !insideButtonCardJs(json, match.index)) {
       const inside = withoutOptional(match[1]);
       const head = inside.replace(TRANSFORM_TAIL, '');
-      // A quoted name is text, not a variable (#398).
-      if (quotedText(head) === undefined) names.push(head);
+      // A quoted name is text, not a variable (#398), and the template's own names are
+      // given by every build, not set by anybody (#391).
+      if (quotedText(head) === undefined && !TEMPLATE_PLACEHOLDERS.includes(head)) names.push(head);
       // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing -
       // and `[[a|if:b]]` reads b to decide whether a is shown at all.
       for (const step of inside.split('|').slice(1)) {
@@ -1996,7 +2304,45 @@ function scanPlaceholders(json: string, pattern: RegExp, names: string[]): void 
 }
 
 function contentOf(template: TemplateConfig | undefined): unknown[] {
-  return CONTENT_KEYS.map((key) => (template as any)?.[key]).filter((part) => part !== undefined);
+  return [
+    ...CONTENT_KEYS.map((key) => (template as any)?.[key]).filter((part) => part !== undefined),
+    ...checkReads(template),
+  ];
+}
+
+/** The name `[[__alerts__]]` reads (#389): the template's failed checks, which every build sets. */
+export const ALERTS_NAME = '__alerts__';
+
+/** Whether a name is `__alerts__` or a key inside it, which nothing has to set. */
+export function isAlertsName(name: string): boolean {
+  return name === ALERTS_NAME || name.startsWith(`${ALERTS_NAME}.`);
+}
+
+/*
+ * What a template's `checks:` (#389) and its `alert:` read. A check's message and a
+ * condition written with placeholders read the way the card does; a condition written the
+ * show_if way reads its variable as an optional placeholder would - used, and never missing,
+ * since an unset one is an answer a condition can give.
+ */
+function checkReads(template: TemplateConfig | undefined): unknown[] {
+  const written = (template as any)?.checks;
+  const list = Array.isArray(written) ? written : written && typeof written === 'object' ? [written] : [];
+  const reads: unknown[] = [];
+  for (const check of list) {
+    if (!check || typeof check !== 'object') continue;
+    if (check.message !== undefined) reads.push(check.message);
+    const condition = check.condition;
+    if (typeof condition !== 'string') continue;
+    if (condition.includes('[[')) {
+      reads.push(condition);
+      continue;
+    }
+    const target = conditionTarget(isCondition(condition.trim()) ? condition.trim() : IF_PREFIX + condition.trim());
+    if (target && /^[A-Za-z0-9_.-]+$/.test(target)) reads.push(`[[${target}?]]`);
+  }
+  const alert = (template as any)?.alert;
+  if (alert !== undefined) reads.push(alert);
+  return reads;
 }
 
 /**
@@ -2027,7 +2373,7 @@ function reachable(template: TemplateConfig | undefined, values: Record<string, 
 function answeredNames(template: TemplateConfig | undefined, values: Record<string, any>, used: string[]): Set<string> {
   const answered = new Map<string, boolean>();
   const scan = (value: unknown): void => {
-    const json = JSON.stringify(value);
+    const json = placeholderJson(value);
     if (typeof json !== 'string') return;
     const pattern = new RegExp(PLACEHOLDER_SOURCE, 'g');
     for (let match = pattern.exec(json); match !== null; match = pattern.exec(json)) {
@@ -2061,7 +2407,7 @@ function usesStep(
   wanted: (step: string) => boolean,
   itemTemplates?: Record<string, TemplateConfig>,
 ): boolean {
-  const json = JSON.stringify([
+  const json = placeholderJson([
     template,
     outerLet(template).map((layer) => layer.values),
     ...itemTemplatesReached(template, itemTemplates),
@@ -2105,10 +2451,10 @@ export function itemTemplatesReached(
       if (!text.includes(`[[${name}|`) && !text.includes(`[[${name}]]`) && !text.includes(`[[${name}?`)) continue;
       seen.add(name);
       reached.push(itemTemplates[name]);
-      visit(JSON.stringify(itemTemplates[name]));
+      visit(placeholderJson(itemTemplates[name]));
     }
   };
-  visit(JSON.stringify([template, outerLet(template).map((layer) => layer.values)]));
+  visit(placeholderJson([template, outerLet(template).map((layer) => layer.values)]));
   return reached;
 }
 
@@ -2150,11 +2496,26 @@ export function usesInstalled(
  * Whether the template asks for a translation, whose answer changes when Home Assistant
  * loads more of them or the language changes - not when the registry does.
  */
+/** Whether the template says how long ago something was, which goes stale unless the card rebuilds (idea 38). */
+export function usesTimeStep(template: TemplateConfig | undefined): boolean {
+  return usesStep(template, (step) => step === RELATIVE_STEP || stepName(step) === AGE_STEP);
+}
+
+/** Whether a template reads an entity's attributes with `attr:` (idea 39), so attribute changes rebuild it. */
+export function usesAttributes(
+  template: TemplateConfig | undefined,
+  itemTemplates?: Record<string, TemplateConfig>,
+): boolean {
+  return usesStep(template, (step) => step.startsWith(ATTRIBUTE_PREFIX), itemTemplates);
+}
+
 export function usesTranslate(
   template: TemplateConfig | undefined,
   itemTemplates?: Record<string, TemplateConfig>,
 ): boolean {
-  return usesStep(template, (step) => step === 'translate', itemTemplates);
+  // The date, plural and number steps read the viewer's locale too, which travels with
+  // hass.localize when the language changes (ideas 38, 40).
+  return usesStep(template, (step) => step === 'translate' || isDateStep(step) || isLocaleStep(step), itemTemplates);
 }
 
 /**
@@ -2331,7 +2692,10 @@ export function diagnoseInstance(
   }
 
   const answered = answeredNames(template, values, used);
-  const missing = used.filter((name) => !(name in values) && !answered.has(name));
+  // A chain with a step nobody knows (`name|uper`) is told apart as an unknown step, not an unset variable.
+  const missing = used.filter(
+    (name) => !name.includes('|') && !(name in values) && !answered.has(name) && !isAlertsName(name),
+  );
   // Which of the missing ones the template says it cannot do without, so an editor can
   // say so more loudly than it says the rest.
   const insisted = new Set(
@@ -2447,6 +2811,32 @@ export function forEachItems(forEach: unknown): unknown[] | undefined {
 /** The names every copy of a `for_each` gets given, whatever its items say. */
 export const POSITION_NAMES = ['index', 'index0', 'count', 'first', 'last'];
 
+/*
+ * The names every build is given about the templates it sits in (#391), for a message that
+ * says where it came from. `__template_name__` is the template being built - the one the card
+ * names, whatever it extends. The other three follow template cards nested inside template
+ * cards: `__parent_template_name__` is the template whose card holds this one (empty at the
+ * top), `__root_template_name__` the outermost (this one, at the top), and
+ * `__template_path__` the list from the outermost down to this one. A variable of the same
+ * name wins, as it does over an entity.
+ */
+export const TEMPLATE_NAME = '__template_name__';
+export const PARENT_TEMPLATE_NAME = '__parent_template_name__';
+export const ROOT_TEMPLATE_NAME = '__root_template_name__';
+export const TEMPLATE_PATH = '__template_path__';
+export const TEMPLATE_PLACEHOLDERS = [TEMPLATE_NAME, PARENT_TEMPLATE_NAME, ROOT_TEMPLATE_NAME, TEMPLATE_PATH];
+
+/** The values of those four for a template built inside the ones `above` names, outermost first. */
+export function templatePlaceholders(name: string | undefined, above: string[] = []): VariablesConfig[] {
+  const path = name ? [...above, name] : [...above];
+  return [
+    { [TEMPLATE_NAME]: name ?? '' },
+    { [PARENT_TEMPLATE_NAME]: above.length ? above[above.length - 1] : '' },
+    { [ROOT_TEMPLATE_NAME]: path[0] ?? '' },
+    { [TEMPLATE_PATH]: path },
+  ];
+}
+
 /** Every name any item of a `for_each` list sets, for warning about what is missing. */
 export function forEachNames(items: unknown): string[] {
   const list = forEachItems(items) ?? [];
@@ -2471,6 +2861,8 @@ export const KNOWN_STEPS: string[] = [
   ...new Set([
     ...Object.keys(TRANSFORMS),
     JSON_STEP,
+    RAW_STEP,
+    YAML_STEP,
     BOOL_STEP,
     EXISTS_STEP,
     IF_EXISTS_STEP,
@@ -2479,9 +2871,11 @@ export const KNOWN_STEPS: string[] = [
     STATE_STEP,
     // Bare, as `[[row|with]]` and `[[row|repeat]]` (#314); with an argument they are below.
     ...STRUCTURE_PARAM_STEPS,
+    SLOT_STEP,
     ...NUMBER_BARE_STEPS,
     ...LIST_BARE_STEPS,
     FLAT_STEP,
+    ...EXTRA_BARE_STEPS,
     ...Object.keys(RESOLVERS),
   ]),
 ];
@@ -2493,8 +2887,10 @@ export const KNOWN_PARAM_STEPS: string[] = [
   ...LIST_PARAM_STEPS,
   CONTAINS_STEP,
   ...STRUCTURE_PARAM_STEPS,
+  ...EXTRA_PARAM_STEPS,
   ATTRIBUTE_PREFIX.slice(0, -1),
   OR_PREFIX.slice(0, -1),
   DEFAULT_PREFIX.slice(0, -1),
   IF_PREFIX.slice(0, -1),
+  UNLESS_PREFIX.slice(0, -1),
 ];

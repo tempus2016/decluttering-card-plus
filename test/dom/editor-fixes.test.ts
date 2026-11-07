@@ -1,0 +1,189 @@
+/*
+ * What the first round on the dev Home Assistant turned up in the template editor, pinned
+ * in a real browser: a tab shown from the keyboard switched the strip but not the panel
+ * (idea 55).
+ */
+import { describe, it, expect, settle, until } from './runner';
+import { stubHass, stubLovelace } from './stubs';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+function templateEditor(): any {
+  const lovelace = stubLovelace({
+    decluttering_templates: { t: { card: { type: 'markdown', content: '[[name]]' } } },
+    views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 't', variables: [{ name: 'x' }] }] }],
+  });
+  const editor = document.createElement('decluttering-template-plus-editor') as any;
+  editor.hass = stubHass();
+  editor.lovelace = lovelace.config;
+  editor.setConfig({
+    type: 'custom:decluttering-template-plus',
+    template: 't',
+    card: { type: 'markdown', content: '[[name]]' },
+  });
+  document.body.appendChild(editor);
+  return editor;
+}
+
+const shareTab = (editor: any): any => editor.shadowRoot?.querySelector('decluttering-template-share-tab');
+
+describe('keyboard tabs', () => {
+  it('a tab chosen with Enter from the strip switches the panel and moves focus to its heading', async () => {
+    const editor = templateEditor();
+    await settle(4);
+    const strip = editor.shadowRoot.querySelector('ha-tab-group');
+    expect(!!strip, 'the tab strip rendered').to.equal(true);
+    strip.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
+    strip.dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'share' }, bubbles: true, composed: true }));
+    await until(() => editor._selectedTab === 'share', 2000, 'the share panel');
+    await settle(4);
+    expect(!!shareTab(editor), 'the share tab is drawn').to.equal(true);
+    const heading = editor.shadowRoot.querySelector('#panel-heading');
+    expect(editor.shadowRoot.activeElement === heading, 'focus moved to the panel heading').to.equal(true);
+  });
+
+  it('an arrow key along the strip switches the panel and leaves focus on the strip', async () => {
+    const editor = templateEditor();
+    await settle(4);
+    const strip = editor.shadowRoot.querySelector('ha-tab-group');
+    strip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, composed: true }));
+    strip.dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'usages' }, bubbles: true, composed: true }));
+    await until(() => editor._selectedTab === 'usages', 2000, 'the usages panel');
+    await settle(2);
+    const heading = editor.shadowRoot.querySelector('#panel-heading');
+    expect(editor.shadowRoot.activeElement === heading, 'focus stayed on the strip').to.equal(false);
+  });
+
+  it('a pointer click on a tab switches the panel without stealing focus', async () => {
+    const editor = templateEditor();
+    await settle(4);
+    const strip = editor.shadowRoot.querySelector('ha-tab-group');
+    strip.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true }));
+    strip.dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'usages' }, bubbles: true, composed: true }));
+    await until(() => editor._selectedTab === 'usages', 2000, 'the usages panel');
+    await settle(2);
+    const heading = editor.shadowRoot.querySelector('#panel-heading');
+    expect(editor.shadowRoot.activeElement === heading, 'focus stayed where the pointer left it').to.equal(false);
+  });
+});
+
+/*
+ * Home Assistant's ha-yaml-editor reads defaultValue once, when it first draws. This stand-in
+ * does the same, so a converted YAML that only had its property changed would keep showing
+ * the first conversion - what the dev Home Assistant showed after a second paste (#296).
+ */
+class OnceYamlEditor extends HTMLElement {
+  public shown: unknown;
+  private _seen = false;
+  set defaultValue(value: unknown) {
+    if (this._seen) return;
+    this._seen = true;
+    this.shown = value;
+  }
+  get defaultValue(): unknown {
+    return this.shown;
+  }
+}
+
+describe('convert from another card', () => {
+  it('a second paste shows its own conversion, not the first one', async () => {
+    if (!customElements.get('ha-yaml-editor')) customElements.define('ha-yaml-editor', OnceYamlEditor);
+    const editor = templateEditor();
+    await settle(4);
+    editor.shadowRoot
+      .querySelector('ha-tab-group')
+      .dispatchEvent(new CustomEvent('wa-tab-show', { detail: { name: 'share' }, bubbles: true, composed: true }));
+    await until(() => !!shareTab(editor)?.shadowRoot?.querySelector('#convert'), 2000, 'the convert box');
+    const tab = shareTab(editor);
+    const paste = (value: unknown): void => {
+      tab.shadowRoot
+        .querySelector('#convert')
+        .dispatchEvent(new CustomEvent('value-changed', { detail: { value, isValid: true } }));
+    };
+    const auto = (domain: string): unknown => ({
+      type: 'custom:auto-entities',
+      card: { type: 'entities' },
+      filter: { include: [{ domain }] },
+    });
+    paste(auto('light'));
+    await tab.updateComplete;
+    await settle(2);
+    const shown = (): any => (tab.shadowRoot.querySelector('#converted') as any)?.defaultValue;
+    expect(JSON.stringify(shown()), 'the first conversion is shown').to.contain('"domain":"light"');
+    paste(auto('switch'));
+    await tab.updateComplete;
+    await settle(2);
+    expect(JSON.stringify(shown()), 'the second conversion is shown').to.contain('"domain":"switch"');
+    expect(JSON.stringify(shown()), 'the first one is gone').not.to.contain('"domain":"light"');
+    expect(!!tab.shadowRoot.querySelector('#converted-card'), 'the card to put on the dashboard is drawn').to.equal(
+      true,
+    );
+    editor.remove();
+  });
+});
+
+/*
+ * The card's editor is also a section strategy's options (#400), mounted by Home Assistant
+ * inside hui-section-strategy-element-editor, which writes whatever the editor fires as the
+ * section's `strategy:`. Ejecting a group there wrote the group card as the strategy, a
+ * strategy type that does not exist, and the section broke - so it is not offered there.
+ */
+describe('eject and section strategies (#400)', () => {
+  const roomGroup = {
+    default: [{ area: 'living_room' }],
+    group: [
+      { type: 'heading', heading: 'GROUP [[area]]' },
+      { type: 'tile', entity: 'light.[[area]]' },
+    ],
+  };
+  const mount = (host?: HTMLElement): any => {
+    const lovelace = stubLovelace({ decluttering_templates: { room_group: roomGroup }, views: [{ cards: [] }] });
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = stubHass({ 'light.living_room': 'on' });
+    editor.lovelace = lovelace.config;
+    editor.setConfig({ type: 'custom:decluttering-card-plus', template: 'room_group' });
+    if (host) {
+      const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
+      root.appendChild(editor);
+      document.body.appendChild(host);
+    } else {
+      document.body.appendChild(editor);
+    }
+    return editor;
+  };
+  const buttons = (editor: any): string[] =>
+    [...(editor.shadowRoot?.querySelectorAll('ha-button') ?? [])].map((each: any) => each.textContent.trim());
+  const alerts = (editor: any): string[] =>
+    [...(editor.shadowRoot?.querySelectorAll('ha-alert') ?? [])].map((each: any) => each.textContent.trim());
+  const EJECT = 'Replace this card with what it builds';
+
+  it('a card editor offers eject for a group template', async () => {
+    const editor = mount();
+    await until(() => buttons(editor).includes(EJECT), 3000, 'the eject button');
+    editor.remove();
+  });
+
+  it('a section strategy editor does not offer eject', async () => {
+    const host = document.createElement('hui-section-strategy-element-editor');
+    const editor = mount(host);
+    // The preview's own buttons are drawn, so eject would be by now.
+    await until(() => buttons(editor).some((text) => text.startsWith('Copy')), 3000, 'the preview');
+    expect(buttons(editor), 'no eject').not.to.include(EJECT);
+    let fired = 0;
+    editor.addEventListener('config-changed', () => (fired += 1));
+    await settle(2);
+    expect(fired, 'nothing written to the strategy').to.equal(0);
+    host.remove();
+  });
+
+  it('a group template is not said to use a variable named after its cards', async () => {
+    const editor = mount();
+    await until(() => buttons(editor).includes(EJECT), 3000, 'the preview');
+    await settle(2);
+    expect(
+      alerts(editor).some((text) => text.includes('no value and no default')),
+      'no garbled missing-variable warning',
+    ).to.equal(false);
+    editor.remove();
+  });
+});

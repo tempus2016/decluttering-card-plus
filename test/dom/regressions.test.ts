@@ -277,3 +277,354 @@ describe('card-updated', () => {
     expect(fired).to.equal(0);
   });
 });
+
+describe('checks (#389)', () => {
+  const template = (extra: Record<string, any> = {}): Record<string, any> => ({
+    default: [{ camera: 'camera.front' }],
+    checks: [
+      {
+        name: 'No camera',
+        condition: '[[camera|exists]]',
+        fail_on: false,
+        level: 'error',
+        message: 'The camera [[camera]] is not there.',
+        ...extra,
+      },
+      { condition: '[[camera|contains:dummy]]', message: '[[camera]] is a dummy.' },
+    ],
+    card: { type: 'markdown', content: '[[__alerts__.all.count]] [[__alerts__.all.highest_level]]' },
+  });
+  const report = (el: any): any => el.shadowRoot?.querySelector('ha-card.report');
+
+  it('a card whose checks pass builds as ever, with nothing in __alerts__', async () => {
+    stubLovelace({ decluttering_templates: { t: template() }, views: [{ cards: [] }] });
+    const el = card({ template: 't' }, stubHass({ 'camera.front': 'idle' }));
+    document.body.appendChild(el);
+    await until(() => !!inner(el)?.config, 2000, 'a build');
+    expect(inner(el).config.content).to.equal('0 ');
+    expect(report(el)).to.equal(null);
+  });
+
+  it('a failed warning builds the card and says so in __alerts__, without the report', async () => {
+    stubLovelace({ decluttering_templates: { t: template() }, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: [{ camera: 'camera.dummy' }] }, stubHass({ 'camera.dummy': 'idle' }));
+    document.body.appendChild(el);
+    await until(() => !!inner(el)?.config, 2000, 'a build');
+    expect(inner(el).config.content).to.equal('1 warn');
+    expect(report(el)).to.equal(null);
+  });
+
+  it('a failed error shows the report under the card with debug off, the check at its top', async () => {
+    stubLovelace({ decluttering_templates: { t: template() }, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: [{ camera: 'camera.gone' }] }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!report(el) && !!el._reportText, 3000, 'the report');
+    expect(inner(el).config.content).to.equal('1 error');
+    expect(el._reportText).to.include('## Failed checks');
+    expect(el._reportText).to.include('The camera camera.gone is not there.');
+  });
+
+  it('the report tree leads with the failed checks, then the warnings, both open', async () => {
+    stubLovelace({
+      decluttering_templates: {
+        t: {
+          ...template(),
+          checks: [...template().checks, { condition: 'true', level: 'info', message: 'Only in the console.' }],
+          card: { type: 'markdown', content: '[[__alerts__.all.count]] [[not_given]]' },
+        },
+      },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 't', variables: [{ camera: 'camera.gone' }] }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!report(el)?.querySelector('.tree > details'), 3000, 'the report tree');
+    const top = [...report(el).querySelectorAll('.tree > details')] as HTMLDetailsElement[];
+    const heads = top.map((node) => node.querySelector('summary')?.textContent?.trim() ?? '');
+    expect(heads[0]).to.match(/^Failed checks/);
+    expect(heads[1]).to.match(/^Warnings/);
+    expect([top[0].open, top[1].open]).to.deep.equal([true, true]);
+    expect(top[0].textContent).to.include('The camera camera.gone is not there.');
+    expect(top[0].textContent).to.not.include('Only in the console.');
+    expect(top[1].textContent).to.include('not_given');
+  });
+
+  it('the report goes again once the error has', async () => {
+    stubLovelace({ decluttering_templates: { t: template() }, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: [{ camera: 'camera.gone' }] }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!report(el), 3000, 'the report');
+    el.setConfig({ template: 't' });
+    el.hass = stubHass({ 'camera.front': 'idle' });
+    await until(() => inner(el)?.config?.content === '0 ', 2000, 'a clean build');
+    await settle();
+    expect(report(el)).to.equal(null);
+  });
+
+  it('an error that does not continue fails the card, and on_error shows the alerts', async () => {
+    stubLovelace({
+      decluttering_templates: {
+        t: {
+          ...template({ continue_rendering: false }),
+          on_error: { type: 'markdown', content: 'Fix: [[__alerts__.error.items|join]]' },
+        },
+      },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 't', variables: [{ camera: 'camera.gone' }] }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!inner(el)?.config, 2000, 'the on_error card');
+    expect(inner(el).config.content).to.equal('Fix: The camera camera.gone is not there.');
+  });
+
+  it('without on_error it shows the error card, with the check message in it', async () => {
+    stubLovelace({ decluttering_templates: { t: template({ continue_rendering: false }) }, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: [{ camera: 'camera.gone' }] }, stubHass());
+    document.body.appendChild(el);
+    await settle(4);
+    const alert = el.shadowRoot?.querySelector('ha-alert[alert-type="error"]');
+    expect(alert?.textContent ?? '').to.include('The camera camera.gone is not there.');
+  });
+
+  it("a template's alert: shows instead of the card while a check fails, and instead of the report", async () => {
+    stubLovelace({
+      decluttering_templates: {
+        t: { ...template(), alert: { type: 'markdown', content: 'Alert: [[__alerts__.error.items|join]]' } },
+      },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 't', variables: [{ camera: 'camera.gone' }] }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!inner(el)?.config, 2000, 'the alert');
+    await settle();
+    expect(inner(el).config.content).to.equal('Alert: The camera camera.gone is not there.');
+    expect(report(el)).to.equal(null);
+  });
+
+  it('the card editor shows a failed warning or error, never an info', async () => {
+    const lovelace = stubLovelace({
+      decluttering_templates: {
+        t: { ...template(), checks: [...template().checks, { condition: true, level: 'info', message: 'Just so.' }] },
+      },
+      views: [{ cards: [] }],
+    });
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = stubHass({ 'camera.dummy': 'idle' });
+    editor.lovelace = lovelace.config;
+    editor.setConfig({ type: 'custom:decluttering-card-plus', template: 't', variables: [{ camera: 'camera.dummy' }] });
+    document.body.appendChild(editor);
+    await settle(6);
+    const alerts = [...(editor.shadowRoot?.querySelectorAll('ha-alert') ?? [])].map((each: any) =>
+      each.textContent.trim(),
+    );
+    expect(alerts).to.include('Check failed: camera.dummy is a dummy.');
+    expect(alerts.some((text: string) => text.includes('Just so.'))).to.equal(false);
+  });
+
+  it('a repeat checks every copy with its own values', async () => {
+    stubLovelace({ decluttering_templates: { t: template() }, views: [{ cards: [] }] });
+    const el = card(
+      { template: 't', for_each: [{ camera: 'camera.front' }, { camera: 'camera.dummy' }] },
+      stubHass({ 'camera.front': 'idle', 'camera.dummy': 'idle' }),
+    );
+    document.body.appendChild(el);
+    await until(() => !!inner(el)?.config?.cards, 2000, 'the copies');
+    expect(inner(el).config.cards.map((copy: any) => copy.content)).to.deep.equal(['0 ', '1 warn']);
+  });
+});
+
+describe('strict level by level (#390)', () => {
+  const shadow = (el: any, selector: string): any => el.shadowRoot?.querySelector(selector);
+  // A mapping run through |lower is refused - a warning - and [[nobody]] has no value - an error.
+  const refusing = { t: { card: { type: 'markdown', content: '[[tap|lower]]' } } };
+  const unset = { t: { card: { type: 'markdown', content: '[[nobody]]' } } };
+  const tap = [{ tap: { action: 'toggle' } }];
+
+  it('strict: true still refuses a card with a variable left unset', async () => {
+    stubLovelace({ decluttering_templates: unset, views: [{ cards: [] }] });
+    const el = card({ template: 't', strict: true }, stubHass());
+    document.body.appendChild(el);
+    // A card's refusal is the error card (idea 49).
+    await until(() => !!shadow(el, '.error-card'), 2000, 'the strict refusal');
+    expect(inner(el), 'nothing built in its place').to.equal(null);
+  });
+
+  it('strict: true leaves a card that only warns as it always did', async () => {
+    stubLovelace({ decluttering_templates: refusing, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: tap, strict: true }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!inner(el), 2000, 'the wrapped card');
+    await settle();
+    expect(shadow(el, '.strict-notice'), 'no notice').to.equal(null);
+    expect(shadow(el, 'ha-card.report'), 'no report').to.equal(null);
+  });
+
+  it('warnings: notice shows a notice on the card that can be closed', async () => {
+    stubLovelace({ decluttering_templates: refusing, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: tap, strict: { warnings: 'notice' } }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.strict-notice'), 2000, 'the notice');
+    expect(!!inner(el), 'the card renders under it').to.equal(true);
+    expect(shadow(el, '.strict-notice').textContent).to.match(/transform/);
+    shadow(el, '.strict-notice').dispatchEvent(new CustomEvent('alert-dismissed-clicked'));
+    await settle();
+    expect(shadow(el, '.strict-notice'), 'closed').to.equal(null);
+  });
+
+  it('errors: report renders the card with the debug report under it', async () => {
+    stubLovelace({ decluttering_templates: unset, views: [{ cards: [] }] });
+    const el = card({ template: 't', strict: { errors: 'report' } }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, 'ha-card.report'), 2000, 'the report');
+    expect(!!inner(el), 'the card renders too').to.equal(true);
+  });
+
+  it('errors: report shows no report when nothing is wrong', async () => {
+    stubLovelace({ decluttering_templates: unset, views: [{ cards: [] }] });
+    const el = card({ template: 't', variables: [{ nobody: 'x' }], strict: { errors: 'report' } }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!inner(el), 2000, 'the wrapped card');
+    await settle();
+    expect(shadow(el, 'ha-card.report')).to.equal(null);
+  });
+
+  it('decluttering_strict on the dashboard reaches the card, and the card can turn it off', async () => {
+    stubLovelace({ decluttering_templates: unset, decluttering_strict: { errors: 'fail' }, views: [{ cards: [] }] });
+    const refused = card({ template: 't' }, stubHass());
+    document.body.appendChild(refused);
+    await until(() => !!shadow(refused, '.error-card'), 2000, 'the dashboard-wide refusal');
+    const own = card({ template: 't', strict: false }, stubHass());
+    document.body.appendChild(own);
+    await until(() => !!inner(own), 2000, 'the card that turned it off');
+  });
+
+  it('a template strict: applies to the cards using it', async () => {
+    stubLovelace({
+      decluttering_templates: { t: { strict: { warnings: 'notice' }, card: refusing.t.card } },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 't', variables: tap }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.strict-notice'), 2000, 'the notice');
+  });
+
+  it('a section decluttering_strict reaches a card in it', async () => {
+    stubLovelace({
+      decluttering_templates: unset,
+      views: [{ type: 'sections', sections: [{ decluttering_strict: { errors: 'fail' }, cards: [] }] }],
+    });
+    const section = stubSection(0, 0);
+    const el = card({ template: 't' }, stubHass());
+    section.appendChild(el);
+    await until(() => !!shadow(el, '.error-card'), 2000, 'the section refusal');
+  });
+});
+
+describe('checks count to strict (#389 with #390)', () => {
+  const shadow = (el: any, selector: string): any => el.shadowRoot?.querySelector(selector);
+  const templates = (level: string): Record<string, any> => ({
+    t: {
+      checks: [{ condition: '[[camera|contains:dummy]]', level, message: '[[camera]] is a dummy.' }],
+      card: { type: 'markdown', content: '[[camera]]' },
+    },
+  });
+
+  it('a failed warn check is one of the warnings strict: {warnings: notice} shows', async () => {
+    stubLovelace({ decluttering_templates: templates('warn'), views: [{ cards: [] }] });
+    const el = card(
+      { template: 't', variables: [{ camera: 'camera.dummy' }], strict: { warnings: 'notice' } },
+      stubHass({ 'camera.dummy': 'idle' }),
+    );
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.strict-notice'), 2000, 'the notice');
+    expect(shadow(el, '.strict-notice').textContent).to.include('camera.dummy is a dummy.');
+    expect(!!inner(el), 'the card renders under it').to.equal(true);
+  });
+
+  it('a failed error check fails the card under strict: {errors: fail}', async () => {
+    stubLovelace({ decluttering_templates: templates('error'), views: [{ cards: [] }] });
+    const el = card(
+      { template: 't', variables: [{ camera: 'camera.dummy' }], strict: { errors: 'fail' } },
+      stubHass({ 'camera.dummy': 'idle' }),
+    );
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.error-card'), 2000, 'the refusal, as the error card an unset variable gets');
+    expect(shadow(el, '.error-card').textContent).to.include('camera.dummy is a dummy.');
+    expect(inner(el), 'nothing built').to.equal(null);
+  });
+
+  it('the report a failed error check turns on finishes when strict refuses the card', async () => {
+    stubLovelace({
+      decluttering_templates: {
+        t: {
+          checks: [
+            {
+              condition: '[[sensor|exists]]',
+              fail_on: false,
+              level: 'error',
+              message: 'Sensor [[sensor]] missing',
+              continue_rendering: true,
+            },
+          ],
+          card: { type: 'markdown', content: '[[sensor]]' },
+        },
+      },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 't', variables: [{ sensor: 'sensor.nope' }], strict: { errors: 'fail' } }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.error-card'), 2000, 'the refusal');
+    expect(shadow(el, '.error-card').textContent).to.include('Sensor sensor.nope missing');
+    await until(() => !!shadow(el, 'ha-card.report'), 2000, 'the report');
+    await until(
+      () => /ready to copy/.test(shadow(el, 'ha-card.report').textContent),
+      2000,
+      'the report finished, not waiting for cards inside',
+    );
+    expect(inner(el), 'nothing built').to.equal(null);
+  });
+
+  const repeated = {
+    r: {
+      checks: [
+        { condition: 'n=b', level: 'warn', message: 'W [[n]]' },
+        { condition: 'n=c', level: 'error', message: 'E [[n]]' },
+      ],
+      card: { type: 'markdown', content: 'R [[n]]' },
+    },
+  };
+  const items = [{ n: 'a' }, { n: 'b' }, { n: 'c' }];
+
+  it("a repeat's failed warn checks are what strict: {warnings: notice} shows", async () => {
+    stubLovelace({ decluttering_templates: repeated, views: [{ cards: [] }] });
+    const el = card({ template: 'r', for_each: items, strict: { warnings: 'notice' } }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.strict-notice'), 2000, 'the notice');
+    expect(shadow(el, '.strict-notice').textContent).to.include('W b');
+    expect(!!inner(el), 'the copies render under it').to.equal(true);
+  });
+
+  it("a repeat's failed error check fails the whole card under strict: {errors: fail}", async () => {
+    stubLovelace({ decluttering_templates: repeated, views: [{ cards: [] }] });
+    const el = card({ template: 'r', for_each: items, strict: { errors: 'fail' } }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!shadow(el, '.error-card'), 2000, 'the refusal');
+    expect(shadow(el, '.error-card').textContent).to.include('E c');
+    expect(inner(el), 'no copy built').to.equal(null);
+    await until(
+      () => /ready to copy/.test(shadow(el, 'ha-card.report')?.textContent ?? ''),
+      2000,
+      'its report finished',
+    );
+  });
+
+  it('a repeat with strict: true still renders a copy that leaves a variable unset', async () => {
+    stubLovelace({
+      decluttering_templates: { u: { card: { type: 'markdown', content: '[[n]] [[nobody]]' } } },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 'u', for_each: items, strict: true }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!inner(el), 2000, 'the copies');
+    expect(shadow(el, '.error-card')).to.equal(null);
+  });
+});

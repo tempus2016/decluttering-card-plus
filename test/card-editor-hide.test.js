@@ -72,3 +72,9 @@ check('withoutFields drops the fields named', withoutFields(schema, ['strict']),
   { name: 'debug' },
 ]);
 check('withoutFields with nothing named returns the schema as it was', withoutFields(schema, []), schema);
+
+check(
+  'editor_hide: strict hides both strict dropdowns (#390)',
+  editorHidden({ editor_hide: 'strict' }, base).advancedFields,
+  ['strict_errors', 'strict_warnings'],
+);

@@ -128,6 +128,18 @@ export default [
     },
     plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
   },
+  // The command-line linter's library (idea 57): the lint and health modules plus js-yaml,
+  // as one CommonJS file bin/dcp-lint.js can require. Committed like the docs-site scripts.
+  {
+    input: 'src/cli-lint.ts',
+    output: {
+      file: './bin/cli-lint.cjs',
+      format: 'cjs',
+      exports: 'named',
+      inlineDynamicImports: true,
+    },
+    plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
+  },
   // "Try a placeholder", the other docs-site tool, committed for the same reason.
   {
     input: 'src/playground-page.ts',

@@ -1,0 +1,450 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://tempus2016.github.io/decluttering-card-plus/schema/dashboard.json",
+  "title": "A Home Assistant dashboard with Decluttering Card Plus templates",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "decluttering_templates": {
+      "type": "object",
+      "description": "Templates by name. Each is a card, row, badge, element or group with [[placeholders]] for what changes.",
+      "additionalProperties": {
+        "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json"
+      }
+    },
+    "decluttering_defaults": {
+      "description": "Values every template in here falls back to, as a list of single-key mappings or one mapping.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "type": "object"
+        }
+      ]
+    },
+    "decluttering_let": {
+      "description": "Values worked out once for everything in here, read by every template.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        {
+          "type": "object"
+        }
+      ]
+    },
+    "decluttering_strict": {
+      "description": "What the cards in here do about errors and warnings (#390): true, false, or a mode per level. The nearest place that sets a level wins.",
+      "$ref": "#/$defs/strict"
+    },
+    "decluttering_variables": {
+      "description": "Variable declarations shared by every template; a template takes one up by naming it.",
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json#/definitions/VariableDeclaration"
+          }
+        },
+        {
+          "type": "object",
+          "description": "The same declarations keyed by name: a scalar or list is the default, a mapping is the whole declaration, null is a bare name.",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json#/definitions/VariableDeclarationByName"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "decluttering_templates_from": {
+      "description": "Dashboards to borrow templates from, by url path; \"*\" for all of them.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "strategy": {
+      "description": "A dashboard strategy. `type: custom:decluttering-card-plus` writes the dashboard out from its views, or builds it from a page template.",
+      "type": "object",
+      "if": {
+        "properties": {
+          "type": {
+            "const": "custom:decluttering-card-plus"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/dashboard_strategy"
+      }
+    },
+    "views": {
+      "type": "array",
+      "description": "The views. A view, section or card inside is not checked by this schema beyond its decluttering keys.",
+      "items": {
+        "$ref": "#/$defs/view"
+      }
+    }
+  },
+  "$defs": {
+    "strict": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "errors": {
+              "enum": [
+                "ignore",
+                "report",
+                "fail"
+              ]
+            },
+            "error": {
+              "enum": [
+                "ignore",
+                "report",
+                "fail"
+              ]
+            },
+            "warnings": {
+              "enum": [
+                "ignore",
+                "notice",
+                "report"
+              ]
+            },
+            "warn": {
+              "enum": [
+                "ignore",
+                "notice",
+                "report"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "page": {
+      "type": "object",
+      "description": "The page template this dashboard is, and the variables it is built with.",
+      "properties": {
+        "template": {
+          "type": "string",
+          "description": "The template, with a `dashboard:` body, to build the page from."
+        },
+        "variables": {
+          "description": "The page template's variables: a list of single-key mappings, or one mapping.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object",
+              "description": "The same values as one mapping, keyed by name."
+            }
+          ]
+        }
+      },
+      "required": [
+        "template"
+      ]
+    },
+    "dashboard_strategy": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "custom:decluttering-card-plus"
+        },
+        "decluttering_templates": {
+          "type": "object",
+          "description": "Templates by name. Each is a card, row, badge, element or group with [[placeholders]] for what changes.",
+          "additionalProperties": {
+            "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json"
+          }
+        },
+        "decluttering_defaults": {
+          "description": "Values every template in here falls back to, as a list of single-key mappings or one mapping.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "decluttering_let": {
+          "description": "Values worked out once for everything in here, read by every template.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "decluttering_strict": {
+          "description": "What the cards in here do about errors and warnings (#390): true, false, or a mode per level. The nearest place that sets a level wins.",
+          "$ref": "#/$defs/strict"
+        },
+        "decluttering_variables": {
+          "description": "Variable declarations shared by every template; a template takes one up by naming it.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json#/definitions/VariableDeclaration"
+              }
+            },
+            {
+              "type": "object",
+              "description": "The same declarations keyed by name: a scalar or list is the default, a mapping is the whole declaration, null is a bare name.",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json#/definitions/VariableDeclarationByName"
+                  },
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "decluttering_templates_from": {
+          "description": "Dashboards to borrow templates from, by url path; \"*\" for all of them.",
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "variables": {
+          "description": "Values every view the strategy writes out is filled in with.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object",
+              "description": "The same values as one mapping, keyed by name."
+            }
+          ]
+        },
+        "views": {
+          "type": "array",
+          "description": "The views, a repeat entry (`for_each` or `for_each_from` with `view:`) written out once per item.",
+          "items": {
+            "$ref": "#/$defs/view"
+          }
+        },
+        "page": {
+          "$ref": "#/$defs/page"
+        },
+        "decluttering_page": {
+          "$ref": "#/$defs/page"
+        }
+      }
+    },
+    "view_strategy": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "const": "custom:decluttering-card-plus"
+        },
+        "variables": {
+          "description": "Values every section and badge the strategy writes out is filled in with.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object",
+              "description": "The same values as one mapping, keyed by name."
+            }
+          ]
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/section"
+          }
+        },
+        "badges": {
+          "type": "array"
+        }
+      }
+    },
+    "view": {
+      "type": "object",
+      "properties": {
+        "decluttering_defaults": {
+          "description": "Values every template in here falls back to, as a list of single-key mappings or one mapping.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "decluttering_let": {
+          "description": "Values worked out once for everything in here, read by every template.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "decluttering_strict": {
+          "description": "What the cards in here do about errors and warnings (#390): true, false, or a mode per level. The nearest place that sets a level wins.",
+          "$ref": "#/$defs/strict"
+        },
+        "strategy": {
+          "type": "object",
+          "if": {
+            "properties": {
+              "type": {
+                "const": "custom:decluttering-card-plus"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/view_strategy"
+          }
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/section"
+          }
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "properties": {
+        "decluttering_defaults": {
+          "description": "Values every template in here falls back to, as a list of single-key mappings or one mapping.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "decluttering_let": {
+          "description": "Values worked out once for everything in here, read by every template.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "decluttering_strict": {
+          "description": "What the cards in here do about errors and warnings (#390): true, false, or a mode per level. The nearest place that sets a level wins.",
+          "$ref": "#/$defs/strict"
+        }
+      }
+    }
+  }
+}

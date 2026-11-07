@@ -1,3 +1,4 @@
+import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import {
   conditionTarget,
@@ -35,7 +36,7 @@ const STAND_IN = '_';
  * `or:` and `if:` steps read. An escaped `[[!name]]` reads nothing.
  */
 export function readsIn(value: unknown): string[] {
-  let text = typeof value === 'string' ? value : JSON.stringify(value);
+  let text = typeof value === 'string' ? value : placeholderJson(value);
   if (typeof text !== 'string' || !text.includes('[[')) return [];
   const names = new Set<string>();
   for (let pass = 0; pass < 5; pass += 1) {

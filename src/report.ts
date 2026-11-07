@@ -48,7 +48,7 @@ export interface ReportInput {
 const SECRET_WORDS =
   'token|secret|password|passwd|pwd|pass|pin|passcode|code|auth|authorization|credentials?|api[_-]?key|apikey|webhook[_-]?id|private[_-]?key|signature|lat|latitude|lon|lng|longitude|gps';
 const SECRET_KEY = `(?:[a-z0-9]+[_-])*(?:${SECRET_WORDS})(?:[_-][a-z0-9]+)*`;
-const SECRET_NAME = new RegExp(`^${SECRET_KEY}$`, 'i');
+export const SECRET_NAME = new RegExp(`^${SECRET_KEY}$`, 'i');
 // More count in a query string: `?key=` and `?sig=` mean plenty of other things as config keys.
 const URL_KEYS = `${SECRET_KEY}|sig|key`;
 // Paths that carry a token as a segment: a Home Assistant or Discord webhook, a Telegram bot,
@@ -159,7 +159,8 @@ const SHORTEST_SECRET = 4;
  * mapping. A transform's copy of one is in the placeholders. Longest first, so a secret that
  * contains another is taken out whole.
  */
-function secretValues(reports: TraceReport[]): string[] {
+/** Every value held under a secret-looking name, longest first, for redacting wherever it recurs. */
+export function secretValues(reports: TraceReport[]): string[] {
   const found = new Set<string>();
   const add = (value: unknown, secret: boolean): void => {
     if (value !== null && typeof value === 'object') {
@@ -355,17 +356,65 @@ function buildSection(report: TraceReport, { line, block, title, redacting }: Wr
       lines.push(`**${t('trace.taken_out')}**`, '', ...described.dropped.map((path) => `- ${line(path)}`), '');
     }
     items(section.trace.items, 4);
-    if (section.trace.warnings.length) {
-      lines.push(
-        `**${t('report.warnings')}**`,
-        '',
-        ...section.trace.warnings.map((warning: string) => `- ${line(warning)}`),
-        '',
-      );
-    }
     lines.push(`**${t('trace.result')}**`, '', ...block(section.built), '');
   }
   return folded(title(headline(report, hass)), lines);
+}
+
+/*
+ * Every warning any build in the report gave, in the order they came, each with the build it
+ * came from (#391). They used to sit inside each build's folded section, which is the last
+ * place somebody looks; up front, before anything is unfolded, nobody can miss one. A report
+ * with one build and one section has nowhere else they could have come from, so it does not
+ * say. A fill's warnings go with the build it is part of.
+ */
+export function allWarnings(reports: TraceReport[]): { where: string; warning: string }[] {
+  const found: { where: string; warning: string }[] = [];
+  const seen = new Set<string>();
+  const add = (where: string, trace: BuildTrace): void => {
+    for (const warning of trace.warnings) {
+      const key = `${where}\n${warning}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push({ where, warning });
+    }
+    for (const item of trace.items ?? []) add(where, item.trace);
+  };
+  for (const report of reports) {
+    for (const section of report.sections) {
+      add(section.label ? `${report.label} › ${section.label}` : report.label, section.trace);
+    }
+  }
+  return found;
+}
+
+/*
+ * The checks that failed (#389), from this card and every card inside it, each with the build
+ * it came from. An `info` check is said in the console and nowhere else (see checks.ts), so it
+ * is not one of them.
+ */
+export function failedChecks(
+  reports: TraceReport[],
+): { level: string; message: string; name?: string; label: string }[] {
+  const alerts: { level: string; message: string; name?: string; label: string }[] = [];
+  for (const report of reports) {
+    for (const alert of report.alerts ?? []) {
+      if (alert.level !== 'info') alerts.push({ ...alert, label: report.label });
+    }
+  }
+  return alerts;
+}
+
+/** Where a failed check came from, in words. */
+export function checkWhere(alert: { name?: string; label: string }, hass?: any): string {
+  return alert.name
+    ? localize('report.check_named', { name: alert.name, label: alert.label }, hass)
+    : localize('report.check_in', { label: alert.label }, hass);
+}
+
+/** Whether a report has one build with one section, so its warnings need not say where they came from. */
+export function oneBuild(reports: TraceReport[]): boolean {
+  return reports.length === 1 && reports[0].sections.length === 1;
 }
 
 /** The whole report as Markdown, redacted unless asked not to be. */
@@ -396,6 +445,29 @@ export function formatReport(input: ReportInput, hass?: any): string {
   const label = input.reports[0]?.label ?? '';
   const body: string[] = [];
   if (input.error) body.push(`## ${t('report.error')}`, '', ...block(input.error, ''), '');
+  /*
+   * The checks that failed (#389), from this card and every card inside it, ahead of the
+   * builds: they are the template's own word on what is wrong, and the first thing to read.
+   */
+  const alerts = failedChecks(input.reports);
+  if (alerts.length) {
+    body.push(
+      `## ${t('report.checks')}`,
+      '',
+      ...alerts.map((alert) => `- **${line(alert.level)}** ${line(alert.message)} (${line(checkWhere(alert, hass))})`),
+      '',
+    );
+  }
+  const warnings = allWarnings(input.reports);
+  if (warnings.length) {
+    const one = oneBuild(input.reports);
+    body.push(
+      `## ${t('report.warnings')}`,
+      '',
+      ...warnings.map(({ where, warning }) => `- ${one ? '' : `${line(where)}: `}${line(warning)}`),
+      '',
+    );
+  }
   // What the card ended up as comes first: it is what somebody looks at to see what went wrong.
   if (input.full !== undefined) {
     body.push(...folded(title(t('trace.in_full', { label })), block(input.full), true));

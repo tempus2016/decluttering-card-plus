@@ -228,14 +228,14 @@ check(
   ],
 );
 
-check('a placeholder in a key is read like one in a value', lint({ default: [{ a: 1 }], card: { '[[a|bad]]': 1 } }), [
-  'warning lint.unknown_step {"step":"bad","placeholder":"[[a|bad]]"} @card',
+check('a placeholder in a key is read like one in a value', lint({ default: [{ a: 1 }], card: { '[[a|bogus]]': 1 } }), [
+  'warning lint.unknown_step {"step":"bogus","placeholder":"[[a|bogus]]"} @card',
 ]);
 
 check(
   'the same mistake twice in one place is said once',
-  lint({ default: [{ a: 1 }], card: { name: '[[a|bad]] and [[a|bad]]' } }),
-  ['warning lint.unknown_step {"step":"bad","placeholder":"[[a|bad]]"} @card.name'],
+  lint({ default: [{ a: 1 }], card: { name: '[[a|bogus]] and [[a|bogus]]' } }),
+  ['warning lint.unknown_step {"step":"bogus","placeholder":"[[a|bogus]]"} @card.name'],
 );
 
 check(
@@ -352,3 +352,21 @@ check(
   }),
   ['warning lint.condition_malformed {"key":"hide_if","condition":"[[normal]]"} @variables[1].hide_if'],
 );
+
+/* ------------------------------------------------------------------ strict (#390) */
+
+check(
+  'a boolean or a well-written strict says nothing',
+  [
+    lint({ strict: true, card: { type: 'tile' } }),
+    lint({ strict: { errors: 'fail', warnings: 'notice' }, card: { type: 'tile' } }),
+    lint({ strict: { error: 'report', warn: 'report' }, card: { type: 'tile' } }),
+  ],
+  [[], [], []],
+);
+check('a mode a level does not have is found', lint({ strict: { warnings: 'fail' }, card: { type: 'tile' } }), [
+  'warning lint.strict_unknown {"key":"warnings","value":"fail","allowed":"ignore, notice, report"} @strict',
+]);
+check('a level strict does not know is found', lint({ strict: { info: 'ignore' }, card: { type: 'tile' } }), [
+  'warning lint.strict_unknown {"key":"info","value":"ignore","allowed":"errors, warnings"} @strict',
+]);

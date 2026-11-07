@@ -31,6 +31,7 @@ export const HIDEABLE = ['repeat', 'extras', 'fit', 'advanced', ...ADVANCED_KEYS
 const ADVANCED_FIELDS: Record<string, string[]> = {
   grid_options: ['grid_columns', 'grid_rows'],
   on_error: ['on_error_mode'],
+  strict: ['strict_errors', 'strict_warnings'],
 };
 
 /** What a template's `editor_hide:` names - one name or a list - lower-cased, unknown names kept for lint. */

@@ -14,6 +14,8 @@ const {
   expandView,
   generateDashboard,
   dashboardWantsLabels,
+  generateSection,
+  sectionStubTemplate,
 } = require('../.test-build/strategy.js');
 
 const { check } = require('./check');
@@ -581,4 +583,97 @@ check(
     entity: '[[entity]]',
     name: '[[label]]',
   });
+}
+
+// The section strategy (#400): one section, from a template or written out.
+{
+  check(
+    'a template becomes a section holding one card built from it, with the card options kept',
+    generateSection(
+      {
+        type: 'custom:decluttering-card-plus',
+        template: 'room_section',
+        variables: [{ area: 'kitchen' }],
+        on_error: 'hide',
+      },
+      hass,
+    ),
+    {
+      type: 'grid',
+      cards: [
+        {
+          type: 'custom:decluttering-card-plus',
+          template: 'room_section',
+          variables: [{ area: 'kitchen' }],
+          on_error: 'hide',
+        },
+      ],
+    },
+  );
+
+  check(
+    'a card repeat in the strategy stays the card repeat it is',
+    generateSection({ type: 'custom:decluttering-card-plus', template: 'light', for_each_from: { areas: true } })
+      .cards[0].for_each_from,
+    { areas: true },
+  );
+
+  check(
+    'a section written out is filled from variables and its templated cards handed the values',
+    generateSection(
+      {
+        type: 'custom:decluttering-card-plus',
+        variables: [{ area: 'kitchen' }],
+        section: {
+          type: 'grid',
+          column_span: 2,
+          cards: [
+            { type: 'heading', heading: '[[area]]' },
+            { type: 'custom:decluttering-card-plus', template: 'room_lights' },
+          ],
+        },
+      },
+      hass,
+    ),
+    {
+      type: 'grid',
+      column_span: 2,
+      cards: [
+        { type: 'heading', heading: 'kitchen' },
+        { type: 'custom:decluttering-card-plus', template: 'room_lights', variables: [{ area: 'kitchen' }] },
+      ],
+    },
+  );
+
+  check(
+    "a templated card's own values still come first",
+    generateSection({
+      type: 'custom:decluttering-card-plus',
+      variables: [{ area: 'kitchen' }],
+      section: { cards: [{ type: 'custom:decluttering-card-plus', template: 't', variables: [{ area: 'hall' }] }] },
+    }).cards[0].variables,
+    [{ area: 'hall' }, { area: 'kitchen' }],
+  );
+
+  check(
+    'a section written without a type is a grid',
+    generateSection({ type: 'custom:decluttering-card-plus', section: { cards: [] } }).type,
+    'grid',
+  );
+
+  check(
+    'a section that is not a mapping comes out empty rather than broken',
+    generateSection({ type: 'custom:decluttering-card-plus', section: 'nope' }),
+    { type: 'grid', cards: [] },
+  );
+
+  check(
+    "the preview uses the first group template, as a section's worth of cards",
+    sectionStubTemplate({ a: { badge: {} }, b: { card: {} }, c: { group: [] } }),
+    'c',
+  );
+
+  check('or the first card template', sectionStubTemplate({ a: { item: {} }, b: { card: {} } }), 'b');
+
+  check('and nothing without either', sectionStubTemplate({ a: { badge: {} }, b: { row: {} } }), undefined);
 }

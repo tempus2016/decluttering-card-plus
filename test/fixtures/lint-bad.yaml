@@ -1,0 +1,42 @@
+title: Lint fixture
+decluttering_templates:
+  room_light_tile:
+    variables:
+      - name: entity
+        type: entity
+      - name: colour
+        default: amber
+    card:
+      type: tile
+      entity: '[[entity]]'
+      name: '[[entity|frendly_name]]'
+      icon: '[[icon|default:mdi:lamp|or:colour]]'
+  hall_tile:
+    card:
+      type: markdown
+      content: '[[text'
+  old_tile:
+    deprecated: use room_light_tile
+    card:
+      type: markdown
+      content: '[[text]]'
+  loop_a:
+    extends: loop_b
+    card: { type: markdown, content: a }
+  loop_b:
+    extends: loop_a
+    card: { type: markdown, content: b }
+views:
+  - title: Rooms
+    cards:
+      - type: custom:decluttering-card-plus
+        template: room_light_tile
+        variables:
+          - entity: light.kitchen
+          - colr: red
+      - type: custom:decluttering-card-plus
+        template: camera_cardd
+      - type: custom:decluttering-card-plus
+        template: old_tile
+        variables:
+          - text: hello

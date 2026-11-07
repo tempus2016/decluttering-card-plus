@@ -59,7 +59,7 @@ export const SAMPLE_HOUSE = {
     'light.kitchen_ceiling': {
       entity_id: 'light.kitchen_ceiling',
       state: 'on',
-      attributes: { friendly_name: 'Kitchen ceiling', brightness: 180 },
+      attributes: { friendly_name: 'Kitchen ceiling', brightness: 180, last_seen: '2026-10-24T07:42:11+01:00' },
     },
     'sensor.garden_temperature': {
       entity_id: 'sensor.garden_temperature',
@@ -167,17 +167,18 @@ export function splitPlaceholder(expression: string): { name: string; steps: str
   return { name: parts[0], steps: parts.slice(1), optional };
 }
 
-function build(
-  variables: any[],
-  expression: string,
-  unset: Set<string>,
-  template: any = {},
-  hass: any = HOUSE,
-): { value: unknown; removed: boolean } {
-  const out = deepReplace(variables, template, { value: expression }, template?.template, hass, true, (names) =>
+/** One build of `{ value: expression }`, reporting the names nothing set. */
+export type PlaceholderBuild = (content: { value: string }, onMissing: (names: string[]) => void) => unknown;
+
+function builder(variables: any[], template: any = {}, hass: any = HOUSE): PlaceholderBuild {
+  return (content, onMissing) => deepReplace(variables, template, content, template?.template, hass, true, onMissing);
+}
+
+function build(run: PlaceholderBuild, expression: string, unset: Set<string>): { value: unknown; removed: boolean } {
+  const out = run({ value: expression }, (names) =>
     // Named as the placeholder was written; the variable is what comes before any step.
     names.forEach((name) => unset.add(name.split('|')[0].replace(/\?$/, ''))),
-  );
+  ) as any;
   return { value: out?.value, removed: !out || !('value' in out) };
 }
 
@@ -194,7 +195,7 @@ export function tryPlaceholder(variablesText: string, expression: string): Playg
   } catch (err) {
     return { error: (err as Error).message, steps: [], whole: { value: undefined, kind: 'unresolved' }, unset: [] };
   }
-  return run(variables, expression, {}, HOUSE);
+  return run(builder(variables), expression);
 }
 
 /**
@@ -204,13 +205,22 @@ export function tryPlaceholder(variablesText: string, expression: string): Playg
  * the way the Result preview reads it.
  */
 export function tryPlaceholderIn(template: any, variables: any[], expression: string, hass: any): PlaygroundResult {
-  return run(variables, expression, template ?? {}, hass ?? HOUSE);
+  return run(builder(variables, template ?? {}, hass ?? HOUSE), expression);
 }
 
-function run(variables: any[], expression: string, template: any, hass: any): PlaygroundResult {
+/**
+ * The same again in the debug report (#376), against whatever one build in it was given:
+ * `build` is that build's own substitution - its variables, its template, its item templates
+ * and its Home Assistant - so a placeholder typed in is read exactly as the card read it.
+ */
+export function tryPlaceholderWith(build: PlaceholderBuild, expression: string): PlaygroundResult {
+  return run(build, expression);
+}
+
+function run(make: PlaceholderBuild, expression: string): PlaygroundResult {
   const unset = new Set<string>();
-  const whole = result(build(variables, expression, unset, template, hass));
-  const inText = build(variables, `<${expression}>`, new Set(), template, hass);
+  const whole = result(build(make, expression, unset));
+  const inText = build(make, `<${expression}>`, new Set());
   const steps: StepResult[] = [];
   const split = splitPlaceholder(expression);
   if (split && split.steps.length) {
@@ -220,7 +230,7 @@ function run(variables: any[], expression: string, template: any, hass: any): Pl
       steps.push({
         written,
         step: count === 0 ? split.name : split.steps[count - 1],
-        ...result(build(variables, written, new Set(), template, hass)),
+        ...result(build(make, written, new Set())),
       });
     }
   }

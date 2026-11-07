@@ -19,6 +19,9 @@ import {
   BY_DOMAIN_KEY,
   withPickedEntity,
   itemTemplatesOf,
+  replaceCard,
+  replaceTemplate,
+  templateSourcePath,
 } from './templates';
 import {
   forEachVariables,
@@ -26,6 +29,7 @@ import {
   ownVariables,
   hasRequiredVariables,
   withStateScope,
+  usesResolver,
 } from './variables';
 import { chainWith, withChain, withInherited, withoutStamps } from './cycles';
 import { columnsFor, eagerCopies } from './layout';
@@ -34,6 +38,7 @@ import { localize, onLanguageLoaded } from './localize';
 import { VERSION } from './version';
 import { toYaml } from './yaml';
 import { formatReport } from './report';
+import { ReportNode, highlightParts, issueFromReport, reportTree, searchTree } from './report-tree';
 import {
   BUILD_LOG,
   BuildTrace,
@@ -48,6 +53,7 @@ import {
   TracePlace,
   TraceReport,
   TraceRoot,
+  SectionEvaluate,
   TraceSection,
   traceLabel,
   variableRows,
@@ -58,6 +64,7 @@ import {
 import {
   HELPERS,
   LAZY_COPY_TAG,
+  TEMPLATE_TAG,
   THING_TYPE_KEYS,
   TemplatePicker,
   currentViewIndex,
@@ -65,11 +72,45 @@ import {
   editDialogOf,
   getThingType,
   parentOf,
+  placedAs,
   sourceContext,
   thingContent,
+  pageDashboard,
+  rewriteDashboards,
+  textField,
 } from './shared';
+import { loadEditors } from './editors-loader';
+import { dialogButtons } from './dialog-compat';
+import { requestInitialTab } from './initial-tab';
 import { warn } from './warnings';
+import {
+  Alert,
+  ALERT_KEY,
+  alertConsoleMessage,
+  checksOf,
+  runChecks,
+  stoppingError,
+  wantsAlerts,
+  withAlerts,
+} from './checks';
 import { isRegistrySource } from './registry';
+import { STRICT_OFF, StrictLevels } from './strict';
+import { isPageTemplate } from './page-template';
+import { canRepeat, ignoredRepeatOptions } from './repeat-kinds';
+import { manyConfig, MANY_TYPE } from './row-repeat';
+import { itemLabel, skippedConfig, templateVisibility } from './visibility';
+import './skipped';
+import { checkDetail, ErrorDetail, findCardPath, templateEditPath, unsetDetail, withTemplate } from './error-card';
+import { ChipAction } from './edit-chip-pure';
+import './edit-chip';
+import {
+  inMasonry,
+  inSectionsView,
+  MASONRY_UNIT,
+  MASONRY_WAITING_SIZE,
+  skeletonHeight,
+  skeletonRows,
+} from './skeleton';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -137,6 +178,9 @@ const DEBUG_ELEMENT_STYLE: Record<string, string> = {
   'z-index': '1',
 };
 
+// Numbers each card element as it is made, for BuildTiming.card.
+let nextBuildId = 0;
+
 export abstract class DeclutteringElement extends LitElement {
   @state() protected _hass?: HomeAssistant;
   @state() private _thing?: LovelaceThing;
@@ -168,7 +212,13 @@ export abstract class DeclutteringElement extends LitElement {
   // are what stops a template that uses itself from building levels forever.
   protected _templateName?: string;
   protected _gridOptions?: unknown;
-  protected _strict = false;
+  // What `strict:` asks for, level by level (#390), worked out from the card and the places around it.
+  protected _strictLevels: StrictLevels = STRICT_OFF;
+  // `strict: {warnings: notice}`: what the last build warned about, until it is closed.
+  @state() private _strictNotice?: string[];
+  @state() private _strictNoticeClosed = false;
+  // `strict:` asked for the report and the last build gave it something to report.
+  @state() private _strictReporting = false;
   // `debug: console`: the card renders as normal and logs how it was built (#160).
   protected _trace = false;
   // What this card's console entry calls it, and where a logging card around it put it.
@@ -181,18 +231,32 @@ export abstract class DeclutteringElement extends LitElement {
   @state() protected _debug: false | 'json' | 'yaml' = false;
   // `debug: report` (#207): the card renders as normal, with its build written out underneath to copy.
   protected _reportMode = false;
+  // The template's checks that failed in the last build (#389), every copy's for a repeat.
+  protected _alerts: Alert[] = [];
+  // Set while a failed error check has the report on show that the card did not ask for, with the trace it had.
+  protected _reportForced?: { trace: boolean };
   // This card's own entry from its last build, and which build the report on show belongs to.
   protected _lastReport?: TraceReport;
   private _reportFor?: string;
   // The build this card is the outermost of, still open while cards inside it are missing.
   private _expansionId?: string;
   @state() protected _reportResult?: ExpansionResult;
-  private _reportCache?: { result: ExpansionResult; error?: string; unredacted: boolean; text: string };
+  private _reportCache?: {
+    result: ExpansionResult;
+    error?: string;
+    unredacted: boolean;
+    text: string;
+    nodes: ReportNode[];
+  };
   @state() private _reportCopied = false;
   // `redact: false` (#217): the report keeps everything as the card has it.
   protected _reportUnredacted = false;
-  // The report on the card as Markdown source rather than formatted.
-  @state() private _reportRaw = false;
+  // How the report is shown on the card: as a folding tree (idea 51), formatted, or as its Markdown.
+  @state() private _reportView: 'tree' | 'formatted' | 'markdown' = 'tree';
+  // What is being looked for in the tree.
+  @state() private _reportQuery = '';
+  // What happened when Copy as GitHub issue was pressed.
+  @state() private _reportIssue: '' | 'opened' | 'copied' = '';
   protected _openTemplates: string[] = [];
   // The entities this card rebuilds on, which are also the only ones `|state` can read.
   protected _rebuildOn: string[] = [];
@@ -211,6 +275,8 @@ export abstract class DeclutteringElement extends LitElement {
   private _columnsShown?: number;
   // The size a repeat was last mentioned at, so a rebuild does not say it all over again.
   private _manyWarnedFor?: number;
+  // The config whose ignored repeat options were last mentioned (idea 34).
+  private _ignoredWarnedFor?: unknown;
   // Whether the copies on show include some still waiting to come into view.
   protected _lazyShown = false;
   private _widths?: ResizeObserver;
@@ -218,6 +284,22 @@ export abstract class DeclutteringElement extends LitElement {
   @state() private _style?: string;
 
   @state() protected _error?: string;
+  // What the error card says beyond the message (idea 49), and the card config it is about.
+  @state() protected _errorDetail?: ErrorDetail;
+  protected _ownConfig?: DeclutteringCardConfig;
+  @state() private _errorOpen = false;
+  // The error the card last laid itself out for, so the section is told once per error (idea 49).
+  private _errorLayoutFor?: string;
+  // The edit-mode chip (idea 47): how many copies the last repeat made, which dashboard a
+  // borrowed template comes from (asked once per template), and the template dialog open.
+  protected _copyCount?: number;
+  @state() private _chipSource?: string;
+  private _chipSourceFor?: string;
+  @state() private _templateDialog?: {
+    name: string;
+    config: Record<string, unknown>;
+    pending?: Record<string, unknown>;
+  };
 
   /** Whether this card was asked to give up its box in the layout. */
   @state() protected _fitContents = false;
@@ -237,6 +319,13 @@ export abstract class DeclutteringElement extends LitElement {
   private _said?: { config: unknown; messages: Set<string> };
   // The wrapped card a sections view has been told the size of.
   private _sizeAnnounced?: LovelaceThing;
+  /*
+   * Set while a card is on its way - a borrowed template being fetched, hass not yet here -
+   * so the place it will take is held at the size it asked for (idea 48). The card's own
+   * grid_options are all that is known before the template arrives.
+   */
+  protected _waiting = false;
+  protected _waitingGrid?: unknown;
 
   set hass(hass: HomeAssistant) {
     if (!hass) return;
@@ -312,6 +401,14 @@ export abstract class DeclutteringElement extends LitElement {
    * counts as hidden, so it gives up its place the way a card hiding itself does.
    */
   protected _hiddenByFallback = false;
+  /*
+   * Set while the template's own `visibility:` keeps this card from being built (idea 45):
+   * it counts as hidden, the way `on_error: hide` does, and gives up its place.
+   */
+  protected _hiddenByVisibility = false;
+  // How many copies of the last repeat the template's `visibility:` kept from being built,
+  // so a change of edit mode knows there are slots to draw or take away.
+  protected _skippedCopies = 0;
 
   // Told every config this element has just been handed to build, for a card to look over.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -325,6 +422,14 @@ export abstract class DeclutteringElement extends LitElement {
 
   static get styles(): CSSResult {
     return css`
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
       /*
        * A badge belongs to the flex row of badges, so this wrapper has to get out of the
        * way rather than box it. Styles injected with the style option still reach the
@@ -376,8 +481,76 @@ export abstract class DeclutteringElement extends LitElement {
         height: 100%;
       }
       /* The report sits under the card, outside the space the layout gave it. */
+      /* The error card (idea 49). */
+      .error-card {
+        padding: 12px 16px;
+        border-left: 4px solid var(--error-color, #db4437);
+      }
+      .error-card .title {
+        font-weight: 500;
+        font-size: 1.05em;
+        margin-bottom: 4px;
+      }
+      .error-card p {
+        margin: 4px 0;
+        color: var(--secondary-text-color);
+        font-size: 0.95em;
+      }
+      .error-card .line {
+        display: block;
+        margin: 8px 0;
+        padding: 6px 8px;
+        border-radius: 6px;
+        background: var(--secondary-background-color, rgba(127, 127, 127, 0.1));
+        font-family: var(--ha-font-family-code, monospace);
+        font-size: 0.85em;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .error-card .line .note {
+        color: var(--error-color, #db4437);
+      }
+      .error-card .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .error-card .passed,
+      .error-card details pre {
+        margin: 8px 0 0;
+        font-family: var(--ha-font-family-code, monospace);
+        font-size: 0.8em;
+        white-space: pre-wrap;
+        word-break: break-word;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      /*
+       * The place a card holds while it is on its way (idea 48): the colour of a card's
+       * surface, slightly dimmed, at the size the grid will give it. A theme can shimmer it.
+       */
+      .skeleton {
+        box-sizing: border-box;
+        border-radius: var(--ha-card-border-radius, 12px);
+        background: var(--decluttering-skeleton-color, rgba(127, 127, 127, 0.12));
+        animation: var(--decluttering-skeleton-animation, none);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .skeleton {
+          animation: none;
+        }
+      }
       :host(.decluttering-report) {
         height: auto;
+      }
+      .strict-notice {
+        display: block;
+        margin-bottom: 8px;
+      }
+      .strict-notice ul {
+        margin: 0;
+        padding-inline-start: 20px;
       }
       .report {
         margin-top: 8px;
@@ -394,6 +567,10 @@ export abstract class DeclutteringElement extends LitElement {
         gap: 8px;
         margin-bottom: 8px;
       }
+      .report decluttering-report-try {
+        display: block;
+        margin-bottom: 8px;
+      }
       .report .formatted {
         display: block;
         margin-top: 8px;
@@ -401,6 +578,60 @@ export abstract class DeclutteringElement extends LitElement {
         overflow: auto;
         -webkit-user-select: text;
         user-select: text;
+      }
+      .report .search {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 8px 0;
+      }
+      .report .search > * {
+        flex: 1;
+      }
+      .report .search span {
+        flex: none;
+        color: var(--secondary-text-color);
+        font-size: 0.9em;
+      }
+      .report .tree {
+        font-size: 0.9em;
+        -webkit-user-select: text;
+        user-select: text;
+      }
+      .report .tree details {
+        margin: 0 0 2px;
+      }
+      .report .tree details details {
+        margin-left: 18px;
+      }
+      .report .tree summary {
+        padding: 4px 6px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .report .tree summary:hover {
+        background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.06);
+      }
+      .report .tree summary small,
+      .report .tree .leaf small {
+        color: var(--secondary-text-color);
+        margin-left: 8px;
+      }
+      .report .tree .leaf {
+        padding: 2px 6px 2px 24px;
+        word-break: break-word;
+      }
+      .report .tree .leaf.warn {
+        color: var(--warning-color, #b26a00);
+      }
+      .report .tree pre {
+        margin: 4px 0 8px 18px;
+      }
+      .report mark {
+        background: var(--warning-color, #ffcc66);
+        color: inherit;
+        border-radius: 2px;
+        padding: 0 1px;
       }
       .report pre {
         margin: 8px 0 0;
@@ -427,6 +658,14 @@ export abstract class DeclutteringElement extends LitElement {
       :host(.decluttering-fit-contents) {
         display: contents;
       }
+      /* Repeated rows or picture elements paint through their wrapper; the host has no box. */
+      :host(.decluttering-many) {
+        display: contents;
+      }
+      /* The chip in edit mode is pinned to the host's box (idea 47). */
+      :host(.decluttering-chipped) {
+        position: relative;
+      }
       /*
        * Last, and it has to stay last. Every rule here is :host(.one-class), so they all
        * have the same specificity and the later one wins - which meant a hidden card kept
@@ -449,6 +688,13 @@ export abstract class DeclutteringElement extends LitElement {
 
   protected updated(changedProperties: PropertyValues): void {
     super.updated(changedProperties);
+    // The template editor in this card's own dialog is configured once it is on the page.
+    const editor = this.renderRoot?.querySelector?.('decluttering-template-plus-editor') as
+      (HTMLElement & { setConfig?: (config: unknown) => void; setConfigOnce?: unknown; configured?: unknown }) | null;
+    if (editor && editor.setConfigOnce && editor.configured !== editor.setConfigOnce) {
+      editor.configured = editor.setConfigOnce;
+      editor.setConfig?.(editor.setConfigOnce);
+    }
     // Cheap, and it catches a wrapper that was told about edit mode without the badge
     // being moved - whichever way round a future Home Assistant does it.
     this._syncWrapperPreview();
@@ -494,7 +740,7 @@ export abstract class DeclutteringElement extends LitElement {
   // attribute. Only the first of those was checked before, so a card hiding itself by any
   // other means left this wrapper occupying space in the layout - upstream issue #58.
   private _childIsHidden(): boolean {
-    if (this._hiddenByFallback) return true;
+    if (this._hiddenByFallback || this._hiddenByVisibility) return true;
     const thing = this._thing;
     if (!thing) return false;
     if (thing.hasAttribute('hidden')) return true;
@@ -520,6 +766,10 @@ export abstract class DeclutteringElement extends LitElement {
     const thingType = getThingType(templateConfig);
     if (!thingType) {
       const defined = THING_TYPE_KEYS.filter((key) => (templateConfig as Record<string, unknown>)[key] !== undefined);
+      // A page template (idea 33) builds a dashboard, which no card can hold.
+      if (isPageTemplate(templateConfig)) {
+        throw new Error(localize('error.page_template_as_card', { template: templateName ?? '' }, this._hass));
+      }
       throw new Error(
         defined.length
           ? localize('error.defines_both', { first: defined[0], second: defined[1] }, this._hass)
@@ -527,21 +777,71 @@ export abstract class DeclutteringElement extends LitElement {
       );
     }
     this._templateName = templateName ?? this._templateName;
-    const content = thingContent(templateConfig);
+    /*
+     * The template's own `visibility:` (idea 45), read before anything is built: a card it
+     * rules out hides itself, and in edit mode draws the dashed slot that says why. A
+     * template's own preview always shows the template.
+     */
+    this._skippedCopies = 0;
+    const seen = instance ? templateVisibility(templateConfig, variables, this._buildHass) : { visible: true as const };
+    if (!seen.visible) {
+      this._skippedCopies = 1;
+      if (this._previewing) {
+        this._hiddenByVisibility = false;
+        this._thingType = thingType;
+        this._setResolved('card', skippedConfig(templateName ?? '', seen.reason) as LovelaceThingConfig, '');
+        return;
+      }
+      this._hiddenByVisibility = true;
+      this._thingType = thingType;
+      this._displayHidden();
+      return;
+    }
+    if (this._hiddenByVisibility) {
+      this._hiddenByVisibility = false;
+      this._displayHidden();
+    }
+    const quiet = !!instance && this._placeUnsettled;
+    this._builtQuietly = quiet;
+    const hush = quiet || (!!instance && this._libraryUnsettled);
+    // The template's checks (#389), read with the card's values before anything is built.
+    // A template's own preview is not a card, and has nobody's values to check.
+    const alerts = instance ? this._runChecks(variables, templateConfig, templateName, hush, instance) : [];
+    this._alerts = alerts;
+    const stopped = stoppingError(alerts, this._hass);
+    if (stopped) {
+      // Failed like any card that cannot be built, so its `on_error:` takes over.
+      this._error = stopped;
+      return;
+    }
+    if (wantsAlerts(templateConfig)) variables = withAlerts(variables, alerts);
+    const content = this._alertOr(templateConfig, alerts) ?? thingContent(templateConfig);
+    this._forceReport(alerts, templateConfig);
     const unresolved: string[] = [];
     // Only a card that uses a template has variables to hand down; a template's own preview does not.
     const inherited = instance ? (): unknown[] => this._handDown(variables, templateConfig, templateName) : undefined;
+    // Only a card using a template is strict; a template's own preview is not a card.
+    const levels = instance ? this._strictLevels : STRICT_OFF;
+    // A report `strict:` may show needs the build written down, without it going to the console.
+    const reportable = levels.errors === 'report' || levels.warnings === 'report';
     // Only a card using a template logs; a template's own preview has nothing to say.
-    const trace = this._trace && instance ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
+    const trace =
+      (this._trace || reportable) && instance ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
+    const said: string[] = [];
+    const extras =
+      levels.warnings === 'ignore'
+        ? this._buildExtras()
+        : {
+            ...this._buildExtras(),
+            // The notice sits on the card, so the console's own prefix is no use there.
+            onWarning: (m: string) => said.push(m.replace(/^decluttering-card-plus:\s*/, '')),
+          };
     if (trace)
       this._traceLabel = traceLabel(
         templateName ?? '',
         this._traceName(variables, templateConfig, templateName, instance),
       );
     const started = performance.now();
-    const quiet = !!instance && this._placeUnsettled;
-    this._builtQuietly = quiet;
-    const hush = quiet || (!!instance && this._libraryUnsettled);
     const built = applyOverride(
       deepReplace(
         variables,
@@ -555,7 +855,7 @@ export abstract class DeclutteringElement extends LitElement {
         trace,
         undefined,
         false,
-        this._buildExtras(),
+        extras,
       ),
       instance,
       thingType,
@@ -563,6 +863,7 @@ export abstract class DeclutteringElement extends LitElement {
     const styles = this._resolveStyles(templateConfig, variables, cardStyle, templateName, trace);
     // Every card's build is noted for the health panel; a template's own preview is not a card.
     if (instance) this._noteBuild(templateName ?? '', instance, 1, started);
+    this._copyCount = undefined;
     if (trace) {
       this._logBuild(
         started,
@@ -576,24 +877,112 @@ export abstract class DeclutteringElement extends LitElement {
             ),
             trace,
             built: withoutStamps(built),
+            evaluate: this._evaluate(variables, templateConfig, templateName),
           },
         ],
         templateConfig,
       );
     }
-    this._setResolved(thingType, this._withGridOptions(thingType, built), styles, inherited);
     // Strict is held to the build on the page too, which knows the section.
     this._missedBeforeLibrary = !!instance && this._libraryUnsettled && unresolved.length > 0;
-    if (!hush) this._refuseIfStrict(unresolved);
+    /*
+     * A refusal comes before the card inside is made, not after (#407): made and then not
+     * shown, it is still a card that has been handed a config it cannot use - and one that
+     * asks a server for something has already asked by then.
+     */
+    /*
+     * The template's own checks (#389) count to `strict:` (#390) as well: a failed warn check
+     * is one of the build's warnings, and a failed error check fails the card under
+     * `errors: fail` the way an unset variable does.
+     */
+    if (levels.warnings !== 'ignore') {
+      for (const alert of alerts) if (alert.level === 'warn') said.push(alert.message);
+    }
+    this._strictOutcome(hush ? STRICT_OFF : levels, unresolved, said);
+    // Known before any refusal, so a refused row or badge keeps the alert, not the error card.
+    this._thingType = thingType;
+    if (!hush && this._refuseIfStrict(unresolved)) return;
+    if (!hush && this._refuseForCheck(alerts)) return;
+    if (instance && !hush && this._holdForRequired(unresolved, templateConfig)) return;
+    this._setResolved(thingType, this._withGridOptions(thingType, built), styles, inherited);
+  }
+
+  /*
+   * Whether this build should wait for the template's required variables instead of making
+   * the card inside. Only an edit dialog's preview does (#407); the card overrides this.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected _holdForRequired(_unresolved: string[], _templateConfig: TemplateConfig): boolean {
+    return false;
+  }
+
+  // Lets go of the card inside, and anything waiting to become it, so nothing is left running.
+  protected _dropThing(): void {
+    this._thing = undefined;
+    this._thingConfig = undefined;
+    this._stopRepeat();
+  }
+
+  /*
+   * What `strict:` shows beside the card once it has built (#390): a notice of the warnings
+   * that can be closed, or the debug report when a level asked for it and has something in
+   * it. `debug: report` already shows the report, so it is left to that.
+   */
+  private _strictOutcome(levels: StrictLevels, unresolved: string[], said: string[]): void {
+    const warnings = [...new Set(said)];
+    const notice = levels.warnings === 'notice' && warnings.length ? warnings : undefined;
+    if (JSON.stringify(notice) !== JSON.stringify(this._strictNotice)) {
+      this._strictNotice = notice;
+      this._strictNoticeClosed = false;
+    }
+    const reporting =
+      !this._reportMode &&
+      ((levels.errors === 'report' && unresolved.length > 0) || (levels.warnings === 'report' && warnings.length > 0));
+    this._strictReporting = reporting;
+    if (reporting) this._reportResult = { reports: this._lastReport ? [this._lastReport] : [], neverBuilt: [] };
+    else if (!this._reportMode) this._reportResult = undefined;
+  }
+
+  private _renderStrictNotice(): TemplateResult | string {
+    if (!this._strictNotice || this._strictNoticeClosed) return '';
+    const notice = this._strictNotice;
+    return html`
+      <ha-alert
+        class="strict-notice"
+        alert-type="warning"
+        .title=${localize(notice.length === 1 ? 'strict.notice_one' : 'strict.notice_many', { count: notice.length }, this._hass)}
+        dismissable
+        @alert-dismissed-clicked=${() => (this._strictNoticeClosed = true)}
+      >
+        ${
+          notice.length === 1
+            ? notice[0]
+            : html`<ul>
+                ${notice.map((each) => html`<li>${each}</li>`)}
+              </ul>`
+        }
+      </ha-alert>
+    `;
   }
 
   // The health panel's note of this build: which template, the card's own name, how many copies, how long.
+  // This element's number in the page's build log, so the statistics count cards, not templates.
+  private readonly _buildId = (nextBuildId += 1);
+
   private _noteBuild(template: string, config: DeclutteringCardConfig, copies: number, started: number): void {
+    // The view's name, for the health panel's statistics (idea 60): its title, else its path, else its number.
+    const ll = getLovelaceConfig();
+    const at = this._place(ll).view;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const view: any = at === undefined ? undefined : (ll as any)?.views?.[at];
     BUILD_LOG.add({
       template,
       ...(typeof config.name === 'string' && config.name ? { name: config.name } : {}),
       copies,
       ms: performance.now() - started,
+      ...(view ? { view: String(view.title || view.path || at) } : {}),
+      ...(this._rebuildOn.length ? { follows: true } : {}),
+      card: this._buildId,
     });
   }
 
@@ -629,6 +1018,33 @@ export abstract class DeclutteringElement extends LitElement {
     );
   }
 
+  /*
+   * The build's substitution kept for the report's Try a placeholder box (#376): the same call
+   * the build made, quiet, read when somebody types so it asks Home Assistant as it is now.
+   */
+  private _evaluate(
+    variables: Parameters<typeof deepReplace>[0],
+    template: TemplateConfig,
+    templateName: string | undefined,
+    haNames?: Set<string>,
+  ): SectionEvaluate {
+    return (content, onMissing, values) =>
+      deepReplace(
+        (values as Parameters<typeof deepReplace>[0]) ?? variables,
+        values ? ({} as TemplateConfig) : template,
+        content,
+        values ? undefined : templateName,
+        this._buildHass,
+        true,
+        onMissing,
+        0,
+        undefined,
+        undefined,
+        false,
+        { ...this._buildExtras(), ...(haNames ? { haNames } : {}) },
+      );
+  }
+
   private _logBuild(started: number, sections: TraceSection[], templateConfig: TemplateConfig): void {
     const report: TraceReport = {
       label: this._traceLabel ?? traceLabel(this._templateName ?? ''),
@@ -637,8 +1053,18 @@ export abstract class DeclutteringElement extends LitElement {
       ms: performance.now() - started,
       sections,
       template: { name: this._templateName ?? '', config: withoutStamps(templateConfig) },
+      ...(this._alerts.length
+        ? {
+            alerts: this._alerts.map((alert) => ({
+              level: alert.level,
+              message: alert.message,
+              ...(alert.name ? { name: alert.name } : {}),
+            })),
+          }
+        : {}),
     };
-    logTrace(report, this._hass);
+    // A build written down only for a report `strict:` might show says nothing in the console.
+    if (this._trace) logTrace(report, this._hass);
     // Kept for the outermost card's report, which this card's entry goes into once it has built.
     this._lastReport = report;
   }
@@ -685,7 +1111,19 @@ export abstract class DeclutteringElement extends LitElement {
       },
       this._hass,
     );
-    this._reportCache = { result, error: this._error, unredacted, text };
+    const nodes = reportTree(
+      {
+        reports: result.reports,
+        full: result.full === undefined ? undefined : withoutStamps(result.full),
+        built:
+          result.full === undefined && !this._error && this._thingConfig ? withoutStamps(this._thingConfig) : undefined,
+        neverBuilt: result.neverBuilt,
+        error: this._error,
+        unredacted,
+      },
+      this._hass,
+    );
+    this._reportCache = { result, error: this._error, unredacted, text, nodes };
     return text;
   }
 
@@ -706,6 +1144,95 @@ export abstract class DeclutteringElement extends LitElement {
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   }
 
+  /** The report as nodes, from the same cache as the text. */
+  private get _reportNodes(): ReportNode[] {
+    if (this._reportText === undefined) return [];
+    return this._reportCache?.nodes ?? [];
+  }
+
+  // `text` with every occurrence of what is being searched for marked.
+  private _marked(text: string): TemplateResult | string {
+    const query = this._reportQuery.trim();
+    if (!query) return text;
+    return html`${highlightParts(text, query).map((part) => (part.hit ? html`<mark>${part.text}</mark>` : part.text))}`;
+  }
+
+  private _renderNode(node: ReportNode): TemplateResult {
+    const meta = node.meta ? html`<small>${this._marked(node.meta)}</small>` : '';
+    if (node.kind === 'leaf') {
+      return html`<div class="leaf ${node.warn ? 'warn' : ''}">${this._marked(node.title)} ${meta}</div>`;
+    }
+    if (node.kind === 'code') {
+      return html`<details ?open=${node.open === true}>
+        <summary>${this._marked(node.title)} ${meta}</summary>
+        <pre>${this._marked(node.text ?? '')}</pre>
+      </details>`;
+    }
+    return html`<details class=${node.kind} ?open=${node.open === true}>
+      <summary>${this._marked(node.title)} ${meta}</summary>
+      ${(node.children ?? []).map((child) => this._renderNode(child))}
+    </details>`;
+  }
+
+  private _renderTree(): TemplateResult {
+    const { nodes, matches } = searchTree(this._reportNodes, this._reportQuery);
+    const field = textField({
+      label: localize('report.search', undefined, this._hass),
+      value: this._reportQuery,
+      onInput: (value: string): void => {
+        this._reportQuery = value;
+      },
+    });
+    return html`
+      <div class="search">
+        ${field}
+        <span role="status" aria-live="polite">
+          ${
+            matches === undefined
+              ? ''
+              : matches
+                ? localize('report.search_matches', { count: matches }, this._hass)
+                : localize('report.search_none', undefined, this._hass)
+          }
+        </span>
+      </div>
+      <div class="tree">${nodes.map((node) => this._renderNode(node))}</div>
+    `;
+  }
+
+  /*
+   * Opens a new GitHub issue with the bug report form filled in from this report. The whole
+   * report rides in the address when it fits; otherwise it goes to the clipboard and the form
+   * says to paste it. Nothing is sent anywhere: the form is the user's to read and submit.
+   */
+  private async _copyIssue(): Promise<void> {
+    const text = this._reportText;
+    const result = this._reportResult;
+    if (text === undefined || !result) return;
+    const hass = this._hass as unknown as { config?: { version?: string } } | undefined;
+    const first = result.reports[0];
+    const warnings: string[] = [];
+    for (const report of result.reports)
+      for (const section of report.sections) warnings.push(...section.trace.warnings);
+    const issue = issueFromReport(
+      {
+        version: VERSION,
+        haVersion: hass?.config?.version,
+        browser: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        templateName: first?.template?.name ?? this._templateName,
+        templateYaml: first?.template ? toYaml(first.template.config) : undefined,
+        cardYaml: this._thingConfig ? toYaml(withoutStamps(this._thingConfig)) : undefined,
+        warnings,
+        report: text,
+      },
+      this._hass,
+    );
+    if (!issue.fits) await copyText(text);
+    window.open(issue.url, '_blank', 'noopener');
+    this._reportIssue = issue.fits ? 'opened' : 'copied';
+    setTimeout(() => (this._reportIssue = ''), 6000);
+  }
+
   /*
    * Formatted by Home Assistant's own Markdown element, the one the Markdown card uses. It is
    * only defined once something has needed it, so a dashboard without a Markdown card asks
@@ -723,8 +1250,24 @@ export abstract class DeclutteringElement extends LitElement {
     return html`<pre>${text}</pre>`;
   }
 
+  /*
+   * Try a placeholder against the builds in the report (#376). Its own chunk, fetched the
+   * first time a report is shown: nothing else on a dashboard needs it.
+   */
+  private _renderTry(): TemplateResult | string {
+    if (!customElements.get('decluttering-report-try')) {
+      import('./report-try-box').then(() => this.requestUpdate()).catch(() => {});
+      return '';
+    }
+    return html`<decluttering-report-try
+      .hass=${this._hass}
+      .reports=${this._reportResult?.reports ?? []}
+      .unredacted=${this._reportUnredacted}
+    ></decluttering-report-try>`;
+  }
+
   private _renderReport(): TemplateResult | string {
-    if (!this._reportMode) return '';
+    if (!this._reportMode && !this._strictReporting) return '';
     const text = this._reportText;
     const ready = text !== undefined;
     return html`
@@ -741,14 +1284,50 @@ export abstract class DeclutteringElement extends LitElement {
             ${localize('report.download', undefined, this._hass)}
           </ha-button>
         </div>
+        ${ready ? this._renderTry() : ''}
         ${
           ready
-            ? html`<details>
+            ? html`<details open>
                 <summary>${localize('report.show', undefined, this._hass)}</summary>
-                <ha-button class="view" @click=${() => (this._reportRaw = !this._reportRaw)}>
-                  ${localize(this._reportRaw ? 'report.show_formatted' : 'report.show_markdown', undefined, this._hass)}
-                </ha-button>
-                ${this._reportRaw ? html`<pre>${text}</pre>` : this._renderFormatted(text)}
+                <div class="actions">
+                  ${(['tree', 'formatted', 'markdown'] as const).map(
+                    (view) =>
+                      html`<ha-button
+                        class="view"
+                        .disabled=${this._reportView === view}
+                        @click=${(): void => {
+                          this._reportView = view;
+                        }}
+                      >
+                        ${localize(
+                          view === 'tree'
+                            ? 'report.show_tree'
+                            : view === 'formatted'
+                              ? 'report.show_formatted'
+                              : 'report.show_markdown',
+                          undefined,
+                          this._hass,
+                        )}
+                      </ha-button>`,
+                  )}
+                  <ha-button @click=${this._copyIssue}>${localize('report.issue', undefined, this._hass)}</ha-button>
+                </div>
+                <p role="status" aria-live="polite">
+                  ${
+                    this._reportIssue === 'opened'
+                      ? localize('report.issue_opened', undefined, this._hass)
+                      : this._reportIssue === 'copied'
+                        ? localize('report.issue_copied', undefined, this._hass)
+                        : ''
+                  }
+                </p>
+                ${
+                  this._reportView === 'tree'
+                    ? this._renderTree()
+                    : this._reportView === 'markdown'
+                      ? html`<pre>${text}</pre>`
+                      : this._renderFormatted(text)
+                }
               </details>`
             : ''
         }
@@ -774,15 +1353,135 @@ export abstract class DeclutteringElement extends LitElement {
     return typeof filled === 'string' ? filled : undefined;
   }
 
+  /* ------------------------------------------------------------ checks (#389) */
+
+  /*
+   * A template's checks against one build's values: each failure said where its level says
+   * - an info in the console, a warning or an error in the warnings the card keeps - once
+   * per config, so a card rebuilding on a busy sensor does not repeat itself.
+   */
+  private _runChecks(
+    variables: VariablesConfig[] | undefined,
+    templateConfig: TemplateConfig,
+    templateName: string | undefined,
+    hush: boolean,
+    instance: DeclutteringCardConfig,
+  ): Alert[] {
+    if (!checksOf(templateConfig).length) return [];
+    const extras = this._buildExtras();
+    // Before Home Assistant is here an `exists` is a no, and a check reading one would fail
+    // for nothing. A template asking Home Assistant is built again once it is, so it waits.
+    if (!this._hass && usesResolver(templateConfig, extras.itemTemplates)) return [];
+    const alerts = runChecks(
+      templateConfig,
+      templateName,
+      (content) =>
+        deepReplace(
+          variables,
+          templateConfig,
+          content,
+          templateName,
+          this._buildHass,
+          true,
+          undefined,
+          0,
+          undefined,
+          undefined,
+          false,
+          extras,
+        ),
+      this._hass,
+    );
+    if (hush) return alerts;
+    const said = this._saidFor(instance);
+    for (const alert of alerts) {
+      const message = alertConsoleMessage(alert, this._hass);
+      if (said.has(message)) continue;
+      said.add(message);
+      if (alert.level === 'info') console.info(message);
+      else
+        warn({
+          kind: 'check',
+          message,
+          template: alert.template,
+          card: typeof instance.name === 'string' ? instance.name : undefined,
+        });
+    }
+    return alerts;
+  }
+
+  // The template's `alert:`, built in place of its content while a warning or an error stands.
+  private _alertOr(templateConfig: TemplateConfig, alerts: Alert[]): unknown {
+    const alert = (templateConfig as Record<string, unknown>)[ALERT_KEY];
+    if (!alert || typeof alert !== 'object' || Array.isArray(alert)) return undefined;
+    return alerts.some((each) => each.level !== 'info') ? alert : undefined;
+  }
+
+  /*
+   * A failed `error` check shows the debug report under the card even with `debug` off -
+   * unless the template has an `alert:` to show instead, which is its own way of saying it.
+   * The report needs the build traced, so this comes before the build.
+   */
+  private _forceReport(alerts: Alert[], templateConfig: TemplateConfig): void {
+    const wanted =
+      alerts.some((alert) => alert.level === 'error') && this._alertOr(templateConfig, alerts) === undefined;
+    const forced = this._reportForced;
+    if (forced && !wanted) {
+      // Rebuilt without the config changing, and the error has gone: back to what the card asked for.
+      this._trace = forced.trace;
+      this._reportMode = false;
+      this._reportResult = undefined;
+      this._reportForced = undefined;
+      return;
+    }
+    if (!wanted || this._debug || this._reportMode) return;
+    this._reportForced = { trace: this._trace };
+    this._trace = true;
+    this._reportMode = true;
+  }
+
   /*
    * Nothing here normally stops a card rendering: a template can be edited after the cards
    * that use it, so a card that looks wrong now may be right in a moment. Somebody building
    * a template for other people wants the opposite, and `strict: true` is how they say so.
    */
-  protected _refuseIfStrict(unresolved: string[]): void {
-    if (!this._strict || !unresolved.length) return;
+  protected _refuseIfStrict(unresolved: string[]): boolean {
+    if (this._strictLevels.errors !== 'fail' || !unresolved.length) return false;
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
+    this._dropThing();
+    this._errorDetail = unsetDetail(
+      this._templateName,
+      unresolved,
+      localize('errorcard.required', undefined, this._hass),
+    );
     this._error = localize(unresolved.length === 1 ? 'error.strict_one' : 'error.strict_many', { which }, this._hass);
+    this._reportRefusal();
+    return true;
+  }
+
+  /*
+   * A failed `error` check counts to `strict:` (#389 with #390): under `errors: fail` the card
+   * is refused the way one with a variable left unset is, with the error card, the check's
+   * own message as what it says. A repeat is refused as a whole by any copy's failed check.
+   */
+  protected _refuseForCheck(alerts: Alert[]): boolean {
+    const failed = alerts.find((alert) => alert.level === 'error');
+    if (this._strictLevels.errors !== 'fail' || !failed) return false;
+    this._dropThing();
+    this._errorDetail = checkDetail(this._templateName);
+    this._error = localize('error.check_stopped', { message: failed.message }, this._hass);
+    this._reportRefusal();
+    return true;
+  }
+
+  /*
+   * A refused card makes no card inside, so there is nothing left for its report to wait for:
+   * the report is the build written down so far, shown at once rather than left waiting.
+   */
+  private _reportRefusal(): void {
+    if (!this._reportMode) return;
+    this._reportFor = undefined;
+    this._reportResult = { reports: this._lastReport ? [this._lastReport] : [], neverBuilt: [] };
   }
 
   // Styles always resolve against the real template config, so a declared default or a
@@ -809,6 +1508,8 @@ export abstract class DeclutteringElement extends LitElement {
         0,
         trace,
         cssSafe,
+        false,
+        { templateChain: this._openTemplates },
       );
     }
     if (cardStyle) {
@@ -823,6 +1524,8 @@ export abstract class DeclutteringElement extends LitElement {
         0,
         trace,
         cssSafe,
+        false,
+        { templateChain: this._openTemplates },
       );
     }
     return styles;
@@ -840,7 +1543,7 @@ export abstract class DeclutteringElement extends LitElement {
   protected _buildExtras(): BuildExtras {
     const ll = getLovelaceConfig();
     // No rendered Jinja sources here: a `repeat:` over `template:` is out of the spike's scope.
-    return { itemTemplates: itemTemplatesOf(ll), context: sourceContext(ll) };
+    return { itemTemplates: itemTemplatesOf(ll), context: sourceContext(ll), templateChain: this._openTemplates };
   }
 
   private _handDown(
@@ -861,6 +1564,7 @@ export abstract class DeclutteringElement extends LitElement {
       undefined,
       undefined,
       true,
+      { templateChain: this._openTemplates },
     );
     return (Array.isArray(list) ? list : []).filter(
       (entry: unknown) => !!entry && typeof entry === 'object' && Object.keys(entry as object).length > 0,
@@ -945,6 +1649,11 @@ export abstract class DeclutteringElement extends LitElement {
     picker?: TemplatePicker,
   ): void {
     /*
+     * Cleared until the copies are built. A repeat is not refused for a variable left unset,
+     * as it never was by `strict: true`; its checks count to `strict:` once they are read.
+     */
+    this._strictOutcome(STRICT_OFF, [], []);
+    /*
      * Each copy's template: the card's own, or - choosing by domain - the one its entity
      * picks, worked out from the copy's own values before anything else is done with it.
      */
@@ -954,22 +1663,40 @@ export abstract class DeclutteringElement extends LitElement {
         ? picker.pick(forEachVariables(item, config.variables))
         : { name: config.template, template: templateConfig }),
     }));
-    // Without choosing, the one template is checked whether or not there are copies, as it
-    // always has been: a repeat of a row template is a mistake even while the list is empty.
+    /*
+     * What kind of thing the copies are. A card's copies go in a stack; a row's or a picture
+     * element's go to one wrapper that takes the single slot Home Assistant gives them and
+     * paints every copy in it (idea 34). A badge has nowhere for a second copy to go, and is
+     * refused. Choosing by domain, every copy has to be of the one kind, since there is one
+     * slot. Without choosing, the one template is checked whether or not there are copies,
+     * as it always has been: a repeat of a badge template is a mistake even while the list
+     * is empty.
+     */
+    const kind = getThingType(templateConfig);
+    const repeatKind: 'card' | 'row' | 'element' = canRepeat(kind) ? kind : 'card';
     for (const copy of picker ? chosen : [{ name: config.template, template: templateConfig }]) {
-      if (getThingType(copy.template) === 'card') continue;
-      /*
-       * Only a card can repeat. Home Assistant gives a row, a badge or a picture element a
-       * single slot to fill, so there is nowhere for a second copy to go - the way to
-       * repeat rows is a card template holding them, which repeats as a card like anything
-       * else. Choosing by domain, every copy has to be a card for the same reason.
-       */
-      const kind = getThingType(copy.template) ?? localize('error.a_different_kind', undefined, this._hass);
+      const copyKind = getThingType(copy.template);
+      if (canRepeat(copyKind) && (!picker || copyKind === repeatKind)) continue;
+      const said = copyKind ?? localize('error.a_different_kind', undefined, this._hass);
       throw new Error(
         picker
-          ? localize('error.by_domain_not_card', { template: copy.name, kind }, this._hass)
-          : localize('error.for_each_not_card', { template: config.template, kind }, this._hass),
+          ? localize('error.by_domain_not_card', { template: copy.name, kind: said }, this._hass)
+          : localize('error.for_each_not_card', { template: config.template, kind: said }, this._hass),
       );
+    }
+    const ignored = ignoredRepeatOptions(config as Record<string, unknown>, repeatKind);
+    if (ignored.length && this._ignoredWarnedFor !== config) {
+      this._ignoredWarnedFor = config;
+      warn({
+        kind: 'other',
+        message: localize(
+          'warn.repeat_options_ignored',
+          { options: ignored.join(', '), kind: repeatKind, template: config.template },
+          this._hass,
+        ),
+        template: config.template,
+        card: typeof config.name === 'string' ? config.name : undefined,
+      });
     }
     /*
      * A template can say which of its variables it cannot do without, and an item that
@@ -978,19 +1705,44 @@ export abstract class DeclutteringElement extends LitElement {
      * full of holes, which is what a dummy entity id was always standing in for.
      */
     const wanted = chosen.filter((copy) => hasRequiredVariables(copy.template, copy.item, config.variables));
+    /*
+     * Then the template's own `visibility:` (idea 45): a copy it rules out is never built.
+     * Edit mode draws a dashed slot where it would have been, naming the condition, so a
+     * missing room is a visible decision rather than a silent gap.
+     */
+    const entries = wanted.map((copy, index) => {
+      // Its place among the candidates is known to visibility: too (ideas 37, 45), so
+      // `variable: first` works; the copies that are built are numbered again after.
+      const seen = templateVisibility(
+        copy.template,
+        forEachVariables(copy.item, config.variables, index, wanted.length),
+        this._buildHass,
+      );
+      return seen.visible
+        ? { copy }
+        : { skipped: skippedConfig(itemLabel(copy.item, index), seen.reason) as LovelaceThingConfig };
+    });
+    const shown = entries.map((entry) => entry.copy).filter((copy) => copy !== undefined) as typeof chosen;
+    const skipped = entries.length - shown.length;
+    this._skippedCopies = skipped;
+    if (this._hiddenByVisibility) {
+      this._hiddenByVisibility = false;
+      this._displayHidden();
+    }
+    const drawSkipped = skipped > 0 && this._previewing;
 
     /*
      * A repeat that matches nothing renders nothing, which is right - a dashboard should
      * not break because a room has no motion sensor yet - but silence is indistinguishable
      * from breakage. `empty:` is how a card says "there is nothing here" on purpose.
      */
-    if (!wanted.length && config.empty) {
+    if (!shown.length && config.empty && !drawSkipped) {
       this._forEach = undefined;
       this._lazyShown = false;
       this._widths?.disconnect();
       this._setResolved(
-        'card',
-        this._withGridOptions('card', config.empty as LovelaceThingConfig),
+        repeatKind,
+        this._withGridOptions(repeatKind, config.empty as LovelaceThingConfig),
         this._resolveStyles(templateConfig, config.variables, config.style, config.template),
         () => this._handDown(config.variables, templateConfig, config.template),
       );
@@ -1003,45 +1755,71 @@ export abstract class DeclutteringElement extends LitElement {
      * cannot know whether it was meant - only that it is worth a look.
      */
     const repeatName = config.template ?? BY_DOMAIN_KEY;
-    if (wanted.length > MANY_COPIES && this._manyWarnedFor !== wanted.length) {
-      this._manyWarnedFor = wanted.length;
+    if (shown.length > MANY_COPIES && this._manyWarnedFor !== shown.length) {
+      this._manyWarnedFor = shown.length;
       // A repeat that is not lazy yet is pointed at the setting that helps (the _lazy
       // string); one that is already lazy only builds what is near the screen, so building
       // is not the trouble - it is told about the scrolling instead.
       const key = config.lazy === true ? 'warn.many_copies_scroll' : 'warn.many_copies_lazy';
       warn({
         kind: 'many_copies',
-        message: localize(key, { template: repeatName, count: wanted.length }, this._hass),
+        message: localize(key, { template: repeatName, count: shown.length }, this._hass),
         template: repeatName,
         card: typeof config.name === 'string' ? config.name : undefined,
       });
     }
+
+    // As for a single card: kept quiet until the section is known.
+    const quiet = this._placeUnsettled;
+    this._builtQuietly = quiet;
+    const hush = quiet || this._libraryUnsettled;
+    /*
+     * Each copy's values, and the template's checks read against them (#389) before any copy
+     * is built: a copy that fails one with `continue_rendering: false` fails the whole card,
+     * the way a strict refusal does, and an error anywhere shows the report.
+     */
+    const copies = shown.map(({ item, name, template, entity }, index) => {
+      // Underneath everything the copy sets: the entity its template was picked by, when
+      // that came from the fallback template rather than the copy - see pickTemplate.
+      const variables = withPickedEntity(
+        forEachVariables(item, config.variables, index, shown.length),
+        entity,
+      ) as VariablesConfig[];
+      const alerts = this._runChecks(variables, template, name, hush, config);
+      return {
+        variables: wantsAlerts(template) ? withAlerts(variables, alerts) : variables,
+        content: this._alertOr(template, alerts) ?? thingContent(template),
+        alerts,
+      };
+    });
+    this._alerts = ([] as Alert[]).concat(...copies.map((copy) => copy.alerts));
+    const stopped = stoppingError(this._alerts, this._hass);
+    if (stopped) {
+      this._error = stopped;
+      return;
+    }
+    this._forceReport(this._alerts, templateConfig);
+    // As for a single card, the levels hush keeps quiet until the section is known.
+    const levels = hush ? STRICT_OFF : this._strictLevels;
+    // A report `strict:` may show needs the build written down, without it going to the console.
+    const tracing = this._trace || levels.errors === 'report' || levels.warnings === 'report';
 
     // The card's own `card:` block is laid over every copy alike.
     // Each copy hands down its own item's values, so it is stamped here rather than as a whole.
     const started = performance.now();
     const sections: TraceSection[] = [];
     // Only the card's own name can stand for every copy; a template's names each copy apart.
-    if (this._trace) {
+    if (tracing) {
       const own =
         config.name === undefined
           ? undefined
           : this._traceName(config.variables, templateConfig, config.template, config);
       this._traceLabel = traceLabel(repeatName, own);
     }
-    // As for a single card: kept quiet until the section is known.
-    const quiet = this._placeUnsettled;
-    this._builtQuietly = quiet;
-    const hush = quiet || this._libraryUnsettled;
     let missed = false;
-    const cards = wanted.map(({ item, name, template, entity }, index) => {
-      // Underneath everything the copy sets: the entity its template was picked by, when
-      // that came from the fallback template rather than the copy - see pickTemplate.
-      const variables = withPickedEntity(
-        forEachVariables(item, config.variables, index, wanted.length),
-        entity,
-      ) as VariablesConfig[];
-      const trace = this._trace ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
+    const cards = shown.map(({ item, name, template }, index) => {
+      const { variables, content } = copies[index];
+      const trace = tracing ? { ...newTrace(), expansion: this._traceRoot?.id } : undefined;
       // What the item and its position set, as opposed to what the card set for every copy.
       // The item beats the card, and the card beats the position, as forEachVariables orders them.
       const names = (list: unknown): string[] => ownVariables(list).map((entry) => Object.keys(entry)[0]);
@@ -1060,7 +1838,7 @@ export abstract class DeclutteringElement extends LitElement {
         deepReplace(
           variables,
           template,
-          thingContent(template),
+          content,
           name,
           this._buildHass,
           hush || this._saidFor(config),
@@ -1076,11 +1854,11 @@ export abstract class DeclutteringElement extends LitElement {
           { ...this._buildExtras(), haNames },
         ),
         config,
-        'card',
+        repeatKind,
       );
       if (trace) {
         const copyName = this._traceName(variables, template, name, config);
-        const copy = localize('trace.copy', { number: index + 1, count: wanted.length }, this._hass);
+        const copy = localize('trace.copy', { number: index + 1, count: shown.length }, this._hass);
         sections.push({
           label: copyName ? `${copy}: "${copyName}"` : copy,
           variables: this._workedRows(
@@ -1092,6 +1870,7 @@ export abstract class DeclutteringElement extends LitElement {
           ),
           trace,
           built: withoutStamps(built),
+          evaluate: this._evaluate(variables, template, name, haNames),
         });
       }
       // Choosing by domain, a copy is told its own template is open above what it holds -
@@ -1101,7 +1880,35 @@ export abstract class DeclutteringElement extends LitElement {
     });
     this._missedBeforeLibrary = missed;
     this._noteBuild(config.template, config, cards.length, started);
-    if (this._trace) this._logBuild(started, sections, templateConfig);
+    this._copyCount = cards.length;
+    if (tracing) this._logBuild(started, sections, templateConfig);
+    /*
+     * The copies' checks count to `strict:` (#389 with #390) as a single card's do: every
+     * copy's failed warn check goes in the one notice, and a failed error check under
+     * `errors: fail` refuses the whole card, as a strict refusal of any card would.
+     */
+    const said =
+      levels.warnings === 'ignore' ? [] : this._alerts.filter((a) => a.level === 'warn').map((a) => a.message);
+    this._strictOutcome(levels, [], said);
+    if (!hush && this._refuseForCheck(this._alerts)) return;
+
+    // Rows and picture elements: every copy to the one wrapper, nothing laid out here.
+    if (repeatKind !== 'card') {
+      this._forEach = undefined;
+      this._lazyShown = false;
+      this._widths?.disconnect();
+      // A skipped copy's slot is a card, which has no place in a list of rows or a picture, so
+      // here the copies the template ruled out are simply absent, in edit mode too.
+      const manyStyles = this._resolveStyles(templateConfig, config.variables, config.style, config.template);
+      this._setResolved(
+        repeatKind,
+        manyConfig(repeatKind, cards) as LovelaceThingConfig,
+        manyStyles,
+        undefined,
+        !!picker,
+      );
+      return;
+    }
 
     /*
      * `lazy: true`: past the first few, each copy goes into the stack as a placeholder that
@@ -1114,15 +1921,18 @@ export abstract class DeclutteringElement extends LitElement {
     const buildAll = this.preview || !!this._debug || this._trace || templateConfig.group !== undefined;
     const eager = eagerCopies(cards.length, config.lazy, config.lazy_eager, buildAll);
     this._lazyShown = eager < cards.length;
-    const laidOut = this._lazyShown
+    const built = this._lazyShown
       ? cards.map((card, index) => (index < eager ? card : { type: `custom:${LAZY_COPY_TAG}`, card }))
       : cards;
+    // In edit mode the slots stand where the skipped copies would have been.
+    let next = 0;
+    const laidOut = drawSkipped ? entries.map((entry) => ('copy' in entry ? built[next++] : entry.skipped)) : built;
 
     // The styles belong to the whole card rather than to any one copy, and resolve against
     // the real template so its declared defaults still apply. Choosing by domain, each
     // template chosen brings its own, and the card's own style comes once at the end.
     const styles = picker
-      ? [...new Map(wanted.map((copy) => [copy.name, copy.template])).entries()]
+      ? [...new Map(shown.map((copy) => [copy.name, copy.template])).entries()]
           .map(([name, template]) => this._resolveStyles(template, config.variables, undefined, name))
           .join('') +
         this._resolveStyles({ ...templateConfig, style: undefined }, config.variables, config.style, config.template)
@@ -1133,7 +1943,7 @@ export abstract class DeclutteringElement extends LitElement {
       minWidth: Number(config.min_column_width) || undefined,
       styles,
       group: picker
-        ? wanted.length > 0 && wanted.every((copy) => copy.template.group !== undefined)
+        ? shown.length > 0 && shown.every((copy) => copy.template.group !== undefined)
         : templateConfig.group !== undefined,
       chained: !!picker,
     };
@@ -1210,6 +2020,8 @@ export abstract class DeclutteringElement extends LitElement {
     }
 
     this._thing = thing;
+    this._errorLayoutFor = undefined;
+    this._waiting = false;
     this._forwardGridApi(thing);
     if (this._hass) thing.hass = this._hass;
     this._watchForHiding(thing);
@@ -1349,6 +2161,11 @@ export abstract class DeclutteringElement extends LitElement {
     const self = this as any;
     delete self.getGridOptions;
     delete self.getLayoutOptions;
+    if (!thing && this._waiting && (this._waitingGrid ?? this._gridOptions) !== undefined) {
+      // Holding a place: the section is told the size the card asked for, before it is built.
+      self.getGridOptions = (): unknown => this._waitingGrid ?? this._gridOptions;
+      return;
+    }
     if (this._thingType !== 'card' || !thing) return;
 
     /*
@@ -1374,6 +2191,15 @@ export abstract class DeclutteringElement extends LitElement {
 
   protected render(): TemplateResult | void {
     if (this._error) {
+      // A card gets the error card that names the line and offers the fix (idea 49); a row, a
+      // badge or an element has no room for one and keeps the alert.
+      // A template that was never found has no type to go by (or only the guess a waiting
+      // card makes), so where it sits on the page decides too.
+      const asCard = (this._thingType === undefined || this._thingType === 'card') && placedAs(this) === 'card';
+      if (asCard && this._errorDetail) {
+        this._takeErrorLayout();
+        return html`${this._renderErrorCard(this._errorDetail)} ${this._renderReport()} ${this._renderTemplateDialog()}`;
+      }
       return html` <ha-alert alert-type="error">${this._error}</ha-alert> ${this._renderReport()} `;
     }
 
@@ -1383,7 +2209,11 @@ export abstract class DeclutteringElement extends LitElement {
      * on a phone, or in a view whose editor is awkward to reach.
      */
     if (this._debug && this._thingConfig) {
+      // The chip stays while the built YAML is showing, so "Show the card again" is reachable.
+      const chip = this._renderChip();
+      this.classList.toggle('decluttering-chipped', chip !== '');
       return html`
+        ${chip}
         <ha-card>
           <div class="debug">
             <p>
@@ -1400,7 +2230,17 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
       `;
     }
 
-    if (this._hiddenByFallback || !this._hass || !this._thing) return html``;
+    if (this._hiddenByFallback) return html``;
+    if (!this._thing && this._waiting && this._thingType !== 'badge' && this._thingType !== 'element') {
+      this.classList.add('decluttering-container');
+      const grid = this._waitingGrid ?? this._gridOptions;
+      const height =
+        skeletonRows(grid) === undefined && inMasonry(this)
+          ? MASONRY_WAITING_SIZE * MASONRY_UNIT
+          : skeletonHeight(grid);
+      return html`<div class="skeleton" style="height: ${height}px"></div>`;
+    }
+    if (!this._hass || !this._thing) return html``;
 
     this.classList.toggle('decluttering-badge', this._thingType === 'badge');
     this.classList.toggle('decluttering-container', this._thingType !== 'badge');
@@ -1408,8 +2248,12 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     // Only a card is laid out as a box in the first place, so only a card has one to give
     // up. A badge is already out of the way, and an element is positioned inside the card.
     this.classList.toggle('decluttering-fit-contents', this._thingType === 'card' && this._fitContents);
-    this.classList.toggle('decluttering-report', this._reportMode);
+    // Repeated rows or elements: the wrapper takes the slot, so this host has no box of its own.
+    this.classList.toggle('decluttering-many', this._thingConfig?.type === MANY_TYPE);
+    this.classList.toggle('decluttering-report', this._reportMode || this._strictReporting || !!this._strictNotice);
 
+    const chip = this._renderChip();
+    this.classList.toggle('decluttering-chipped', chip !== '');
     return html`
       ${
         this._style
@@ -1420,8 +2264,293 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
             `
           : ''
       }
-      ${this._thing} ${this._renderReport()}
+      ${chip} ${this._renderStrictNotice()} ${this._thing} ${this._renderReport()} ${this._renderTemplateDialog()}
     `;
+  }
+
+  /*
+   * The chip in edit mode (idea 47): only on a card, only on the outermost one - the cards a
+   * template builds inside it would otherwise each wear one - and not on a card that has
+   * given up its box, which has nothing to pin a chip to.
+   */
+  private _renderChip(): TemplateResult | '' {
+    const name = this._templateName;
+    if (!this._previewing || this._thingType !== 'card' || !name || this._openTemplates.length || this._fitContents) {
+      return '';
+    }
+    // Not on the card that defines the template, which is its own editor's business, and not
+    // on the preview inside an edit dialog, where every card counts as being edited.
+    if (this.localName === TEMPLATE_TAG || editDialogOf(this)) return '';
+    // In a sections view Home Assistant's edit overlay covers the card, so the chip could
+    // never be pressed there; its own Edit button does the job.
+    if (inSectionsView(this)) return '';
+    if (this._chipSourceFor !== name) {
+      this._chipSourceFor = name;
+      this._chipSource = undefined;
+      void templateSourcePath(this._hass, getLovelaceConfig(), name).then((source) => {
+        if (this._chipSourceFor === name) this._chipSource = source;
+      });
+    }
+    const canEdit = this._canOpenTemplate(name);
+    return html`<decluttering-card-plus-chip
+      .hass=${this._hass}
+      .name=${name}
+      .source=${this._chipSource}
+      .copies=${this._copyCount}
+      .showing=${!!this._debug}
+      .canEdit=${canEdit}
+      @dcp-chip=${(ev: CustomEvent<{ action: ChipAction }>) => this._chipAction(ev.detail.action)}
+    ></decluttering-card-plus-chip>`;
+  }
+
+  /** Whether "Edit template" can open the named template: a template card here, one declared under the root key, or one on another dashboard. */
+  private _canOpenTemplate(name: string): boolean {
+    const ll = getLovelaceConfig();
+    return (
+      !!this._chipSource ||
+      !!templateEditPath(ll, name) ||
+      !!(ll as { decluttering_templates?: Record<string, unknown> } | null)?.decluttering_templates?.[name]
+    );
+  }
+
+  private _chipAction(action: ChipAction): void {
+    const name = this._templateName;
+    if (!name) return;
+    const ll = getLovelaceConfig();
+    switch (action) {
+      case 'show':
+        // The debug view of what the card built, until the next build puts the card back.
+        this._debug = this._debug ? false : 'yaml';
+        return;
+      case 'eject': {
+        const own = this._ownConfig;
+        const built = this._thingConfig;
+        if (!own || !built) return;
+        void rewriteDashboards(this, this._hass, 'eject', [
+          { urlPath: pageDashboard(), build: (config) => replaceCard(config, own, withoutStamps(built)) },
+        ]);
+        return;
+      }
+      case 'edit':
+      case 'where_used': {
+        if (action === 'where_used') requestInitialTab('usages');
+        const path = templateEditPath(ll, name);
+        if (path) {
+          this._openEditor(path);
+          return;
+        }
+        if (this._chipSource) {
+          // Another dashboard's template: that dashboard, in edit mode, in a new tab.
+          window.open(`/${this._chipSource}/0?edit=1`, '_blank', 'noopener');
+          return;
+        }
+        const declared = (ll as { decluttering_templates?: Record<string, unknown> } | null)?.decluttering_templates?.[
+          name
+        ];
+        if (declared && typeof declared === 'object') {
+          // The template editor lives in the editors chunk, so the dialog waits for it.
+          void loadEditors().then(() => {
+            this._templateDialog = {
+              name,
+              config: { type: 'custom:decluttering-template-plus', template: name, ...declared },
+            };
+          });
+        }
+      }
+    }
+  }
+
+  /*
+   * A template declared under the root key has no card for Home Assistant's dialog to open,
+   * so it is edited here, in a dialog of this card's own holding the template editor, and
+   * saved through the same path every other rewrite takes - undoable from the toast.
+   */
+  private _renderTemplateDialog(): TemplateResult | '' {
+    const dialog = this._templateDialog;
+    if (!dialog) return '';
+    return html`<ha-dialog
+      open
+      scrimClickAction
+      escapeKeyAction
+      .heading=${localize('chip.dialog_title', { name: dialog.name }, this._hass)}
+      .headerTitle=${localize('chip.dialog_title', { name: dialog.name }, this._hass)}
+      @closed=${() => (this._templateDialog = undefined)}
+    >
+      <decluttering-template-plus-editor
+        .hass=${this._hass}
+        .lovelace=${getLovelaceConfig()}
+        .setConfigOnce=${dialog.config}
+        @config-changed=${(ev: CustomEvent) => {
+          ev.stopPropagation();
+          if (this._templateDialog) this._templateDialog = { ...this._templateDialog, pending: ev.detail?.config };
+        }}
+      ></decluttering-template-plus-editor>
+      ${dialogButtons(html`
+        <ha-button slot="secondaryAction" appearance="plain" @click=${() => (this._templateDialog = undefined)}
+          >${localize('chip.cancel', undefined, this._hass)}</ha-button
+        >
+        <ha-button slot="primaryAction" .disabled=${!dialog.pending} @click=${() => this._saveTemplateDialog()}>
+          ${localize('chip.save', undefined, this._hass)}
+        </ha-button>
+      `)}
+    </ha-dialog>`;
+  }
+
+  private _saveTemplateDialog(): void {
+    const dialog = this._templateDialog;
+    if (!dialog?.pending) return;
+    const content: Record<string, unknown> = { ...dialog.pending };
+    delete content.type;
+    delete content.template;
+    this._templateDialog = undefined;
+    void rewriteDashboards(this, this._hass, 'edit_template', [
+      { urlPath: pageDashboard(), build: (config) => replaceTemplate(config, dialog.name, content) },
+    ]);
+  }
+
+  /*
+   * The error card (idea 49): what could not be built, the line that failed in context, the
+   * nearest name with how common it is, and - for an admin with the dashboard in edit mode -
+   * the buttons that do the fix. A viewer sees the message and the line.
+   */
+  /*
+   * A card that failed after its inner card was built - a custom card nobody installed - had
+   * already told the section that card's size: half a row in a sections grid, one row high, with
+   * the error card overflowing the cell. The error card is laid out like one that never built:
+   * no forwarded grid size, so the section's full-width default applies, no fixed height, and
+   * the section told once to measure again. A later successful build puts the card's own size
+   * back through _setThing.
+   */
+  private _takeErrorLayout(): void {
+    const error = this._error ?? '';
+    if (this._errorLayoutFor === error) return;
+    this._errorLayoutFor = error;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const self = this as any;
+    const hadSize = typeof self.getGridOptions === 'function' || typeof self.getLayoutOptions === 'function';
+    // The card's own grid_options still stand: they are what the user asked for this slot.
+    delete self.getGridOptions;
+    delete self.getLayoutOptions;
+    if (this._ownConfig?.grid_options !== undefined) self.getGridOptions = (): unknown => this._ownConfig?.grid_options;
+    this.classList.remove('decluttering-card', 'decluttering-fit-contents', 'decluttering-badge');
+    this.classList.add('decluttering-container');
+    if (!hadSize) return;
+    requestAnimationFrame(() => {
+      if (this.isConnected && this._errorLayoutFor === error && sectionOf(this)) {
+        this.dispatchEvent(new Event('card-updated', { bubbles: true, composed: true }));
+      }
+    });
+  }
+
+  private _renderErrorCard(detail: ErrorDetail): TemplateResult {
+    const hass = this._hass;
+    // The buttons need a click, which a sections view's edit overlay never lets through.
+    const admin =
+      this._previewing &&
+      !inSectionsView(this) &&
+      !!(hass as unknown as { user?: { is_admin?: boolean } })?.user?.is_admin;
+    const title = detail.template
+      ? localize('errorcard.title', { template: detail.template }, hass)
+      : localize('errorcard.title_plain', undefined, hass);
+    const message =
+      detail.kind === 'missing_template'
+        ? localize('errorcard.missing_message', undefined, hass)
+        : detail.kind === 'custom_missing'
+          ? localize('errorcard.custom_message', undefined, hass)
+          : detail.kind === 'unset'
+            ? localize('errorcard.unset_message', undefined, hass)
+            : this._error;
+    const closest = detail.closest;
+    const suggestion = closest
+      ? localize(
+          closest.uses === 0
+            ? 'errorcard.did_you_mean_none'
+            : closest.uses === 1
+              ? 'errorcard.did_you_mean_one'
+              : 'errorcard.did_you_mean',
+          { closest: closest.name, count: closest.uses },
+          hass,
+        )
+      : '';
+    const ll = getLovelaceConfig();
+    const ownPath = this._ownConfig ? findCardPath(ll, this._ownConfig) : undefined;
+    const variables = this._ownConfig?.variables;
+    const passed =
+      variables && (Array.isArray(variables) ? variables.length : Object.keys(variables).length)
+        ? toYaml(variables)
+        : localize('errorcard.nothing_passed', undefined, hass);
+    return html`
+      <ha-card class="error-card">
+        <div class="title">${title}</div>
+        <p>${message}</p>
+        ${
+          detail.line
+            ? html`<code class="line"
+                >${detail.line.key}: ${detail.line.value} <span class="note">← ${detail.line.note}</span></code
+              >`
+            : ''
+        }
+        ${suggestion ? html`<p>${suggestion}</p>` : ''}
+        ${detail.kind === 'custom_missing' ? html`<p>${localize('errorcard.install_hint', undefined, hass)}</p>` : ''}
+        ${
+          admin
+            ? html`<div class="actions">
+                ${
+                  detail.kind === 'missing_template' && closest
+                    ? html`<ha-button @click=${() => this._useClosest(closest.name)}>
+                        ${localize('errorcard.use', { closest: closest.name }, hass)}
+                      </ha-button>`
+                    : ''
+                }
+                ${
+                  ownPath
+                    ? html`<ha-button @click=${() => this._openEditor(ownPath)}>
+                        ${
+                          detail.kind === 'unset' && detail.unset?.length
+                            ? localize('errorcard.set_variable', { name: detail.unset[0] }, hass)
+                            : localize('errorcard.fix', undefined, hass)
+                        }
+                      </ha-button>`
+                    : ''
+                }
+                ${
+                  detail.kind === 'custom_missing' && detail.template && this._canOpenTemplate(detail.template)
+                    ? html`<ha-button @click=${() => this._chipAction('edit')}>
+                        ${localize('errorcard.open_template', undefined, hass)}
+                      </ha-button>`
+                    : ''
+                }
+                <ha-button @click=${() => (this._errorOpen = !this._errorOpen)}>
+                  ${localize('errorcard.show_passed', undefined, hass)}
+                </ha-button>
+              </div>`
+            : ''
+        }
+        ${
+          this._errorOpen
+            ? html`<pre class="passed">${passed}</pre>
+                <details>
+                  <summary>${localize('errorcard.details', undefined, hass)}</summary>
+                  <pre>${this._error}</pre>
+                </details>`
+            : ''
+        }
+      </ha-card>
+    `;
+  }
+
+  /** Use the nearest template: the one key rewritten and saved, undoable from the toast. */
+  private _useClosest(closest: string): void {
+    const original = this._ownConfig;
+    if (!original) return;
+    void rewriteDashboards(this, this._hass, 'use_closest', [
+      { urlPath: pageDashboard(), build: (ll) => replaceCard(ll, original, withTemplate(original, closest)) },
+    ]);
+  }
+
+  /** Home Assistant's own edit dialog for the card at `path`, which the view around this one opens. */
+  private _openEditor(path: number[]): void {
+    this.dispatchEvent(new CustomEvent('ll-edit-card', { detail: { path }, bubbles: true, composed: true }));
   }
 
   private static async _createThing(
@@ -1485,6 +2614,8 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
 
   // for LovelaceCard
   public getCardSize(): Promise<number> | number {
+    if (!this._thing && this._waiting)
+      return skeletonRows(this._waitingGrid ?? this._gridOptions) ?? MASONRY_WAITING_SIZE;
     return this._thing && this._thingType === 'card' ? (this._thing as LovelaceCard).getCardSize() : 1;
   }
 }

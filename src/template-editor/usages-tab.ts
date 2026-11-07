@@ -5,6 +5,7 @@ import { HomeAssistant, fireEvent, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig } from '../types';
 import deepReplace from '../deep-replace';
 import {
+  collectRawTemplates,
   collectTemplates,
   addCardToView,
   collectUsages,
@@ -44,6 +45,8 @@ import {
 import { operationLabel, pageDashboard, rewriteDashboards, saverFor, thingContent, undoFrom } from '../shared';
 import { SIMILAR_SHOWN, SIMILAR_MEMBERS_SHOWN, SEARCH_SHOWN, textField, saveDashboardWith } from './common';
 import { TEMPLATE_EDITOR_STYLES } from './styles';
+import { FamilyNode, extendsFamilies, familyOf, familySize, layersOf } from '../family';
+import { toYaml } from '../yaml';
 
 export class DeclutteringTemplateUsagesTab extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
@@ -215,7 +218,7 @@ export class DeclutteringTemplateUsagesTab extends LitElement {
               </ha-alert>`
             : html``
         }
-        ${this._renderElsewhere(name)} ${this._renderImpact(ll, name)}
+        ${this._renderElsewhere(name)} ${this._renderFamily(ll, name)} ${this._renderImpact(ll, name)}
         <decluttering-card-plus-health .hass=${this.hass} .lovelace=${ll}
           >${this._renderUndo()}</decluttering-card-plus-health
         >
@@ -407,6 +410,87 @@ export class DeclutteringTemplateUsagesTab extends LitElement {
     return html`<ha-alert alert-type="info">
       ${localize('template_editor.usages_elsewhere', { list: summary }, this.hass)}
     </ha-alert>`;
+  }
+
+  /*
+   * The family a template belongs to (idea 29): who it builds on, who builds on it, and what
+   * each layer changes about the one under it. Only when there is a family to show.
+   */
+  private _renderFamily(ll: LovelaceConfig, name: string): TemplateResult {
+    const raw = collectRawTemplates(ll);
+    // Cards only: a template extending another is a child in the tree, not a use of it.
+    const cardsUsing = (each: string): number =>
+      collectUsages(ll, each).views.reduce((sum, view) => sum + view.count, 0);
+    const roots = extendsFamilies(raw, cardsUsing);
+    const root = familyOf(roots, name);
+    if (!root) return html``;
+    const size = familySize(root);
+    const dashboard = document.location.pathname.split('/').slice(0, 2).join('/');
+    const layers = layersOf(raw, name);
+    return html`
+      <div class="family">
+        <h3>${localize('family.header', undefined, this.hass)}</h3>
+        <p class="hint">${localize('family.hint', { templates: size.templates, cards: size.cards }, this.hass)}</p>
+        <ul class="tree">
+          ${this._renderFamilyNode(root, name, ll, dashboard)}
+        </ul>
+        ${
+          layers.length > 1
+            ? html`
+                <ha-expansion-panel outlined>
+                  <span slot="header">${localize('family.layers_header', { name }, this.hass)}</span>
+                  <pre class="layers">
+${layers
+                      .map(
+                        (layer) =>
+                          `# ${localize('family.from', { name: layer.from }, this.hass)}\n${toYaml(layer.content).replace(/\s+$/, '')}`,
+                      )
+                      .join('\n')}</pre>
+                </ha-expansion-panel>
+              `
+            : html``
+        }
+      </div>
+    `;
+  }
+
+  private _renderFamilyNode(node: FamilyNode, current: string, ll: LovelaceConfig, dashboard: string): TemplateResult {
+    const where = findTemplateLocation(ll, node.name);
+    const parts: string[] = [];
+    const list = (key: string, keys: string[]): void => {
+      if (keys.length) parts.push(localize(key, { keys: keys.join(', ') }, this.hass));
+    };
+    list('family.sets', node.sets);
+    list('family.changes', node.changes);
+    list('family.adds', node.adds);
+    list('family.drops', node.drops);
+    if (node.missingParent) parts.push(localize('family.missing_parent', { name: node.missingParent }, this.hass));
+    const uses =
+      node.uses === 1
+        ? localize('template_editor.used_once', undefined, this.hass)
+        : localize('template_editor.used_times', { count: node.uses }, this.hass);
+    return html`
+      <li>
+        <span class="node ${node.name === current ? 'me' : ''} ${node.deprecated ? 'dep' : ''}">
+          ${
+            where?.view && node.name !== current
+              ? html`<a href=${`${dashboard}/${where.view.path || where.view.index}`} target="_blank" rel="noreferrer"
+                  ><code>${node.name}</code></a
+                >`
+              : html`<code>${node.name}</code>`
+          }
+          <small>${node.deprecated ? localize('family.deprecated', undefined, this.hass) + ' · ' : ''}${uses}</small>
+          ${parts.length ? html`<small class="ov">${parts.join(' · ')}</small>` : html``}
+        </span>
+        ${
+          node.children.length
+            ? html`<ul>
+                ${node.children.map((child) => this._renderFamilyNode(child, current, ll, dashboard))}
+              </ul>`
+            : html``
+        }
+      </li>
+    `;
   }
 
   /*

@@ -33,6 +33,7 @@ export type WarningKind =
   | 'override_misplaced'
   | 'rebuild_on'
   | 'on_error'
+  | 'check'
   | 'other';
 
 export interface Warning {

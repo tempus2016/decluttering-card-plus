@@ -3,7 +3,9 @@ import { forEachItems, forEachVariables, normaliseVariables, POSITION_NAMES } fr
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import { sourceTemplate, TemplateRender } from './template-source';
 import { CONSUMER_TYPES, itemTemplatesOf } from './templates';
-import { VariablesConfig } from './types';
+import { TemplateConfig, VariablesConfig } from './types';
+import { buildPage, errorDashboard, pageOf } from './page-template';
+import { wantsCategories } from './categories';
 
 // What a strategy's substitutions are handed for `with:` and `repeat:` (#227): the item
 // templates ride on the context the card already builds, and the context itself serves a
@@ -89,26 +91,86 @@ export function expandEntry(
   if (!items.length) return entry.empty === undefined ? [] : [entry.empty];
 
   const common = [...normaliseVariables(entry.variables), ...normaliseVariables(shared)];
-  return items.map((item, index) => {
-    const values = forEachVariables(item, common, index, items.length);
-    return handDown(
-      deepReplace(
-        values,
-        {},
-        content,
-        undefined,
-        hass,
-        undefined,
-        undefined,
-        0,
-        undefined,
-        undefined,
-        false,
-        extrasOf(context),
-      ),
+  return items.map((item, index) =>
+    fillCopy(content, forEachVariables(item, common, index, items.length), hass, context),
+  );
+}
+
+/** One copy of a repeat's content, its placeholders filled and its templated cards handed the values. */
+function fillCopy(content: any, values: VariablesConfig[], hass?: any, context?: SourceContext): any {
+  return handDown(
+    deepReplace(
       values,
-    );
-  });
+      {},
+      content,
+      undefined,
+      hass,
+      undefined,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      extrasOf(context),
+    ),
+    values,
+  );
+}
+
+/*
+ * The section strategy (#400) - `strategy: { type: custom:decluttering-card-plus }` on one
+ * section of a sections view, which Home Assistant 2026.11 offers under "Community sections"
+ * when a section is added. Home Assistant can only ask a section strategy for one section,
+ * so there is nothing to repeat over here; it comes in two shapes.
+ *
+ * A template, with the card's own options beside it - what the add-section dialog starts
+ * from. The section holds one card built from that template, so a `group:` template lays
+ * its cards out across the section, and everything a card can say (variables, a repeat,
+ * on_error) works as it does on a card.
+ *
+ *   - strategy:
+ *       type: custom:decluttering-card-plus
+ *       template: room_section
+ *       variables:
+ *         - area: kitchen
+ *
+ * Or a section written out, filled in the way a repeated section of the view strategy is
+ * for each of its items - placeholders replaced, and the templated cards in it handed the
+ * values - only once, from `variables:`.
+ *
+ *   - strategy:
+ *       type: custom:decluttering-card-plus
+ *       variables:
+ *         - area: kitchen
+ *       section:
+ *         type: grid
+ *         cards:
+ *           - type: heading
+ *             heading: '[[area]]'
+ *           - type: custom:decluttering-card-plus
+ *             template: room_lights
+ */
+export function generateSection(config: any, hass?: any, context?: SourceContext): any {
+  if (config?.section !== undefined) {
+    const section = fillCopy(config.section, normaliseVariables(config.variables), hass, context);
+    if (!section || typeof section !== 'object' || Array.isArray(section)) return { type: 'grid', cards: [] };
+    return section.type === undefined ? { type: 'grid', ...section } : section;
+  }
+  const card: any = { ...config, type: STRATEGY_TYPE };
+  return { type: 'grid', cards: [card] };
+}
+
+/*
+ * Which template the add-section dialog's preview tile is drawn with: the first `group:`
+ * template, which is a section's worth of cards, or failing that the first card template.
+ * Item, badge, row and element templates are no use as a section.
+ */
+export function sectionStubTemplate(templates: Record<string, any>): string | undefined {
+  const names = Object.keys(templates ?? {});
+  return (
+    names.find((name) => templates[name]?.group !== undefined) ??
+    names.find((name) => templates[name]?.card !== undefined)
+  );
 }
 
 /** The view a strategy config describes, with every repeat written out. */
@@ -182,7 +244,7 @@ export function wantsLabels(config: any): boolean {
  */
 
 /** The dashboard strategy's own keys - everything else it says goes to the dashboard's root. */
-const DASHBOARD_OWN_KEYS = ['type', 'variables', 'views'];
+const DASHBOARD_OWN_KEYS = ['type', 'variables', 'views', 'page', 'decluttering_page'];
 
 /** The custom type both strategies answer to, and the one a nested view strategy is recognised by. */
 export const STRATEGY_TYPE = 'custom:decluttering-card-plus';
@@ -329,8 +391,23 @@ function fillPlain(content: any, values: VariablesConfig[], hass: any, context?:
   return view;
 }
 
-/** The dashboard a dashboard strategy config describes, with every repeated view written out. */
-export function generateDashboard(config: any, hass?: any, context?: SourceContext): any {
+/**
+ * The dashboard a dashboard strategy config describes, with every repeated view written out.
+ * A strategy asking for a `page:` (idea 33) first becomes the dashboard its page template
+ * builds, which then goes through the same writing-out; `pageTemplates` is every template
+ * the page can be, borrowed ones included, which only the strategy element can fetch.
+ */
+export function generateDashboard(
+  config: any,
+  hass?: any,
+  context?: SourceContext,
+  pageTemplates?: Record<string, TemplateConfig>,
+): any {
+  if (pageOf(config)) {
+    const page = pageDashboard(config, hass, pageTemplates);
+    if ('error' in page) return page.error;
+    return generateDashboard(page.config, hass, context);
+  }
   const shared = normaliseVariables(config?.variables);
   // The strategy's own item templates are what a `with:` or `repeat:` in the views it writes
   // names - a plain card's list is never filled in again after this, so they are needed here.
@@ -370,6 +447,52 @@ export function generateDashboard(config: any, hass?: any, context?: SourceConte
 /** Whether a repeated view reads labels, which have to be fetched before the dashboard is written. */
 export function dashboardWantsLabels(config: any): boolean {
   return /label/i.test(JSON.stringify(config?.views ?? null));
+}
+
+/**
+ * The strategy config a `page:` (idea 33) stands for: the dashboard its page template
+ * builds, written as a strategy of its own so its views are repeated like any others - or,
+ * when the page cannot be built, the dashboard that says why, which is written as it is.
+ */
+export function pageDashboard(
+  config: any,
+  hass?: any,
+  pageTemplates?: Record<string, TemplateConfig>,
+): { config: any } | { error: any } {
+  const page = buildPage(config, pageTemplates ?? config?.decluttering_templates ?? {}, hass);
+  if ('error' in page) return { error: errorDashboard(page.error) };
+  return { config: { ...page.dashboard, type: STRATEGY_TYPE } };
+}
+
+/** What writing a dashboard out waits on, which only the strategy element can reach. */
+export interface DashboardFetches {
+  render: (template: string) => Promise<TemplateRender>;
+  labels: () => Promise<void>;
+  categories: () => Promise<void>;
+  // Every template a page can be, borrowed ones included.
+  templates: () => Promise<Record<string, TemplateConfig>>;
+  onRendered?: (template: string, render: TemplateRender) => void;
+}
+
+/**
+ * The dashboard strategy's whole run. A page is built first, so what the views it builds
+ * repeat over - Jinja, labels, categories - is fetched from those views, not from the
+ * strategy's own, which a page leaves empty.
+ */
+export async function writeDashboard(config: any, hass: any, fetch: DashboardFetches): Promise<any> {
+  let source = config;
+  if (pageOf(config)) {
+    const page = pageDashboard(config, hass, await fetch.templates());
+    if ('error' in page) return page.error;
+    source = page.config;
+  }
+  if (dashboardWantsLabels(source)) await fetch.labels();
+  if (wantsCategories(source?.views)) await fetch.categories();
+  // A view repeat reads the same sources a section repeat does, so its Jinja lists are
+  // rendered the same way - once each, here, where a strategy may wait.
+  const rendered = await renderStrategyTemplates({ sections: source?.views }, fetch.render);
+  for (const [template, render] of Object.entries(rendered)) fetch.onRendered?.(template, render);
+  return generateDashboard(source, hass, { rendered });
 }
 
 /** The card options that shape a repeat inside one card, and mean nothing once each copy has a section. */

@@ -4,13 +4,14 @@
   "description": "Card templates for Home Assistant dashboards: reusable cards, badges, rows and views with variables",
   "main": "dist/decluttering-card-plus.js",
   "scripts": {
-    "build": "npm run lint && npm run rollup && node scripts/check-bundle-size.js",
+    "build": "npm run lint && npm run rollup && npm run schema && node scripts/check-bundle-size.js",
     "lint": "eslint .",
     "rollup": "node scripts/clean-dist.js && rollup -c",
     "start": "rollup -c --watch",
     "test": "tsc -p tsconfig.test.json && node --test \"test/*.test.js\"",
     "coverage": "tsc -p tsconfig.test.json && c8 node --test \"test/*.test.js\"",
-    "test:dom": "node scripts/dom-test.js"
+    "test:dom": "node scripts/dom-test.js",
+    "schema": "node scripts/build-schema.js"
   },
   "overrides": {
     "brace-expansion": "^5.0.12",
@@ -40,6 +41,7 @@
     "@semantic-release/git": "^11.0.1",
     "@semantic-release/npm": "^13.2.0",
     "@semantic-release/release-notes-generator": "^14.1.1",
+    "ajv": "6.15.0",
     "axe-core": "^4.14.0",
     "c8": "^12.0.0",
     "chai": "^5.3.3",
@@ -53,6 +55,7 @@
     "rollup-plugin-serve": "^3.0.0",
     "rollup-plugin-typescript2": "^0.37.0",
     "semantic-release": "^25.0.9",
+    "ts-json-schema-generator": "^2.9.0",
     "ts-lit-plugin": "^2.0.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.0"
@@ -82,5 +85,8 @@
     "branches": 80,
     "functions": 90,
     "lines": 95
+  },
+  "bin": {
+    "decluttering-card-plus": "bin/dcp-lint.js"
   }
 }
