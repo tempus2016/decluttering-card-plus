@@ -38,7 +38,7 @@ body:
     attributes:
       label: How is the card installed?
       options:
-        - HACS
+        - Marketplace (or HACS before 2026.11)
         - Manually, as a Lovelace resource
         - Not sure
     validations:
