@@ -90,12 +90,19 @@ here.
   values read from Home Assistant (`[[entity|friendly_name]]`, its area, floor, device or
   labels), whether an integration, card or icon set is installed (`[[popup|if_card_exists]]`),
   quoted text (`[["Kitchen"|upper]]`), and values a whole dashboard, view or section sets for
-  every card in it.
+  every card in it. Dates and times (`[[sensor|last_changed|relative]]`), attributes
+  (`[[light|attr:brightness]]`), plurals and numbers in the viewer's language, colours worked
+  out from one (`[[accent|lighten:20]]`), `unless:` and `switch:`, and values for a card
+  that is narrow (`variables_mobile:`).
 - [Repeating a template][wiki-repeating] — one copy per item in a list, or per entity, area,
   device, floor or label Home Assistant knows about, filtered, sorted and grouped.
   [Whole sections or views][wiki-repeating-sections] can be repeated too.
 - [List entries][wiki-list-entries] — `with:` and `repeat:` fill a block of config into a
-  card's own lists, where a nested card cannot go.
+  card's own lists, where a nested card cannot go. Rows and picture elements repeat in place,
+  a template can leave slots for the card to fill with cards of its own, and decide with
+  `visibility:` which copies are worth building.
+- Templates for a whole dashboard or a single section, used from the dashboard and section
+  strategies.
 - [Sharing templates between dashboards][wiki-sharing-between], or from one library
   dashboard to all of them, plus templates [shared by other people][discussions-share],
   carrying their author, licence, requirements and the questions to ask on install. An
@@ -113,9 +120,18 @@ here.
   a search box with descriptions and use counts, any field on the Card tab can be made a
   variable from its own menu, and the code editor colours placeholders and completes them
   after `[[`.
-- A health panel for missing templates, unset variables and unused templates, and
-  `debug: report` to write up what a card built, with what each variable worked out to and
-  how, ready to paste into an issue.
+- `checks:` a template runs against the values it is given, and `strict:` to decide, level by
+  level, what an error or a warning does to the card. A card that cannot be built says why and
+  offers the fix.
+- A health panel for missing templates, unset variables and unused templates, also as a card
+  or badge on the dashboard, and `debug: report` to write up what a card built, as a folding
+  tree, with what each variable worked out to and how and a box to try a placeholder in,
+  ready to paste into an issue.
+- In the editors: presets from a template's examples, a gallery to install templates from,
+  a preview in light and dark at phone and tablet widths, a pause for previews that are
+  expensive to build, an extends family tree, a diff against the library copy, and a
+  converter from button-card templates and auto-entities. JSON schemas for YAML editors and
+  a command-line linter check YAML dashboards outside Home Assistant.
 
 The [Configuration Reference][wiki-config] lists every option.
 
