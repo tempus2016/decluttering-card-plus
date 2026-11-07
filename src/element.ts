@@ -103,7 +103,14 @@ import './skipped';
 import { checkDetail, ErrorDetail, findCardPath, templateEditPath, unsetDetail, withTemplate } from './error-card';
 import { ChipAction } from './edit-chip-pure';
 import './edit-chip';
-import { inMasonry, MASONRY_UNIT, MASONRY_WAITING_SIZE, skeletonHeight, skeletonRows } from './skeleton';
+import {
+  inMasonry,
+  inSectionsView,
+  MASONRY_UNIT,
+  MASONRY_WAITING_SIZE,
+  skeletonHeight,
+  skeletonRows,
+} from './skeleton';
 
 /** Where a card sits in a sections view: the view, and the section's place in it. */
 type SectionPlace = { view: number; section: number };
@@ -2274,6 +2281,9 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     // Not on the card that defines the template, which is its own editor's business, and not
     // on the preview inside an edit dialog, where every card counts as being edited.
     if (this.localName === TEMPLATE_TAG || editDialogOf(this)) return '';
+    // In a sections view Home Assistant's edit overlay covers the card, so the chip could
+    // never be pressed there; its own Edit button does the job.
+    if (inSectionsView(this)) return '';
     if (this._chipSourceFor !== name) {
       this._chipSourceFor = name;
       this._chipSource = undefined;
@@ -2434,7 +2444,11 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
 
   private _renderErrorCard(detail: ErrorDetail): TemplateResult {
     const hass = this._hass;
-    const admin = this._previewing && !!(hass as unknown as { user?: { is_admin?: boolean } })?.user?.is_admin;
+    // The buttons need a click, which a sections view's edit overlay never lets through.
+    const admin =
+      this._previewing &&
+      !inSectionsView(this) &&
+      !!(hass as unknown as { user?: { is_admin?: boolean } })?.user?.is_admin;
     const title = detail.template
       ? localize('errorcard.title', { template: detail.template }, hass)
       : localize('errorcard.title_plain', undefined, hass);

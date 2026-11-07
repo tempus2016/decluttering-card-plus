@@ -1,3 +1,4 @@
+import { inMasonry } from './skeleton';
 import { html, PropertyValues, TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
@@ -673,7 +674,9 @@ export class DeclutteringCard extends DeclutteringElement {
   private _watchForBuild(): void {
     this._deferStop?.();
     if (!this._deferred) return;
-    if (editDialogOf(this) || this.preview) {
+    // A masonry view lays its columns out from each card's real size, so a card that waits
+    // makes the ones on screen wait too: there every card builds at once (idea 10).
+    if (editDialogOf(this) || this.preview || inMasonry(this)) {
       this._buildDeferred();
       return;
     }

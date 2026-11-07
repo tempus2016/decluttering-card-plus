@@ -43,3 +43,18 @@ export function inMasonry(element: Element): boolean {
   }
   return false;
 }
+
+/*
+ * Whether an element sits in a sections view. In edit mode Home Assistant lays its own edit
+ * overlay over every card there, so nothing drawn on the card can be clicked.
+ */
+export function inSectionsView(element: Element): boolean {
+  let node: Node | null = element;
+  while (node) {
+    const tag = (node as Element).localName;
+    if (tag === 'hui-section' || tag === 'hui-grid-section') return true;
+    if (tag === 'hui-masonry-view' || tag === 'hui-dialog-edit-card') return false;
+    node = node.parentNode ?? (node as ShadowRoot).host ?? null;
+  }
+  return false;
+}

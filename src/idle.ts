@@ -12,7 +12,6 @@
  */
 
 import { DeclutteringCardConfig } from './types';
-import { inMasonry } from './skeleton';
 
 export interface DeferState {
   /** Inside Home Assistant's edit dialog. */
@@ -90,9 +89,6 @@ export const PLACEMENT_FRAMES = 12;
  * still has no place after that is measured again frame by frame, for a bounded while, and
  * then built regardless. Returns a way to stop listening.
  */
-// How many frames a masonry card near the screen is measured again after, to be sure.
-export const CONFIRM_FRAMES = 8;
-
 export function whenVisible(element: Element, tell: (visible: boolean) => void): () => void {
   if (typeof requestAnimationFrame === 'undefined') {
     tell(true);
@@ -110,20 +106,8 @@ export function whenVisible(element: Element, tell: (visible: boolean) => void):
       requestAnimationFrame(() => settle(0, unplaced - 1));
       return;
     }
-    if (near && confirm && !confirmed) {
-      confirmed = true;
-      settle(CONFIRM_FRAMES, unplaced);
-      return;
-    }
     tell(near ?? true);
   };
-  /*
-   * A masonry view lays its columns out again as cards arrive, and halfway through every
-   * card sits near the top - so near the screen there is measured twice, a few frames apart,
-   * before it counts. Off the screen needs no second look: building later is always safe.
-   */
-  const confirm = inMasonry(element);
-  let confirmed = false;
   settle(2, PLACEMENT_FRAMES);
   return () => {
     stopped = true;
