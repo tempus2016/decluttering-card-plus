@@ -51,15 +51,15 @@ const sources = compareSources('room_light_tile', {
 });
 
 check(
-  'sources come matching library first, then the rest of the library, the shared post, other dashboards, trash newest first',
+  'sources come matching library first, then the shared post, other dashboards, trash newest first, and the rest of the library last',
   sources.map((s) => s.id),
   [
     'library:room_light_tile',
-    'library:sensor_line',
     'shared:7',
     'elsewhere:upstairs',
     'trash:9820000',
     'trash:6400000',
+    'library:sensor_line',
   ],
 );
 check(
@@ -67,11 +67,11 @@ check(
   sources.map((s) => s.label),
   [
     'Starter library: room_light_tile',
-    'Starter library: sensor_line',
     'Shared: My tile by ann',
     'On upstairs',
     'Trash, replaced 3 min ago',
     'Trash, removed 60 min ago',
+    'Starter library: sensor_line',
   ],
 );
 check('a template body drops its name and type', templateBody({ template: 't', type: 'custom:x', card: { a: 1 } }), {

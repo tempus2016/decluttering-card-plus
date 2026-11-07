@@ -53,16 +53,15 @@ export function templateBody(template: unknown): Record<string, any> {
  */
 export function compareSources(name: string, ctx: CompareContext): CompareSource[] {
   const out: CompareSource[] = [];
-  for (const entry of ctx.library ?? []) {
-    out.push({
-      id: `library:${entry.name}`,
-      kind: 'library',
-      label: ctx.labels.library(entry.name),
-      template: entry.template,
-    });
-  }
-  // The library entry of the same name goes first.
-  out.sort((a, b) => Number(b.id === `library:${name}`) - Number(a.id === `library:${name}`));
+  const library = (entry: { name: string; template: unknown }): CompareSource => ({
+    id: `library:${entry.name}`,
+    kind: 'library',
+    label: ctx.labels.library(entry.name),
+    template: entry.template as Record<string, any>,
+  });
+  // The library entry of the same name goes first. The other library templates go last, so a
+  // template that is not in the library is first compared with its own copies, not a stranger.
+  for (const entry of ctx.library ?? []) if (entry.name === name) out.push(library(entry));
   for (const update of ctx.installed ?? []) {
     if (update.name !== name || !update.latest || !update.entry) continue;
     out.push({
@@ -89,6 +88,7 @@ export function compareSources(name: string, ctx: CompareContext): CompareSource
       template: templateBody(entry.template),
     });
   }
+  for (const entry of ctx.library ?? []) if (entry.name !== name) out.push(library(entry));
   return out;
 }
 
