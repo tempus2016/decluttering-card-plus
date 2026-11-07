@@ -324,6 +324,30 @@ describe('checks (#389)', () => {
     expect(el._reportText).to.include('The camera camera.gone is not there.');
   });
 
+  it('the report tree leads with the failed checks, then the warnings, both open', async () => {
+    stubLovelace({
+      decluttering_templates: {
+        t: {
+          ...template(),
+          checks: [...template().checks, { condition: 'true', level: 'info', message: 'Only in the console.' }],
+          card: { type: 'markdown', content: '[[__alerts__.all.count]] [[not_given]]' },
+        },
+      },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 't', variables: [{ camera: 'camera.gone' }] }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!report(el)?.querySelector('.tree > details'), 3000, 'the report tree');
+    const top = [...report(el).querySelectorAll('.tree > details')] as HTMLDetailsElement[];
+    const heads = top.map((node) => node.querySelector('summary')?.textContent?.trim() ?? '');
+    expect(heads[0]).to.match(/^Failed checks/);
+    expect(heads[1]).to.match(/^Warnings/);
+    expect([top[0].open, top[1].open]).to.deep.equal([true, true]);
+    expect(top[0].textContent).to.include('The camera camera.gone is not there.');
+    expect(top[0].textContent).to.not.include('Only in the console.');
+    expect(top[1].textContent).to.include('not_given');
+  });
+
   it('the report goes again once the error has', async () => {
     stubLovelace({ decluttering_templates: { t: template() }, views: [{ cards: [] }] });
     const el = card({ template: 't', variables: [{ camera: 'camera.gone' }] }, stubHass());

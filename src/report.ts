@@ -368,7 +368,7 @@ function buildSection(report: TraceReport, { line, block, title, redacting }: Wr
  * with one build and one section has nowhere else they could have come from, so it does not
  * say. A fill's warnings go with the build it is part of.
  */
-function allWarnings(reports: TraceReport[]): { where: string; warning: string }[] {
+export function allWarnings(reports: TraceReport[]): { where: string; warning: string }[] {
   const found: { where: string; warning: string }[] = [];
   const seen = new Set<string>();
   const add = (where: string, trace: BuildTrace): void => {
@@ -386,6 +386,35 @@ function allWarnings(reports: TraceReport[]): { where: string; warning: string }
     }
   }
   return found;
+}
+
+/*
+ * The checks that failed (#389), from this card and every card inside it, each with the build
+ * it came from. An `info` check is said in the console and nowhere else (see checks.ts), so it
+ * is not one of them.
+ */
+export function failedChecks(
+  reports: TraceReport[],
+): { level: string; message: string; name?: string; label: string }[] {
+  const alerts: { level: string; message: string; name?: string; label: string }[] = [];
+  for (const report of reports) {
+    for (const alert of report.alerts ?? []) {
+      if (alert.level !== 'info') alerts.push({ ...alert, label: report.label });
+    }
+  }
+  return alerts;
+}
+
+/** Where a failed check came from, in words. */
+export function checkWhere(alert: { name?: string; label: string }, hass?: any): string {
+  return alert.name
+    ? localize('report.check_named', { name: alert.name, label: alert.label }, hass)
+    : localize('report.check_in', { label: alert.label }, hass);
+}
+
+/** Whether a report has one build with one section, so its warnings need not say where they came from. */
+export function oneBuild(reports: TraceReport[]): boolean {
+  return reports.length === 1 && reports[0].sections.length === 1;
 }
 
 /** The whole report as Markdown, redacted unless asked not to be. */
@@ -420,26 +449,18 @@ export function formatReport(input: ReportInput, hass?: any): string {
    * The checks that failed (#389), from this card and every card inside it, ahead of the
    * builds: they are the template's own word on what is wrong, and the first thing to read.
    */
-  const alerts: { level: string; message: string; name?: string; label: string }[] = [];
-  for (const report of input.reports) {
-    for (const alert of report.alerts ?? []) alerts.push({ ...alert, label: report.label });
-  }
+  const alerts = failedChecks(input.reports);
   if (alerts.length) {
     body.push(
       `## ${t('report.checks')}`,
       '',
-      ...alerts.map((alert) => {
-        const where = alert.name
-          ? t('report.check_named', { name: alert.name, label: alert.label })
-          : t('report.check_in', { label: alert.label });
-        return `- **${line(alert.level)}** ${line(alert.message)} (${line(where)})`;
-      }),
+      ...alerts.map((alert) => `- **${line(alert.level)}** ${line(alert.message)} (${line(checkWhere(alert, hass))})`),
       '',
     );
   }
   const warnings = allWarnings(input.reports);
   if (warnings.length) {
-    const one = input.reports.length === 1 && input.reports[0].sections.length === 1;
+    const one = oneBuild(input.reports);
     body.push(
       `## ${t('report.warnings')}`,
       '',

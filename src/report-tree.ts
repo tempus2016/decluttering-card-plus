@@ -7,7 +7,7 @@
  * Pure: nothing here touches the DOM. element.ts draws the nodes with <details>.
  */
 import { ExpansionResult, TraceReport, TraceSection, headline } from './trace';
-import { redact, secretValues } from './report';
+import { allWarnings, checkWhere, failedChecks, oneBuild, redact, secretValues } from './report';
 import { toYaml } from './yaml';
 import { localize } from './localize';
 
@@ -149,7 +149,7 @@ function cardNode(report: TraceReport, index: number, hide: (text: string) => st
   };
 }
 
-/** The whole report as nodes: the error, the end result, what never built, then each card's build. */
+/** The whole report as nodes: the error, failed checks, warnings, the end result, what never built, then each card's build. */
 export function reportTree(input: TreeInput, hass?: any): ReportNode[] {
   const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
   const secrets = input.unredacted ? [] : secretValues(input.reports);
@@ -157,6 +157,45 @@ export function reportTree(input: TreeInput, hass?: any): ReportNode[] {
   const keep = (text: string): string => (input.unredacted ? text : hide(text));
   const nodes: ReportNode[] = [];
   if (input.error) nodes.push({ id: 'error', kind: 'leaf', title: keep(input.error), warn: true });
+  /*
+   * The checks that failed (#389), then every warning (#391), ahead of the builds and open,
+   * in the order the Markdown report has them: inside a folded build nobody would see one.
+   */
+  const alerts = failedChecks(input.reports);
+  if (alerts.length) {
+    nodes.push({
+      id: 'checks',
+      kind: 'group',
+      title: t('report.checks'),
+      meta: String(alerts.length),
+      open: true,
+      children: alerts.map((alert, i) => ({
+        id: `checks-${i}`,
+        kind: 'leaf' as const,
+        title: keep(`${alert.level}: ${alert.message}`),
+        meta: keep(checkWhere(alert, hass)),
+        warn: true,
+      })),
+    });
+  }
+  const warnings = allWarnings(input.reports);
+  if (warnings.length) {
+    const one = oneBuild(input.reports);
+    nodes.push({
+      id: 'warnings',
+      kind: 'group',
+      title: t('report.warnings').replace(/:\s*$/, ''),
+      meta: String(warnings.length),
+      open: true,
+      children: warnings.map(({ where, warning }, i) => ({
+        id: `warnings-${i}`,
+        kind: 'leaf' as const,
+        title: keep(warning),
+        ...(one ? {} : { meta: keep(where) }),
+        warn: true,
+      })),
+    });
+  }
   const label = input.reports[0]?.label ?? '';
   if (input.full !== undefined) {
     nodes.push({

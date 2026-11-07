@@ -49,36 +49,37 @@ const tree = reportTree({
   full: { type: 'tile', secret: 'hunter22' },
 });
 
+check('the warnings lead, open', [tree[0].id, tree[0].open, tree[0].children.length], ['warnings', true, 1]);
 check(
-  'the end result comes first, open',
-  [tree[0].kind, tree[0].open, tree[0].title.startsWith('decluttering-card-plus: room_light_tile in full')],
+  'then the end result, open',
+  [tree[1].kind, tree[1].open, tree[1].title.startsWith('decluttering-card-plus: room_light_tile in full')],
   ['code', true, true],
 );
 check(
   'what never built is a group with a count',
-  [tree[1].kind, tree[1].meta, tree[1].children.length],
+  [tree[2].kind, tree[2].meta, tree[2].children.length],
   ['group', '1', 1],
 );
 check(
   'one card node per report',
-  tree.slice(2).map((n) => [n.kind, n.title.split(' built')[0]]),
+  tree.slice(3).map((n) => [n.kind, n.title.split(' built')[0]]),
   [
     ['card', 'decluttering-card-plus: room_light_tile'],
     ['card', 'decluttering-card-plus: sensor_line'],
   ],
 );
-check('the first card is open and says its time and warnings', [tree[2].open, tree[2].meta], [true, '14 ms · 1 ⚠']);
+check('the first card is open and says its time and warnings', [tree[3].open, tree[3].meta], [true, '14 ms · 1 ⚠']);
 check(
   'a card with a template starts with its YAML',
-  [tree[2].children[0].kind, tree[2].children[0].title],
+  [tree[3].children[0].kind, tree[3].children[0].title],
   ['code', 'Template "room_light_tile"'],
 );
 check(
   'then variables, placeholders, taken out, warnings and the result',
-  tree[2].children.slice(1).map((n) => n.kind),
+  tree[3].children.slice(1).map((n) => n.kind),
   ['group', 'group', 'group', 'group', 'code'],
 );
-check('variables are leaves with where they came from', tree[2].children[1].children[0], {
+check('variables are leaves with where they came from', tree[3].children[1].children[0], {
   id: 'r0-s0-v0',
   kind: 'leaf',
   title: 'entity: light.kitchen_ceiling',
@@ -87,23 +88,23 @@ check('variables are leaves with where they came from', tree[2].children[1].chil
 check(
   'a secret is redacted in the leaf, the placeholder and the result',
   [
-    tree[2].children[1].children[1].title.includes('hunter22'),
-    tree[2].children[2].children[1].title.includes('hunter22'),
-    tree[2].children[5].text.includes('hunter22'),
-    tree[0].text.includes('hunter22'),
+    tree[3].children[1].children[1].title.includes('hunter22'),
+    tree[3].children[2].children[1].title.includes('hunter22'),
+    tree[3].children[5].text.includes('hunter22'),
+    tree[1].text.includes('hunter22'),
   ],
   [false, false, false, false],
 );
-check('warnings are open and marked', [tree[2].children[4].open, tree[2].children[4].children[0].warn], [true, true]);
+check('warnings are open and marked', [tree[3].children[4].open, tree[3].children[4].children[0].warn], [true, true]);
 check(
   'a nested card groups its copies by label',
-  tree[3].children.map((n) => [n.kind, n.title]),
+  tree[4].children.map((n) => [n.kind, n.title]),
   [
     ['group', 'Copy 1 of 2'],
     ['group', 'Copy 2 of 2'],
   ],
 );
-check('a nested card says where it sits', tree[3].title.includes('inside room_light_tile, at card.cards[1]'), true);
+check('a nested card says where it sits', tree[4].title.includes('inside room_light_tile, at card.cards[1]'), true);
 
 const plain = reportTree({
   reports: [room],
@@ -111,7 +112,7 @@ const plain = reportTree({
   full: { type: 'tile', secret: 'hunter22' },
   unredacted: true,
 });
-check('redact: false leaves the secret in', plain[0].text.includes('hunter22'), true);
+check('redact: false leaves the secret in', plain[1].text.includes('hunter22'), true);
 const failed = reportTree({ reports: [], neverBuilt: [], error: 'Refused: [[x]] is not set', built: { type: 'tile' } });
 check(
   'an error leads, as a warning leaf, then what was built',
@@ -127,10 +128,10 @@ const found = searchTree(tree, 'brightness');
 check(
   'a search keeps only the branches that hit, opened',
   [found.matches, found.nodes.length, found.nodes[0].open, found.nodes[0].children.map((n) => n.id)],
-  [1, 1, true, ['r0-s0-warnings']],
+  [2, 2, true, ['warnings-0']],
 );
 check('a search looks inside code too', searchTree(tree, 'kitchen_ceiling').matches >= 4, true);
-check('search is case-insensitive', searchTree(tree, 'BRIGHTNESS').matches, 1);
+check('search is case-insensitive', searchTree(tree, 'BRIGHTNESS').matches, 2);
 check('an empty search is the whole tree', searchTree(tree, '  ').nodes === tree, true);
 check('a miss is empty with a zero count', searchTree(tree, 'zzzz'), { nodes: [], matches: 0 });
 check('highlighting cuts the text at every hit', highlightParts('a Kitchen in the kitchen', 'kitchen'), [

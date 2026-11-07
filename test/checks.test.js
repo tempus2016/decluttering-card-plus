@@ -300,7 +300,16 @@ const report = formatReport({
         { level: 'warn', message: 'A dummy.' },
       ],
     },
-    { label: '"inner"', chain: [], ms: 1, sections: [], alerts: [{ level: 'info', message: 'Hello.' }] },
+    {
+      label: '"inner"',
+      chain: [],
+      ms: 1,
+      sections: [],
+      alerts: [
+        { level: 'info', message: 'Hello.' },
+        { level: 'warn', message: 'Inner dummy.' },
+      ],
+    },
   ],
 });
 const checksAt = report.indexOf('## Failed checks');
@@ -310,10 +319,11 @@ check(
     checksAt > 0 && checksAt < report.indexOf('<details>'),
     report.includes('- **error** The camera is gone. (check "No camera" on "cam")'),
     report.includes('- **warn** A dummy. (on "cam")'),
-    report.includes('- **info** Hello. (on "inner")'),
+    report.includes('- **warn** Inner dummy. (on "inner")'),
   ],
   [true, true, true, true],
 );
+check('an info check is said in the console only, not in the report', report.includes('Hello.'), false);
 check(
   'and says nothing when none failed',
   formatReport({
