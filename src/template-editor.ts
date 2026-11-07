@@ -955,7 +955,14 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   private _tabChooseAt = 0;
 
   private _tabKey(ev: KeyboardEvent): void {
-    if (ev.key === 'Enter' || ev.key === ' ') this._tabChooseAt = Date.now();
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    this._tabChooseAt = Date.now();
+    // The arrows have already shown the tab, so choosing it shows nothing new: go in now.
+    const tab = ev.composedPath().find((node) => (node as HTMLElement).localName === 'ha-tab-group-tab') as
+      HTMLElement | undefined;
+    if (tab?.getAttribute('panel') === this._selectedTab) {
+      (this.renderRoot.querySelector('#panel-heading') as HTMLElement | null)?.focus();
+    }
   }
 
   private _showTab(panel: string | null | undefined, keyboard: boolean): void {

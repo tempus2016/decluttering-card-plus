@@ -325,10 +325,8 @@ export class DeclutteringCard extends DeclutteringElement {
    */
   public setConfig(config: DeclutteringCardConfig): void {
     this._lastConfig = config;
-    // A build still waiting is for a config this one replaces.
-    this._deferStop?.();
-    this._deferStop = undefined;
-    this._deferred = undefined;
+    // A build still waiting goes on waiting: if this config is deferred too it takes the
+    // wait over (_buildOrDefer), and if not, the waiting build finds itself out of date.
     this._held = undefined;
     if (previewPauseOn() && config !== this._builtAnyway && this._inPreview(config)) {
       this._hold({ reason: 'paused' });
@@ -463,7 +461,17 @@ export class DeclutteringCard extends DeclutteringElement {
   }
 
   protected _rebuild(): void {
-    if (this._lastConfig) this.setConfig(this._lastConfig);
+    if (!this._lastConfig) return;
+    /*
+     * Outside Home Assistant's own setConfig nobody catches a throw: a rebuild after the
+     * library came in, say, that throws for a badge for_each would leave the card a skeleton
+     * for good. It says the error itself instead.
+     */
+    try {
+      this.setConfig(this._lastConfig);
+    } catch (err) {
+      this._error = (err as Error)?.message ?? String(err);
+    }
   }
 
   /* ------------------------------------------------------------ preview hold (#407) */
@@ -638,6 +646,9 @@ export class DeclutteringCard extends DeclutteringElement {
       canObserve: typeof requestAnimationFrame !== 'undefined',
     };
     if (!shouldDefer(config, state)) {
+      this._deferStop?.();
+      this._deferStop = undefined;
+      this._deferred = undefined;
       this._applyTemplate(templateConfig, config);
       return;
     }
@@ -646,7 +657,12 @@ export class DeclutteringCard extends DeclutteringElement {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (this as any).getGridOptions = (): unknown => this._gridOptions;
     }
+    // Already waiting - a library catch-up builds again before the first build came - so the
+    // wait goes on and builds this config instead. Watching again would measure the card while
+    // a masonry view is laying its columns out afresh, where every card looks on screen.
+    const waitingAlready = this._deferred !== undefined && this._deferStop !== undefined;
     this._deferred = { templateConfig, config, token: this._lastConfig };
+    if (waitingAlready) return;
     // The skeleton holds its place meanwhile: with no box at all, a masonry view piles every
     // waiting card at the top, where each one counts as on screen (idea 10 with idea 48).
     this._holdPlace(config, templateConfig);

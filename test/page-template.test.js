@@ -317,3 +317,18 @@ const lightsHass = {
     '[[index]]',
   ]);
 })();
+
+{
+  const { withoutRepeatContent: cut } = require('../.test-build/page-body.js');
+  check(
+    'a decluttering strategy inside a page keeps only what it is handed: its own variables fill the rest',
+    cut({
+      strategy: {
+        type: 'custom:decluttering-card-plus',
+        variables: [{ area: '[[room]]-written' }],
+        section: { cards: [{ type: 'heading', heading: 'H [[area]]' }] },
+      },
+    }),
+    { strategy: { type: 'custom:decluttering-card-plus', variables: [{ area: '[[room]]-written' }] } },
+  );
+}

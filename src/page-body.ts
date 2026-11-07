@@ -31,14 +31,24 @@ const REPEAT_SOURCE_KEYS = ['for_each', 'for_each_from'];
  * `for_each_from:` - cut down to what it repeats over. Everything else in a repeat is
  * filled again for each copy, by a pass that knows the item's values.
  */
+// What a decluttering card or strategy inside a page is handed, rather than builds.
+const OWN_BUILD_KEYS = ['type', 'template', 'variables', 'page'];
+
 export function withoutRepeatContent(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(withoutRepeatContent);
   if (!node || typeof node !== 'object') return node;
   const record = node as Record<string, unknown>;
   const repeats = REPEAT_SOURCE_KEYS.some((key) => record[key] !== undefined);
+  /*
+   * A decluttering card or strategy inside the page fills what it holds with its own
+   * variables, so only what it is handed - its variables, its template, its sources - is
+   * the page's to fill. What it builds from them is its own business.
+   */
+  const ownBuild = record.type === 'custom:decluttering-card-plus';
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(record)) {
     if (repeats && !REPEAT_SOURCE_KEYS.includes(key)) continue;
+    if (ownBuild && !OWN_BUILD_KEYS.includes(key) && !REPEAT_SOURCE_KEYS.includes(key)) continue;
     out[key] = withoutRepeatContent(value);
   }
   return out;
