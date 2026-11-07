@@ -948,6 +948,7 @@
   "health_card.open_panel": "Abrir el panel completo",
   "health_card.clean": "Cada tarjeta encuentra su plantilla y cada variable tiene un valor.",
   "health_card.said": "{count} avisos al construir esta página",
+  "health_card.said_one": "1 aviso al construir esta página",
   "health_card.badge_count": "{count} por revisar",
   "health_card.badge_clean": "Todo bien",
   "health_card.badge_label": "Plantillas",

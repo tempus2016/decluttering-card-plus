@@ -66,6 +66,27 @@ export function parentOf(node: Node): Node | null {
 }
 
 /*
+ * What a dashboard element has been placed as, read off the elements around it, looking up
+ * through shadow roots: a badge in a view's row or in the badge picker, a row of an entities
+ * card or an element of a picture-elements card, or a card. For when the config cannot
+ * say - a template that was never found has no type to go by.
+ */
+export type Placement = 'badge' | 'row' | 'card';
+const BADGE_PLACES = ['hui-badge', 'hui-badge-picker', 'hui-heading-badge'];
+const ROW_PLACES = ['hui-entities-card', 'hui-picture-elements-card'];
+export function placedAs(element: Element): Placement {
+  let node = parentOf(element);
+  while (node) {
+    const tag = (node as Element).localName ?? '';
+    if (BADGE_PLACES.includes(tag)) return 'badge';
+    if (ROW_PLACES.includes(tag) || /^hui-.*-(entity-)?row$/.test(tag)) return 'row';
+    if (tag === 'hui-card' || tag === 'hui-card-picker' || tag === 'hui-section') return 'card';
+    node = parentOf(node);
+  }
+  return 'card';
+}
+
+/*
  * Where the card being edited sits, read off the edit dialog. Home Assistant 2026.7 hands
  * the dialog the dashboard, the card's config and - in a sections view - the section's
  * config, but no indices, so the section is found by being the same object in that

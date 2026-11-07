@@ -948,6 +948,7 @@
   "health_card.open_panel": "Ganzes Panel öffnen",
   "health_card.clean": "Jede Karte findet ihre Vorlage und jede Variable hat einen Wert.",
   "health_card.said": "{count} Warnungen beim Aufbau dieser Seite",
+  "health_card.said_one": "1 Warnung beim Aufbau dieser Seite",
   "health_card.badge_count": "{count} zu prüfen",
   "health_card.badge_clean": "Alles in Ordnung",
   "health_card.badge_label": "Vorlagen",

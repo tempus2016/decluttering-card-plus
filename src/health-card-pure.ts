@@ -40,7 +40,7 @@ export interface HealthEntry {
   /** The dashboard's url path, `lovelace` for the original. */
   dashboard: string;
   view: { index: number; title: string };
-  /** Where Home Assistant's editor finds the card: [view, card] or [view, section, card]. */
+  /** Where Home Assistant's editor finds the card: [view, card] or [view, section, card]; [view] for a badge. */
   path: number[];
   /** What the card is called: its `name:`, else its first value worth a name, else its template. */
   label: string;
@@ -172,6 +172,10 @@ export function healthEntries(
     const view = { index, title: String(viewConfig.title ?? viewConfig.path ?? '') };
     const cards: any[] = Array.isArray(viewConfig.cards) ? viewConfig.cards : [];
     cards.forEach((card, cardIndex) => inspect(card, view, [index, cardIndex], []));
+    // The view's own badges, counted as the panel lists them. A badge has no card path for
+    // the editor to open, so its entry goes to the view.
+    const badges: any[] = Array.isArray(viewConfig.badges) ? viewConfig.badges : [];
+    badges.forEach((badge) => inspect(badge, view, [index], []));
     const sections: any[] = Array.isArray(viewConfig.sections) ? viewConfig.sections : [];
     sections.forEach((section, sectionIndex) => {
       const inSection: any[] = Array.isArray(section?.cards) ? section.cards : [];

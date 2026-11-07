@@ -185,10 +185,18 @@ export class DeclutteringPreviewFrame extends LitElement {
         border-right: 1px dashed var(--secondary-text-color);
         border-radius: 0;
       }
+      /*
+       * Side by side, each half of the width: minmax(0, 1fr), as plain 1fr will not go below
+       * a 768px stage's width and the pair runs out of the dialog. At Desktop each stage fills
+       * its half; a narrow one is capped to its half, as a single stage is to the dialog.
+       */
       .both {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         gap: 12px;
+      }
+      .both .stage:not(.narrow) {
+        margin: 0;
       }
       .label {
         font-size: 0.8em;
@@ -321,7 +329,8 @@ export class DeclutteringPreviewFrame extends LitElement {
 
   private _renderRendered(): TemplateResult {
     const width = PREVIEW_WIDTHS[this._width];
-    const style = width ? `width: ${width}px; max-width: 100%;` : '';
+    // The cap leaves room for the stage's own padding and borders, so a capped stage never overflows.
+    const style = width ? `width: ${width}px; max-width: calc(100% - 26px);` : '';
     const stage = (dark: boolean, label?: string): TemplateResult => html`
       <div class="stage ${width ? 'narrow' : ''}" style=${style}>
         ${label ? html`<p class="label">${label}</p>` : nothing} ${this._thing(dark)}

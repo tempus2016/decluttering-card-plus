@@ -1,4 +1,4 @@
-import { LitElement, html, css, CSSResult, TemplateResult } from 'lit';
+import { LitElement, html, css, CSSResult, PropertyValues, TemplateResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { localize } from './localize';
 import { CHIP_TAG, ChipAction, chipLabel, copiesLabel } from './edit-chip-pure';
@@ -25,6 +25,15 @@ export class DeclutteringChip extends LitElement {
   private _act(action: ChipAction): void {
     this._open = false;
     this.dispatchEvent(new CustomEvent<{ action: ChipAction }>('dcp-chip', { detail: { action } }));
+  }
+
+  /*
+   * Every chip sits at the same z-index, so the next card's chip, later on the page, painted
+   * over an open menu and hid its last line. An open chip is lifted above the others.
+   */
+  protected updated(changed: PropertyValues): void {
+    super.updated(changed);
+    if (changed.has('_open')) this.toggleAttribute('open', this._open);
   }
 
   protected render(): TemplateResult {
@@ -74,6 +83,9 @@ export class DeclutteringChip extends LitElement {
         left: 10px;
         z-index: 3;
         font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, inherit));
+      }
+      :host([open]) {
+        z-index: 4;
       }
       .chip {
         display: inline-flex;

@@ -948,6 +948,7 @@
   "health_card.open_panel": "Volledig paneel openen",
   "health_card.clean": "Elke kaart vindt zijn sjabloon en elke variabele heeft een waarde.",
   "health_card.said": "{count} waarschuwingen bij het bouwen van deze pagina",
+  "health_card.said_one": "1 waarschuwing bij het bouwen van deze pagina",
   "health_card.badge_count": "{count} om te bekijken",
   "health_card.badge_clean": "Alles in orde",
   "health_card.badge_label": "Sjablonen",
