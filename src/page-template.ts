@@ -97,5 +97,7 @@ export function buildPage(
       : {};
   // The template's own decluttering keys come first; the strategy's win, as the nearer.
   Object.assign(dashboard, declutteringKeys(config));
+  // The key that asked for the page is not part of the page: kept, it reads as a page again.
+  delete dashboard.decluttering_page;
   return { dashboard };
 }

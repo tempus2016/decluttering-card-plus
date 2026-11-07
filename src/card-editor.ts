@@ -1,3 +1,4 @@
+import { withSlotVariables } from './slots';
 import { LitElement, html, TemplateResult, css, CSSResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import { property, state } from 'lit/decorators.js';
@@ -1082,9 +1083,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     // for_each renders the same template once per item, so one copy stands for all of
     // them - showing every copy would bury the thing you opened this to look at.
     const items = forEachItems(this._config.for_each) ?? this._registryItemsForPreview();
-    let variables = items?.length
-      ? forEachVariables(items[0], this._config.variables, 0, items.length)
-      : this._config.variables;
+    // A card's `slots:` are variables like any other to what it builds (idea 35).
+    const own = withSlotVariables(this._config).variables as VariablesConfig[] | undefined;
+    let variables = items?.length ? forEachVariables(items[0], own, 0, items.length) : own;
     // Choosing by domain, that copy is built from the template its own entity picks.
     let template = named;
     let templateName = this._config.template;
@@ -2187,7 +2188,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const repeated = supplied.map((name) => ({ [name]: null }));
     // The card's own for_each_from and on_error are filled in from its variables as well.
     const { missing, unused, required } = diagnoseInstance(
-      this._config?.variables,
+      this._config ? withSlotVariables(this._config).variables : undefined,
       template,
       repeated,
       [this._config?.for_each_from, this._config?.on_error],
@@ -2326,7 +2327,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const ll = this._lovelace ?? getLovelaceConfig();
     const scoped = withStateScope(this.hass, rebuildOnEntities(this._config.rebuild_on));
     const name = this._config.template;
-    const variables = this._config.variables;
+    const variables = withSlotVariables(this._config).variables;
     try {
       return runChecks(
         template,

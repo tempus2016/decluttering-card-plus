@@ -69,6 +69,15 @@ check('the page builds the dashboard with the variables filled in, the templates
     decluttering_templates: templates,
   },
 });
+check(
+  'decluttering_page: builds the same page, and the page it builds does not ask for itself again',
+  (() => {
+    const { page, ...rest } = strategy;
+    const built = buildPage({ ...rest, decluttering_page: page }, templates);
+    return [!!built.dashboard, built.dashboard && 'decluttering_page' in built.dashboard];
+  })(),
+  [true, false],
+);
 check('a missing page template is an error', 'error' in buildPage({ page: { template: 'nope' } }, templates), true);
 check(
   'a template of another kind is an error',
