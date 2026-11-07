@@ -6,4 +6,3 @@ yarn.lock
 coverage/
 .nyc_output/
 .dom-build/
-test/visual/out/
