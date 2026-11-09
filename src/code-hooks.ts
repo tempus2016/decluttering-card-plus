@@ -1,4 +1,5 @@
 import { KNOWN_PARAM_STEPS, KNOWN_STEPS, RESOLVERS, VariableDeclaration } from './variables';
+import { knownFunctionNames } from './closest';
 
 /*
  * The pure parts of the code editor hooks (ideas 25 and 27): where the placeholders are in
@@ -60,7 +61,7 @@ export interface Completion {
   /** Where the typed part being completed starts. */
   from: number;
   /** A heading for the list. */
-  heading: 'variables' | 'steps' | 'values';
+  heading: 'variables' | 'steps' | 'values' | 'texts';
   options: CompletionOption[];
 }
 
@@ -71,6 +72,8 @@ export interface CompletionContext {
   lets: string[];
   /** The dashboard's shared declarations. */
   shared: VariableDeclaration[];
+  /** The template's `language:` texts (#392): each key, without its `$`, and its text in the user's language. */
+  translations?: { key: string; text: string }[];
   /** For an entity-valued chain head: what each resolver gives for the example entity. */
   sample?: (step: string) => string | undefined;
 }
@@ -81,11 +84,12 @@ const PARAM_STEPS = KNOWN_PARAM_STEPS.map((step) => `${step}:`);
 // The steps most used first, then the rest alphabetically.
 const FIRST_STEPS = ['default:', 'if:', 'slug', 'friendly_name', 'area', 'bool', 'upper', 'lower', 'title', 'replace:'];
 
-/** The step list the `|` completion offers, in a useful order. */
-export function orderedSteps(): string[] {
+/** The step list the `|` completion offers, in a useful order: the dashboard's function templates (#307) last. */
+export function orderedSteps(functions: readonly string[] = knownFunctionNames()): string[] {
   const all = [...KNOWN_STEPS, ...PARAM_STEPS];
   const rest = all.filter((step) => !FIRST_STEPS.includes(step)).sort();
-  return [...FIRST_STEPS.filter((step) => all.includes(step)), ...rest];
+  const own = [...functions].filter((name) => !all.includes(name) && !all.includes(`${name}:`)).sort();
+  return [...FIRST_STEPS.filter((step) => all.includes(step)), ...rest, ...own];
 }
 
 /**
@@ -102,6 +106,14 @@ export function completionsAt(text: string, pos: number, ctx: CompletionContext)
   if (since.includes(']]') || since.includes('\n')) return null;
   const pipe = since.lastIndexOf('|');
   if (pipe === -1) {
+    // Just after `[[` and a `$`: the template's own texts (#392).
+    if (/^\$[\w.-]*$/.test(since)) {
+      const wanted = since.slice(1).toLowerCase();
+      const texts = (ctx.translations ?? [])
+        .filter((each) => each.key.toLowerCase().startsWith(wanted))
+        .map((each) => ({ label: `$${each.key}`, detail: each.text }));
+      return texts.length ? { from: open + 2, heading: 'texts', options: texts } : null;
+    }
     // Just after `[[`: variables.
     if (!/^[\w.-]*$/.test(since)) return null;
     const typed = since.toLowerCase();
@@ -129,7 +141,15 @@ export function completionsAt(text: string, pos: number, ctx: CompletionContext)
   const typed = afterPipe.toLowerCase();
   const options = orderedSteps()
     .filter((step) => step.toLowerCase().startsWith(typed))
-    .map((step) => ({ label: step, detail: ctx.sample && step in RESOLVERS ? ctx.sample(step) : undefined }));
+    .map((step) => ({
+      label: step,
+      detail:
+        ctx.sample && step in RESOLVERS
+          ? ctx.sample(step)
+          : knownFunctionNames().includes(step)
+            ? 'function'
+            : undefined,
+    }));
   return options.length ? { from: open + 2 + pipe + 1, heading: 'steps', options } : null;
 }
 
@@ -152,6 +172,12 @@ export function argumentValues(step: string): string[] {
       return ['0', '1', '2'];
     case 'switch':
       return ['on=green,off=grey,default=amber'];
+    case 'pick':
+      return ['name=value,icon'];
+    case 'to_list':
+      return ['key=name,value=entity'];
+    case 'to_map':
+      return ['key=name,value=icon'];
     default:
       return [];
   }

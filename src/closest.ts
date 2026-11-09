@@ -50,22 +50,42 @@ export function closestTemplate(wanted: string, available: string[]): string | u
   return bestScore <= cap ? best : undefined;
 }
 
-/** Whether a step is one the chain grammar knows, by name or by its `name:` prefix. */
-export function knownStep(step: string): boolean {
+/*
+ * The dashboard's templates that can be used as steps (#307), by name. Kept here, set from
+ * wherever the dashboard's templates are read, so the lint, the autocomplete and the schema
+ * know a function step without each being handed the dashboard. A build knows its own
+ * functions and passes them instead.
+ */
+let functionNames: readonly string[] = [];
+
+/** Notes the names of the dashboard's function templates, for everything that checks a step. */
+export function setFunctionNames(names: readonly string[]): void {
+  functionNames = names;
+}
+
+/** The function templates' names as last noted. */
+export function knownFunctionNames(): readonly string[] {
+  return functionNames;
+}
+
+/** Whether a step is one the chain grammar knows, by name or by its `name:` prefix - or a function (#307). */
+export function knownStep(step: string, functions: readonly string[] = functionNames): boolean {
   if (KNOWN_STEPS.includes(step)) return true;
   const colon = step.indexOf(':');
-  return colon > 0 && KNOWN_PARAM_STEPS.includes(step.slice(0, colon));
+  if (colon > 0 && KNOWN_PARAM_STEPS.includes(step.slice(0, colon))) return true;
+  return functions.includes(colon === -1 ? step : step.slice(0, colon));
 }
 
 /**
  * The known step a mistyped one was probably meant to be: `slgu` is `slug`, and `defualt:x`
  * is `default:x` - a step with an argument is matched by its name and keeps its argument.
+ * A function's name is a step's name too (#307).
  */
-export function closestStep(step: string): string | undefined {
+export function closestStep(step: string, functions: readonly string[] = functionNames): string | undefined {
   const colon = step.indexOf(':');
   if (colon > 0) {
-    const name = closestTemplate(step.slice(0, colon), KNOWN_PARAM_STEPS);
+    const name = closestTemplate(step.slice(0, colon), [...KNOWN_PARAM_STEPS, ...functions]);
     return name ? `${name}:${step.slice(colon + 1)}` : undefined;
   }
-  return closestTemplate(step, KNOWN_STEPS);
+  return closestTemplate(step, [...KNOWN_STEPS, ...functions]);
 }

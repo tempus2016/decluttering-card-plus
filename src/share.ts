@@ -1,9 +1,18 @@
 import { placeholderJson } from './placeholder-text';
 import { CONSUMER_TYPES, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE, parentsOf, templatesNamedBy } from './templates';
 import { localize } from './localize';
-import { DEFAULTS_ALIAS, OWN_DEFAULTS, normaliseVariables, templateDefaults, usedVariables } from './variables';
+import {
+  DEFAULTS_ALIAS,
+  OWN_DEFAULTS,
+  isBuiltinStepName,
+  normaliseVariables,
+  templateDefaults,
+  usedVariables,
+} from './variables';
 import type { VariablesConfig } from './types';
 import { requirementsOf, shareInfo, unquotedVersions } from './sharing';
+import { placeholderSteps } from './structure';
+import { isFunctionTemplate } from './functions';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -32,6 +41,8 @@ const EXPORT_KEY_ORDER = [
   'default',
   ...THING_KEYS,
   'style',
+  // The texts in each language (#392) after what reads them: they can be long.
+  'language',
 ];
 
 export interface Dependencies {
@@ -93,6 +104,11 @@ function itemTemplateRefs(config: any, templates: Record<string, any>): string[]
     if (template && typeof template === 'object' && 'item' in template) found.push(name);
   }
   PLACEHOLDER_HEAD.lastIndex = 0;
+  // A function template (#307) is named as a step - `[[room|occ_sens:cat]]` - and goes too.
+  for (const name of placeholderSteps(config ?? null)) {
+    if (found.includes(name) || !Object.prototype.hasOwnProperty.call(templates, name)) continue;
+    if (isFunctionTemplate(templates[name]) && !isBuiltinStepName(name)) found.push(name);
+  }
   return found;
 }
 

@@ -13,7 +13,6 @@ import deepReplace, { BuildExtras, cssSafe } from './deep-replace';
 import {
   hasSectionDefaults,
   viewIndexFromPath,
-  applyOverride,
   groupCard,
   GROUP_CARD_TYPE,
   BY_DOMAIN_KEY,
@@ -29,16 +28,17 @@ import {
   ownVariables,
   hasRequiredVariables,
   withStateScope,
-  usesResolver,
 } from './variables';
 import { chainWith, withChain, withInherited, withoutStamps } from './cycles';
 import { columnsFor, eagerCopies } from './layout';
+import { alertContent, buildThing, contentFor, templateAlerts, withGridOptions } from './build';
 import { copyText, getLovelace, getLovelaceConfig } from './utils';
 import { localize, onLanguageLoaded } from './localize';
 import { VERSION } from './version';
 import { toYaml } from './yaml';
-import { formatReport } from './report';
-import { ReportNode, highlightParts, issueFromReport, reportTree, searchTree } from './report-tree';
+import { anchorId, formatReport } from './report';
+import { OutlineNode, outlineTags, reportOutline } from './report-outline';
+import { ReportNode, highlightParts, issueFromReport, reportTree, searchTree, treeRedactor } from './report-tree';
 import {
   BUILD_LOG,
   BuildTrace,
@@ -74,7 +74,6 @@ import {
   parentOf,
   placedAs,
   sourceContext,
-  thingContent,
   pageDashboard,
   rewriteDashboards,
   textField,
@@ -83,16 +82,7 @@ import { loadEditors } from './editors-loader';
 import { dialogButtons } from './dialog-compat';
 import { requestInitialTab } from './initial-tab';
 import { warn } from './warnings';
-import {
-  Alert,
-  ALERT_KEY,
-  alertConsoleMessage,
-  checksOf,
-  runChecks,
-  stoppingError,
-  wantsAlerts,
-  withAlerts,
-} from './checks';
+import { Alert, alertConsoleMessage, checksOf, stoppingError, wantsAlerts, withAlerts } from './checks';
 import { isRegistrySource } from './registry';
 import { STRICT_OFF, StrictLevels } from './strict';
 import { isPageTemplate } from './page-template';
@@ -158,6 +148,19 @@ function sectionOf(element: Element): SectionPlace | undefined {
 // Past this many copies on one card a repeat is worth mentioning. Well above a house's
 // worth of lights, so an ordinary dashboard never sees it.
 const MANY_COPIES = 50;
+
+// The first element matching `selector` in `root` or any shadow root inside it.
+function findInside(root: Element | null, selector: string): Element | undefined {
+  const stack: (Element | ShadowRoot)[] = root ? [root] : [];
+  while (stack.length) {
+    const node = stack.pop() as Element | ShadowRoot;
+    const found = node.querySelector(selector);
+    if (found) return found;
+    if (node instanceof Element && node.shadowRoot) stack.push(node.shadowRoot);
+    node.querySelectorAll('*').forEach((child) => child.shadowRoot && stack.push(child.shadowRoot));
+  }
+  return undefined;
+}
 
 // Whether a Markdown card has been asked for, so `debug: report` can show its report formatted.
 let markdownRequested = false;
@@ -247,12 +250,14 @@ export abstract class DeclutteringElement extends LitElement {
     unredacted: boolean;
     text: string;
     nodes: ReportNode[];
+    outline: OutlineNode[];
   };
   @state() private _reportCopied = false;
   // `redact: false` (#217): the report keeps everything as the card has it.
   protected _reportUnredacted = false;
-  // How the report is shown on the card: as a folding tree (idea 51), formatted, or as its Markdown.
-  @state() private _reportView: 'tree' | 'formatted' | 'markdown' = 'tree';
+  // How the report is shown on the card: formatted, as a folding tree (idea 51), or as its Markdown.
+  // Formatted first, as it was before 2.9.0: it is the view people know the tables from (#412).
+  @state() private _reportView: 'tree' | 'formatted' | 'markdown' = 'formatted';
   // What is being looked for in the tree.
   @state() private _reportQuery = '';
   // What happened when Copy as GitHub issue was pressed.
@@ -621,11 +626,102 @@ export abstract class DeclutteringElement extends LitElement {
         padding: 2px 6px 2px 24px;
         word-break: break-word;
       }
+      .report .tree .table-wrap {
+        margin: 2px 0 6px 24px;
+        overflow-x: auto;
+      }
+      .report .tree table {
+        border-collapse: collapse;
+        font-size: 0.9em;
+      }
+      .report .tree th,
+      .report .tree td {
+        border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
+        padding: 3px 6px;
+        text-align: left;
+        vertical-align: top;
+        word-break: break-word;
+      }
+      .report .tree th {
+        /* A header wraps between words only; the box scrolls sideways when the words do not fit. */
+        word-break: normal;
+        overflow-wrap: normal;
+        hyphens: none;
+        font-weight: 500;
+        background: rgba(var(--rgb-primary-text-color, 0, 0, 0), 0.04);
+      }
       .report .tree .leaf.warn {
         color: var(--warning-color, #b26a00);
       }
       .report .tree pre {
         margin: 4px 0 8px 18px;
+      }
+      .report .outline {
+        margin: 4px 0 8px;
+        font-size: 0.9em;
+      }
+      .report .outline > summary {
+        cursor: pointer;
+        font-weight: 500;
+        padding: 4px 0;
+      }
+      .report .outline ul {
+        list-style: none;
+        margin: 0;
+        padding-inline-start: 14px;
+      }
+      .report .outline > ul {
+        padding-inline-start: 4px;
+      }
+      .report .outline li {
+        padding: 1px 0;
+        overflow-wrap: anywhere;
+      }
+      .report .outline li::before {
+        content: '–';
+        color: var(--secondary-text-color);
+        margin-inline-end: 6px;
+      }
+      .report .outline li.skipped::before {
+        content: '×';
+        color: var(--warning-color, #b26a00);
+      }
+      .report .outline li:has(> details)::before {
+        content: none;
+      }
+      .report .outline summary {
+        cursor: pointer;
+      }
+      .report .outline a {
+        color: var(--primary-color);
+        text-decoration: none;
+      }
+      .report .outline a:hover,
+      .report .outline a:focus-visible {
+        text-decoration: underline;
+      }
+      .report .outline .tag {
+        display: inline-block;
+        margin-inline-start: 4px;
+        padding: 0 5px;
+        border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
+        border-radius: 4px;
+        color: var(--secondary-text-color);
+        font-size: 0.85em;
+        line-height: 1.5;
+      }
+      .report .outline .why,
+      .report .outline .name {
+        color: var(--secondary-text-color);
+      }
+      .report .outline .why {
+        font-style: italic;
+        margin-inline-start: 4px;
+      }
+      .report .tree .jumped > summary,
+      .report .tree .leaf.jumped {
+        background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18);
+        transition: background 0.4s;
       }
       .report mark {
         background: var(--warning-color, #ffcc66);
@@ -815,7 +911,7 @@ export abstract class DeclutteringElement extends LitElement {
       return;
     }
     if (wantsAlerts(templateConfig)) variables = withAlerts(variables, alerts);
-    const content = this._alertOr(templateConfig, alerts) ?? thingContent(templateConfig);
+    const content = contentFor(templateConfig, alerts);
     this._forceReport(alerts, templateConfig);
     const unresolved: string[] = [];
     // Only a card that uses a template has variables to hand down; a template's own preview does not.
@@ -842,24 +938,19 @@ export abstract class DeclutteringElement extends LitElement {
         this._traceName(variables, templateConfig, templateName, instance),
       );
     const started = performance.now();
-    const built = applyOverride(
-      deepReplace(
-        variables,
-        templateConfig,
-        content,
-        templateName,
-        this._buildHass,
-        hush || this._saidFor(instance ?? templateConfig),
-        (names) => unresolved.push(...names),
-        0,
-        trace,
-        undefined,
-        false,
-        extras,
-      ),
+    const built = buildThing({
+      variables,
+      templateConfig,
+      content,
+      templateName,
+      hass: this._buildHass,
+      quiet: hush || this._saidFor(instance ?? templateConfig),
+      onUnresolved: (names) => unresolved.push(...names),
+      trace,
+      extras,
       instance,
-      thingType,
-    );
+      kind: thingType,
+    });
     const styles = this._resolveStyles(templateConfig, variables, cardStyle, templateName, trace);
     // Every card's build is noted for the health panel; a template's own preview is not a card.
     if (instance) this._noteBuild(templateName ?? '', instance, 1, started);
@@ -1050,6 +1141,7 @@ export abstract class DeclutteringElement extends LitElement {
       label: this._traceLabel ?? traceLabel(this._templateName ?? ''),
       chain: this._traceParents(),
       at: this._tracePlace?.at,
+      ...(this._traceRoot ? { path: this._traceRoot.path } : {}),
       ms: performance.now() - started,
       sections,
       template: { name: this._templateName ?? '', config: withoutStamps(templateConfig) },
@@ -1123,7 +1215,9 @@ export abstract class DeclutteringElement extends LitElement {
       },
       this._hass,
     );
-    this._reportCache = { result, error: this._error, unredacted, text, nodes };
+    // Redacted as the tree is: the names in it are the same names (#428).
+    const outline = reportOutline(result.reports, this._hass, unredacted ? undefined : treeRedactor(result.reports));
+    this._reportCache = { result, error: this._error, unredacted, text, nodes, outline };
     return text;
   }
 
@@ -1160,18 +1254,139 @@ export abstract class DeclutteringElement extends LitElement {
   private _renderNode(node: ReportNode): TemplateResult {
     const meta = node.meta ? html`<small>${this._marked(node.meta)}</small>` : '';
     if (node.kind === 'leaf') {
-      return html`<div class="leaf ${node.warn ? 'warn' : ''}">${this._marked(node.title)} ${meta}</div>`;
+      return html`<div id=${anchorId(node.id)} class="leaf ${node.warn ? 'warn' : ''}">
+        ${this._marked(node.title)} ${meta}
+      </div>`;
+    }
+    if (node.kind === 'table') {
+      return html`<div class="table-wrap" tabindex="0">
+        <table>
+          <thead>
+            <tr>
+              ${(node.columns ?? []).map((column) => html`<th>${this._marked(column)}</th>`)}
+            </tr>
+          </thead>
+          <tbody>
+            ${(node.rows ?? []).map(
+              (row) =>
+                html`<tr>
+                  ${row.map((cell) => html`<td>${this._marked(cell)}</td>`)}
+                </tr>`,
+            )}
+          </tbody>
+        </table>
+      </div>`;
     }
     if (node.kind === 'code') {
-      return html`<details ?open=${node.open === true}>
+      return html`<details id=${anchorId(node.id)} ?open=${node.open === true}>
         <summary>${this._marked(node.title)} ${meta}</summary>
-        <pre>${this._marked(node.text ?? '')}</pre>
+        <pre tabindex="0">${this._marked(node.text ?? '')}</pre>
       </details>`;
     }
-    return html`<details class=${node.kind} ?open=${node.open === true}>
+    return html`<details id=${anchorId(node.id)} class=${node.kind} ?open=${node.open === true}>
       <summary>${this._marked(node.title)} ${meta}</summary>
       ${(node.children ?? []).map((child) => this._renderNode(child))}
     </details>`;
+  }
+
+  /*
+   * The outline (#428) at the top of the tree: one line per card and fill, a repeat's copies
+   * folded, each name a link to its part of the tree. The formatted view has the same outline
+   * in its Markdown, whose links _onFormattedClick follows.
+   */
+  private _renderOutline(): TemplateResult | string {
+    const nodes = this._reportText === undefined ? [] : (this._reportCache?.outline ?? []);
+    if (!nodes.length || !nodes[0].children.length) return '';
+    return html`<details class="outline" open>
+      <summary>${localize('report.outline', undefined, this._hass)}</summary>
+      <ul>
+        ${nodes.map((node) => this._renderOutlineNode(node))}
+      </ul>
+    </details>`;
+  }
+
+  private _renderOutlineNode(node: OutlineNode): TemplateResult {
+    const name = node.copy ? `${node.name} ${node.copy}` : node.name;
+    const target = node.target;
+    const label = target
+      ? html`<a
+          href="#${anchorId(target)}"
+          title=${localize('report.outline_jump', undefined, this._hass)}
+          @click=${(event: Event): void => {
+            event.preventDefault();
+            this._jumpTo(target);
+          }}
+          >${name}</a
+        >`
+      : html`<span class="name">${name}</span>`;
+    const line = html`${label}${outlineTags(node, this._hass).map((tag) => html` <span class="tag">${tag}</span>`)}${
+      node.skipped ? html` <span class="why">${node.skipped}</span>` : ''
+    }`;
+    const children = node.children.map((child) => this._renderOutlineNode(child));
+    const skipped = node.skipped ? 'skipped' : '';
+    if (node.copies !== undefined && children.length) {
+      return html`<li class=${skipped}>
+        <details>
+          <summary>${line}</summary>
+          <ul>
+            ${children}
+          </ul>
+        </details>
+      </li>`;
+    }
+    return html`<li class=${skipped}>
+      ${line}${
+        children.length
+          ? html`<ul>
+              ${children}
+            </ul>`
+          : ''
+      }
+    </li>`;
+  }
+
+  // A link in the formatted view's outline goes to its anchor there, not to the page's address.
+  private _onFormattedClick(event: Event): void {
+    const link = event
+      .composedPath()
+      .find((node): node is HTMLAnchorElement => node instanceof HTMLAnchorElement && !!node.getAttribute('href'));
+    const href = link?.getAttribute('href') ?? '';
+    if (!href.startsWith('#dcp-')) return;
+    event.preventDefault();
+    this._jumpTo(href.slice('#dcp-'.length));
+  }
+
+  /*
+   * Shows one part of the report: opens every fold around it, and the part itself when it is
+   * one, and scrolls it into view. A search that hid it is cleared first.
+   */
+  private async _jumpTo(id: string): Promise<void> {
+    const root = this.shadowRoot;
+    if (!root) return;
+    let target: Element | null | undefined;
+    if (this._reportView === 'tree') {
+      target = root.getElementById(anchorId(id));
+      if (!target && this._reportQuery) {
+        this._reportQuery = '';
+        await this.updateComplete;
+        target = root.getElementById(anchorId(id));
+      }
+    } else if (this._reportView === 'formatted') {
+      target = findInside(root.querySelector('ha-markdown'), `a[title="${anchorId(id)}"]`);
+    }
+    if (!target) return;
+    if (target instanceof HTMLDetailsElement) target.open = true;
+    for (let node: Node | null = target.parentNode; node && node !== root;) {
+      if (node instanceof HTMLDetailsElement) node.open = true;
+      node = node instanceof ShadowRoot ? node.host : node.parentNode;
+    }
+    target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    // Marked for a moment in the tree, so the eye finds where it landed.
+    if (this._reportView === 'tree') {
+      const shown = target;
+      shown.classList.add('jumped');
+      setTimeout(() => shown.classList.remove('jumped'), 1600);
+    }
   }
 
   private _renderTree(): TemplateResult {
@@ -1184,6 +1399,7 @@ export abstract class DeclutteringElement extends LitElement {
       },
     });
     return html`
+      ${this._renderOutline()}
       <div class="search">
         ${field}
         <span role="status" aria-live="polite">
@@ -1239,7 +1455,8 @@ export abstract class DeclutteringElement extends LitElement {
    * the card helpers for one to load it, and shows the source until it has.
    */
   private _renderFormatted(text: string): TemplateResult {
-    if (customElements.get('ha-markdown')) return html`<ha-markdown class="formatted" .content=${text}></ha-markdown>`;
+    if (customElements.get('ha-markdown'))
+      return html`<ha-markdown class="formatted" .content=${text} @click=${this._onFormattedClick}></ha-markdown>`;
     if (!markdownRequested) {
       markdownRequested = true;
       HELPERS?.then((helpers: { createCardElement: (config: unknown) => unknown }) =>
@@ -1247,7 +1464,7 @@ export abstract class DeclutteringElement extends LitElement {
       ).catch(() => {});
     }
     customElements.whenDefined('ha-markdown').then(() => this.requestUpdate());
-    return html`<pre>${text}</pre>`;
+    return html`<pre tabindex="0">${text}</pre>`;
   }
 
   /*
@@ -1290,7 +1507,7 @@ export abstract class DeclutteringElement extends LitElement {
             ? html`<details open>
                 <summary>${localize('report.show', undefined, this._hass)}</summary>
                 <div class="actions">
-                  ${(['tree', 'formatted', 'markdown'] as const).map(
+                  ${(['formatted', 'tree', 'markdown'] as const).map(
                     (view) =>
                       html`<ha-button
                         class="view"
@@ -1325,7 +1542,7 @@ export abstract class DeclutteringElement extends LitElement {
                   this._reportView === 'tree'
                     ? this._renderTree()
                     : this._reportView === 'markdown'
-                      ? html`<pre>${text}</pre>`
+                      ? html`<pre tabindex="0">${text}</pre>`
                       : this._renderFormatted(text)
                 }
               </details>`
@@ -1368,29 +1585,15 @@ export abstract class DeclutteringElement extends LitElement {
     instance: DeclutteringCardConfig,
   ): Alert[] {
     if (!checksOf(templateConfig).length) return [];
-    const extras = this._buildExtras();
     // Before Home Assistant is here an `exists` is a no, and a check reading one would fail
     // for nothing. A template asking Home Assistant is built again once it is, so it waits.
-    if (!this._hass && usesResolver(templateConfig, extras.itemTemplates)) return [];
-    const alerts = runChecks(
+    const alerts = templateAlerts(
+      variables,
       templateConfig,
       templateName,
-      (content) =>
-        deepReplace(
-          variables,
-          templateConfig,
-          content,
-          templateName,
-          this._buildHass,
-          true,
-          undefined,
-          0,
-          undefined,
-          undefined,
-          false,
-          extras,
-        ),
+      this._buildHass,
       this._hass,
+      this._buildExtras(),
     );
     if (hush) return alerts;
     const said = this._saidFor(instance);
@@ -1412,9 +1615,7 @@ export abstract class DeclutteringElement extends LitElement {
 
   // The template's `alert:`, built in place of its content while a warning or an error stands.
   private _alertOr(templateConfig: TemplateConfig, alerts: Alert[]): unknown {
-    const alert = (templateConfig as Record<string, unknown>)[ALERT_KEY];
-    if (!alert || typeof alert !== 'object' || Array.isArray(alert)) return undefined;
-    return alerts.some((each) => each.level !== 'info') ? alert : undefined;
+    return alertContent(templateConfig, alerts);
   }
 
   /*
@@ -1622,9 +1823,24 @@ export abstract class DeclutteringElement extends LitElement {
         id ? (result): void => this._showReport(id, result) : undefined,
       );
     }
+    /*
+     * #411: a rebuild that comes out the same - a card following a camera's attributes, whose
+     * access token alone moved - keeps the card it already has. Making a new one would
+     * reconnect a camera's stream, or reset a card's own state, for nothing.
+     */
+    const unchanged =
+      !!this._thing &&
+      !this._debug &&
+      this._thingType === thingType &&
+      this._style === styles &&
+      sameConfig(this._thingConfig, stamped);
     this._style = styles;
     this._thingConfig = stamped;
     this._thingType = thingType;
+    if (unchanged) {
+      this._afterResolved(stamped);
+      return;
+    }
     DeclutteringElement._createThing(stamped, thingType, (thing: LovelaceThing) => {
       if (this._thingConfig === stamped) {
         this._setThing(
@@ -1788,7 +2004,7 @@ export abstract class DeclutteringElement extends LitElement {
       const alerts = this._runChecks(variables, template, name, hush, config);
       return {
         variables: wantsAlerts(template) ? withAlerts(variables, alerts) : variables,
-        content: this._alertOr(template, alerts) ?? thingContent(template),
+        content: contentFor(template, alerts),
         alerts,
       };
     });
@@ -1834,28 +2050,23 @@ export abstract class DeclutteringElement extends LitElement {
       const haNames = isRegistrySource(config.for_each_from)
         ? new Set(ownVariables(item).map((entry) => Object.keys(entry)[0]))
         : undefined;
-      const built = applyOverride(
-        deepReplace(
-          variables,
-          template,
-          content,
-          name,
-          this._buildHass,
-          hush || this._saidFor(config),
-          this._libraryUnsettled
-            ? (names: string[]) => {
-                if (names.length) missed = true;
-              }
-            : undefined,
-          0,
-          trace,
-          undefined,
-          false,
-          { ...this._buildExtras(), haNames },
-        ),
-        config,
-        repeatKind,
-      );
+      const built = buildThing({
+        variables,
+        templateConfig: template,
+        content,
+        templateName: name,
+        hass: this._buildHass,
+        quiet: hush || this._saidFor(config),
+        onUnresolved: this._libraryUnsettled
+          ? (names: string[]) => {
+              if (names.length) missed = true;
+            }
+          : undefined,
+        trace,
+        extras: { ...this._buildExtras(), haNames },
+        instance: config,
+        kind: repeatKind,
+      });
       if (trace) {
         const copyName = this._traceName(variables, template, name, config);
         const copy = localize('trace.copy', { number: index + 1, count: shown.length }, this._hass);
@@ -2141,9 +2352,7 @@ export abstract class DeclutteringElement extends LitElement {
    * one of several in the space, and the rows describe all of them together.
    */
   protected _withGridOptions(thingType: LovelaceThingType, thingConfig: LovelaceThingConfig): LovelaceThingConfig {
-    if (thingType !== 'card' || this._gridOptions === undefined) return thingConfig;
-    if (!thingConfig || typeof thingConfig !== 'object' || 'grid_options' in thingConfig) return thingConfig;
-    return { ...thingConfig, grid_options: this._gridOptions };
+    return withGridOptions(thingType, thingConfig, this._gridOptions);
   }
 
   /*
@@ -2617,5 +2826,15 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     if (!this._thing && this._waiting)
       return skeletonRows(this._waitingGrid ?? this._gridOptions) ?? MASONRY_WAITING_SIZE;
     return this._thing && this._thingType === 'card' ? (this._thing as LovelaceCard).getCardSize() : 1;
+  }
+}
+
+/** Whether two built configs say the same thing - written by the build, so plain JSON in a fixed order. */
+function sameConfig(before: unknown, after: unknown): boolean {
+  if (before === undefined) return false;
+  try {
+    return JSON.stringify(before) === JSON.stringify(after);
+  } catch {
+    return false;
   }
 }

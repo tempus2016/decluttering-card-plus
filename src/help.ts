@@ -46,6 +46,7 @@ const PAGES: Record<string, string> = {
   checks: 'Troubleshooting.html',
   alert: 'Troubleshooting.html',
   rebuild_on: 'Using-Templates.html',
+  rebuild_on_watch: 'Using-Templates.html',
   debug: 'Troubleshooting.html',
   strict: 'Using-Templates.html',
   fit: 'Styling.html',

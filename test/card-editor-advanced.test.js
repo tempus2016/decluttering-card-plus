@@ -10,6 +10,8 @@ const {
   advancedSchema,
   onErrorCard,
   withOnErrorCard,
+  rebuildPlaceholders,
+  withoutRebuildEntry,
 } = require('../.test-build/card-editor/advanced');
 
 const base = { type: 'custom:decluttering-card-plus', template: 'tile' };
@@ -20,6 +22,7 @@ check('an untouched card shows the defaults', advancedData(base), {
   on_error_mode: 'show',
   strict_errors: 'ignore',
   strict_warnings: 'ignore',
+  rebuild_on_watch: 'default',
   debug: 'off',
 });
 
@@ -32,6 +35,7 @@ check(
     on_error: { type: 'markdown', content: 'x' },
     strict: true,
     rebuild_on: 'light.a',
+    rebuild_on_watch: 'read',
     debug: 'report',
     name: 'Kitchen tile',
     inherit_variables: true,
@@ -44,6 +48,7 @@ check(
     strict_errors: 'fail',
     strict_warnings: 'ignore',
     rebuild_on: ['light.a'],
+    rebuild_on_watch: 'read',
     debug: 'report',
     name: 'Kitchen tile',
     inherit_variables: true,
@@ -214,6 +219,7 @@ check(
     'strict_errors',
     'strict_warnings',
     'rebuild_on',
+    'rebuild_on_watch',
     'debug',
     'name',
     'inherit_variables',
@@ -243,12 +249,19 @@ check('strict: true shows as errors fail, warnings ignore', advancedData({ ...ba
   on_error_mode: 'show',
   strict_errors: 'fail',
   strict_warnings: 'ignore',
+  rebuild_on_watch: 'default',
   debug: 'off',
 });
 check(
   'the level-by-level form is read into both fields',
   advancedData({ ...base, strict: { errors: 'report', warnings: 'notice' } }),
-  { on_error_mode: 'show', strict_errors: 'report', strict_warnings: 'notice', debug: 'off' },
+  {
+    on_error_mode: 'show',
+    strict_errors: 'report',
+    strict_warnings: 'notice',
+    rebuild_on_watch: 'default',
+    debug: 'off',
+  },
 );
 check(
   'errors fail and warnings ignore is still written strict: true',
@@ -277,4 +290,120 @@ check(
     ['ignore', 'report', 'fail'],
     ['ignore', 'notice', 'report'],
   ],
+);
+
+// #411: a placeholder in rebuild_on cannot be drawn in the entity picker, and is kept as written.
+check(
+  'a placeholder in rebuild_on survives the form',
+  applyAdvanced(
+    { ...base, rebuild_on: ['sun.sun', '[[camera]]'] },
+    { on_error_mode: 'show', debug: 'off', rebuild_on: ['sun.sun', 'input_select.mode'] },
+  ).rebuild_on,
+  ['sun.sun', 'input_select.mode', '[[camera]]'],
+);
+check(
+  'a placeholder on its own survives an emptied picker',
+  applyAdvanced({ ...base, rebuild_on: '[[camera]]' }, { on_error_mode: 'show', debug: 'off', rebuild_on: [] })
+    .rebuild_on,
+  ['[[camera]]'],
+);
+
+// #411: the placeholders are listed beside the picker, counted, and can be taken out one by one.
+check('the placeholders of a mixed list', rebuildPlaceholders({ ...base, rebuild_on: ['sun.sun', '[[camera]]'] }), [
+  '[[camera]]',
+]);
+check('a placeholder written on its own', rebuildPlaceholders({ ...base, rebuild_on: '[[camera]]' }), ['[[camera]]']);
+check('entity ids are not placeholders', rebuildPlaceholders({ ...base, rebuild_on: 'sun.sun' }), []);
+check('no rebuild_on, no placeholders', rebuildPlaceholders(base), []);
+check('a placeholder alone counts as rebuild_on set', advancedCount({ ...base, rebuild_on: '[[camera]]' }), 1);
+check('entities and placeholders count once', advancedCount({ ...base, rebuild_on: ['sun.sun', '[[camera]]'] }), 1);
+check('the template rebuild_on counts too', advancedCount(base, { card: {}, rebuild_on: '[[camera]]' }), 1);
+check(
+  'the card and the template still count once',
+  advancedCount({ ...base, rebuild_on: 'sun.sun' }, { card: {}, rebuild_on: ['[[camera]]'] }),
+  1,
+);
+check('a template without rebuild_on counts nothing', advancedCount(base, { card: {} }), 0);
+check(
+  'removing a placeholder keeps the rest in order',
+  withoutRebuildEntry({ ...base, rebuild_on: ['sun.sun', '[[camera]]', 'light.a'] }, '[[camera]]').rebuild_on,
+  ['sun.sun', 'light.a'],
+);
+check(
+  'removing the last entry removes the key',
+  'rebuild_on' in withoutRebuildEntry({ ...base, rebuild_on: '[[camera]]' }, '[[camera]]'),
+  false,
+);
+check(
+  'removing leaves the config it was given alone',
+  (() => {
+    const config = { ...base, rebuild_on: ['[[camera]]'] };
+    withoutRebuildEntry(config, '[[camera]]');
+    return config.rebuild_on;
+  })(),
+  ['[[camera]]'],
+);
+
+// #411 opt-in: rebuild_on_watch, and entries written as {entity, watch}, kept through the form.
+const watching = { entity: 'camera.front', watch: ['state', 'camera_name'] };
+check(
+  'a watching entry is listed beside the picker',
+  rebuildPlaceholders({ ...base, rebuild_on: ['sun.sun', watching] }),
+  [watching],
+);
+check('the picker shows only the plain ids', advancedData({ ...base, rebuild_on: ['sun.sun', watching] }).rebuild_on, [
+  'sun.sun',
+]);
+check(
+  'a change on the tab keeps a watching entry',
+  applyAdvanced(
+    { ...base, rebuild_on: ['sun.sun', watching] },
+    advancedData({ ...base, rebuild_on: ['sun.sun', watching] }),
+  ).rebuild_on,
+  ['sun.sun', watching],
+);
+check(
+  'removing a watching entry',
+  withoutRebuildEntry({ ...base, rebuild_on: ['sun.sun', watching] }, watching).rebuild_on,
+  ['sun.sun'],
+);
+check('no rebuild_on_watch shows the default', advancedData(base).rebuild_on_watch, 'default');
+check('read shows as read', advancedData({ ...base, rebuild_on_watch: 'read' }).rebuild_on_watch, 'read');
+check('all shows as all', advancedData({ ...base, rebuild_on_watch: 'all' }).rebuild_on_watch, 'all');
+check('a list shows as custom', advancedData({ ...base, rebuild_on_watch: ['state'] }).rebuild_on_watch, 'custom');
+const watchForm = (config, mode) => applyAdvanced(config, { ...advancedData(config), rebuild_on_watch: mode });
+check(
+  'the default writes nothing',
+  'rebuild_on_watch' in watchForm({ ...base, rebuild_on_watch: 'read' }, 'default'),
+  false,
+);
+check('read is written', watchForm(base, 'read').rebuild_on_watch, 'read');
+check('all is written', watchForm(base, 'all').rebuild_on_watch, 'all');
+check('a written list is kept', watchForm({ ...base, rebuild_on_watch: ['state', 'x'] }, 'custom').rebuild_on_watch, [
+  'state',
+  'x',
+]);
+check(
+  'an untouched card writes no rebuild_on_watch',
+  'rebuild_on_watch' in applyAdvanced(base, advancedData(base)),
+  false,
+);
+check('rebuild_on_watch counts', advancedCount({ ...base, rebuild_on_watch: 'read' }), 1);
+const watchSchema = (config, template) =>
+  advancedSchema(undefined, config, template).find((entry) => entry.name === 'rebuild_on_watch').selector.select
+    .options;
+check(
+  'the watch options',
+  watchSchema(base).map((option) => option.value),
+  ['default', 'read', 'all'],
+);
+check(
+  'a written list adds its own option',
+  watchSchema({ ...base, rebuild_on_watch: ['state'] }).map((o) => o.value),
+  ['default', 'read', 'all', 'custom'],
+);
+check(
+  'the default says what the template says',
+  watchSchema(base, { card: {}, rebuild_on_watch: 'read' })[0].label.includes('read'),
+  true,
 );

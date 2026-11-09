@@ -7,6 +7,7 @@ export default [
       'dist/**',
       'docs-theme/assets/js/builder.js',
       'docs-theme/assets/js/playground.js',
+      'docs-theme/assets/js/try-template.js',
       'bin/cli-lint.cjs',
       '.test-build/**',
       '.dom-build/**',

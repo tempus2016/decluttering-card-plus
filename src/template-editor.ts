@@ -35,6 +35,7 @@ import deepReplace from './deep-replace';
 import { localize, onLanguageLoaded } from './localize';
 import { sameConfig } from './undo';
 import { definedNames, lintTemplate } from './lint';
+import { functionNamesOf, isFunctionTemplate } from './functions';
 import { getThingType, isVariablesShape, loadCardEditorPicker, previewExamples, setOrDelete } from './shared';
 import {
   THING_STUBS,
@@ -55,6 +56,14 @@ import './template-editor/field-menus';
 import './template-editor/code-editor-hooks';
 import './preview-frame';
 import './template-editor/usages-tab';
+
+/*
+ * What the template defines, for the Type field: a card, badge, row or element - or a function
+ * (#307), which has none of them. Read as a card otherwise, so a new template starts as one.
+ */
+function templateKind(config: DeclutteringTemplateConfig): string {
+  return getThingType(config) ?? (isFunctionTemplate(config) ? 'function' : 'card');
+}
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
   @state() private _config?: DeclutteringTemplateConfig;
@@ -141,6 +150,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
               { value: 'badge', label: localize('template_editor.type_badge') },
               { value: 'row', label: localize('template_editor.type_row') },
               { value: 'element', label: localize('template_editor.type_element') },
+              { value: 'function', label: localize('template_editor.type_function') },
             ],
           },
         },
@@ -196,7 +206,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
 
     const data = {
       template: this._config.template,
-      thingType: getThingType(this._config) ?? 'card',
+      thingType: templateKind(this._config),
       description: this._config.description,
       category: this._config.category,
     };
@@ -306,6 +316,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                     .hass=${this.hass}
                     .variables=${this._config.variables}
                     .shared=${collectSharedDeclarations(this._savedLovelace)}
+                    .texts=${this._resolvedTexts()}
                     @value-changed=${this._declarationsChanged}
                   ></decluttering-declarations-editor>
                   <div class="field-row">
@@ -481,12 +492,31 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
    * declarations and defaults - are not this template's to declare, so they are read off
    * the template as the dashboard would resolve it.
    */
+  /*
+   * The texts a `[[$key]]` in this template reads (#392): its own `language:` block over the
+   * ones it inherits, as the dashboard would resolve it.
+   */
+  private _resolvedTexts(): unknown {
+    if (!this._config) return undefined;
+    const resolved = collectTemplates(this._savedLovelace, undefined, this._config)[this._config.template];
+    return resolved ?? this._config;
+  }
+
   private _renderLint(): TemplateResult {
     if (!this._config) return html``;
     const ll = this._savedLovelace;
     const resolved = collectTemplates(ll, undefined, this._config)[this._config.template];
     // Item templates are names a placeholder may start with, and the dashboard's to define.
-    const findings = lintTemplate(this._config, [...definedNames(resolved), ...Object.keys(itemTemplatesOf(ll))]);
+    const items = itemTemplatesOf(ll);
+    // The template being written counts as a function as soon as it has a function: (#307).
+    const functions = [
+      ...functionNamesOf(items),
+      ...(isFunctionTemplate(this._config) && this._config.template ? [this._config.template] : []),
+    ];
+    const findings = lintTemplate(this._config, [...definedNames(resolved), ...Object.keys(items)], {
+      name: this._config.template,
+      functions,
+    });
     if (!findings.length) return html``;
     return html`${findings.map(
       (finding) =>
@@ -994,12 +1024,20 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     // one field; the rest is read off the template as it stands.
     const data = {
       template: this._config.template,
-      thingType: getThingType(this._config) ?? 'card',
+      thingType: templateKind(this._config),
       description: this._config.description,
       category: this._config.category,
       ...(ev.detail.value as Record<string, unknown>),
     };
     const config = { ...this._config, template: data.template };
+    // A function (#307) has no card: picked, it gets a body of its own; left, it loses it.
+    const wasFunction = templateKind(this._config) === 'function';
+    const loose = config as unknown as Record<string, unknown>;
+    if (data.thingType === 'function' && !isFunctionTemplate(config)) loose.function = '[[value]]';
+    if (wasFunction && data.thingType !== 'function') {
+      delete loose.function;
+      delete loose.parameters;
+    }
     // Unlike the stubs below, these replace whatever is already there rather than only
     // filling in what is absent.
     setOrDelete(config, 'description', data.description);

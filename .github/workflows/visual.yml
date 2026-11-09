@@ -1,0 +1,180 @@
+name: Screens
+
+# Visual regression (idea 62): a Home Assistant in a service container, the demo dashboard
+# written into it, every view screenshotted at a desktop and a phone width with the card built
+# from this commit, and each image compared with the one kept in test/visual/baseline-ci/.
+#
+#   baseline present, screens match   the job passes
+#   baseline present, a screen drifts  the job fails; before, after and diff images are in the
+#                                      "screens" artifact
+#   no baseline (or a screen missing)  the job passes with a warning annotation and a job summary
+#                                      saying to commit the captures in the "screens" artifact
+#
+# Why a warning and not a failure or a neutral result: a workflow job cannot end neutral (that
+# needs a check run written through the Checks API with checks: write, which pull requests from
+# forks never get), and failing would turn every pull request red until a baseline lands. The
+# warning shows on the run and on the pull request's checks, and the summary says what to do.
+#
+# This job is not a required check, and must not become one while the baseline is missing.
+# How to make or refresh the baseline: test/visual/README.md.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'examples/demo-dashboard.yaml'
+      - 'test/visual/**'
+      - 'scripts/visual.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/visual.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  screens:
+    name: Screens
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # No volume: the container keeps its /config to itself. Mounting a folder of the
+      # workspace made Docker create it as root before the checkout ran, and nothing here
+      # needs to reach into the container's files - the card is served to the browser from
+      # dist/ by the script, not from Home Assistant's www/. Pinned, because the baseline is
+      # only good for the version it was taken on; bump it together with the baseline.
+      homeassistant:
+        image: ghcr.io/home-assistant/home-assistant:2026.11.0
+        ports:
+          - 8123:8123
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.x
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Install a Chromium for Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Build the card
+        run: npm run rollup
+
+      - name: Wait for Home Assistant
+        shell: bash
+        run: |
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:8123/api/onboarding >/dev/null; then
+              echo "Home Assistant answered after about $((i * 5)) s"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Home Assistant did not answer on port 8123 within 7.5 minutes."
+          docker logs --tail 100 "${{ job.services.homeassistant.id }}" || true
+          exit 1
+
+      # A fresh Home Assistant has no user. Onboarding makes one and hands back a code that
+      # becomes a token. The token is kept in a file under RUNNER_TEMP rather than a step
+      # output, so it never leaves the runner.
+      - name: Onboard and make a token
+        shell: bash
+        run: |
+          set -euo pipefail
+          CODE=$(curl -sf -X POST http://localhost:8123/api/onboarding/users \
+            -H 'Content-Type: application/json' \
+            -d '{"client_id":"http://localhost:8123/","name":"screens","username":"screens","password":"screens-password-1","language":"en"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["auth_code"])')
+          TOKEN=$(curl -sf -X POST http://localhost:8123/auth/token \
+            -d "grant_type=authorization_code&code=$CODE&client_id=http://localhost:8123/" \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+          echo "::add-mask::$TOKEN"
+          curl -sf -X POST http://localhost:8123/api/onboarding/core_config -H "Authorization: Bearer $TOKEN" >/dev/null || true
+          curl -sf -X POST http://localhost:8123/api/onboarding/analytics -H "Authorization: Bearer $TOKEN" >/dev/null || true
+          curl -sf -X POST http://localhost:8123/api/onboarding/integration -H "Authorization: Bearer $TOKEN" \
+            -H 'Content-Type: application/json' -d '{"client_id":"http://localhost:8123/","redirect_uri":"http://localhost:8123/"}' >/dev/null || true
+          umask 077
+          printf '%s' "$TOKEN" > "$RUNNER_TEMP/ha-token"
+
+      # The dashboard asks for /local/decluttering-card-plus.js; the script answers that
+      # request in the browser with dist/, so nothing is copied into Home Assistant.
+      - name: Register the card as a resource
+        shell: bash
+        run: |
+          VISUAL_TOKEN=$(cat "$RUNNER_TEMP/ha-token") node - <<'EOF'
+          const sock = new WebSocket('ws://localhost:8123/api/websocket');
+          sock.addEventListener('message', (ev) => {
+            const msg = JSON.parse(ev.data);
+            if (msg.type === 'auth_required') sock.send(JSON.stringify({ type: 'auth', access_token: process.env.VISUAL_TOKEN }));
+            else if (msg.type === 'auth_invalid') { console.error('token rejected'); process.exit(1); }
+            else if (msg.type === 'auth_ok') sock.send(JSON.stringify({ id: 1, type: 'lovelace/resources/create', res_type: 'module', url: '/local/decluttering-card-plus.js' }));
+            else if (msg.id === 1) { console.log('resource', msg.success ? 'created' : JSON.stringify(msg.error)); sock.close(); process.exit(msg.success ? 0 : 1); }
+          });
+          EOF
+
+      # Exit codes of scripts/visual.js: 0 all match, 1 a screen differs, 2 the run broke,
+      # 3 nothing differs but screens have no baseline yet.
+      - name: Render every view and compare with the baseline
+        shell: bash
+        env:
+          VISUAL_HA: http://localhost:8123
+        run: |
+          set +e
+          VISUAL_TOKEN=$(cat "$RUNNER_TEMP/ha-token") npm run test:visual -- --local --baseline test/visual/baseline-ci
+          code=$?
+          set -e
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          case "$code" in
+            0)
+              echo "### Screens match the baseline" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            1)
+              {
+                echo "### Screens differ from the baseline"
+                echo
+                echo "The before, after and diff images are in the **screens** artifact of [this run]($run_url)."
+                echo "If the change is intended, accept it as described in \`test/visual/README.md\`."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::One or more screens differ from test/visual/baseline-ci/. See the screens artifact."
+              exit 1
+              ;;
+            3)
+              {
+                echo "### No baseline yet: nothing was compared"
+                echo
+                echo "Some or all screens have no image in \`test/visual/baseline-ci/\`, so this run could not check them."
+                echo "Its captures are in the **screens** artifact of [this run]($run_url), under \`actual/\`."
+                echo "Look through them, then commit them as the baseline:"
+                echo
+                echo '```'
+                echo 'npm run test:visual -- --accept <unzipped screens folder> --baseline test/visual/baseline-ci'
+                echo 'git add test/visual/baseline-ci/'
+                echo '```'
+                echo
+                echo "Until then this job passes with a warning and checks nothing it has no image for."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning title=No visual baseline::Screens were captured but not compared: test/visual/baseline-ci/ has no image for them. Commit the captures from the screens artifact (see the job summary)."
+              ;;
+            *)
+              echo "::error::The visual check could not run (exit code $code)."
+              exit "$code"
+              ;;
+          esac
+
+      - name: Keep the captures and any diff images
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screens
+          path: test/visual/out/
+          if-no-files-found: ignore

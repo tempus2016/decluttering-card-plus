@@ -11,6 +11,7 @@
     "test": "tsc -p tsconfig.test.json && node --test \"test/*.test.js\"",
     "coverage": "tsc -p tsconfig.test.json && c8 node --test \"test/*.test.js\"",
     "test:dom": "node scripts/dom-test.js",
+    "test:visual": "node scripts/visual.js",
     "schema": "node scripts/build-schema.js"
   },
   "overrides": {
@@ -49,7 +50,9 @@
     "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.7",
+    "pixelmatch": "^6.0.0",
     "playwright": "^1.64.1",
+    "pngjs": "^7.0.0",
     "prettier": "^3.9.10",
     "rollup": "^4.67.2",
     "rollup-plugin-serve": "^3.0.0",

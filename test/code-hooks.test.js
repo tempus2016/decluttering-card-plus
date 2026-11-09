@@ -100,3 +100,10 @@ check(
   check('button-card JavaScript with brackets is scanned quickly', Date.now() - started < 500, true);
   check('and the real placeholder after it is still found', found, ['[[entity]]']);
 }
+
+// #429: `pick:` is offered after a `|`, with a sample argument after its colon.
+check(
+  'pick: is in the step list and has a sample argument',
+  [orderedSteps().includes('pick:'), argumentValues('pick')],
+  [true, ['name=value,icon']],
+);

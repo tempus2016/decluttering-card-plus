@@ -2,6 +2,7 @@ import { LitElement, html, TemplateResult, css, CSSResult, PropertyValues, nothi
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig } from '../types';
+import { hassLanguage, translationEntries } from '../translations';
 import { Completion, PlaceholderSpan, SpanKind, completionsAt, placeholderSpans } from '../code-hooks';
 import { tryPlaceholderIn } from '../playground';
 import { exampleSets, exampleVariables } from '../examples';
@@ -404,6 +405,11 @@ export class DeclutteringCodeHooks extends LitElement {
       variables: getDeclarations(config),
       lets,
       shared: collectSharedDeclarations(this.lovelace),
+      translations: translationEntries(resolved, hassLanguage(this.hass)).map((entry) => {
+        const [name] = Object.keys(entry);
+        const value = entry[name];
+        return { key: name.slice(1), text: typeof value === 'string' ? value : JSON.stringify(value) };
+      }),
       sample: sampleEntity
         ? (step): string | undefined => {
             try {

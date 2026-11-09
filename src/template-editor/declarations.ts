@@ -19,6 +19,7 @@ import {
   withType,
 } from '../declarations-rows';
 import { localize } from '../localize';
+import { holdsLookup, translateText } from '../translations';
 import { DRAG_PATH } from './common';
 
 /*
@@ -158,6 +159,9 @@ export class DeclutteringDeclarationsEditor extends LitElement {
   @state() private _reorderedAsList = false;
   /** The dashboard's shared declarations, offered by "Take one from the dashboard". */
   @property({ attribute: false }) public shared: VariableDeclaration[] = [];
+
+  // The template whose `language:` texts (#392) a `[[$key]]` label is shown in, as the card editor will show it.
+  @property({ attribute: false }) public texts?: unknown;
 
   @state() private _open?: string;
   @state() private _asYaml = false;
@@ -338,6 +342,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
               .data=${this._rowData(row)}
               .schema=${this._rowSchema(row)}
               .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+              .computeHelper=${(s: FormSchemaEntry): string => this._translatedHelper(row, s.name)}
               @value-changed=${(ev: CustomEvent): void => this._rowChanged(ev, index)}
             ></ha-form>
             <div class="buttons">
@@ -373,6 +378,18 @@ export class DeclutteringDeclarationsEditor extends LitElement {
     </div>`;
   }
 
+  /*
+   * A label or description written as a lookup - `[[$vars.fb.name]]` (#392) - says under the
+   * field what the card editor will show for it in this user's language. Anything else has
+   * no helper, as before.
+   */
+  private _translatedHelper(row: DeclRow, field: string): string {
+    if (field !== 'label' && field !== 'description' && field !== 'group') return '';
+    const written = (row as unknown as Record<string, unknown>)[field];
+    if (typeof written !== 'string' || !holdsLookup(written)) return '';
+    return localize('declarations.translated', { text: translateText(written, this.texts, this.hass) }, this.hass);
+  }
+
   private _renderMore(row: DeclRow, index: number): TemplateResult {
     const data: Record<string, unknown> = {
       description: row.description,
@@ -393,6 +410,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
         .data=${data}
         .schema=${extraSchema(row, this.hass)}
         .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+        .computeHelper=${(s: FormSchemaEntry): string => this._translatedHelper(row, s.name)}
         @value-changed=${(ev: CustomEvent): void => this._moreChanged(ev, index)}
       ></ha-form>
       ${
@@ -448,7 +466,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
                 (declaration) =>
                   html`<li>
                     <a @click=${(): void => this._takeShared(declaration)}>${declaration.name}</a>
-                    ${declaration.label ? html` - ${declaration.label}` : nothing}
+                    ${declaration.label ? html` - ${translateText(declaration.label, this.texts, this.hass)}` : nothing}
                   </li>`,
               )}
             </ul>`

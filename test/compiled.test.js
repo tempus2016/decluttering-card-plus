@@ -22,9 +22,19 @@ check(
   ],
 );
 
-check('a chain with an unknown step is not a site, so it is left as text', splitSites('{"a":"[[x|nope]]"}'), [
-  '{"a":"[[x|nope]]"}',
+// Any name is a site's step now (#307): whether it is a function is the build's to say.
+check('a chain with a step of any name is a site', splitSites('{"a":"[[x|nope]]"}'), [
+  '{"a":',
+  { text: '"[[x|nope]]"', lead: '"', name: 'x', chain: 'nope', trail: '"' },
+  '}',
 ]);
+check(
+  'and a build with no such function leaves it as written',
+  deepReplace([{ x: 'v' }], {}, { a: '[[x|nope]]' }, undefined, undefined, true),
+  {
+    a: '[[x|nope]]',
+  },
+);
 
 const content = { type: 'tile', entity: '[[entity]]', name: '[[name|upper]] ([[area|slug]])', extra: '[[gone?]]' };
 const before = compileCount();

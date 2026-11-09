@@ -150,4 +150,14 @@ export default [
     },
     plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
   },
+  // "Try a template" (#427), the third docs-site tool, committed for the same reason.
+  {
+    input: 'src/try-template-page.ts',
+    output: {
+      file: './docs-theme/assets/js/try-template.js',
+      format: 'iife',
+      inlineDynamicImports: true,
+    },
+    plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
+  },
 ];

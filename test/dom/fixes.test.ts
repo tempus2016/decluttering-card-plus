@@ -120,3 +120,168 @@ describe('health badge', () => {
     await until(() => !badge.hasAttribute('hidden'), 3000, 'the badge back in edit mode');
   });
 });
+
+/*
+ * #411: rebuild_on written on the template, with a placeholder filled from the card's
+ * variables, lets the card read the entity's attribute and rebuild when it moves.
+ */
+describe('rebuild_on placeholders on the template (#411)', () => {
+  const withCamera = (name: string, updated: string): any => {
+    const hass = stubHass({ 'camera.front': 'idle' });
+    hass.states['camera.front'].attributes.camera_name = name;
+    hass.states['camera.front'].last_updated = updated;
+    return hass;
+  };
+  const camera = {
+    rebuild_on: '[[camera]]',
+    variables: [{ name: 'camera' }, { name: 'stream', default: '[[camera|attr:camera_name]]' }],
+    card: { type: 'markdown', content: 'stream [[stream]]' },
+  };
+
+  it('fills the attribute and follows it', async () => {
+    stubLovelace({ decluttering_templates: { camera }, views: [{ cards: [] }] });
+    const el = card({ template: 'camera', variables: [{ camera: 'camera.front' }] }, withCamera('Front_Door', '1'));
+    document.body.appendChild(el);
+    await until(() => inner(el)?.config?.content === 'stream Front_Door', 3000, 'the attribute');
+    el.hass = withCamera('Back_Door', '2');
+    await until(() => inner(el)?.config?.content === 'stream Back_Door', 3000, 'the rebuild');
+    el.remove();
+  });
+
+  it('reads nothing when the template does not name the entity', async () => {
+    const unlisted: Record<string, unknown> = { ...camera };
+    delete unlisted.rebuild_on;
+    stubLovelace({ decluttering_templates: { camera: unlisted }, views: [{ cards: [] }] });
+    const el = card({ template: 'camera', variables: [{ camera: 'camera.front' }] }, withCamera('Front_Door', '1'));
+    document.body.appendChild(el);
+    await until(() => !!inner(el)?.config?.content, 3000, 'a build');
+    expect(inner(el).config.content, 'left unfilled').not.to.contain('Front_Door');
+    el.remove();
+  });
+});
+
+/*
+ * #411: a camera's access token is refreshed every few minutes, which moves its last_updated,
+ * so a card reading the camera with attr: rebuilds. When that rebuild comes out the same, the
+ * card inside is kept - a new one would reconnect the stream for nothing.
+ */
+describe('a rebuild that builds the same card (#411)', () => {
+  const withCamera = (name: string, token: string, updated: string): any => {
+    const hass = stubHass({ 'camera.front': 'idle' });
+    hass.states['camera.front'].attributes.camera_name = name;
+    hass.states['camera.front'].attributes.access_token = token;
+    hass.states['camera.front'].last_updated = updated;
+    return hass;
+  };
+
+  it('keeps the card inside, and replaces it once the build changes', async () => {
+    stubLovelace({
+      decluttering_templates: {
+        camera: {
+          variables: [{ name: 'camera' }, { name: 'stream', default: '[[camera|attr:camera_name]]' }],
+          card: { type: 'markdown', content: 'stream [[stream]]' },
+        },
+      },
+      views: [{ cards: [] }],
+    });
+    const el = card(
+      { template: 'camera', rebuild_on: 'camera.front', variables: [{ camera: 'camera.front' }] },
+      withCamera('Front_Door', 'a', '1'),
+    );
+    document.body.appendChild(el);
+    await until(() => inner(el)?.config?.content === 'stream Front_Door', 3000, 'the first build');
+    const first = inner(el);
+    let builds = el._thingConfig;
+    el.hass = withCamera('Front_Door', 'b', '2');
+    // The rebuild runs after the debounce; it has run once the built config is a new object.
+    await until(() => el._thingConfig !== builds, 3000, 'the rebuild');
+    await settle(2);
+    expect(inner(el) === first, 'the same card is kept').to.equal(true);
+    builds = el._thingConfig;
+    el.hass = withCamera('Back_Door', 'b', '3');
+    await until(() => inner(el)?.config?.content === 'stream Back_Door', 3000, 'the changed build');
+    expect(inner(el) === first, 'a changed build gets a new card').to.equal(false);
+    el.remove();
+  });
+});
+
+/*
+ * #411, opt-in: a card that says what to watch compares only those parts of the state, so a
+ * camera's token refresh - which moves last_updated and access_token - builds nothing. The
+ * card above, which says nothing, still rebuilds on it.
+ */
+describe('rebuild_on that watches only what it reads (#411)', () => {
+  const withCamera = (name: string, token: string, updated: string): any => {
+    const hass = stubHass({ 'camera.front': 'idle' });
+    hass.states['camera.front'].attributes.camera_name = name;
+    hass.states['camera.front'].attributes.access_token = token;
+    hass.states['camera.front'].last_updated = updated;
+    return hass;
+  };
+  // Only the states move: a new registry on hass would rebuild the card for a reason of its own.
+  const moved = (from: any, name: string, token: string, updated: string): any => ({
+    ...from,
+    states: withCamera(name, token, updated).states,
+  });
+  const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+  const camera = {
+    variables: [{ name: 'camera' }, { name: 'stream', default: '[[camera|attr:camera_name]]' }],
+    card: { type: 'markdown', content: 'stream [[stream]]' },
+  };
+
+  const follows = async (config: Record<string, any>, templates: Record<string, any>): Promise<void> => {
+    stubLovelace({ decluttering_templates: templates, views: [{ cards: [] }] });
+    const first = withCamera('Front_Door', 'a', '1');
+    const el = card(config, first);
+    document.body.appendChild(el);
+    await until(() => inner(el)?.config?.content === 'stream Front_Door', 3000, 'the first build');
+    await settle(2);
+    const built = el._thingConfig;
+    el.hass = moved(first, 'Front_Door', 'b', '2');
+    // Past the debounce: a rebuild would have made a new built config by now.
+    await wait(800);
+    expect(el._thingConfig === built, 'a token refresh builds nothing').to.equal(true);
+    el.hass = moved(first, 'Back_Door', 'b', '3');
+    await until(() => inner(el)?.config?.content === 'stream Back_Door', 3000, 'the watched attribute');
+    el.remove();
+  };
+
+  it('rebuild_on_watch: read on the card', async () => {
+    await follows(
+      {
+        template: 'camera',
+        rebuild_on: 'camera.front',
+        rebuild_on_watch: 'read',
+        variables: [{ camera: 'camera.front' }],
+      },
+      { camera },
+    );
+  });
+
+  it('an entry with watch:, its entity a placeholder on the template', async () => {
+    await follows(
+      { template: 'camera', variables: [{ camera: 'camera.front' }] },
+      { camera: { ...camera, rebuild_on: [{ entity: '[[camera]]', watch: ['state', 'camera_name'] }] } },
+    );
+  });
+
+  it('rebuild_on_watch: read on the template', async () => {
+    await follows(
+      { template: 'camera', variables: [{ camera: 'camera.front' }] },
+      { camera: { ...camera, rebuild_on: '[[camera]]', rebuild_on_watch: 'read' } },
+    );
+  });
+
+  it('a card that says nothing still rebuilds on the refresh', async () => {
+    stubLovelace({ decluttering_templates: { camera }, views: [{ cards: [] }] });
+    const first = withCamera('Front_Door', 'a', '1');
+    const el = card({ template: 'camera', rebuild_on: 'camera.front', variables: [{ camera: 'camera.front' }] }, first);
+    document.body.appendChild(el);
+    await until(() => inner(el)?.config?.content === 'stream Front_Door', 3000, 'the first build');
+    await settle(2);
+    const built = el._thingConfig;
+    el.hass = moved(first, 'Front_Door', 'b', '2');
+    await until(() => el._thingConfig !== built, 3000, 'the rebuild');
+    el.remove();
+  });
+});

@@ -1,5 +1,5 @@
 import { loadAll } from 'js-yaml';
-import deepReplace from './deep-replace';
+import deepReplace, { BuildExtras } from './deep-replace';
 import { ownVariables, withStateScope } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -170,8 +170,24 @@ export function splitPlaceholder(expression: string): { name: string; steps: str
 /** One build of `{ value: expression }`, reporting the names nothing set. */
 export type PlaceholderBuild = (content: { value: string }, onMissing: (names: string[]) => void) => unknown;
 
-function builder(variables: any[], template: any = {}, hass: any = HOUSE): PlaceholderBuild {
-  return (content, onMissing) => deepReplace(variables, template, content, template?.template, hass, true, onMissing);
+function builder(variables: any[], template: any = {}, hass: any = HOUSE, extras?: BuildExtras): PlaceholderBuild {
+  return (content, onMissing) =>
+    extras
+      ? deepReplace(
+          variables,
+          template,
+          content,
+          template?.template,
+          hass,
+          true,
+          onMissing,
+          0,
+          undefined,
+          undefined,
+          false,
+          extras,
+        )
+      : deepReplace(variables, template, content, template?.template, hass, true, onMissing);
 }
 
 function build(run: PlaceholderBuild, expression: string, unset: Set<string>): { value: unknown; removed: boolean } {
@@ -186,14 +202,24 @@ function result(built: { value: unknown; removed: boolean }): { value: unknown; 
   return built.removed ? { value: undefined, kind: 'removed' } : { value: built.value, kind: kindOf(built.value) };
 }
 
+/** The variables box read as a card's `variables:`. Throws when it is not YAML. */
+export function readVariables(variablesText: string): any[] {
+  const documents = loadAll(variablesText, { maxAliases: MAX_ALIASES }).filter((doc) => doc != null);
+  return documents.length ? ownVariables(documents[0]) : [];
+}
+
+/** What the page shows when the variables box does not read. */
+export function unreadable(err: unknown): PlaygroundResult {
+  return { error: (err as Error).message, steps: [], whole: { value: undefined, kind: 'unresolved' }, unset: [] };
+}
+
 /** Read the variables, then build the expression, and each step of it when it is one placeholder. */
 export function tryPlaceholder(variablesText: string, expression: string): PlaygroundResult {
   let variables: any[];
   try {
-    const documents = loadAll(variablesText, { maxAliases: MAX_ALIASES }).filter((doc) => doc != null);
-    variables = documents.length ? ownVariables(documents[0]) : [];
+    variables = readVariables(variablesText);
   } catch (err) {
-    return { error: (err as Error).message, steps: [], whole: { value: undefined, kind: 'unresolved' }, unset: [] };
+    return unreadable(err);
   }
   return run(builder(variables), expression);
 }
@@ -202,10 +228,27 @@ export function tryPlaceholder(variablesText: string, expression: string): Playg
  * The same tool inside the template editor (idea 28): the template's own `let:` and defaults
  * apply, the variables are an example's or a card's, and the steps that ask Home Assistant
  * ask the real one. `withStateScope` is not applied: in the editor every state may be read,
- * the way the Result preview reads it.
+ * the way the Result preview reads it. `extras` are what a card on the dashboard builds with
+ * - its item templates and its context - so function steps (#307), `with:` and `repeat:` run.
  */
-export function tryPlaceholderIn(template: any, variables: any[], expression: string, hass: any): PlaygroundResult {
-  return run(builder(variables, template ?? {}, hass ?? HOUSE), expression);
+export function tryPlaceholderIn(
+  template: any,
+  variables: any[],
+  expression: string,
+  hass: any,
+  extras?: BuildExtras,
+): PlaygroundResult {
+  return run(builder(variables, template ?? {}, hass ?? HOUSE, extras), expression);
+}
+
+/**
+ * Whether the first row of a tried chain - the variable itself - is one nothing sets. A name
+ * in `unset` only says the whole placeholder was left unfilled, which a later step refusing
+ * does too; the variable is unset only when its own row has no value either.
+ */
+export function firstRowUnset(row: StepResult, result: PlaygroundResult): boolean {
+  if (!result.unset.includes(row.step)) return false;
+  return row.kind === 'unresolved' || row.kind === 'removed' || row.value === undefined;
 }
 
 /**

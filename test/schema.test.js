@@ -21,7 +21,11 @@ check('a step with an argument holding a colon passes', ok('[[icon|default:mdi:l
 check('a nested lookup passes', ok('[[colours.[[level]]]]'), true);
 check('an escaped placeholder passes', ok('[[!name]]'), true);
 check('a dotted name passes', ok('[[entity.state|upper]]'), true);
-check('a misspelt step fails', ok('[[entity|frendly_name]]'), false);
+// Any other name may be a template used as a step (#307); the card and the lint say when it is not.
+check('a step of any other name passes, as a function template', ok('[[entity|occ_sens]]'), true);
+check('and with arguments', ok('[[entity|occ_sens:cat,detected]] [[x|occ_sens:suffix=found|upper]]'), true);
+check('a built-in name written wrong still fails', ok('[[entity|prefix]]'), false);
+check('a step that does not start like a name fails', ok('[[entity|-x]]'), false);
 check('an unclosed placeholder fails', ok('[[entity'), false);
 check('a single bracket is fine', ok('a [b] c'), true);
 check('an empty step fails', ok('[[entity|]]'), false);
@@ -70,6 +74,19 @@ check(
   'type' in built['template.json'].definitions.VariableDeclaration.properties,
   true,
 );
+check(
+  'a malformed placeholder gets a readable message, not the raw pattern',
+  built['template.json'].$defs.text_with_placeholders.patternErrorMessage.includes('if:name'),
+  true,
+);
+check(
+  'the message points at brackets and name:value, and does not claim to check step names',
+  (() => {
+    const message = built['template.json'].$defs.text_with_placeholders.patternErrorMessage;
+    return [message.includes('brackets'), message.includes('name:value'), /one the card knows/.test(message)];
+  })(),
+  [true, true, false],
+);
 check('the card schema requires the type', built['card.json'].definitions.DeclutteringCardConfig.required, ['type']);
 check(
   'the card schema lists the two card types',
@@ -104,7 +121,7 @@ check(
   ok("background-color: \"[[[ const t = states['sun.sun'].state; return t === 'above' ? 'gold' : 'navy' ]]]\""),
   true,
 );
-check('a misspelt step inside button-card JavaScript fails', ok('[[[ return [[name|jsn]] ]]]'), false);
+check('a broken step inside button-card JavaScript fails', ok('[[[ return [[name|]] ]]]'), false);
 check(
   'a long run of brackets that fails does not hang',
   (() => {
@@ -181,10 +198,25 @@ check(
   true,
 );
 check(
-  'a misspelt step in a template card fails',
-  valid('template.json', { card: { name: '[[name|frendly_name]]' } }),
+  'a broken placeholder in a template card fails',
+  valid('template.json', { card: { name: '[[name|prefix]]' } }),
   false,
 );
+check(
+  'a function template passes',
+  valid('template.json', {
+    parameters: ['detect_type', 'suffix'],
+    default: [{ detect_type: 'car' }],
+    function: '[[value|lower|prefix:binary_sensor.]]_[[detect_type]]',
+  }),
+  true,
+);
+check(
+  'a template card calling one passes',
+  valid('template.json', { card: { entity: '[[room|occ_sens:cat|default:none]]' } }),
+  true,
+);
+check('parameters must be names', valid('template.json', { parameters: [{ a: 1 }], function: 'x' }), false);
 
 check(
   'dashboard strict levels pass',

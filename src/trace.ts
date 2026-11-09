@@ -38,6 +38,27 @@ export interface BuildTrace {
   items?: ItemTrace[];
   /** For an item template's fill: its own values and the defaults it declares, as each ended up. */
   values?: Map<string, unknown>;
+  /** Each `with:` or `repeat:` that built nothing, and why, for the report's outline (#428). */
+  skipped?: SkipTrace[];
+}
+
+/*
+ * A `with:` or `repeat:` that was never filled in (#428): its `if:` did not hold, or there is
+ * no item template or variable by its name. The warnings say so in words; the outline needs
+ * the name and the reason apart.
+ */
+export interface SkipTrace {
+  /** As written - `[[popup|if:has_popup|with:size=2]]`. */
+  placeholder: string;
+  /** The item template or variable it would have filled in. */
+  name: string;
+  step: 'with' | 'repeat';
+  // `filtered`: one entry of a `repeat:` its own condition left out (#429).
+  reason: 'closed' | 'missing' | 'filtered';
+  /** For a closed or filtered one, the conditions that did not hold - `if:has_popup`. */
+  condition?: string;
+  /** For a filtered one, which entry of the list it was. */
+  copy?: { number: number; count: number };
 }
 
 /*
@@ -50,6 +71,14 @@ export interface ItemTrace {
   placeholder: string;
   /** Which copy, for a `repeat:`. */
   copy?: { number: number; count: number };
+  /** The item template or mapping variable it filled in, which of the two, and by which step (#428). */
+  name?: string;
+  source?: 'item' | 'variable';
+  step?: 'with' | 'repeat';
+  /** The templates of the cards of ours the fill built, so the outline can put each nested card under it. */
+  cards?: string[];
+  /** The fill came to nothing - its own `if:...?` took its body out - so the copy was left out. */
+  empty?: boolean;
   trace: BuildTrace;
 }
 
@@ -151,6 +180,13 @@ function eachNestedCard(config: unknown, visit: (node: any, path: TracePath) => 
     for (const [key, value] of Object.entries(node)) walk(value, [...path, key]);
   };
   walk(config, []);
+}
+
+/** The template each card of ours in a config is built from, in the order they sit (#428). */
+export function nestedCardTemplates(config: unknown): string[] {
+  const names: string[] = [];
+  eachNestedCard(config, (node) => names.push(typeof node.template === 'string' ? node.template : ''));
+  return names;
 }
 
 /** Where each card of ours sits in a config. */
@@ -378,6 +414,8 @@ export interface TraceReport {
   chain: string[];
   /** Where it sits in the card around it, when that card is logging too. */
   at?: string;
+  /** Where it sits in the outermost logging card, which says which card it is inside of (#428). */
+  path?: TracePath;
   ms: number;
   sections: TraceSection[];
   /** The template it was built from, as written, for `debug: report`. */

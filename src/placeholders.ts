@@ -22,6 +22,8 @@ const CONTENT_KEYS = [
   'name',
   // A page template's whole dashboard (idea 33).
   'dashboard',
+  // A function template's result (#307).
+  'function',
 ];
 
 // A placeholder, with up to two levels of placeholder nested inside it. Each level takes one

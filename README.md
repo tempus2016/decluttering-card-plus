@@ -179,6 +179,12 @@ The card speaks Dutch, English, French, German, Portuguese and Spanish, followin
 Assistant profile. Adding a language is one file and no code: see
 [Translations][wiki-translations].
 
+A shared template can carry its own words in several languages too. Put them in a
+`language:` block, one mapping per language code, and write `[[$key]]` wherever the text
+goes, in the card, a variable's label or description, or the template's description. Each
+viewer gets their Home Assistant language, then the same language without its region, then
+English, then the first one written.
+
 ## Credits
 
 `decluttering-card-plus` builds on [custom-cards/decluttering-card][upstream], which has not had

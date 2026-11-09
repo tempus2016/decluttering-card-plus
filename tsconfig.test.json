@@ -11,6 +11,8 @@
   },
   "files": [
     "src/deep-replace.ts",
+    "src/rebuild-resolve.ts",
+    "src/functions.ts",
     "src/page-template.ts",
     "src/page-body.ts",
     "src/repeat-kinds.ts",
@@ -25,6 +27,7 @@
     "src/templates.ts",
     "src/share.ts",
     "src/variables.ts",
+    "src/translations.ts",
     "src/suggest.ts",
     "src/layout.ts",
     "src/registry.ts",
@@ -59,6 +62,12 @@
     "src/trash.ts",
     "src/builder.ts",
     "src/playground.ts",
+    "src/playground-house.ts",
+    "src/playground-share.ts",
+    "src/build.ts",
+    "src/try-template.ts",
+    "src/try-template-form.ts",
+    "src/try-template-gist.ts",
     "src/docs-dom.ts",
     "src/describe.ts",
     "src/warnings.ts",
@@ -69,6 +78,7 @@
     "src/card-editor/result-preview.ts",
     "src/card-editor/template-link.ts",
     "src/card-editor/defaults.ts",
+    "src/card-editor/build-cache.ts",
     "src/declarations-rows.ts",
     "src/example-labels.ts",
     "src/placeholders.ts",
@@ -87,10 +97,12 @@
     "src/card-editor/presets.ts",
     "src/initial-tab.ts",
     "src/report-tree.ts",
+    "src/report-outline.ts",
     "src/gallery.ts",
     "src/stats.ts",
     "src/idle.ts",
     "src/cli-lint.ts",
-    "src/convert.ts"
+    "src/convert.ts",
+    "src/structure.ts"
   ]
 }

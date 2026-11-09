@@ -67,6 +67,12 @@ describe('accessibility', () => {
     el.hass = stubHass();
     document.body.appendChild(el);
     await settle(8);
-    expect(await violations(el)).to.deep.equal([]);
+    // Formatted is the view a report opens in (#412); the tree has the search.
+    const formatted = await violations(el);
+    expect(formatted, formatted.join('\n')).to.deep.equal([]);
+    el._reportView = 'tree';
+    await settle(4);
+    const tree = await violations(el);
+    expect(tree, tree.join('\n')).to.deep.equal([]);
   });
 });

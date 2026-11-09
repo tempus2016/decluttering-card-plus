@@ -1688,6 +1688,68 @@ check(
   );
 }
 
+/* ------------------------------------------------- show_if reads filled-in values (#426) */
+{
+  const { declarationShown, filledReader, resolveVariables, variableValues } = require('../.test-build/variables.js');
+  const deepReplace = require('../.test-build/deep-replace.js').default;
+  const template = {
+    defaults: {
+      true_val: true,
+      false_val: false,
+      has_cam: '[[camera|exists]]',
+      has_backup_on: '[[true_val|if:has_cam|if:has_backup|or:false_val]]',
+    },
+    variables: [
+      { name: 'camera' },
+      { name: 'has_backup', default: true, show_if: 'has_cam' },
+      { name: 'detections_on_backup', default: true, show_if: 'has_backup_on' },
+    ],
+    card: { type: 'picture-entity' },
+  };
+  const hass = { states: { 'camera.front': { entity_id: 'camera.front', state: 'idle', attributes: {} } } };
+  const shown = (variables) => {
+    const values = variableValues(resolveVariables(variables, template));
+    const read = filledReader(values, (content) =>
+      deepReplace(variables, template, content, 'cam', hass, true, undefined, 0, undefined, undefined, false, {}),
+    );
+    return template.variables.map((declaration) => declarationShown(declaration, read));
+  };
+
+  check('a show_if on a value written with placeholders reads it filled in', shown([]), [true, false, false]);
+  check('and opens as the card would fill it', shown([{ camera: 'camera.front' }]), [true, true, true]);
+  check('an entity Home Assistant does not know keeps it shut', shown([{ camera: 'camera.nope' }]), [
+    true,
+    false,
+    false,
+  ]);
+  check('and a switch it depends on closes it again', shown([{ camera: 'camera.front' }, { has_backup: false }]), [
+    true,
+    true,
+    false,
+  ]);
+
+  let fills = 0;
+  const read = filledReader({ a: '[[b]]', plain: 'text', n: 3 }, () => {
+    fills++;
+    return 'filled';
+  });
+  check(
+    'only values with placeholders are filled, and each once',
+    [read('a'), read('a'), read('plain'), read('n'), read('missing'), fills],
+    ['filled', 'filled', 'text', 3, undefined, 1],
+  );
+  check(
+    'a fill that fails or finds nothing leaves the value as written',
+    [
+      filledReader({ a: '[[b]]' }, () => {
+        throw new Error('no');
+      })('a'),
+      filledReader({ a: '[[b]]' }, (content) => content)('a'),
+    ],
+    ['[[b]]', '[[b]]'],
+  );
+}
+
 const knownStepForTest = (step) => KNOWN_PARAM_STEPS.includes(step.slice(0, step.indexOf(':')));
 
 /* --------------------------------------------------- idea 36: unless: and switch: */
@@ -1923,5 +1985,65 @@ check('the five position names, for the checks that have to know them', POSITION
       run('last_changed', 'light.x', { states: hass.states }),
     ],
     ['2026-11-01T10:00:00Z', '2026-11-02T10:00:00Z', undefined],
+  );
+}
+
+// #429: `pick:`.
+{
+  const { pickFrom, pickArgs, mappingItems, takesStructure } = require('../.test-build/variables.js');
+  const list = [
+    { name: 'dog', icon: 'mdi:dog' },
+    { name: 'cat', icon: 'mdi:cat' },
+    { name: 'cat', icon: 'mdi:second' },
+  ];
+  check('pick: the first match answers', applyTransform('pick:name=cat,icon', list), 'mdi:cat');
+  check('pick: no match is a gap', applyTransform('pick:name=fox,icon', list), undefined);
+  check('pick: and a default fills it', applyTransform('pick:name=fox,icon|default:mdi:help', list), 'mdi:help');
+  check('pick: a field that is missing is a gap', applyTransform('pick:name=dog,colour|default:x', list), 'x');
+  check('pick: shapes after it read the text', applyTransform('pick:name=dog,icon|upper', list), 'MDI:DOG');
+  check(
+    'pick: HA marks on either side are stripped before comparing',
+    applyTransform('pick:name=⁠dog⁠,icon', [{ name: '⁠dog⁠', icon: 'mdi:dog' }]),
+    'mdi:dog',
+  );
+  check('pick: a number field matches its text', applyTransform('pick:id=2,name', [{ id: 2, name: 'two' }]), 'two');
+  check(
+    'pick: takes a list or a mapping whole',
+    [takesStructure('pick:a=b,c', []), takesStructure('pick:a=b,c', {})],
+    [true, true],
+  );
+  check(
+    'pick: arguments',
+    [pickArgs('name=a,b,icon'), pickArgs("name='x, y' , icon"), pickArgs('name'), pickArgs('=a')],
+    [
+      { field: 'name', wanted: 'a,b', out: 'icon' },
+      { field: 'name', wanted: 'x, y', out: 'icon' },
+      undefined,
+      undefined,
+    ],
+  );
+  check('pick: a list of text has no entries', pickFrom(['dog'], 'name=dog,icon'), undefined);
+  check('mappingItems gives key, value, entity and the value’s own keys', mappingItems({ a: 'light.x', b: { n: 1 } }), [
+    { key: 'a', value: 'light.x', entity: 'light.x' },
+    { key: 'b', value: { n: 1 }, n: 1 },
+  ]);
+  check(
+    'mappingItems keeps a __proto__ key as a key',
+    Object.getPrototypeOf(mappingItems(JSON.parse('{"a":{"__proto__":{"polluted":1}}}'))[0]) === Object.prototype,
+    true,
+  );
+}
+
+// #429: the lint counts what a repeat over a plain mapping gives each copy as set.
+{
+  const { structureNames } = require('../.test-build/structure.js');
+  const names = structureNames({
+    default: { detections: { dog: 'binary_sensor.a' }, zones: { front: { label: 'door' } } },
+    card: { a: '[[r|repeat:detections]]', b: '[[r|repeat:zones]]' },
+  });
+  check(
+    'structureNames gives key, value, entity and a mapping value’s keys for a mapping repeat',
+    ['key', 'value', 'entity', 'label'].every((name) => names.includes(name)),
+    true,
   );
 }

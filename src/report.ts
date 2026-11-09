@@ -1,6 +1,7 @@
 import { localize } from './localize';
 import { BuildTrace, describeSection, headline, ItemTrace, itemTitle, itemValueRows, TraceReport } from './trace';
 import { toYaml } from './yaml';
+import { OutlineNode, outlineTags, reportOutline } from './report-outline';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -292,9 +293,30 @@ function folded(title: string, body: string[], open = false): string[] {
   ];
 }
 
-function buildSection(report: TraceReport, { line, block, title, redacting }: Writer, hass?: any): string[] {
-  const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
-  const lines: string[] = [];
+/** One item template a `with:` or `repeat:` filled in, as the report's tables show it (#235). */
+export interface ItemTables {
+  title: string;
+  values: Record<string, unknown>[];
+  placeholders: Record<string, unknown>[];
+  items: ItemTables[];
+}
+
+/** One section of a build, as the report's tables show it. */
+export interface SectionTables {
+  label?: string;
+  variables: Record<string, unknown>[];
+  placeholders: Record<string, unknown>[];
+  dropped: string[];
+  items: ItemTables[];
+  built: unknown;
+}
+
+/*
+ * The rows of every table a build's report shows, with the secret-named values taken out
+ * when redacting. The Markdown report and the tree view both draw from this, so a column one
+ * of them has the other has too (#412).
+ */
+export function sectionTables(report: TraceReport, redacting: boolean, hass?: any): SectionTables[] {
   const hidden = (name: string, value: unknown): unknown =>
     redacting && SECRET_NAME.test(name) ? '<redacted>' : value;
   const placeholdersOf = (trace: BuildTrace): Map<string, unknown> =>
@@ -305,32 +327,25 @@ function buildSection(report: TraceReport, { line, block, title, redacting }: Wr
       ]),
     );
   /*
-   * Each item template a `with:` or `repeat:` filled in, a heading level further down for
-   * each fill inside another: its values as they ended up - so an `exists` or an `if:` that
-   * gave the wrong answer shows what it was asked about - and its own placeholders (#235).
+   * Each item template a `with:` or `repeat:` filled in, and each fill inside another: its
+   * values as they ended up - so an `exists` or an `if:` that gave the wrong answer shows what
+   * it was asked about - and its own placeholders (#235).
    */
-  const items = (list: ItemTrace[] | undefined, level: number): void => {
-    for (const item of list ?? []) {
-      lines.push(`${'#'.repeat(Math.min(level, 6))} ${line(itemTitle(item, hass))}`, '');
+  const items = (list: ItemTrace[] | undefined): ItemTables[] =>
+    (list ?? []).map((item) => {
       const values = new Map([...(item.trace.values ?? [])].map(([name, value]) => [name, hidden(name, value)]));
-      const valueRows = itemValueRows({ ...item.trace, values }, hass);
-      lines.push(`**${t('trace.item_values')}**`, '');
-      lines.push(...(valueRows.length ? table(valueRows, line) : [t('trace.none')]), '');
       const described = describeSection(
         { variables: [], trace: { ...item.trace, placeholders: placeholdersOf(item.trace) }, built: undefined },
         hass,
       );
-      lines.push(`**${t('trace.placeholders')}**`, '');
-      lines.push(...(described.placeholders.length ? table(described.placeholders, line) : [t('trace.none')]), '');
-      items(item.trace.items, level + 1);
-    }
-  };
-  if (report.template) {
-    lines.push(`### ${line(t('report.template', { template: report.template.name }))}`, '');
-    lines.push(...block(report.template.config), '');
-  }
-  for (const section of report.sections) {
-    if (section.label) lines.push(`### ${line(section.label)}`, '');
+      return {
+        title: itemTitle(item, hass),
+        values: itemValueRows({ ...item.trace, values }, hass),
+        placeholders: described.placeholders,
+        items: items(item.trace.items),
+      };
+    });
+  return report.sections.map((section) => {
     // A variable called `password` is the likeliest place for one, and its value sits in a
     // table cell of its own - as does what each of its placeholders became.
     // What one worked out to says the secret again, and so does a step through one (#376).
@@ -348,17 +363,91 @@ function buildSection(report: TraceReport, { line, block, title, redacting }: Wr
     });
     const placeholders = placeholdersOf(section.trace);
     const described = describeSection({ ...section, variables, trace: { ...section.trace, placeholders } }, hass);
-    lines.push(`**${t('trace.variables')}**`, '');
-    lines.push(...(described.variables.length ? table(described.variables, line) : [t('trace.none')]), '');
-    lines.push(`**${t('trace.placeholders')}**`, '');
-    lines.push(...(described.placeholders.length ? table(described.placeholders, line) : [t('trace.none')]), '');
-    if (described.dropped.length) {
-      lines.push(`**${t('trace.taken_out')}**`, '', ...described.dropped.map((path) => `- ${line(path)}`), '');
+    return {
+      label: section.label,
+      variables: described.variables,
+      placeholders: described.placeholders,
+      dropped: described.dropped,
+      items: items(section.trace.items),
+      built: section.built,
+    };
+  });
+}
+
+/*
+ * Where the outline's links land (#428). Home Assistant's Markdown takes an `id` out and leaves
+ * a `title`, so the card finds the anchor by its title; GitHub keeps both, and its links go by the id.
+ */
+export const anchorId = (id: string): string => `dcp-${id}`;
+const anchor = (id: string): string[] => [`<a id="${anchorId(id)}" title="${anchorId(id)}"></a>`, ''];
+
+/*
+ * The outline as a nested list, each line a link to its part of the report. A repeat whose
+ * copies have nothing under them lists the copies on its own line, so ten copies are one line.
+ */
+function outlineSection(nodes: OutlineNode[], { line }: Writer, hass?: any): string[] {
+  const out: string[] = [];
+  const link = (text: string, node: OutlineNode): string =>
+    node.target ? `[${text}](#${anchorId(node.target)})` : text;
+  const walk = (list: OutlineNode[], depth: number): void => {
+    for (const node of list) {
+      const name = line(node.copy ? `${node.name} ${node.copy}` : node.name);
+      const tags = outlineTags(node, hass).map((tag) => line(tag));
+      let text = `${'  '.repeat(depth)}- ${node.skipped && !node.target ? `~~${name}~~` : link(name, node)}`;
+      if (tags.length) text += ` · ${tags.join(' · ')}`;
+      if (node.skipped) text += ` · *${line(node.skipped)}*`;
+      const flat = node.copies !== undefined && node.children.every((child) => child.copy && !child.children.length);
+      if (flat) {
+        // A copy with a name of its own says it; the rest say which copy they are.
+        const copy = (child: OutlineNode): string =>
+          link(line(child.name === node.name ? child.copy : `${child.name} ${child.copy}`), child) +
+          (child.skipped ? ` (${line(child.skipped)})` : '');
+        text += `: ${node.children.map(copy).join(', ')}`;
+      }
+      out.push(text);
+      if (!flat) walk(node.children, depth + 1);
     }
-    items(section.trace.items, 4);
+  };
+  walk(nodes, 0);
+  return out;
+}
+
+function buildSection(
+  report: TraceReport,
+  index: number,
+  { line, block, title, redacting }: Writer,
+  hass?: any,
+): string[] {
+  const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
+  const lines: string[] = [];
+  const items = (list: ItemTables[], level: number, base: string): void => {
+    for (const [i, item] of list.entries()) {
+      lines.push(...anchor(`${base}-i${i}`));
+      lines.push(`${'#'.repeat(Math.min(level, 6))} ${line(item.title)}`, '');
+      lines.push(`**${t('trace.item_values')}**`, '');
+      lines.push(...(item.values.length ? table(item.values, line) : [t('trace.none')]), '');
+      lines.push(`**${t('trace.placeholders')}**`, '');
+      lines.push(...(item.placeholders.length ? table(item.placeholders, line) : [t('trace.none')]), '');
+      items(item.items, level + 1, `${base}-i${i}`);
+    }
+  };
+  if (report.template) {
+    lines.push(`### ${line(t('report.template', { template: report.template.name }))}`, '');
+    lines.push(...block(report.template.config), '');
+  }
+  for (const [s, section] of sectionTables(report, redacting, hass).entries()) {
+    if (section.label) lines.push(...anchor(`r${index}-s${s}`), `### ${line(section.label)}`, '');
+    lines.push(`**${t('trace.variables')}**`, '');
+    lines.push(...(section.variables.length ? table(section.variables, line) : [t('trace.none')]), '');
+    lines.push(`**${t('trace.placeholders')}**`, '');
+    lines.push(...(section.placeholders.length ? table(section.placeholders, line) : [t('trace.none')]), '');
+    if (section.dropped.length) {
+      lines.push(`**${t('trace.taken_out')}**`, '', ...section.dropped.map((path) => `- ${line(path)}`), '');
+    }
+    items(section.items, 4, `r${index}-s${s}`);
     lines.push(`**${t('trace.result')}**`, '', ...block(section.built), '');
   }
-  return folded(title(headline(report, hass)), lines);
+  return [...anchor(`r${index}`), ...folded(title(headline(report, hass)), lines)];
 }
 
 /*
@@ -444,6 +533,11 @@ export function formatReport(input: ReportInput, hass?: any): string {
   const { line, block, title } = write;
   const label = input.reports[0]?.label ?? '';
   const body: string[] = [];
+  // What built what, each line a link to its part (#428): only worth it when there is more than the one card.
+  const outline = reportOutline(input.reports, hass);
+  if (outline.length && outline[0].children.length) {
+    body.push(...folded(title(t('report.outline')), outlineSection(outline, write, hass), true));
+  }
   if (input.error) body.push(`## ${t('report.error')}`, '', ...block(input.error, ''), '');
   /*
    * The checks that failed (#389), from this card and every card inside it, ahead of the
@@ -477,6 +571,6 @@ export function formatReport(input: ReportInput, hass?: any): string {
   if (input.neverBuilt?.length) {
     body.push(`**${t('trace.never_built')}**`, '', ...input.neverBuilt.map((path) => `- ${line(path)}`), '');
   }
-  for (const report of input.reports) body.push(...buildSection(report, write, hass));
+  input.reports.forEach((report, index) => body.push(...buildSection(report, index, write, hass)));
   return `${header.join('\n')}\n${body.join('\n')}`;
 }

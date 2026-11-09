@@ -83,7 +83,7 @@ const MAX_RANGE = 1000;
 
 // `sort`, `reverse` and `limit` are deliberately not here: on their own they say nothing
 // about what to repeat over, so a mapping holding only those is not a source.
-const SOURCE_KEYS = [
+export const SOURCE_KEYS = [
   'areas',
   'devices',
   'floors',
@@ -102,6 +102,22 @@ const SOURCE_KEYS = [
   'category',
   'exclude',
   'range',
+];
+
+/** Every key a registry source reads, its filters and its options both (#429). */
+export const REGISTRY_KEYS = [
+  ...SOURCE_KEYS,
+  'subviews',
+  'include_hidden',
+  'entity_category',
+  'sort',
+  'reverse',
+  'limit',
+  'offset',
+  'require',
+  'overrides',
+  'group_by',
+  'with',
 ];
 
 /**

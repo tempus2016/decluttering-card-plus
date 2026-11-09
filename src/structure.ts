@@ -2,12 +2,15 @@ import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import {
   FLAT_STEP,
+  ENTRIES_STEP,
+  REGISTRY_STEP,
   normaliseVariables,
   POSITION_NAMES,
   REPEAT_STEP,
   resolveVariables,
   variableValues,
   WITH_STEP,
+  mappingItems,
 } from './variables';
 import { isRegistrySource, registryNames } from './registry';
 
@@ -22,7 +25,8 @@ import { isRegistrySource, registryNames } from './registry';
 // A `with:` or `repeat:` placeholder: the name it fills in, which step, and the argument -
 // a `repeat:` may end in `|flat` (#311).
 // Either may stand bare (#314), which gives the argument as "".
-const STRUCTURE_PLACEHOLDER = `\\[\\[([^|[\\]?]+)\\|(${WITH_STEP}|${REPEAT_STEP})(?::([^|\\]]*?))?(?:\\|${FLAT_STEP})?\\??\\]\\]`;
+// After it may come `|entries` or `|registry`, and the copy's own `if:` and `unless:` (#429).
+const STRUCTURE_PLACEHOLDER = `\\[\\[([^|[\\]?]+)\\|(${WITH_STEP}|${REPEAT_STEP})(?::([^|\\]]*?))?((?:\\|(?:${FLAT_STEP}|${ENTRIES_STEP}|${REGISTRY_STEP}|(?:if|unless):[^|[\\]]*))*)\\??\\]\\]`;
 
 /** The names the items of a written-out list set: a mapping's keys, or `item` and `entity`. */
 function itemNames(items: unknown[]): string[] {
@@ -52,7 +56,8 @@ export function structureNames(template: TemplateConfig | undefined, extra?: Var
   const names = new Set<string>();
   const pattern = new RegExp(STRUCTURE_PLACEHOLDER, 'g');
   for (let match = pattern.exec(json); match !== null; match = pattern.exec(json)) {
-    const [, , step, arg = ''] = match;
+    const [, , step, arg = '', after = ''] = match;
+    const tail = after.split('|');
     if (step === WITH_STEP) {
       if (arg.includes('=')) {
         for (const pair of arg.split(',')) {
@@ -67,8 +72,15 @@ export function structureNames(template: TemplateConfig | undefined, extra?: Var
     }
     for (const name of [...POSITION_NAMES, 'item', 'entity']) names.add(name);
     const source = values[arg];
-    if (isRegistrySource(source)) for (const name of registryNames(source)) names.add(name);
+    const asSource = tail.includes(REGISTRY_STEP)
+      ? !!source && typeof source === 'object' && !Array.isArray(source)
+      : !tail.includes(ENTRIES_STEP) && isRegistrySource(source);
+    if (asSource) for (const name of registryNames(source)) names.add(name);
     else if (Array.isArray(source)) for (const name of itemNames(source)) names.add(name);
+    // A plain mapping repeats once per key, each copy given `key`, `value` and its value's own keys (#429).
+    else if (source && typeof source === 'object') {
+      for (const name of itemNames(mappingItems(source))) names.add(name);
+    }
   }
   // A variable holding a fill offers the fill's own values by dotted name too (#235).
   for (const [name, value] of Object.entries(values)) {
@@ -99,4 +111,17 @@ export function placeholderHeads(node: unknown): Set<string> {
   const pattern = /\[\[!?([A-Za-z0-9_.-]+)(?=[|?\]])/g;
   for (let match = pattern.exec(json); match !== null; match = pattern.exec(json)) heads.add(match[1]);
   return heads;
+}
+
+/**
+ * Every step name a placeholder anywhere in `node` uses, however its chain goes on - how a sweep
+ * tells a function template (#307), used as `[[room|occ_sens]]`, from one nothing calls.
+ */
+export function placeholderSteps(node: unknown): Set<string> {
+  const steps = new Set<string>();
+  const json = placeholderJson(node ?? null);
+  if (typeof json !== 'string') return steps;
+  const pattern = /\|([A-Za-z_][A-Za-z0-9_-]*)(?=[|:?\]])/g;
+  for (let match = pattern.exec(json); match !== null; match = pattern.exec(json)) steps.add(match[1]);
+  return steps;
 }
