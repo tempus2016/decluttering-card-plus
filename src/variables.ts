@@ -91,8 +91,10 @@ export function groupDeclarations(
  * A declaration can say when its field is worth showing (#347): `show_if:` and `hide_if:`
  * take the conditions an `if:` step does - `name`, `!name`, `name=text`, `name!=text` -
  * one or a list. Any one `show_if` holding shows the field, any one `hide_if` holding hides
- * it, and with both written it has to pass both. It is the editor's business only: a hidden
- * variable keeps its value and its default, and the card builds exactly as it would.
+ * it: with both written, a field shows only while at least one `show_if` holds and no
+ * `hide_if` does. It is the editor's business only: a hidden variable keeps its value and its
+ * default, and the card builds exactly as it would. A variable whose value is written with
+ * placeholders - `has_cam: '[[camera|exists]]'` - is read filled in, as the card fills it (#426).
  */
 type VisibilityKey = 'show_if' | 'hide_if';
 
@@ -121,6 +123,34 @@ export function declarationShown(declaration: VariableDeclaration, read: (name: 
   const hide = visibilityConditions(declaration, 'hide_if').filter(isWellFormedCondition);
   if (show.length && !show.some(holds)) return false;
   return !hide.some(holds);
+}
+
+/**
+ * A way to read variables for `show_if` and `hide_if` (#426): a value written with placeholders
+ * is read the way the card fills it, by `fill`, and anything else as it was written. A fill that
+ * fails, or finds nothing to fill the placeholder with, leaves the written value - so a value
+ * that cannot be worked out reads as it always did - and each name is filled once a render.
+ */
+export function filledReader(
+  values: Record<string, unknown>,
+  fill: (content: string) => unknown,
+): (name: string) => unknown {
+  const filled = new Map<string, unknown>();
+  return (name: string): unknown => {
+    const written = values[name];
+    if (typeof written !== 'string' || !PLACEHOLDER.test(written)) return written;
+    if (filled.has(name)) return filled.get(name);
+    const placeholder = `[[${name}]]`;
+    let value: unknown = written;
+    try {
+      const result = fill(placeholder);
+      if (result !== placeholder) value = typeof result === 'string' ? stripHaMarks(result) : result;
+    } catch {
+      // Left as written.
+    }
+    filled.set(name, value);
+    return value;
+  };
 }
 
 /*
@@ -515,6 +545,147 @@ export const EXISTS_STEP = 'exists';
 const CONTAINS_STEP = 'contains';
 
 /*
+ * `pick:field=value,out` looks an entry up by one of its fields (#429). An object selector with
+ * fields saves a list of mappings - `icon_map: [{name: dog, icon: mdi:dog}, ...]` - which dotted
+ * names cannot reach into, so `[[icon_map|pick:name=[[detect_type]],icon]]` finds the first entry
+ * whose `name` is the detection type and gives back its `icon`, as text. No such entry, or one
+ * without an `icon`, is a gap, which `default:` and `or:` fill as they fill any other. A mapping
+ * of mappings is looked through the same way, its values being the entries; there `key` is the
+ * entry's own key unless the entry has a field of that name. Left without `,out`, it gives the
+ * whole entry, written as its JSON the way a mapping reaching a text step always is.
+ */
+export const PICK_STEP = 'pick';
+
+/** What a `pick:` argument asks for: the field to match, the value it must have, the field to give. */
+export function pickArgs(arg: string): { field: string; wanted: string; out?: string } | undefined {
+  const equals = arg.indexOf('=');
+  if (equals <= 0) return undefined;
+  const field = arg.slice(0, equals).trim();
+  const rest = arg.slice(equals + 1);
+  // A quoted value may hold a comma (#398); unquoted, the last comma is where the field to give starts.
+  const quoted = new RegExp(`^\\s*(${QUOTED_ARG})\\s*(?:,(.*))?$`, 's').exec(rest);
+  let wanted: string;
+  let out: string | undefined;
+  if (quoted) {
+    wanted = argText(quoted[1]);
+    out = quoted[2];
+  } else {
+    const comma = rest.lastIndexOf(',');
+    wanted = (comma === -1 ? rest : rest.slice(0, comma)).trim();
+    out = comma === -1 ? undefined : rest.slice(comma + 1);
+  }
+  out = out?.trim() || undefined;
+  return field ? { field, wanted: stripHaMarks(wanted), out } : undefined;
+}
+
+/** A field of one entry, read the way `pick:` reads it: own fields only, `key` the entry's own key. */
+function entryField(entry: Record<string, unknown>, field: string, key: string | undefined): unknown {
+  if (Object.prototype.hasOwnProperty.call(entry, field)) return entry[field];
+  return field === 'key' ? key : undefined;
+}
+
+/** What `pick:` finds in a list or a mapping of mappings, or undefined when nothing matches. */
+export function pickFrom(source: unknown, arg: string): unknown {
+  const asked = pickArgs(arg);
+  if (!asked || !source || typeof source !== 'object') return undefined;
+  const entries: [string | undefined, unknown][] = Array.isArray(source)
+    ? source.map((entry) => [undefined, entry])
+    : Object.entries(source);
+  for (const [key, entry] of entries) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const has = entryField(entry as Record<string, unknown>, asked.field, key);
+    if (has === undefined || has === null || typeof has === 'object') continue;
+    if (stripHaMarks(String(has)) !== asked.wanted) continue;
+    // The first match answers, even when it has nothing to give: a later one is not what was asked for.
+    return asked.out === undefined ? entry : entryField(entry as Record<string, unknown>, asked.out, key);
+  }
+  return undefined;
+}
+
+/*
+ * `to_list` and `to_map` turn a mapping into a list and back (#429). `to_list:key=type,value=entity`
+ * makes `{dog: binary_sensor.a}` into `[{type: dog, entity: binary_sensor.a}]`, one entry per key in
+ * the mapping's order, so a list step or a `repeat:` can work through it. A value that is itself a
+ * mapping has its fields laid into the entry instead, unless `value=` names where it goes; the key's
+ * name wins over a field of the same name, since it was asked for. `to_map:key=name,value=icon` is
+ * the other way round: an entry per item of a list of mappings, keyed by its `name`, holding its
+ * `icon` - or, without `value=`, the rest of the entry. An item without the key is passed over, and
+ * a later one with the same key wins. Either is given as a real list or mapping when it is the whole
+ * value. `key` and `value` are the names when the argument leaves them out.
+ */
+export const TO_LIST_STEP = 'to_list';
+export const TO_MAP_STEP = 'to_map';
+const CONVERT_STEPS = [TO_LIST_STEP, TO_MAP_STEP];
+
+/** What a `to_list:` or `to_map:` argument names: the key's field and the value's, when given. */
+export function convertArgs(arg: string | undefined): { key: string; value?: string } {
+  let key = 'key';
+  let value: string | undefined;
+  for (const pair of (arg ?? '').split(',')) {
+    const equals = pair.indexOf('=');
+    if (equals === -1) continue;
+    const name = pair.slice(0, equals).trim();
+    const field = argText(pair.slice(equals + 1).trim()).trim();
+    if (!field) continue;
+    if (name === 'key') key = field;
+    else if (name === 'value') value = field;
+  }
+  return { key, value };
+}
+
+// A field set as an own property, so a `__proto__` key is a key and never the entry's prototype.
+function setField(target: Record<string, unknown>, name: string, value: unknown): void {
+  Object.defineProperty(target, name, { value, enumerable: true, writable: true, configurable: true });
+}
+
+/** A mapping as a list of entries, the way `to_list` makes one; a list is left as it is. */
+export function toList(source: unknown, arg?: string): unknown[] | undefined {
+  if (Array.isArray(source)) return source;
+  if (!source || typeof source !== 'object') return undefined;
+  const { key, value } = convertArgs(arg);
+  return Object.entries(source).map(([name, held]) => {
+    const entry: Record<string, unknown> = {};
+    setField(entry, key, name);
+    if (value === undefined && held && typeof held === 'object' && !Array.isArray(held)) {
+      for (const [field, inner] of Object.entries(held)) if (field !== key) setField(entry, field, inner);
+    } else if ((value ?? 'value') !== key) {
+      setField(entry, value ?? 'value', held);
+    }
+    return entry;
+  });
+}
+
+/** A list of mappings as one mapping, the way `to_map` makes one; a mapping is left as it is. */
+export function toMap(source: unknown, arg?: string): Record<string, unknown> | undefined {
+  if (!source || typeof source !== 'object') return undefined;
+  if (!Array.isArray(source)) return source as Record<string, unknown>;
+  const { key, value } = convertArgs(arg);
+  const out: Record<string, unknown> = {};
+  for (const item of source) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    if (!Object.prototype.hasOwnProperty.call(item, key)) continue;
+    const name = (item as Record<string, unknown>)[key];
+    if (name === undefined || name === null || typeof name === 'object') continue;
+    let held: unknown;
+    if (value !== undefined) {
+      if (!Object.prototype.hasOwnProperty.call(item, value)) continue;
+      held = (item as Record<string, unknown>)[value];
+    } else {
+      const rest: Record<string, unknown> = {};
+      for (const [field, inner] of Object.entries(item)) if (field !== key) setField(rest, field, inner);
+      held = rest;
+    }
+    setField(out, stripHaMarks(String(name)), held);
+  }
+  return out;
+}
+
+/** Whether a step is `to_list` or `to_map`, bare or with its argument. */
+function isConvertStep(step: string): boolean {
+  return CONVERT_STEPS.includes(stepName(step));
+}
+
+/*
  * `if_exists` (#313) keeps an entity id only while Home Assistant knows the entity, and is a
  * gap otherwise - so `[[sensor|if_exists?]]` drops out and `[[sensor|if_exists|default:none]]`
  * stands in, without a second variable holding `[[sensor|exists]]` for an `if:` to read.
@@ -555,7 +726,10 @@ function isYesNoStep(step: string): boolean {
 
 /** Whether a chain ends in a yes or a no, so a whole value should become a real true or false. */
 export function yieldsBoolean(chain: string | undefined): boolean {
-  return !!chain && isYesNoStep(chain.split('|').pop() as string);
+  if (!chain) return false;
+  const last = chain.split('|').pop() as string;
+  // A function's true or false goes in bare too (#307); its other answers are text.
+  return isYesNoStep(last) || isFunctionStep(last);
 }
 
 /** Whether a step has an answer for a variable nothing sets. */
@@ -620,6 +794,17 @@ const LIST_BARE_STEPS = [JOIN_STEP, SPLIT_STEP, FIRST_STEP, LAST_STEP, COUNT_STE
 // read straight after a `repeat:`.
 export const FLAT_STEP = 'flat';
 
+/*
+ * Which way a `repeat:` reads a mapping (#429). Left to itself it reads one with any of a registry
+ * source's keys - `area`, `domain` - as a source, and any other mapping entry by entry. Written
+ * after the `repeat:`, `|entries` always goes entry by entry and `|registry` always asks Home
+ * Assistant, so a mapping of yours whose keys happen to be `area` and `name` means what it says.
+ */
+export const ENTRIES_STEP = 'entries';
+export const REGISTRY_STEP = 'registry';
+/** The steps that may follow a `repeat:` other than its conditions. */
+export const AFTER_REPEAT_STEPS = [FLAT_STEP, ENTRIES_STEP, REGISTRY_STEP];
+
 // The two that also take an argument: the separator.
 const LIST_PARAM_STEPS = [JOIN_STEP, SPLIT_STEP];
 
@@ -651,6 +836,10 @@ export function takesStructure(step: string, value: unknown): boolean {
   if (writesWhole(step) || step === RAW_STEP || step === BOOL_STEP) return true;
   // A list is asked whether it holds the item, a mapping whether it has the key.
   if (stepName(step) === CONTAINS_STEP) return !!value && typeof value === 'object';
+  // A list or a mapping is looked through for the entry `pick:` asks for (#429).
+  if (stepName(step) === PICK_STEP) return !!value && typeof value === 'object';
+  // A mapping becomes a list, or a list a mapping (#429).
+  if (isConvertStep(step)) return !!value && typeof value === 'object';
   // A mapping has a size, and nothing else a list step reads.
   return Array.isArray(value) ? isListStep(step) : step === COUNT_STEP;
 }
@@ -972,7 +1161,8 @@ export function yieldsNumber(chain: string | undefined): boolean {
   if (!chain) return false;
   const doing = chain.split('|').filter((step) => !isFallback(step) && !isCondition(step));
   const last = doing[doing.length - 1];
-  return last !== undefined && NUMBER_RESULTS.has(stepName(last));
+  // A function's number goes in as one (#307), checked against JSON's way of writing it.
+  return last !== undefined && (NUMBER_RESULTS.has(stepName(last)) || isFunctionStep(last));
 }
 
 /*
@@ -984,10 +1174,26 @@ export function yieldsList(chain: string | undefined): boolean {
   let list = false;
   for (const step of chain.split('|')) {
     if (isFallback(step) || isCondition(step)) continue;
-    if (stepName(step) === SPLIT_STEP) list = true;
-    else if (isListStep(step) || isYesNoStep(step) || writesWhole(step) || step === RAW_STEP) list = false;
+    if (stepName(step) === SPLIT_STEP || stepName(step) === TO_LIST_STEP) list = true;
+    else if (
+      isListStep(step) ||
+      isYesNoStep(step) ||
+      writesWhole(step) ||
+      step === RAW_STEP ||
+      stepName(step) === PICK_STEP ||
+      stepName(step) === TO_MAP_STEP
+    )
+      list = false;
   }
   return list;
+}
+
+/** Whether a chain ends in a `to_map` (#429), so a whole value it makes goes in as a real mapping. */
+export function yieldsMapping(chain: string | undefined): boolean {
+  if (!chain) return false;
+  const doing = chain.split('|').filter((step) => !isFallback(step) && !isCondition(step));
+  const last = doing[doing.length - 1];
+  return last !== undefined && stepName(last) === TO_MAP_STEP;
 }
 
 /** Whether a shaped value can go into the card's JSON as a bare number. */
@@ -1016,6 +1222,9 @@ const TRANSFORM_NAMES = [
   ...NUMBER_BARE_STEPS,
   ...LIST_BARE_STEPS,
   FLAT_STEP,
+  ENTRIES_STEP,
+  REGISTRY_STEP,
+  ...CONVERT_STEPS,
   ...EXTRA_BARE_STEPS,
 ].join('|');
 
@@ -1160,6 +1369,23 @@ export function withStateScope(hass: any, entities: string[]): any {
   return scoped;
 }
 
+/*
+ * The try page lets every state in its house be read, as if the card listed each one in
+ * rebuild_on. Only the entities written in its boxes stand as placeholders for themselves:
+ * putting the whole house there made every repeat copy carry a thousand extra variables.
+ * A card never sets this.
+ */
+const READ_ALL = Symbol('decluttering read every state');
+
+/** hass with every state readable, and only `standing` written straight into placeholders. */
+export function withEveryStateReadable(hass: any, standing: string[]): any {
+  if (!hass) return hass;
+  const scoped = Object.create(hass);
+  scoped[STATE_SCOPE] = standing;
+  scoped[READ_ALL] = true;
+  return scoped;
+}
+
 /** The entities a build may read the state of, which also stand as placeholders for themselves. */
 export function stateScope(hass: any): string[] {
   const scope = hass?.[STATE_SCOPE];
@@ -1168,8 +1394,19 @@ export function stateScope(hass: any): string[] {
 
 /** Whether this build may read the state of this entity. */
 export function stateAllowed(hass: any, entityId: string): boolean {
-  return stateScope(hass).includes(entityId);
+  if (hass?.[READ_ALL] === true) return true;
+  const scope = stateScope(hass);
+  if (scope.length < 32) return scope.includes(entityId);
+  let set = scopeSets.get(scope);
+  if (!set) {
+    set = new Set(scope);
+    scopeSets.set(scope, set);
+  }
+  return set.has(entityId);
 }
+
+// A long scope, as a set, kept for as long as the scope list itself lives.
+const scopeSets = new WeakMap<string[], Set<string>>();
 
 /*
  * A value can stand in for another when there is nothing to show. `default:` supplies the
@@ -1327,10 +1564,29 @@ export function conditionTarget(step: string): string | undefined {
   return isCondition(step) ? parseCondition(step).name : undefined;
 }
 
+// A value that is nothing but a placeholder, left as written because it could not be filled.
+const WHOLE_PLACEHOLDER = new RegExp(`^(?:${PLACEHOLDER_SOURCE})$`);
+
+/*
+ * Whether a value is a placeholder that was never filled in (#429): `[[thing|if:thing=2]]`
+ * whose `if:` did not hold, or a name nothing gives a value to. Its text is kept so the card
+ * shows the mistake, but an `if:` reading it as text would count it as a yes. Button-card's
+ * `[[[ ... ]]]` is JavaScript, not a placeholder, and still counts as text. An escaped
+ * `[[!name]]` has already been unwrapped by the time a condition reads it, so it cannot be
+ * told apart and reads as not set too.
+ */
+function unfilled(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const text = value.trim();
+  return !text.startsWith('[[[') && WHOLE_PLACEHOLDER.test(text);
+}
+
 /** Whether one `if:` step holds, given a way to read a variable's value. */
 export function conditionHolds(step: string, read: (name: string) => unknown): boolean {
   const { name, text, negated } = parseCondition(step);
-  const value = read(name);
+  // A placeholder left unfilled reads as not set, so `if:` does not hold and `if:!` does.
+  const raw = read(name);
+  const value = unfilled(raw) ? undefined : raw;
   if (text === undefined) return truthy(value) !== negated;
   // Compared as text, as a dropdown and YAML both hand it over - but a mapping or a list
   // has no text to compare, and an unset variable equals nothing.
@@ -1351,6 +1607,21 @@ export function gateOpen(chain: string, read: (name: string) => unknown): boolea
     .split('|')
     .filter(isCondition)
     .every((step) => conditionHolds(step, read));
+}
+
+/*
+ * A `with:` or `repeat:` chain taken apart (#429): the conditions before the step gate the whole
+ * placeholder, read against the variables as they are, and the ones after it are the copy's own,
+ * read against each copy's values - `[[row|repeat:rows|if:enabled]]` keeps the rows that are
+ * enabled. Any other chain has only the first kind, wherever its conditions sit.
+ */
+export function splitCopyConditions(chain: string): { gate: string; rest: string } {
+  const steps = chain.split('|');
+  const at = steps.findIndex((step) => !isCondition(step));
+  if (at === -1 || !STRUCTURE_PARAM_STEPS.includes(stepName(steps[at]))) {
+    return { gate: steps.filter(isCondition).join('|'), rest: withoutConditions(chain) };
+  }
+  return { gate: steps.slice(0, at).join('|'), rest: steps.slice(at).join('|') };
 }
 
 /** The chain with its conditions taken out, leaving what is actually done to the value. */
@@ -1501,7 +1772,14 @@ export function isStructureStep(step: string): boolean {
   return STRUCTURE_STEPS.includes(stepName(step));
 }
 
-const PARAM_PREFIXES = [...Object.keys(PARAM_TRANSFORMS), ...LIST_PARAM_STEPS, CONTAINS_STEP, ...EXTRA_PARAM_STEPS];
+const PARAM_PREFIXES = [
+  ...Object.keys(PARAM_TRANSFORMS),
+  ...LIST_PARAM_STEPS,
+  CONTAINS_STEP,
+  PICK_STEP,
+  ...CONVERT_STEPS,
+  ...EXTRA_PARAM_STEPS,
+];
 
 /*
  * An arithmetic argument stops short of an opening bracket as well, so `add:[[offset]]`
@@ -1530,7 +1808,85 @@ function paramTransform(
   return { fn: PARAM_TRANSFORMS[name], arg: name === 'replace' || name === 'map' ? arg : argText(arg) };
 }
 
-const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES}|${OR_STEP}|${DEFAULT_STEP}|${IF_STEP}|${PARAM_STEP})`;
+/*
+ * Every step a placeholder chain can hold, by name, for the template editor's lint - which
+ * has to tell `[[room|slgu]]` from a step it has simply never heard of. Built from the
+ * registries above, so a transform or a resolver added to TRANSFORMS, RESOLVERS or
+ * PARAM_TRANSFORMS is known here without being listed a second time. A step handled
+ * anywhere else - special-cased the way `json` and `bool` are - has to be added by hand,
+ * here, or the lint will call it unknown.
+ */
+export const KNOWN_STEPS: string[] = [
+  ...new Set([
+    ...Object.keys(TRANSFORMS),
+    JSON_STEP,
+    RAW_STEP,
+    YAML_STEP,
+    BOOL_STEP,
+    EXISTS_STEP,
+    IF_EXISTS_STEP,
+    ...INSTALLED_STEPS,
+    ...IF_INSTALLED_STEPS,
+    STATE_STEP,
+    // Bare, as `[[row|with]]` and `[[row|repeat]]` (#314); with an argument they are below.
+    ...STRUCTURE_PARAM_STEPS,
+    SLOT_STEP,
+    ...NUMBER_BARE_STEPS,
+    ...LIST_BARE_STEPS,
+    FLAT_STEP,
+    ENTRIES_STEP,
+    REGISTRY_STEP,
+    ...CONVERT_STEPS,
+    ...EXTRA_BARE_STEPS,
+    ...Object.keys(RESOLVERS),
+  ]),
+];
+
+/** The steps written as a name, a colon and an argument - `default:Unnamed`, `if:other=on`. */
+export const KNOWN_PARAM_STEPS: string[] = [
+  ...Object.keys(PARAM_TRANSFORMS),
+  ...NUMBER_PARAM_STEPS,
+  ...LIST_PARAM_STEPS,
+  CONTAINS_STEP,
+  PICK_STEP,
+  ...CONVERT_STEPS,
+  ...STRUCTURE_PARAM_STEPS,
+  ...EXTRA_PARAM_STEPS,
+  ATTRIBUTE_PREFIX.slice(0, -1),
+  OR_PREFIX.slice(0, -1),
+  DEFAULT_PREFIX.slice(0, -1),
+  IF_PREFIX.slice(0, -1),
+  UNLESS_PREFIX.slice(0, -1),
+];
+
+/** Whether a step is a built-in one, by name or by its `name:` prefix - never a function (#307). */
+export function isBuiltinStep(step: string): boolean {
+  if (KNOWN_STEPS.includes(step)) return true;
+  const colon = step.indexOf(':');
+  return colon > 0 && KNOWN_PARAM_STEPS.includes(step.slice(0, colon));
+}
+
+/** Whether a name belongs to a built-in step, so a template of that name is never used as one (#307). */
+export function isBuiltinStepName(name: string): boolean {
+  return KNOWN_STEPS.includes(name) || KNOWN_PARAM_STEPS.includes(name);
+}
+
+/*
+ * A template used as a step (#307): `[[room|occ_sens]]`, `[[room|occ_sens:cat,detected]]`.
+ * Any name the built-in steps do not have, with an argument that stops at a bar or a bracket
+ * the way a `with:` argument does, so `occ_sens:type=[[kind]]` waits for `[[kind]]` first.
+ * The lookahead keeps a built-in name out of it altogether - one step, one reading - so a
+ * chain that does not close is not tried every way round (#403). Whether the name is a
+ * function at all is the build's to say: a site whose chain has a step that is neither is
+ * left as written, exactly as when the grammar did not match it.
+ */
+const BUILTIN_NAME_ALTERNATION = [...new Set([...KNOWN_STEPS, ...KNOWN_PARAM_STEPS])]
+  .sort((a, b) => b.length - a.length)
+  .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .join('|');
+const FUNCTION_STEP = `(?!(?:${BUILTIN_NAME_ALTERNATION})(?![A-Za-z0-9_-]))[A-Za-z_][A-Za-z0-9_-]*(?::[^|\\][]*)?`;
+
+const CHAIN_STEP = `(?:${TRANSFORM_NAMES}|${RESOLVER_NAMES}|${OR_STEP}|${DEFAULT_STEP}|${IF_STEP}|${PARAM_STEP}|${FUNCTION_STEP})`;
 
 const TRANSFORM_CHAIN = `${CHAIN_STEP}(?:\\|${CHAIN_STEP})*`;
 
@@ -1538,6 +1894,42 @@ const TRANSFORM_CHAIN = `${CHAIN_STEP}(?:\\|${CHAIN_STEP})*`;
 export const TRANSFORM_SUFFIX = `(?:\\|(${TRANSFORM_CHAIN}))?`;
 
 const TRANSFORM_TAIL = new RegExp(`(?:\\|${CHAIN_STEP})+$`);
+
+/*
+ * Templates used as steps (#307). A build that has any hands the chain a host for them, for as
+ * long as it runs: a build is synchronous, so the one in hand is the one the chain belongs to,
+ * and a nested build that brings no templates of its own keeps the one around it. The host
+ * says which names are functions and fills one in; undefined from it is a missing value, the
+ * way a resolver with nothing to give is.
+ */
+export interface FunctionHost {
+  has(name: string): boolean;
+  names(): string[];
+  call(name: string, arg: string | undefined, value: unknown): string | number | boolean | undefined;
+}
+
+let functionHost: FunctionHost | undefined;
+
+/** The function steps the build in hand can call, if it can call any (#307). */
+export function activeFunctionHost(): FunctionHost | undefined {
+  return functionHost;
+}
+
+/** Runs a build with these function steps to hand, putting back whatever was there before. */
+export function withFunctionHost<T>(host: FunctionHost | undefined, run: () => T): T {
+  const before = functionHost;
+  functionHost = host;
+  try {
+    return run();
+  } finally {
+    functionHost = before;
+  }
+}
+
+/** Whether a step is a template used as a step, in the build in hand (#307). Built-in steps always win. */
+export function isFunctionStep(step: string): boolean {
+  return !!functionHost && !isBuiltinStep(step) && functionHost.has(stepName(step));
+}
 
 /**
  * The value a placeholder asks for, in the shape it asks for it, with each transform of
@@ -1600,6 +1992,9 @@ export function applyTransform(
   // Whether a `split` has been passed: a stand-in supplied after one is read as the list
   // text would have been, so the chain still ends in a list it built itself.
   let splitBefore = false;
+
+  // Whether a `to_list` has been passed: a stand-in after one is one entry, never a list it spells.
+  let listedBefore = false;
 
   // One step that shapes text, applied to one piece of it.
   const reshape = (name: string, input: string): string | undefined => {
@@ -1717,6 +2112,38 @@ export function applyTransform(
       continue;
     }
 
+    if (stepName(name) === PICK_STEP) {
+      // Only the value itself is looked through: text, or a list a `split` made, has no entries.
+      // A list `to_list` made is looked through as well (#429).
+      const picked = pickFrom(list ?? firstHand, name.slice(PICK_STEP.length + 1));
+      text = picked === undefined || picked === null ? undefined : itemText(picked);
+      list = undefined;
+      empty = text === undefined || text === '';
+      continue;
+    }
+
+    if (isConvertStep(name)) {
+      // The value itself, or a list a step before made; text has no keys to take apart.
+      const colon = name.indexOf(':');
+      const arg = colon === -1 ? undefined : name.slice(colon + 1);
+      const source = list ?? firstHand;
+      if (stepName(name) === TO_LIST_STEP) {
+        const made = toList(source, arg);
+        list = made;
+        text = undefined;
+        empty = !made || made.length === 0;
+        // Noted whether or not it made anything, as `split` is: a stand-in after it is a list too.
+        listedBefore = true;
+      } else {
+        const made = toMap(source, arg);
+        list = undefined;
+        text = made === undefined ? undefined : JSON.stringify(made);
+        empty = !made || Object.keys(made).length === 0;
+        listedBefore = false;
+      }
+      continue;
+    }
+
     if (isCondition(name)) {
       if (!conditionHolds(name, read)) {
         text = undefined;
@@ -1744,7 +2171,8 @@ export function applyTransform(
          * name of `[{"type":"iframe",...}]` reaching `or:name` - would otherwise be spliced
          * in as the structure it spelt (review 2026-10-18).
          */
-        if (splitBefore && text !== undefined) {
+        // After a `to_list` (#429) the same goes, so its stand-in is never the list it might spell.
+        if ((splitBefore || listedBefore) && text !== undefined) {
           list = splitText(text, DEFAULT_SPLIT);
           text = undefined;
           empty = list.length === 0;
@@ -1800,6 +2228,39 @@ export function applyTransform(
     // Nothing to work on. Left rather than abandoned, so a `default:` further along the
     // chain still gets its turn.
     if (text === undefined && list === undefined) continue;
+
+    /*
+     * A template used as a step (#307): the value goes in as `[[value]]`, the argument as its
+     * parameters, and what comes out carries on along the chain. Nothing coming out is a gap,
+     * so a `?`, a `default:` or an `or:` after it works as it does after any step. First in
+     * the chain it is handed the value itself, so a number arrives a number.
+     */
+    if (functionHost && isFunctionStep(name)) {
+      const host = functionHost;
+      const colon = name.indexOf(':');
+      const arg = colon === -1 ? undefined : name.slice(colon + 1);
+      const called = (input: unknown): string | undefined => {
+        const out = host.call(stepName(name), arg, input);
+        return out === undefined ? undefined : String(out);
+      };
+      if (list !== undefined) {
+        const shaped = list.map((item) => called(item));
+        if (shaped.some((item) => item === undefined)) {
+          list = undefined;
+          text = undefined;
+          empty = true;
+        } else {
+          list = shaped;
+          empty = shaped.length === 0;
+        }
+        continue;
+      }
+      const input = firstHand === undefined || (firstHand !== null && typeof firstHand === 'object') ? text : firstHand;
+      text = called(input);
+      if (text !== undefined && isHaMarked(text)) haText = true;
+      empty = text === undefined || text === '';
+      continue;
+    }
 
     // The grammar only ever matches known names, but the fallback pass reads any chain. An
     // unknown step has no answer: handing the raw value back would let a chain ending in
@@ -1908,7 +2369,8 @@ export function resolveFallback(
 
 // The parts of a template that get substituted into, and so the only places a placeholder
 // can do anything.
-const CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group', 'style'];
+// A function template's result (#307) is one too.
+const CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group', 'style', 'function'];
 
 // Substitution reads one name and one value per entry, so everything here has to agree
 // with that or the warnings would describe a card nobody is rendering.
@@ -2291,7 +2753,9 @@ function scanPlaceholders(json: string, pattern: RegExp, names: string[]): void 
       const head = inside.replace(TRANSFORM_TAIL, '');
       // A quoted name is text, not a variable (#398), and the template's own names are
       // given by every build, not set by anybody (#391).
-      if (quotedText(head) === undefined && !TEMPLATE_PLACEHOLDERS.includes(head)) names.push(head);
+      // A `$` lookup is one of the template's own texts (#392), set by its `language:` block.
+      if (quotedText(head) === undefined && !TEMPLATE_PLACEHOLDERS.includes(head) && !head.startsWith(LOOKUP_PREFIX))
+        names.push(head);
       // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing -
       // and `[[a|if:b]]` reads b to decide whether a is shown at all.
       for (const step of inside.split('|').slice(1)) {
@@ -2307,6 +2771,8 @@ function contentOf(template: TemplateConfig | undefined): unknown[] {
   return [
     ...CONTENT_KEYS.map((key) => (template as any)?.[key]).filter((part) => part !== undefined),
     ...checkReads(template),
+    // A `[[$key]]` text with placeholders in it (#392) fills them in where it is looked up.
+    ...((template as any)?.language !== undefined ? [(template as any).language] : []),
   ];
 }
 
@@ -2431,6 +2897,17 @@ function usesStep(
   return false;
 }
 
+// Whether text uses this name as a step: `|name` ending at a bar, a colon, a `?` or the brackets.
+function usesAsStep(text: string, name: string): boolean {
+  let at = text.indexOf(`|${name}`);
+  while (at !== -1) {
+    const next = text[at + name.length + 1];
+    if (next === '|' || next === ':' || next === '?' || next === ']') return true;
+    at = text.indexOf(`|${name}`, at + 1);
+  }
+  return false;
+}
+
 /*
  * The item templates a template fills in by name - `[[camera_entry|with:...]]` - and the ones
  * those fill in, and so on. A step inside one ends up in the card as surely as one written
@@ -2448,7 +2925,11 @@ export function itemTemplatesReached(
     if (typeof text !== 'string') return;
     for (const name of names) {
       if (seen.has(name)) continue;
-      if (!text.includes(`[[${name}|`) && !text.includes(`[[${name}]]`) && !text.includes(`[[${name}?`)) continue;
+      // A function template (#307) is reached through a step: `[[room|occ_sens]]`, `|occ_sens:cat`.
+      const called = (itemTemplates[name] as any)?.function !== undefined && usesAsStep(text, name);
+      if (!called && !text.includes(`[[${name}|`) && !text.includes(`[[${name}]]`) && !text.includes(`[[${name}?`)) {
+        continue;
+      }
       seen.add(name);
       reached.push(itemTemplates[name]);
       visit(placeholderJson(itemTemplates[name]));
@@ -2509,13 +2990,60 @@ export function usesAttributes(
   return usesStep(template, (step) => step.startsWith(ATTRIBUTE_PREFIX), itemTemplates);
 }
 
+/**
+ * What a template reads of the states it may read (#411), for `rebuild_on_watch: read`: the
+ * attributes it names in `attr:` steps, and whether it reads last_updated. Read off the text
+ * like usesStep, so a step inside an escaped placeholder counts too - which only watches more.
+ */
+export function stateReads(
+  template: TemplateConfig | undefined,
+  itemTemplates?: Record<string, TemplateConfig>,
+): { attributes: string[]; lastUpdated: boolean; unknown: boolean } {
+  const json = placeholderJson([
+    template,
+    outerLet(template).map((layer) => layer.values),
+    ...itemTemplatesReached(template, itemTemplates),
+  ]);
+  const attributes: string[] = [];
+  if (typeof json !== 'string') return { attributes, lastUpdated: false, unknown: false };
+  const names = /\|attr:([a-zA-Z0-9_]+)/g;
+  for (let match = names.exec(json); match !== null; match = names.exec(json))
+    if (!attributes.includes(match[1])) attributes.push(match[1]);
+  return {
+    attributes,
+    lastUpdated: usesAsStep(json, 'last_updated'),
+    // `|attr:[[which]]` names its attribute only once the build fills it in.
+    unknown: /\|attr:(?![a-zA-Z0-9_])/.test(json),
+  };
+}
+
 export function usesTranslate(
   template: TemplateConfig | undefined,
   itemTemplates?: Record<string, TemplateConfig>,
 ): boolean {
   // The date, plural and number steps read the viewer's locale too, which travels with
-  // hass.localize when the language changes (ideas 38, 40).
-  return usesStep(template, (step) => step === 'translate' || isDateStep(step) || isLocaleStep(step), itemTemplates);
+  // hass.localize when the language changes (ideas 38, 40). So does a template's own
+  // `[[$key]]` text (#392), which is the viewer's language's.
+  return (
+    usesLookup(template, itemTemplates) ||
+    usesStep(template, (step) => step === 'translate' || isDateStep(step) || isLocaleStep(step), itemTemplates)
+  );
+}
+
+/*
+ * What a translation lookup's name starts with (#392): `[[$vars.fb.name]]` is a text from the
+ * template's `language:` block, not a variable anybody sets. The rest of it lives in
+ * translations.ts, which reads this module; only the prefix is needed here.
+ */
+const LOOKUP_PREFIX = '$';
+
+/** Whether a template, or an item template it fills in, looks up one of its own texts (#392). */
+export function usesLookup(
+  template: TemplateConfig | undefined,
+  itemTemplates?: Record<string, TemplateConfig>,
+): boolean {
+  const json = placeholderJson([template, ...itemTemplatesReached(template, itemTemplates)]);
+  return typeof json === 'string' && json.includes(`[[${LOOKUP_PREFIX}`);
 }
 
 /**
@@ -2808,6 +3336,27 @@ export function forEachItems(forEach: unknown): unknown[] | undefined {
   return undefined;
 }
 
+/*
+ * A plain mapping as the items a `repeat:` runs over (#429): one per entry, in the mapping's
+ * order, each with `key` and `value`. A value that is itself a mapping has its keys spread in
+ * as well, the way a list entry's are, and those win over `key` and `value` when they share a
+ * name; an entity id as the value is `entity` too, as it is for a list of ids.
+ */
+export function mappingItems(mapping: Record<string, unknown>): Record<string, unknown>[] {
+  return Object.entries(mapping).map(([key, value]) => {
+    const item: Record<string, unknown> = { key, value };
+    if (typeof value === 'string' && /^[a-z_]+\.[a-z0-9_]+$/.test(value)) item.entity = value;
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      // Defined rather than assigned (or spread, which compiles to assigning), so a
+      // `__proto__` key in the mapping is just a key and never the copy's prototype.
+      for (const [name, inner] of Object.entries(value)) {
+        Object.defineProperty(item, name, { value: inner, enumerable: true, writable: true, configurable: true });
+      }
+    }
+    return item;
+  });
+}
+
 /** The names every copy of a `for_each` gets given, whatever its items say. */
 export const POSITION_NAMES = ['index', 'index0', 'count', 'first', 'last'];
 
@@ -2848,49 +3397,3 @@ export function forEachNames(items: unknown): string[] {
   }
   return [...names];
 }
-
-/*
- * Every step a placeholder chain can hold, by name, for the template editor's lint - which
- * has to tell `[[room|slgu]]` from a step it has simply never heard of. Built from the
- * registries above, so a transform or a resolver added to TRANSFORMS, RESOLVERS or
- * PARAM_TRANSFORMS is known here without being listed a second time. A step handled
- * anywhere else - special-cased the way `json` and `bool` are - has to be added by hand,
- * here, or the lint will call it unknown.
- */
-export const KNOWN_STEPS: string[] = [
-  ...new Set([
-    ...Object.keys(TRANSFORMS),
-    JSON_STEP,
-    RAW_STEP,
-    YAML_STEP,
-    BOOL_STEP,
-    EXISTS_STEP,
-    IF_EXISTS_STEP,
-    ...INSTALLED_STEPS,
-    ...IF_INSTALLED_STEPS,
-    STATE_STEP,
-    // Bare, as `[[row|with]]` and `[[row|repeat]]` (#314); with an argument they are below.
-    ...STRUCTURE_PARAM_STEPS,
-    SLOT_STEP,
-    ...NUMBER_BARE_STEPS,
-    ...LIST_BARE_STEPS,
-    FLAT_STEP,
-    ...EXTRA_BARE_STEPS,
-    ...Object.keys(RESOLVERS),
-  ]),
-];
-
-/** The steps written as a name, a colon and an argument - `default:Unnamed`, `if:other=on`. */
-export const KNOWN_PARAM_STEPS: string[] = [
-  ...Object.keys(PARAM_TRANSFORMS),
-  ...NUMBER_PARAM_STEPS,
-  ...LIST_PARAM_STEPS,
-  CONTAINS_STEP,
-  ...STRUCTURE_PARAM_STEPS,
-  ...EXTRA_PARAM_STEPS,
-  ATTRIBUTE_PREFIX.slice(0, -1),
-  OR_PREFIX.slice(0, -1),
-  DEFAULT_PREFIX.slice(0, -1),
-  IF_PREFIX.slice(0, -1),
-  UNLESS_PREFIX.slice(0, -1),
-];

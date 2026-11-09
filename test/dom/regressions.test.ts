@@ -337,6 +337,9 @@ describe('checks (#389)', () => {
     });
     const el = card({ template: 't', variables: [{ camera: 'camera.gone' }] }, stubHass());
     document.body.appendChild(el);
+    await until(() => !!report(el), 3000, 'the report');
+    // The report opens formatted (#412); the tree is a button away.
+    (el as any)._reportView = 'tree';
     await until(() => !!report(el)?.querySelector('.tree > details'), 3000, 'the report tree');
     const top = [...report(el).querySelectorAll('.tree > details')] as HTMLDetailsElement[];
     const heads = top.map((node) => node.querySelector('summary')?.textContent?.trim() ?? '');
@@ -626,5 +629,39 @@ describe('checks count to strict (#389 with #390)', () => {
     document.body.appendChild(el);
     await until(() => !!inner(el), 2000, 'the copies');
     expect(shadow(el, '.error-card')).to.equal(null);
+  });
+});
+
+describe('templates used as steps (#307)', () => {
+  const templates = {
+    occ_sens: {
+      parameters: ['detect_type', 'suffix'],
+      default: [{ detect_type: 'car' }, { suffix: 'occupancy' }],
+      let: { sensor: 'binary_sensor.[[value|lower]]_[[detect_type]]_[[suffix]]' },
+      function: '[[sensor|if_exists]]',
+    },
+    t: {
+      card: {
+        type: 'markdown',
+        content: '[[room|occ_sens]] / [[room|occ_sens:cat|upper]] / [[room|occ_sens:dog|default:none]]',
+        title: '[[room|occ_sens:dog?]]',
+      },
+    },
+  };
+
+  it('builds a function step into the real card', async () => {
+    stubLovelace({ decluttering_templates: templates, views: [{ cards: [] }] });
+    const hass = stubHass({
+      'binary_sensor.frontdoor_car_occupancy': 'on',
+      'binary_sensor.frontdoor_cat_occupancy': 'off',
+    });
+    const el = card({ template: 't', variables: [{ room: 'FrontDoor' }] }, hass);
+    document.body.appendChild(el);
+    await until(() => !!inner(el)?.config?.content, 2000, 'a build');
+    await settle();
+    expect(inner(el).config.content).to.equal(
+      'binary_sensor.frontdoor_car_occupancy / BINARY_SENSOR.FRONTDOOR_CAT_OCCUPANCY / none',
+    );
+    expect('title' in inner(el).config, 'the optional one with no sensor dropped').to.equal(false);
   });
 });

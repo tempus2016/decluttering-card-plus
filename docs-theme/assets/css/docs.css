@@ -453,9 +453,9 @@ blockquote > :last-child { margin-bottom: 0; }
 #describe-type-row .builder-label { margin-top: 0; }
 
 /* ------------------------------------------------------------ try a placeholder */
-.try-variables { min-height: 12rem; }
+.try-variables { min-height: 10rem; }
 .try-expression { min-height: 0; resize: none; padding: .7rem 1rem; font-size: .9375rem; }
-.try-examples { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 1.75rem; }
+.try-examples { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 0; }
 .try-chip {
   display: inline-flex; flex-direction: column; align-items: flex-start; gap: .15rem;
   font: inherit; text-align: left; cursor: pointer;
@@ -465,10 +465,82 @@ blockquote > :last-child { margin-bottom: 0; }
 .try-chip:hover { border-color: var(--amber); }
 .try-chip:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 .try-chip-label { font-size: .75rem; color: var(--ink-soft); }
-.try-chip code { font-size: .8125rem; }
+.try-chip { max-width: 100%; }
+.try-chip code { font-size: .8125rem; overflow-wrap: anywhere; }
+.try-wrap code { overflow-wrap: anywhere; }
 .try-table td:nth-child(2) code { white-space: pre-wrap; word-break: break-word; }
 .try-kind { font-family: var(--mono); font-size: .8125rem; white-space: nowrap; }
 .try-kind-unresolved, .try-kind-removed { color: var(--amber-dim); }
+/* The examples sit under the result, so the variables, the placeholder and what it gives
+   stay on screen together (#427). */
+.try-output { margin-top: 1.25rem; }
+.try-share { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin: .5rem 0 1.25rem; }
+.try-link-note { font-size: .875rem; color: var(--ink-soft); }
+.try-link { max-width: none; flex: 1 1 100%; margin-top: 0; font-family: var(--mono); font-size: .8125rem; }
+.try-box { margin: .75rem 0; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); }
+.try-box > summary {
+  cursor: pointer; padding: .6rem .9rem;
+  font-family: var(--mono); font-size: .75rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft);
+}
+.try-box > summary:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.try-box[open] > summary { border-bottom: 1px solid var(--rule-soft); }
+.try-box > :not(summary) { margin-left: .9rem; margin-right: .9rem; }
+.try-box > .builder-help { margin-top: .75rem; }
+.try-small { min-height: 9rem; width: calc(100% - 1.8rem); }
+.try-check { display: block; margin: .6rem .9rem 0; font-size: .9375rem; }
+.try-check input { accent-color: var(--amber); margin-right: .4rem; }
+.try-note { margin: .5rem .9rem .9rem; font-size: .875rem; color: var(--ink-soft); }
+.try-note ul { margin: 0; }
+.try-note-bad { color: var(--amber-dim); }
+.try-note code { white-space: pre-wrap; word-break: break-word; }
+#things-to-try { margin-top: 2rem; }
+.try-house-scroll { overflow-x: auto; margin: 0 0 1.125rem; }
+.try-house { font-size: .875rem; }
+.try-house td:first-child code { white-space: nowrap; }
+.try-house-mark { font-family: var(--mono); font-size: .75rem; color: var(--amber-dim); }
+
+/* ------------------------------------------------------------ try a template (#427) */
+.tt-templates { min-height: 16rem; }
+.tt-card { min-height: 8rem; }
+.tt-note { margin-left: 0; margin-right: 0; }
+.tt-note:empty { display: none; }
+.tt-gist-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.tt-gist-input { flex: 1 1 16rem; min-height: 0; resize: none; padding: .55rem .8rem; font-size: .9375rem; margin-top: 0; }
+.tt-gist-note { margin-left: 0; margin-right: 0; }
+.tt-gist-note:empty { display: none; }
+.tt-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+.tt-field, .tt-group { min-width: 0; }
+.tt-field { padding: .6rem .8rem; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); }
+.tt-field-hidden { border-style: dashed; background: transparent; }
+.tt-field-hidden > .tt-field-label, .tt-field-hidden > .tt-input { opacity: .6; }
+.tt-field-label { display: block; font-weight: 600; font-size: .9375rem; margin-bottom: .3rem; }
+.tt-field-meta { font-weight: 400; font-size: .8125rem; color: var(--ink-soft); margin-left: .5rem; }
+.tt-required { color: var(--amber-dim); }
+.tt-input { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; min-height: 0; resize: vertical; padding: .45rem .7rem; font-size: .9375rem; margin-top: 0; }
+.tt-field-label { overflow-wrap: anywhere; }
+.tt-field input[type="checkbox"] { accent-color: var(--amber); width: 1.1rem; height: 1.1rem; }
+.tt-field-help { margin: .3rem 0 0; font-size: .8125rem; color: var(--ink-soft); overflow-wrap: anywhere; }
+.tt-group { margin: .5rem 0 .25rem; }
+.tt-group > summary {
+  cursor: pointer; padding: .3rem 0;
+  font-family: var(--mono); font-size: .75rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--ink-soft);
+}
+.tt-group > .tt-field { margin-bottom: .25rem; }
+.tt-build-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }
+.tt-said-list { padding-left: 1.1rem; font-size: .9375rem; }
+.tt-said-list li { margin-bottom: .35rem; overflow-wrap: anywhere; }
+.tt-said-bad::marker { color: var(--amber-dim); }
+.tt-said-warn::marker { color: var(--amber); }
+.tt-output { margin-top: 1rem; }
+.tt-block > summary { display: flex; }
+.tt-block-tools { display: flex; justify-content: flex-end; padding-top: .5rem; }
+.tt-pre { max-height: 32rem; overflow: auto; margin: .5rem .9rem .9rem; }
+.tt-pre code { white-space: pre; }
+.tt-outline { list-style: none; padding: .5rem 0 .75rem; margin: 0; font-size: .875rem; }
+.tt-outline li { margin: .15rem 0; overflow-wrap: anywhere; }
+.tt-outline-tags { color: var(--ink-soft); }
 
 /* ============================================================
    Narrower than three columns

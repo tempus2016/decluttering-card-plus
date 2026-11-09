@@ -89,6 +89,14 @@
           ],
           "description": "Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field."
         },
+        "rebuild_on": {
+          "$ref": "#/definitions/RebuildOnValue",
+          "description": "Entities a card using this template rebuilds on, as well as the card's own - and the only ones `|state` and `|attr:` can read. Placeholders are filled from the variables: `'[[camera]]'` (#411)."
+        },
+        "rebuild_on_watch": {
+          "$ref": "#/definitions/RebuildWatch",
+          "description": "What a rebuild_on entity's change is compared on, for cards using this template that do not say (#411)."
+        },
         "author": {
           "anyOf": [
             {
@@ -204,6 +212,14 @@
             }
           ]
         },
+        "language": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "description": "The template's texts in each language (#392), keyed by language code - `en`, `de`, `pt-BR` - each a mapping of texts of any depth. `[[$key.path]]` anywhere in the template is that text in Home Assistant's language, falling back to the language without its region, then `en`, then the first one given. `extends:` merges them key by key."
+        },
         "default": {
           "$ref": "#/$defs/config_with_placeholders"
         },
@@ -217,6 +233,17 @@
         },
         "item": {
           "description": "A piece of config rather than a card - one entry of a camera card's `cameras:`, say - filled in where a placeholder asks for it: `[[name|with:...]]` once, `[[name|repeat:...]]` once per item. Takes `default:`, `let:` and `variables:` like any template."
+        },
+        "function": {
+          "description": "A template used as a step (#307): `[[room|name]]`, `[[room|name:a,b]]`. What the step gives - a placeholder text or a plain value - with the value it is applied to as `[[value]]`. It sees nothing of the card's variables: only the value, its arguments, and its own `default:` and `let:`.",
+          "$ref": "#/$defs/config_with_placeholders"
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "For a function template: the names its unnamed arguments take, in order."
         },
         "for_each": {
           "description": "For an item template: what a bare `[[name|repeat]]` repeats over - a list, or a placeholder that fills to one."
@@ -355,6 +382,69 @@
         "notice",
         "report"
       ]
+    },
+    "RebuildOnValue": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/RebuildOnEntity"
+        },
+        {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "$ref": "#/definitions/RebuildOnEntity"
+              }
+            ]
+          }
+        }
+      ],
+      "description": "A rebuild_on value: one entity or many, each an id or `{entity, watch}`."
+    },
+    "RebuildOnEntity": {
+      "type": "object",
+      "properties": {
+        "entity": {
+          "type": "string",
+          "description": "The entity id, or a placeholder that fills to one."
+        },
+        "watch": {
+          "$ref": "#/definitions/RebuildWatch",
+          "description": "`read`, `all`, or a list of `state`, `last_changed`, `last_updated` and attribute names."
+        }
+      },
+      "required": [
+        "entity"
+      ],
+      "description": "One rebuild_on entity that says which parts of its state count as a change (#411)."
+    },
+    "RebuildWatch": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "all"
+        },
+        {
+          "type": "string",
+          "const": "read"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "What counts as a change of a rebuild_on entity (#411): `all`, `read`, or the parts named."
     },
     "VariableDeclaration": {
       "type": "object",
@@ -674,8 +764,9 @@
   "$defs": {
     "text_with_placeholders": {
       "type": "string",
-      "pattern": "^(?:[^\\[]|\\[{3,}(?!\\[)|\\[(?!\\[)|\\[\\[!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|(?:age|area|area_icon|area_id|bool|capitalize|card_exists|contrast|count|device|device_class|device_id|domain|exists|first|flat|floor|floor_icon|format_number|friendly_name|icon|icon_exists|if_card_exists|if_exists|if_icon_exists|if_integration_exists|integration_exists|join|json|kebab|labels|last|last_changed|last_updated|lower|manufacturer|model|object_id|raw|relative|repeat|round|slot|slug|split|state|title|translate|trim|upper|with|yaml|(?:add|age|alpha|attr|contains|darken|default|div|find|format|format_number|if|join|lighten|map|max|mix|mod|mul|or|pad|plural|prefix|repeat|replace|round|split|sub|suffix|switch|unless|with):[^|\\]]*))*\\??\\]\\])*$",
-      "description": "Text, with any number of [[placeholders]]. Each placeholder is a variable name, then steps the card knows, then an optional ?."
+      "pattern": "^(?:[^\\[]|\\[{3,}(?!\\[)|\\[(?!\\[)|\\[\\[!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|(?:age|area|area_icon|area_id|bool|capitalize|card_exists|contrast|count|device|device_class|device_id|domain|entries|exists|first|flat|floor|floor_icon|format_number|friendly_name|icon|icon_exists|if_card_exists|if_exists|if_icon_exists|if_integration_exists|integration_exists|join|json|kebab|labels|last|last_changed|last_updated|lower|manufacturer|model|object_id|raw|registry|relative|repeat|round|slot|slug|split|state|title|to_list|to_map|translate|trim|upper|with|yaml|(?:add|age|alpha|attr|contains|darken|default|div|find|format|format_number|if|join|lighten|map|max|mix|mod|mul|or|pad|pick|plural|prefix|repeat|replace|round|split|sub|suffix|switch|to_list|to_map|unless|with):[^|\\]]*|(?!(?:if_integration_exists|integration_exists|if_card_exists|if_icon_exists|format_number|friendly_name|last_changed|last_updated|manufacturer|device_class|card_exists|icon_exists|capitalize|floor_icon|if_exists|device_id|object_id|area_icon|translate|registry|relative|contrast|contains|entries|to_list|area_id|replace|lighten|default|exists|repeat|to_map|device|domain|labels|prefix|suffix|switch|format|plural|darken|unless|upper|lower|title|kebab|state|round|split|first|count|floor|model|alpha|slug|trim|json|yaml|bool|with|slot|join|last|flat|area|icon|find|pick|attr|raw|age|max|map|add|sub|mul|div|mod|pad|mix|or|if)(?![A-Za-z0-9_-]))[A-Za-z_][A-Za-z0-9_-]*(?::[^|\\]]*)?))*\\??\\]\\])*$",
+      "patternErrorMessage": "A [[placeholder]] here is not well formed. Check that the brackets come in pairs and that a step with a value is written name:value, as in if:name or default:x. Misspelt step names are not checked here: the card editor and lint name them.",
+      "description": "Text, with any number of [[placeholders]]. Each placeholder is a variable name, then any steps - built-in ones, or a template used as a step - then an optional ?."
     },
     "config_with_placeholders": {
       "description": "Card, row, badge or element configuration. Strings in it may hold [[placeholders]].",

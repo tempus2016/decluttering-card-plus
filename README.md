@@ -28,7 +28,8 @@ what differs, and use it everywhere.
 ![One room template on the left, the card using it in the middle, four rooms built from it below](images/readme-hero.png)
 
 📖 **The documentation is in the [wiki][wiki]**, also published as a [searchable site][pages]
-with a [template builder][builder] and a [placeholder playground][playground]. This page is
+with a [template builder][builder], a [placeholder playground][playground] and a page to
+[try a template][try-template] on. This page is
 the summary. What changed in each version is on the [releases page][releases].
 
 ## Installation
@@ -114,7 +115,8 @@ here.
   export takes the item templates and dashboard values it uses with it, and lists the custom
   cards it needs under `requires:`.
 - Templates built on templates with `extends:`, and one-off tweaks with a card's own
-  `card:` block laid over what its template builds.
+  `card:` block laid over what its template builds. A template with a `function:` is a
+  [step of your own][wiki-custom-steps]: `[[room|occupancy]]`.
 - [Visibility][wiki-visibility] and [styling][wiki-styling] inside a template.
 - [Visual editors][wiki-editors] that show what a card builds, where a template is used,
   rename a template or a variable everywhere, turn existing cards into a template, and keep
@@ -129,9 +131,9 @@ here.
   level, what an error or a warning does to the card. A card that cannot be built says why and
   offers the fix.
 - A health panel for missing templates, unset variables and unused templates, also as a card
-  or badge on the dashboard, and `debug: report` to write up what a card built, as a folding
-  tree, with what each variable worked out to and how and a box to try a placeholder in,
-  ready to paste into an issue.
+  or badge on the dashboard, and `debug: report` to write up what a card built, with an
+  outline of what built what, what each variable worked out to and how, and a box to try a
+  placeholder in, ready to paste into an issue.
 - In the editors: presets from a template's examples, a gallery to install templates from,
   a preview in light and dark at phone and tablet widths, a pause for previews that are
   expensive to build, an extends family tree, a diff against the library copy, and a
@@ -179,6 +181,12 @@ The card speaks Dutch, English, French, German, Portuguese and Spanish, followin
 Assistant profile. Adding a language is one file and no code: see
 [Translations][wiki-translations].
 
+A shared template can carry its own words in several languages too. Put them in a
+`language:` block, one mapping per language code, and write `[[$key]]` wherever the text
+goes, in the card, a variable's label or description, or the template's description. Each
+viewer gets their Home Assistant language, then the same language without its region, then
+English, then the first one written. See [Template Translations][wiki-template-translations].
+
 ## Credits
 
 `decluttering-card-plus` builds on [custom-cards/decluttering-card][upstream], which has not had
@@ -219,10 +227,12 @@ npm start       # rebuild on change, served on :5000 for the dev container
 [releases]: https://github.com/tempus2016/decluttering-card-plus/releases
 [romrider]: https://github.com/RomRider
 [simbaja]: https://github.com/simbaja/ha-decluttering-card
+[try-template]: https://tempus2016.github.io/decluttering-card-plus/try-template.html
 [upstream]: https://github.com/custom-cards/decluttering-card
 [wiki]: https://github.com/tempus2016/decluttering-card-plus/wiki
 [wiki-badges]: https://github.com/tempus2016/decluttering-card-plus/wiki/Badges
 [wiki-cards]: https://github.com/tempus2016/decluttering-card-plus/wiki/Cards
+[wiki-custom-steps]: https://github.com/tempus2016/decluttering-card-plus/wiki/Custom-Steps
 [wiki-config]: https://github.com/tempus2016/decluttering-card-plus/wiki/Configuration-Reference
 [wiki-editors]: https://github.com/tempus2016/decluttering-card-plus/wiki/Visual-Editors
 [wiki-elements]: https://github.com/tempus2016/decluttering-card-plus/wiki/Elements
@@ -236,6 +246,7 @@ npm start       # rebuild on change, served on :5000 for the dev container
 [wiki-rows]: https://github.com/tempus2016/decluttering-card-plus/wiki/Rows
 [wiki-sharing-between]: https://github.com/tempus2016/decluttering-card-plus/wiki/Sharing-Templates-Between-Dashboards
 [wiki-styling]: https://github.com/tempus2016/decluttering-card-plus/wiki/Styling
+[wiki-template-translations]: https://github.com/tempus2016/decluttering-card-plus/wiki/Template-Translations
 [wiki-translations]: https://github.com/tempus2016/decluttering-card-plus/wiki/Translations
 [wiki-troubleshooting]: https://github.com/tempus2016/decluttering-card-plus/wiki/Troubleshooting
 [wiki-trying]: https://github.com/tempus2016/decluttering-card-plus/wiki/Trying-It-Out

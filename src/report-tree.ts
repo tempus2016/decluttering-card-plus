@@ -7,7 +7,16 @@
  * Pure: nothing here touches the DOM. element.ts draws the nodes with <details>.
  */
 import { ExpansionResult, TraceReport, TraceSection, headline } from './trace';
-import { allWarnings, checkWhere, failedChecks, oneBuild, redact, secretValues } from './report';
+import {
+  ItemTables,
+  allWarnings,
+  checkWhere,
+  failedChecks,
+  oneBuild,
+  redact,
+  secretValues,
+  sectionTables,
+} from './report';
 import { toYaml } from './yaml';
 import { localize } from './localize';
 
@@ -16,13 +25,16 @@ import { localize } from './localize';
 export interface ReportNode {
   /** Stable within one report, for keyed rendering. */
   id: string;
-  /** A card's own section, a group of rows, one row, or a block of YAML. */
-  kind: 'card' | 'group' | 'leaf' | 'code';
+  /** A card's own section, a group of rows, one row, a table, or a block of YAML. */
+  kind: 'card' | 'group' | 'leaf' | 'table' | 'code';
   title: string;
   /** Beside the title, lighter: a time, a count, where a value came from. */
   meta?: string;
   /** A code node's text. */
   text?: string;
+  /** A table node's column headings and its rows, one string per cell. */
+  columns?: string[];
+  rows?: string[][];
   /** A warning row. */
   warn?: boolean;
   /** Drawn open the first time. */
@@ -50,7 +62,64 @@ const asText = (value: unknown): string =>
         : String(value);
 
 /** Every section a card built, as nodes under one card node. */
-function cardNode(report: TraceReport, index: number, hide: (text: string) => string, hass?: any): ReportNode {
+/*
+ * Rows as a table node, the same columns the Markdown report has (#412). Empty rows give a
+ * node with no rows; the group around it says the count.
+ */
+function tableNode(id: string, rows: Record<string, unknown>[], hide: (text: string) => string): ReportNode {
+  const columns = rows.length ? Object.keys(rows[0]) : [];
+  return {
+    id,
+    kind: 'table',
+    title: '',
+    columns,
+    rows: rows.map((row) => columns.map((column) => hide(asText(row[column])))),
+  };
+}
+
+/** A group holding one table, or nothing when there are no rows. */
+function tableGroup(
+  id: string,
+  title: string,
+  rows: Record<string, unknown>[],
+  hide: (text: string) => string,
+): ReportNode {
+  return {
+    id,
+    kind: 'group',
+    title,
+    meta: String(rows.length),
+    children: rows.length ? [tableNode(`${id}-table`, rows, hide)] : [],
+  };
+}
+
+/** Each item template a fill built, a group each, with its values and placeholders as tables (#235). */
+function itemNodes(base: string, items: ItemTables[], hide: (text: string) => string, hass?: any): ReportNode[] {
+  const t = (key: string): string => localize(key, undefined, hass).replace(/[,:]\s*$/, '');
+  return items.map((item, i) => {
+    const id = `${base}-i${i}`;
+    return {
+      id,
+      kind: 'group' as const,
+      title: hide(item.title),
+      children: [
+        tableGroup(`${id}-values`, t('trace.item_values'), item.values, hide),
+        tableGroup(`${id}-placeholders`, plainTitle(t('trace.placeholders')), item.placeholders, hide),
+        ...itemNodes(id, item.items, hide, hass),
+      ],
+    };
+  });
+}
+
+const plainTitle = (text: string): string => text.replace(/[,:]\s*$/, '').replace(/, and what each became$/, '');
+
+function cardNode(
+  report: TraceReport,
+  index: number,
+  hide: (text: string) => string,
+  redacting: boolean,
+  hass?: any,
+): ReportNode {
   const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
   const children: ReportNode[] = [];
   if (report.template) {
@@ -61,37 +130,22 @@ function cardNode(report: TraceReport, index: number, hide: (text: string) => st
       text: hide(toYaml(report.template.config)),
     });
   }
+  const allTables = sectionTables(report, redacting, hass);
   report.sections.forEach((section: TraceSection, sectionIndex) => {
     const base = `r${index}-s${sectionIndex}`;
     const own: ReportNode[] = [];
-    own.push({
-      id: `${base}-variables`,
-      kind: 'group',
-      title: t('trace.variables')
-        .replace(/[,:]\s*$/, '')
-        .replace(/, and where each came from$/, ''),
-      meta: String(section.variables.length),
-      children: section.variables.map((row, i) => ({
-        id: `${base}-v${i}`,
-        kind: 'leaf' as const,
-        title: hide(`${row.variable}: ${asText(row.value)}`),
-        meta: hide(row.from),
-      })),
-    });
-    const placeholders = [...section.trace.placeholders];
-    own.push({
-      id: `${base}-placeholders`,
-      kind: 'group',
-      title: t('trace.placeholders')
-        .replace(/[,:]\s*$/, '')
-        .replace(/, and what each became$/, ''),
-      meta: String(placeholders.length),
-      children: placeholders.map(([placeholder, became], i) => ({
-        id: `${base}-p${i}`,
-        kind: 'leaf' as const,
-        title: hide(`${placeholder} → ${asText(became)}`),
-      })),
-    });
+    const tables = allTables[sectionIndex];
+    own.push(
+      tableGroup(
+        `${base}-variables`,
+        t('trace.variables')
+          .replace(/[,:]\s*$/, '')
+          .replace(/, and where each came from$/, ''),
+        tables.variables,
+        hide,
+      ),
+    );
+    own.push(tableGroup(`${base}-placeholders`, plainTitle(t('trace.placeholders')), tables.placeholders, hide));
     if (section.trace.dropped.length) {
       own.push({
         id: `${base}-dropped`,
@@ -105,6 +159,7 @@ function cardNode(report: TraceReport, index: number, hide: (text: string) => st
         })),
       });
     }
+    own.push(...itemNodes(base, tables.items, hide, hass));
     if (section.trace.warnings.length) {
       own.push({
         id: `${base}-warnings`,
@@ -149,11 +204,16 @@ function cardNode(report: TraceReport, index: number, hide: (text: string) => st
   };
 }
 
+/** What the tree, and the outline above it, take out of any text they show: the report's own redaction. */
+export function treeRedactor(reports: TraceReport[]): (text: string) => string {
+  const secrets = secretValues(reports);
+  return (text) => redact(text, secrets);
+}
+
 /** The whole report as nodes: the error, failed checks, warnings, the end result, what never built, then each card's build. */
 export function reportTree(input: TreeInput, hass?: any): ReportNode[] {
   const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
-  const secrets = input.unredacted ? [] : secretValues(input.reports);
-  const hide = (text: string): string => (secrets.length ? redact(text, secrets) : redact(text, []));
+  const hide = treeRedactor(input.reports);
   const keep = (text: string): string => (input.unredacted ? text : hide(text));
   const nodes: ReportNode[] = [];
   if (input.error) nodes.push({ id: 'error', kind: 'leaf', title: keep(input.error), warn: true });
@@ -223,18 +283,37 @@ export function reportTree(input: TreeInput, hass?: any): ReportNode[] {
       children: input.neverBuilt.map((path, i) => ({ id: `never-${i}`, kind: 'leaf' as const, title: keep(path) })),
     });
   }
-  input.reports.forEach((report, index) => nodes.push(cardNode(report, index, keep, hass)));
+  input.reports.forEach((report, index) => nodes.push(cardNode(report, index, keep, !input.unredacted, hass)));
   return nodes;
 }
 
-const matches = (node: ReportNode, query: string): boolean =>
-  node.title.toLowerCase().includes(query) ||
-  (node.meta?.toLowerCase().includes(query) ?? false) ||
-  (node.text?.toLowerCase().includes(query) ?? false);
+// How many times `needle` (lower case) occurs in `text`, counted the way highlightParts cuts it.
+const occurrences = (text: string | undefined, needle: string): number => {
+  if (!text) return 0;
+  const lower = text.toLowerCase();
+  let count = 0;
+  for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + needle.length)) count += 1;
+  return count;
+};
+
+// The text the card draws for a node, so a hit is only counted where it is also marked: a
+// table shows its cells and no title, every other kind its title and meta, a code block its text too.
+const shownText = (node: ReportNode): (string | undefined)[] =>
+  node.kind === 'table'
+    ? [...(node.columns ?? []), ...([] as string[]).concat(...(node.rows ?? []))]
+    : [node.title, node.meta, ...(node.kind === 'code' ? [node.text] : [])];
+
+/** How many highlights `query` makes in one node as the card draws it. */
+export function nodeHits(node: ReportNode, query: string): number {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return 0;
+  return shownText(node).reduce((sum, text) => sum + occurrences(text, needle), 0);
+}
 
 /**
  * The tree narrowed to what mentions `query`, ancestors kept and opened so every hit is in
- * view, and how many nodes hit. An empty query gives the tree back as it was, with no count.
+ * view, and how many highlights that makes - every occurrence, so a table with three hits
+ * counts three. An empty query gives the tree back as it was, with no count.
  */
 export function searchTree(nodes: ReportNode[], query: string): { nodes: ReportNode[]; matches?: number } {
   const needle = query.trim().toLowerCase();
@@ -244,9 +323,9 @@ export function searchTree(nodes: ReportNode[], query: string): { nodes: ReportN
     const out: ReportNode[] = [];
     for (const node of list) {
       const children = node.children ? walk(node.children) : undefined;
-      const hit = matches(node, needle);
-      if (hit) count += 1;
-      if (hit || (children && children.length)) out.push({ ...node, children, open: true });
+      const hits = nodeHits(node, needle);
+      count += hits;
+      if (hits || (children && children.length)) out.push({ ...node, children, open: true });
     }
     return out;
   };

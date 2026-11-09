@@ -1,7 +1,8 @@
 import { HomeAssistant } from 'custom-card-helpers';
-import { DeclutteringCardConfig, FormSchemaEntry } from '../types';
+import { DeclutteringCardConfig, FormSchemaEntry, TemplateConfig } from '../types';
 import { localize } from '../localize';
-import { rebuildOnEntities } from '../rebuild';
+import { isRebuildObject, rebuildOnEntities } from '../rebuild';
+import { isRebuildPlaceholder } from '../rebuild-resolve';
 import { ON_ERROR_HIDE, ON_ERROR_KEY } from '../on-error';
 import { ERROR_MODES, ErrorMode, STRICT_TRUE, strictLayer, WARNING_MODES, WarningMode } from '../strict';
 
@@ -27,9 +28,25 @@ export interface AdvancedData {
   strict_errors: ErrorMode;
   strict_warnings: WarningMode;
   rebuild_on?: string[];
+  /** `rebuild_on_watch:` (#411): `default` writes nothing; `custom` is a list written in YAML, kept as it is. */
+  rebuild_on_watch: WatchMode;
   debug: DebugMode;
   name?: string;
   inherit_variables?: boolean;
+}
+
+/** What the card compares a rebuild_on entity's change on (#411). */
+export type WatchMode = 'default' | 'all' | 'read' | 'custom';
+
+function watchMode(written: unknown): WatchMode {
+  if (written === undefined || written === null) return 'default';
+  if (written === 'all' || written === 'read') return written;
+  return 'custom';
+}
+
+/** A `watch:` value as text: `read`, or the parts it names. */
+export function watchText(value: unknown): string {
+  return Array.isArray(value) ? value.map(String).join(', ') : String(value);
 }
 
 /** The config keys the section edits, which is what the summary counts. */
@@ -39,6 +56,7 @@ export const ADVANCED_KEYS = [
   ON_ERROR_KEY,
   'strict',
   'rebuild_on',
+  'rebuild_on_watch',
   'debug',
   'name',
   'inherit_variables',
@@ -71,6 +89,29 @@ function debugMode(written: unknown): DebugMode {
   return 'off';
 }
 
+/** A rebuild_on value as a list, one entry or many. */
+function rebuildList(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+}
+
+/**
+ * The placeholders in the card's own rebuild_on (#411), and the entries written as
+ * `{entity, watch}`. The entity picker cannot draw either, so the section lists them beside
+ * it, each with a way to take it out.
+ */
+export function rebuildPlaceholders(config: DeclutteringCardConfig): unknown[] {
+  return rebuildList(config.rebuild_on).filter((each) => isRebuildPlaceholder(each) || isRebuildObject(each));
+}
+
+/** The card with one placeholder taken out of its rebuild_on, and the key gone with the last entry. */
+export function withoutRebuildEntry(config: DeclutteringCardConfig, entry: unknown): DeclutteringCardConfig {
+  const out = { ...config } as Record<string, unknown>;
+  const kept = rebuildList(config.rebuild_on).filter((each) => each !== entry);
+  if (kept.length) out.rebuild_on = kept;
+  else delete out.rebuild_on;
+  return out as DeclutteringCardConfig;
+}
+
 /** What the section's form shows for a card. */
 export function advancedData(config: DeclutteringCardConfig): AdvancedData {
   // Only what the card itself writes: what a template or a dashboard says is not this card's to change.
@@ -79,6 +120,7 @@ export function advancedData(config: DeclutteringCardConfig): AdvancedData {
     on_error_mode: onErrorMode(config[ON_ERROR_KEY]),
     strict_errors: strict.errors ?? 'ignore',
     strict_warnings: strict.warnings ?? 'ignore',
+    rebuild_on_watch: watchMode(config.rebuild_on_watch),
     debug: debugMode(config.debug),
   };
   const grid = config.grid_options as Record<string, unknown> | undefined;
@@ -87,7 +129,8 @@ export function advancedData(config: DeclutteringCardConfig): AdvancedData {
   if (columns !== undefined) data.grid_columns = columns;
   if (rows !== undefined) data.grid_rows = rows;
   if (typeof config.style === 'string' && config.style) data.style = config.style;
-  const rebuild = rebuildOnEntities(config.rebuild_on);
+  // Only the plain ids: an entry that says what it watches is listed beside the picker (#411).
+  const rebuild = rebuildOnEntities(rebuildList(config.rebuild_on).filter((each) => typeof each === 'string'));
   if (rebuild.length) data.rebuild_on = rebuild;
   if (typeof config.name === 'string' && config.name) data.name = config.name;
   if (config.inherit_variables === true) data.inherit_variables = true;
@@ -141,9 +184,25 @@ export function applyAdvanced(config: DeclutteringCardConfig, data: AdvancedData
   else if (Object.keys(strict).length) out.strict = strict;
   else delete out.strict;
 
-  const rebuild = rebuildOnEntities(data.rebuild_on);
+  // A placeholder or a `{entity, watch}` entry (#411) cannot be drawn in the entity picker,
+  // so it is kept as written rather than lost the first time anything on this tab changes.
+  const kept = rebuildPlaceholders(config);
+  const rebuild = [...rebuildOnEntities(data.rebuild_on), ...kept];
   if (rebuild.length) out.rebuild_on = rebuild;
   else delete out.rebuild_on;
+
+  switch (data.rebuild_on_watch) {
+    case 'all':
+    case 'read':
+      out.rebuild_on_watch = data.rebuild_on_watch;
+      break;
+    case 'custom':
+      // A list of parts is the YAML's to change; the form only keeps it.
+      if (watchMode(config.rebuild_on_watch) !== 'custom') delete out.rebuild_on_watch;
+      break;
+    default:
+      delete out.rebuild_on_watch;
+  }
 
   switch (data.debug) {
     case 'json':
@@ -187,15 +246,21 @@ export function withOnErrorCard(
   return out as DeclutteringCardConfig;
 }
 
-/** How many of the section's settings the card has set, for the summary line. */
-export function advancedCount(config: DeclutteringCardConfig): number {
+/**
+ * How many of the section's settings the card has set, for the summary line. rebuild_on
+ * counts once whether the card lists entities, placeholders or both, or only its template
+ * does (#411) - it is what the card rebuilds on all the same.
+ */
+export function advancedCount(config: DeclutteringCardConfig, template?: TemplateConfig): number {
   const data = advancedData(config);
   let count = 0;
   if (data.grid_columns !== undefined || data.grid_rows !== undefined) count += 1;
   if (data.style !== undefined) count += 1;
   if (data.on_error_mode !== 'show') count += 1;
   if (data.strict_errors !== 'ignore' || data.strict_warnings !== 'ignore') count += 1;
-  if (data.rebuild_on) count += 1;
+  const fromTemplate = rebuildList((template as { rebuild_on?: unknown } | undefined)?.rebuild_on);
+  if (data.rebuild_on || rebuildPlaceholders(config).length || fromTemplate.length) count += 1;
+  if (data.rebuild_on_watch !== 'default') count += 1;
   if (data.debug !== 'off') count += 1;
   if (data.name !== undefined) count += 1;
   if (data.inherit_variables) count += 1;
@@ -206,8 +271,37 @@ const GRID_COLUMNS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '
 const GRID_ROWS = ['1', '2', '3', '4', '5', '6', '7', '8', 'auto'];
 
 /** The form fields of the section, in the order the mockup shows them. Built per call so it speaks the viewer's language. */
-export function advancedSchema(hass?: HomeAssistant): FormSchemaEntry[] {
+export function advancedSchema(
+  hass?: HomeAssistant,
+  config?: DeclutteringCardConfig,
+  template?: TemplateConfig,
+): FormSchemaEntry[] {
   const text = (key: string): string => localize(key, undefined, hass);
+  // What a card that says nothing gets: the template's word, when it has one (#411).
+  const inherited = (template as { rebuild_on_watch?: unknown } | undefined)?.rebuild_on_watch;
+  const watchOptions = [
+    {
+      value: 'default',
+      label:
+        inherited === undefined || inherited === null
+          ? text('editor.advanced.rebuild_on_watch_default')
+          : localize('editor.advanced.rebuild_on_watch_template', { value: watchText(inherited) }, hass),
+    },
+    { value: 'read', label: text('editor.advanced.rebuild_on_watch_read') },
+    { value: 'all', label: text('editor.advanced.rebuild_on_watch_all') },
+    ...(watchMode(config?.rebuild_on_watch) === 'custom'
+      ? [
+          {
+            value: 'custom',
+            label: localize(
+              'editor.advanced.rebuild_on_watch_custom',
+              { value: watchText(config?.rebuild_on_watch) },
+              hass,
+            ),
+          },
+        ]
+      : []),
+  ];
   const options = (values: string[], prefix: string): { value: string; label: string }[] =>
     values.map((value) => ({ value, label: /^\d+$/.test(value) ? value : text(`${prefix}${value}`) }));
   return [
@@ -274,6 +368,12 @@ export function advancedSchema(hass?: HomeAssistant): FormSchemaEntry[] {
       label: text('editor.advanced.rebuild_on_label'),
       helper: text('editor.advanced.rebuild_on_helper'),
       selector: { entity: { multiple: true } },
+    },
+    {
+      name: 'rebuild_on_watch',
+      label: text('editor.advanced.rebuild_on_watch_label'),
+      helper: text('editor.advanced.rebuild_on_watch_helper'),
+      selector: { select: { mode: 'dropdown', options: watchOptions } },
     },
     {
       name: 'debug',

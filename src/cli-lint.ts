@@ -11,6 +11,7 @@
 import { CORE_SCHEMA, defineScalarTag, load, NOT_RESOLVED } from 'js-yaml';
 import { LovelaceConfig } from 'custom-card-helpers';
 import { lintTemplate } from './lint';
+import { functionNamesOf } from './functions';
 import {
   checkDashboard,
   collectSharedDeclarations,
@@ -141,8 +142,9 @@ export function lintDashboard(
   const templates = collectTemplates(config);
   const shared = collectSharedDeclarations(config).map((declaration) => declaration.name);
 
+  const functions = functionNamesOf(templates);
   for (const name of Object.keys(templates).sort()) {
-    for (const finding of lintTemplate(templates[name], shared)) {
+    for (const finding of lintTemplate(templates[name], shared, { name, functions })) {
       findings.push({
         file,
         level: finding.level,

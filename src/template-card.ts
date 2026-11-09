@@ -2,10 +2,13 @@ import { html, TemplateResult, css, CSSResult } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, TemplateConfig } from './types';
-import { collectTemplates, collectAllTemplates, mayBorrowTemplates, parentsOf } from './templates';
+import { collectTemplates, collectAllTemplates, isStepOnlyTemplate, mayBorrowTemplates, parentsOf } from './templates';
+import { FUNCTION_KEY, isFunctionTemplate } from './functions';
 import { trashHass, watchForTrash } from './trash';
 import { chainOf, describeCycle, describeTooDeep, findCycle, MAX_NESTING } from './cycles';
 import { exampleVariables } from './examples';
+import { hassLanguage } from './translations';
+import { usesLookup } from './variables';
 import { getLovelaceConfig } from './utils';
 import { localize } from './localize';
 import { DeclutteringElement } from './element';
@@ -15,6 +18,8 @@ export class DeclutteringTemplate extends DeclutteringElement {
   @property({ type: Boolean, reflect: true }) preview = false;
 
   @state() private _template?: string;
+  // A template with nothing to show - a function (#307) or an item template - as resolved.
+  @state() private _stepOnly?: TemplateConfig;
   // The config the preview was last drawn from, and one still waiting on a borrowed parent.
   private _previewConfig?: DeclutteringTemplateConfig;
   private _pendingPreview?: DeclutteringTemplateConfig;
@@ -46,6 +51,20 @@ export class DeclutteringTemplate extends DeclutteringElement {
       :host([preview]) {
         display: block !important;
         border: 1px solid var(--primary-color);
+      }
+      .step-only {
+        margin: 0 8px 8px;
+        color: var(--secondary-text-color);
+      }
+      .step-only code,
+      .step-only pre {
+        font-family: var(--ha-font-family-code, monospace);
+        color: var(--primary-text-color);
+      }
+      .step-only pre {
+        margin: 6px 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
       }
     `;
   }
@@ -90,6 +109,7 @@ export class DeclutteringTemplate extends DeclutteringElement {
 
     this._template = config.template;
     this._previewConfig = config;
+    this._stepOnly = undefined;
 
     /*
      * The preview draws the template the way a card using it would get it: its parent
@@ -108,17 +128,30 @@ export class DeclutteringTemplate extends DeclutteringElement {
     // - drawn now, a child with no card of its own would fail before its parent arrived.
     const unresolved = parentsOf(resolved).length > 0;
     if (unresolved && mayBorrowTemplates(ll)) {
+      // Drawn once the parent arrives, with the hass of that moment.
+      this._lookupLanguage = undefined;
       this._pendingPreview = config;
       if (this._hass) this.hassAvailable(this._hass);
       return;
     }
     this._pendingPreview = undefined;
+    // A function or an item template is in the dashboard's templates all the same; it has
+    // no card to draw, so its preview says what it is rather than failing to build one.
+    if (isStepOnlyTemplate(resolved)) {
+      this._stepOnly = resolved;
+      return;
+    }
     // The config passed here IS the template, so its style is picked up as the
     // template's own - passing it again as the instance style would emit it twice.
     // Drawn with the example picked in the editor, when there is one, or the defaults as ever.
     const example = exampleVariables(resolved, previewExamples.get(config.template));
+    // Its own texts (#392) are drawn in the language of the hass in hand, before any arrives in English.
+    this._lookupLanguage = usesLookup(resolved) ? hassLanguage(this._hass) : undefined;
     this._setTemplateConfig(resolved, example, undefined, config.template);
   }
+
+  // The language a preview using `[[$key]]` texts was last drawn in; undefined for one using none.
+  private _lookupLanguage?: string;
 
   protected _rebuild(): void {
     if (this._previewConfig) this.setConfig(this._previewConfig);
@@ -127,6 +160,11 @@ export class DeclutteringTemplate extends DeclutteringElement {
   protected hassAvailable(hass: HomeAssistant): void {
     watchForTrash(hass);
     trashHass(hass);
+    // Drawn before hass arrived, or in a language since changed: drawn again in the user's.
+    if (this._lookupLanguage !== undefined && this._lookupLanguage !== hassLanguage(hass)) {
+      this._rebuild();
+      return;
+    }
     const config = this._pendingPreview;
     if (!config) return;
     this._pendingPreview = undefined;
@@ -142,6 +180,11 @@ export class DeclutteringTemplate extends DeclutteringElement {
         if (this._previewConfig !== config) return;
         try {
           const resolved = all[config.template] ?? config;
+          if (isStepOnlyTemplate(resolved)) {
+            this._stepOnly = resolved;
+            this._error = undefined;
+            return;
+          }
           const example = exampleVariables(resolved, previewExamples.get(config.template));
           this._setTemplateConfig(resolved, example, undefined, config.template);
           this._error = undefined;
@@ -157,10 +200,22 @@ export class DeclutteringTemplate extends DeclutteringElement {
     if (this.preview) {
       return html`
         <div class="badge">${this._template}</div>
-        ${super.render()}
+        ${this._stepOnly && !this._error ? this._renderStepOnly(this._stepOnly) : super.render()}
       `;
     }
     return html``;
+  }
+
+  // What a function or an item template is for, in place of the card it does not have.
+  private _renderStepOnly(template: TemplateConfig): TemplateResult {
+    if (!isFunctionTemplate(template)) {
+      return html`<div class="step-only">${localize('template_card.item_note', undefined, this._hass)}</div>`;
+    }
+    const body = (template as Record<string, unknown>)[FUNCTION_KEY];
+    return html`<div class="step-only">
+      ${localize('template_card.function_note', { call: `[[value|${this._template}]]` }, this._hass)}
+      <pre>${typeof body === 'string' ? body : JSON.stringify(body)}</pre>
+    </div>`;
   }
 
   private setHidden(hidden: boolean): void {

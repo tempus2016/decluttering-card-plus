@@ -16,15 +16,18 @@ import {
   PLACEHOLDER,
   resolveVariables,
   variableValues,
+  isBuiltinStepName,
 } from './variables';
 import deepReplace from './deep-replace';
 import { isRegistrySource, registryNames } from './registry';
 import { rebuildOnEntities } from './rebuild';
 import { localize } from './localize';
-import { isItemTemplate, placeholderHeads, structureNames } from './structure';
+import { isItemTemplate, placeholderHeads, placeholderSteps, structureNames } from './structure';
 import { warn } from './warnings';
 import { STRICT_KEY } from './strict';
-import { closestTemplate } from './closest';
+import { closestTemplate, setFunctionNames } from './closest';
+import { functionNamesOf, isFunctionTemplate } from './functions';
+import { LANGUAGE_KEY, mergeLanguages } from './translations';
 
 export { closestTemplate };
 import { withSlotVariables } from './slots';
@@ -121,6 +124,8 @@ export function checkDashboard(
   // than a card's `template:`, so it is used when a placeholder anywhere starts with its name.
   const itemNames = available.filter((name) => isItemTemplate(templates[name]));
   const heads = itemNames.length ? placeholderHeads(ll) : new Set<string>();
+  let steps: Set<string> | undefined;
+  const stepsUsed = (): Set<string> => (steps ??= placeholderSteps(ll));
   const missing = new Map<string, number>();
   const unset = new Map<string, { names: Set<string>; count: number }>();
 
@@ -197,6 +202,9 @@ export function checkDashboard(
       .filter((name) => !('dashboard' in (templates[name] ?? {})))
       .filter((name) => totalUsages(ll, name) === 0 && !extendedNames(ll).has(name))
       .filter((name) => !(itemNames.includes(name) && heads.has(name)))
+      // A function template (#307) is used as a step, which no card names either.
+      // One named after a built-in step never is (#307): the built-in runs instead.
+      .filter((name) => !(isFunctionTemplate(templates[name]) && !isBuiltinStepName(name) && stepsUsed().has(name)))
       .sort(),
   };
 }
@@ -519,7 +527,11 @@ export function templatePickerOptions(
 ): { value: string; label: string }[] {
   // An item template is not something a card can be built from, so it is not on offer here.
   const offered = Object.entries(templates).filter(
-    ([, template]) => !(isItemTemplate(template) && !TEMPLATE_CONTENT_KEYS.some((key) => key in (template as object))),
+    ([, template]) =>
+      !(
+        (isItemTemplate(template) || isFunctionTemplate(template)) &&
+        !TEMPLATE_CONTENT_KEYS.some((key) => key in (template as object))
+      ),
   );
   const options = offered.map(([name, template]) => {
     const retired = deprecationOf(template) !== undefined;
@@ -623,6 +635,16 @@ export function moveItem<T>(list: T[], from: number, to: number): T[] {
 
 const TEMPLATE_CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group'] as const;
 
+/**
+ * A template with nothing to show - only a step (#307) or an item (#227) - which a template
+ * card holding it still puts in the dashboard's templates, but cannot draw as a card.
+ */
+export function isStepOnlyTemplate(template: unknown): boolean {
+  if (!template || typeof template !== 'object') return false;
+  if (!isFunctionTemplate(template) && !isItemTemplate(template as TemplateConfig)) return false;
+  return ![...TEMPLATE_CONTENT_KEYS, 'dashboard'].some((key) => (template as any)[key] !== undefined);
+}
+
 /*
  * Child over parent: mappings merge key by key, lists and scalars are the child's unless it
  * writes list edits (`__append__` and co, #209), and a null takes the parent's key away -
@@ -651,6 +673,9 @@ function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): Template
     const combined = deepMergeConfig((parent as any)[key], (child as any)[key]);
     if (combined !== undefined) merged[key] = combined;
   }
+  // Texts merge key by key, language by language: a child translating one label keeps the rest (#392).
+  const language = mergeLanguages((parent as any)[LANGUAGE_KEY], (child as any)[LANGUAGE_KEY]);
+  if (language !== undefined) merged[LANGUAGE_KEY] = language;
   const variables = mergeDeclarations((parent as any).variables, (child as any).variables);
   if (variables.length) merged.variables = variables;
   // The child comes first in both lists, which is what makes its values win downstream. Either
@@ -1013,11 +1038,17 @@ export function collectRawTemplates(ll: LovelaceConfig | null | undefined): Reco
  * synchronous, so only the borrowed dashboards already read are seen; a card waits for
  * them the way it waits for the library, and is built again once they arrive.
  */
-const ITEM_TEMPLATES = new WeakMap<object, { version: number; found: Record<string, TemplateConfig> }>();
+const ITEM_TEMPLATES = new WeakMap<
+  object,
+  { version: number; found: Record<string, TemplateConfig>; functions: string[] }
+>();
 export function itemTemplatesOf(ll: LovelaceConfig | null | undefined): Record<string, TemplateConfig> {
   if (!ll || typeof ll !== 'object') return {};
   const cached = ITEM_TEMPLATES.get(ll);
-  if (cached && cached.version === readVersion) return cached.found;
+  if (cached && cached.version === readVersion) {
+    setFunctionNames(cached.functions);
+    return cached.found;
+  }
   const merged: Record<string, TemplateConfig> = Object.create(null);
   for (const source of borrowedSources(ll)) {
     const config = readConfigs.get(source);
@@ -1027,10 +1058,15 @@ export function itemTemplatesOf(ll: LovelaceConfig | null | undefined): Record<s
   const found = Object.create(null) as Record<string, TemplateConfig>;
   // extends: first (#233), so a child picks up its parent's item: - list edits and all -
   // and one written with nothing but extends: is an item template too.
+  // A function template (#307) comes too: a build calls it by name the way it fills an item in.
   for (const [name, template] of Object.entries(resolveExtends(merged))) {
-    if (template && typeof template === 'object' && 'item' in template) found[name] = template;
+    if (template && typeof template === 'object' && ('item' in template || isFunctionTemplate(template))) {
+      found[name] = template;
+    }
   }
-  ITEM_TEMPLATES.set(ll, { version: readVersion, found });
+  const functions = functionNamesOf(found);
+  ITEM_TEMPLATES.set(ll, { version: readVersion, found, functions });
+  setFunctionNames(functions);
   return found;
 }
 
@@ -1285,6 +1321,11 @@ let libraryConfig: LovelaceConfig | null | undefined;
 /** Whether the library dashboard has been read yet on this page, or has nothing to read. */
 export function libraryKnown(): boolean {
   return libraryConfig !== undefined || onLibraryDashboard();
+}
+
+/** The library dashboard as last read, which the card editor keeps its builds against (#430). */
+export function libraryRead(): LovelaceConfig | null | undefined {
+  return libraryConfig;
 }
 
 /*
@@ -1561,6 +1602,24 @@ export interface TemplateUsages {
   templates: string[];
 }
 
+/*
+ * How many times a function template (#307) is called as a step in `node`: `[[room|occ_sens]]`,
+ * `[[room|occ_sens:cat]]`. A template card is skipped as countUses skips it - its content is
+ * the definition's, and is counted as that template's use instead.
+ */
+function countStepUses(node: any, name: string): number {
+  if (typeof node === 'string') {
+    if (!node.includes('[[')) return 0;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return node.match(new RegExp(`\\|${escaped}(?=[|:?\\]])`, 'g'))?.length ?? 0;
+  }
+  if (Array.isArray(node)) return node.reduce((total, item) => total + countStepUses(item, name), 0);
+  if (!node || typeof node !== 'object' || isTemplateCardType(node.type)) return 0;
+  let total = 0;
+  for (const value of Object.values(node)) total += countStepUses(value, name);
+  return total;
+}
+
 function countUses(node: any, template: string): number {
   if (Array.isArray(node)) return node.reduce((total, item) => total + countUses(item, template), 0);
   if (!node || typeof node !== 'object') return 0;
@@ -1583,8 +1642,13 @@ export function collectUsages(ll: LovelaceConfig | null | undefined, template: s
   const usages: TemplateUsages = { views: [], templates: [] };
   if (!ll) return usages;
 
+  const defined = collectTemplates(ll);
+  // A function template is used by being called as a step, which no card names (#307).
+  const asStep = isFunctionTemplate(defined[template]) && !isBuiltinStepName(template);
+  const uses = (node: any): number => countUses(node, template) + (asStep ? countStepUses(node, template) : 0);
+
   (ll.views ?? []).forEach((view, index) => {
-    const count = countUses(view, template);
+    const count = uses(view);
     if (count)
       usages.views.push({
         title: view.title ?? (view as any).path ?? '',
@@ -1598,9 +1662,9 @@ export function collectUsages(ll: LovelaceConfig | null | undefined, template: s
   // walked rather than a hand-kept list of keys, so content-bearing keys added later
   // cannot silently fall outside the count. The definition's own `template:` name is a
   // bare string, which the walk ignores.
-  for (const [name, definition] of Object.entries(collectTemplates(ll))) {
+  for (const [name, definition] of Object.entries(defined)) {
     if (name === template) continue;
-    if (countUses(Object.values(definition), template)) usages.templates.push(name);
+    if (uses(Object.values(definition))) usages.templates.push(name);
   }
   // A template built on this one depends on it as surely as one that uses it, whichever
   // place in its `extends:` list it has. Read as written, since resolving takes the key away.

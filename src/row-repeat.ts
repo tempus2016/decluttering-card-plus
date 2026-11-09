@@ -14,21 +14,10 @@ import { HELPERS } from './shared';
  *
  * Only ever written by the card itself, into the config it builds for a repeat.
  */
-export const MANY_TAG = 'decluttering-card-plus-many';
-export const MANY_TYPE = `custom:${MANY_TAG}`;
-
-export type ManyKind = 'row' | 'element';
-
-export interface ManyConfig {
-  type: string;
-  kind: ManyKind;
-  items: Record<string, any>[];
-}
-
-/** The config the card hands this element for N copies of a row or element template. */
-export function manyConfig(kind: ManyKind, items: unknown[]): ManyConfig {
-  return { type: MANY_TYPE, kind, items: items as Record<string, any>[] };
-}
+// The config and its type are in build.ts, which the docs site's Try a template page shares (#427).
+export { MANY_TAG, MANY_TYPE, manyConfig } from './build';
+export type { ManyKind, ManyConfig } from './build';
+import { ManyConfig, ManyKind } from './build';
 
 // The space an entities card leaves between its rows, kept between the copies here too.
 const ROW_GAP = '8px';

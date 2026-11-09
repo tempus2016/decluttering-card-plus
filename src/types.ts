@@ -3,6 +3,20 @@ import { VariableDeclaration } from './variables';
 import { StrictConfig } from './strict';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/** What counts as a change of a rebuild_on entity (#411): `all`, `read`, or the parts named. */
+export type RebuildWatch = 'all' | 'read' | string | string[];
+
+/** One rebuild_on entity that says which parts of its state count as a change (#411). */
+export interface RebuildOnEntity {
+  /** The entity id, or a placeholder that fills to one. */
+  entity: string;
+  /** `read`, `all`, or a list of `state`, `last_changed`, `last_updated` and attribute names. */
+  watch?: RebuildWatch;
+}
+
+/** A rebuild_on value: one entity or many, each an id or `{entity, watch}`. */
+export type RebuildOnValue = string | RebuildOnEntity | (string | RebuildOnEntity)[];
+
 export interface DeclutteringCardConfig extends LovelaceCardConfig {
   variables?: VariablesConfig[];
   template: string;
@@ -44,8 +58,18 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   lazy?: boolean;
   /** How many copies a lazy repeat builds straight away. Six unless it says. */
   lazy_eager?: number;
-  /** Entities whose state changes rebuild the card - and the only ones `|state` can read. */
-  rebuild_on?: string | string[];
+  /**
+   * Entities whose state changes rebuild the card - and the only ones `|state` can read.
+   * Placeholders are filled from the variables (#411). An entry can say which parts of the
+   * state count: `{entity: camera.front, watch: [state, camera_name]}`.
+   */
+  rebuild_on?: RebuildOnValue;
+  /**
+   * Which parts of a rebuild_on entity's state count as a change, for every entry that does
+   * not say (#411): `read` - the state and the attributes the template reads - or a list of
+   * `state`, `last_changed`, `last_updated` and attribute names. Left out, all of it counts.
+   */
+  rebuild_on_watch?: RebuildWatch;
   /** Cards of the card's own, by slot name, put where the template left a `[[name|slot]]`. */
   slots?: Record<string, unknown>;
   /** Values laid over `variables` while the screen is a phone's - or, with `mobile_below`, while the card itself is narrower than that. */
@@ -90,6 +114,13 @@ export interface TemplateConfig {
   suggest_for?: unknown;
   /** Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field. */
   editor_hide?: string | string[];
+  /**
+   * Entities a card using this template rebuilds on, as well as the card's own - and the only
+   * ones `|state` and `|attr:` can read. Placeholders are filled from the variables: `'[[camera]]'` (#411).
+   */
+  rebuild_on?: RebuildOnValue;
+  /** What a rebuild_on entity's change is compared on, for cards using this template that do not say (#411). */
+  rebuild_on_watch?: RebuildWatch;
   /** Who wrote it: a name, or `name`/`github`/`email`/`url`. For sharing; not inherited. */
   author?: string | Record<string, string>;
   /** The licence it is shared under. Not inherited. */
@@ -111,6 +142,13 @@ export interface TemplateConfig {
   extends?: string | string[];
   /** The variables the template takes, described so its editor can offer real controls. */
   variables?: VariableDeclaration[];
+  /**
+   * The template's texts in each language (#392), keyed by language code - `en`, `de`, `pt-BR` -
+   * each a mapping of texts of any depth. `[[$key.path]]` anywhere in the template is that text
+   * in Home Assistant's language, falling back to the language without its region, then `en`,
+   * then the first one given. `extends:` merges them key by key.
+   */
+  language?: Record<string, Record<string, unknown>>;
   default?: VariablesConfig[];
   /** `default:` spelled plural, read the same - the two are merged, `default:` winning a name both set. */
   defaults?: VariablesConfig[] | Record<string, unknown>;
@@ -126,6 +164,15 @@ export interface TemplateConfig {
    * once per item. Takes `default:`, `let:` and `variables:` like any template.
    */
   item?: unknown;
+  /**
+   * A template used as a step (#307): `[[room|name]]`, `[[room|name:a,b]]`. What the step gives -
+   * a placeholder text or a plain value - with the value it is applied to as `[[value]]`. It
+   * sees nothing of the card's variables: only the value, its arguments, and its own
+   * `default:` and `let:`.
+   */
+  function?: unknown;
+  /** For a function template: the names its unnamed arguments take, in order. */
+  parameters?: string[];
   /** For an item template: what a bare `[[name|repeat]]` repeats over - a list, or a placeholder that fills to one. */
   for_each?: unknown;
   /** For an item template: the registry source a bare `[[name|repeat]]` repeats over. */

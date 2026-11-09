@@ -14,7 +14,10 @@ import {
   variableName,
   visibilityConditions,
 } from './variables';
-import { closestTemplate, closestStep, knownStep } from './closest';
+import { closestTemplate, closestStep, knownFunctionNames, knownStep } from './closest';
+import { FUNCTION_VALUE, functionParameters, isFunctionTemplate } from './functions';
+import { ENTRIES_STEP, isBuiltinStepName, REGISTRY_STEP, resolveVariables, variableValues } from './variables';
+import { isRegistrySource, REGISTRY_KEYS, SOURCE_KEYS } from './registry';
 
 export { closestStep, knownStep };
 import { structureNames } from './structure';
@@ -22,6 +25,14 @@ import { unknownHidden } from './card-editor/hide';
 import { CHECK_KEYS, CHECKS_KEY, checkLevel, conditionStep } from './checks';
 import { strictProblems } from './strict';
 import { splitDeclutteringKeys, withoutRepeatContent } from './page-body';
+import {
+  flattenTexts,
+  isTranslationName,
+  LANGUAGE_KEY,
+  languageBlock,
+  TRANSLATION_PREFIX,
+  translationKeys,
+} from './translations';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -58,6 +69,8 @@ const LINTED_KEYS = [
   'grid_options',
   'name',
   'alert',
+  // A function template's result (#307).
+  'function',
 ];
 
 // A page template's whole dashboard (idea 33), read apart from the rest: see lintTemplate.
@@ -104,6 +117,12 @@ interface Scan {
   heads: Map<string, string>;
   // Every variable an `or:` or `if:` names, with the placeholder and where.
   targets: { name: string; placeholder: string; path: string }[];
+  // The templates that can be used as steps (#307).
+  functions: readonly string[];
+  // Every `[[$key]]` text looked up (#392), with the placeholder and where.
+  lookups: { key: string; placeholder: string; path: string }[];
+  // Every `repeat:` over a named source, with what follows it (#429).
+  repeats?: { source: string; after: string[]; placeholder: string; path: string }[];
 }
 
 function scanText(text: string, path: string, scan: Scan): void {
@@ -135,13 +154,26 @@ function scanPlaceholder(inside: string, path: string, scan: Scan): void {
   const head = rawHead.endsWith('?') ? rawHead.slice(0, -1) : rawHead;
   // `[[room.light]]` reads `room`; the part after the dot is a key of its value.
   // A quoted name is text, not a variable (#398), and its dots are the text's own.
-  const name = quotedText(head) === undefined ? head.split('.')[0] : undefined;
+  // A `$` name is one of the template's own texts (#392): a key of `language:`, not a variable.
+  if (isTranslationName(head)) scan.lookups.push({ key: head.slice(1), placeholder, path });
+  const name = quotedText(head) === undefined && !isTranslationName(head) ? head.split('.')[0] : undefined;
   if (name && name !== STAND_IN && !scan.heads.has(name)) scan.heads.set(name, path);
 
   let filled = false;
+  // A condition after a `with:` or `repeat:` reads the copy's own values (#429), which are not the template's.
+  let inCopy = false;
+  const at = steps.findIndex((step) => /^repeat:./.test(step));
+  if (at !== -1 && name) {
+    (scan.repeats ??= []).push({
+      source: steps[at].slice('repeat:'.length),
+      after: steps.slice(at + 1),
+      placeholder,
+      path,
+    });
+  }
   for (const step of steps) {
-    if (!knownStep(step)) {
-      const closest = closestStep(step);
+    if (!knownStep(step, scan.functions)) {
+      const closest = closestStep(step, scan.functions);
       scan.findings.push({
         level: 'warning',
         key: 'lint.unknown_step',
@@ -157,7 +189,40 @@ function scanPlaceholder(inside: string, path: string, scan: Scan): void {
     }
     if (step.startsWith(DEFAULT_STEP) && step.length > DEFAULT_STEP.length) filled = true;
     const target = stepTarget(step);
-    if (target && target !== STAND_IN) scan.targets.push({ name: target, placeholder, path });
+    if (target && target !== STAND_IN && !(inCopy && conditionTarget(step))) {
+      scan.targets.push({ name: target, placeholder, path });
+    }
+    if (/^(?:with|repeat)(?::|$)/.test(step)) inCopy = true;
+  }
+}
+
+/*
+ * A mapping a `repeat:` runs over that has a registry source's keys - `area`, `domain` - is read
+ * as a source, and its other keys are then options nobody asked for (#429). Both kinds in one
+ * mapping is most likely a mapping of your own that happens to use one of those names.
+ */
+function lintMixedSources(template: TemplateConfig, scan: Scan, findings: LintFinding[]): void {
+  if (!scan.repeats?.length) return;
+  const values = variableValues(resolveVariables(undefined, template));
+  for (const repeat of scan.repeats) {
+    if (repeat.after.includes(ENTRIES_STEP) || repeat.after.includes(REGISTRY_STEP)) continue;
+    const source = values[repeat.source];
+    if (!isRegistrySource(source)) continue;
+    const keys = Object.keys(source as object);
+    const filters = keys.filter((key) => SOURCE_KEYS.includes(key));
+    const others = keys.filter((key) => !REGISTRY_KEYS.includes(key));
+    if (!filters.length || !others.length) continue;
+    findings.push({
+      level: 'warning',
+      key: 'lint.mixed_repeat_source',
+      params: {
+        placeholder: repeat.placeholder,
+        name: repeat.source,
+        filters: filters.join(', '),
+        others: others.join(', '),
+      },
+      path: repeat.path,
+    });
   }
 }
 
@@ -179,9 +244,96 @@ function walk(value: unknown, path: string, scan: Scan): void {
   }
 }
 
-/** The names a template gives a value of its own: declared, defaulted, or worked out in `let:`. */
+// `[[$key]]` and `[[$key|steps]]` in prose, which is otherwise not read for placeholders.
+const LOOKUP_IN_PROSE = /\[\[(\$[^|[\]?]+)[^[\]]*\]\]/g;
+
+/*
+ * The prose a person reads - a description, a variable's label - is no place for a variable,
+ * but it is where a translated text is most at home (#392), so it is read for those alone.
+ */
+function scanProse(value: unknown, path: string, scan: Scan): void {
+  if (typeof value !== 'string' || !value.includes('[[$')) return;
+  const pattern = new RegExp(LOOKUP_IN_PROSE.source, 'g');
+  for (let match = pattern.exec(value); match !== null; match = pattern.exec(value)) {
+    scan.lookups.push({ key: match[1].slice(1), placeholder: match[0], path });
+  }
+}
+
+const PROSE_DECLARATION_KEYS = ['label', 'description', 'helper', 'group'];
+
+function scanTemplateProse(template: TemplateConfig, scan: Scan): void {
+  scanProse((template as any).description, 'description', scan);
+  getDeclarations(template).forEach((declaration, index) => {
+    for (const key of PROSE_DECLARATION_KEYS) scanProse((declaration as any)[key], `variables[${index}].${key}`, scan);
+  });
+  const examples = (template as any).examples;
+  (Array.isArray(examples) ? examples : examples ? [examples] : []).forEach((example: any, index: number) => {
+    scanProse(example?.name, `examples[${index}].name`, scan);
+  });
+}
+
+/*
+ * The `language:` block itself (#392): a mapping of languages, each a mapping of texts, every
+ * language giving every key - one that leaves a key out shows another language's text for it,
+ * which is worth knowing before somebody reading that language sees it.
+ */
+function lintLanguages(template: TemplateConfig, known: string[], scan: Scan, findings: LintFinding[]): void {
+  const written = (template as any)[LANGUAGE_KEY];
+  if (written !== undefined && written !== null) {
+    if (typeof written !== 'object' || Array.isArray(written)) {
+      findings.push({ level: 'warning', key: 'lint.language_not_mapping', params: {}, path: LANGUAGE_KEY });
+    } else {
+      for (const [language, texts] of Object.entries(written)) {
+        if (!texts || typeof texts !== 'object' || Array.isArray(texts)) {
+          findings.push({
+            level: 'warning',
+            key: 'lint.language_entry_not_mapping',
+            params: { language },
+            path: `${LANGUAGE_KEY}.${language}`,
+          });
+        }
+      }
+    }
+  }
+  const block = languageBlock(template);
+  const keys = translationKeys(template);
+  if (block && Object.keys(block).length > 1) {
+    for (const [language, texts] of Object.entries(block)) {
+      const has = flattenTexts(texts);
+      const missing = keys.filter((key) => !has.has(key));
+      if (missing.length) {
+        findings.push({
+          level: 'warning',
+          key: 'lint.translation_missing_in',
+          params: { language, keys: missing.join(', ') },
+          path: `${LANGUAGE_KEY}.${language}`,
+        });
+      }
+    }
+  }
+  const given = new Set([...keys, ...known.filter(isTranslationName).map((name) => name.slice(1))]);
+  const said = new Set<string>();
+  for (const lookup of scan.lookups) {
+    if (given.has(lookup.key) || said.has(lookup.key)) continue;
+    said.add(lookup.key);
+    const closest = closestTemplate(lookup.key, [...given]);
+    findings.push({
+      level: 'warning',
+      key: 'lint.translation_unknown',
+      params: closest
+        ? { key: lookup.key, placeholder: lookup.placeholder, closest }
+        : { key: lookup.key, placeholder: lookup.placeholder },
+      path: lookup.path,
+    });
+  }
+}
+
+/**
+ * The names a template gives a value of its own: declared, defaulted, or worked out in `let:` -
+ * and its `language:` texts, each as the `$key` that looks it up (#392).
+ */
 export function definedNames(template: TemplateConfig | undefined): string[] {
-  const names = new Set<string>();
+  const names = new Set<string>(translationKeys(template).map((key) => TRANSLATION_PREFIX + key));
   for (const declaration of getDeclarations(template)) names.add(declaration.name);
   for (const entry of [...normaliseVariables(templateDefaults(template)), ...normaliseVariables(template?.let)]) {
     const name = variableName(entry);
@@ -275,9 +427,17 @@ function lintChecks(template: TemplateConfig, scan: Scan): void {
  * shared declarations and defaults. The editor passes them in; they are not this
  * template's to declare.
  */
-export function lintTemplate(template: TemplateConfig | undefined, known: string[] = []): LintFinding[] {
+export function lintTemplate(
+  template: TemplateConfig | undefined,
+  known: string[] = [],
+  // The template's own name, and the dashboard's templates that can be used as steps (#307),
+  // when the caller knows them; the functions default to the dashboard last read.
+  options: { name?: string; functions?: readonly string[] } = {},
+): LintFinding[] {
   if (!template || typeof template !== 'object') return [];
-  const scan: Scan = { findings: [], heads: new Map(), targets: [] };
+  const functions = options.functions ?? knownFunctionNames();
+  const scan: Scan = { findings: [], heads: new Map(), targets: [], functions, lookups: [] };
+  scanTemplateProse(template, scan);
   for (const key of LINTED_KEYS) {
     const value = (template as any)[key];
     if (value !== undefined) walk(value, key, scan);
@@ -288,7 +448,7 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
     // `[[area]]` - so it is read for mistakes in how it is written, not for whose names it uses.
     const { rest } = splitDeclutteringKeys((template as any)[PAGE_KEY]);
     walk(withoutRepeatContent(rest), PAGE_KEY, scan);
-    const inRepeats: Scan = { findings: [], heads: new Map(), targets: [] };
+    const inRepeats: Scan = { findings: [], heads: new Map(), targets: [], functions, lookups: [] };
     walk(rest, PAGE_KEY, inRepeats);
     scan.findings.push(...inRepeats.findings);
   }
@@ -317,6 +477,23 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
 
   lintChecks(template, scan);
 
+  /*
+   * A function template (#307) is given its value and its parameters by the step that calls
+   * it. Named after a built-in step it is never called at all: the built-in wins.
+   */
+  const isFunction = isFunctionTemplate(template);
+  if (isFunction && options.name && isBuiltinStepName(options.name)) {
+    scan.findings.push({
+      level: 'warning',
+      key: 'lint.function_shadowed',
+      params: { name: options.name },
+      path: 'function',
+    });
+  }
+  if (!isFunction && (template as any).parameters !== undefined) {
+    scan.findings.push({ level: 'info', key: 'lint.parameters_without_function', params: {}, path: 'parameters' });
+  }
+
   // A name a `with:` or `repeat:` gives the body it fills in is set, one copy at a time.
   // `__alerts__` is set by every build of a template (#389).
   const defined = new Set([
@@ -326,8 +503,11 @@ export function lintTemplate(template: TemplateConfig | undefined, known: string
     ...TEMPLATE_PLACEHOLDERS,
     ...structureNames(template),
     ALERTS_NAME,
+    ...(isFunction ? [FUNCTION_VALUE, ...functionParameters(template)] : []),
   ]);
   const findings = [...scan.findings];
+  lintLanguages(template, known, scan, findings);
+  lintMixedSources(template, scan, findings);
 
   // `[[room.light]]` reaches into `room`, so a condition on `room.light` names something real
   // once `room` is - a choose selector's `dims.active_choice` most of all (#346).

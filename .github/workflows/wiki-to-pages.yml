@@ -52,6 +52,7 @@ jobs:
                 repo/docs-theme/assets \
                 repo/docs-theme/builder.html \
                 repo/docs-theme/playground.html \
+                repo/docs-theme/try-template.html \
                 repo/docs-theme/schema \
                 site/
 
@@ -86,6 +87,11 @@ jobs:
           test -f _site/playground.html || { echo "no playground.html"; exit 1; }
           grep -q 'assets/js/playground.js' _site/playground.html || { echo "playground page lost its script"; exit 1; }
           test -s _site/assets/js/playground.js || { echo "playground script missing"; exit 1; }
+          test -f _site/try-template.html || { echo "no try-template.html"; exit 1; }
+          grep -q 'assets/js/try-template.js' _site/try-template.html || { echo "try-template page lost its script"; exit 1; }
+          test -s _site/assets/js/try-template.js || { echo "try-template script missing"; exit 1; }
+          grep -q "connect-src 'self' https://api.github.com" _site/try-template.html || { echo "try-template lost its gist connect-src"; exit 1; }
+          ! grep -q "connect-src 'self' https" _site/Variables.html || { echo "a wiki page has a connect-src"; exit 1; }
           grep -q 'class="ph"' _site/index.html || { echo "hero did not build"; exit 1; }
           grep -q 'search.json' _site/index.html || { echo "search box missing from the layout"; exit 1; }
           python3 -I -c 'import json,sys; d=json.load(open("_site/search.json")); sys.exit(len(d) < 100 and "search index has only %d sections" % len(d))'

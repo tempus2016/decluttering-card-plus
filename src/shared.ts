@@ -1,7 +1,7 @@
 import { html, TemplateResult } from 'lit';
 import { HomeAssistant, fireEvent, LovelaceConfig } from 'custom-card-helpers';
-import { TemplateConfig, VariablesConfig, LovelaceThingType } from './types';
-import { viewIndexFromPath, groupCard } from './templates';
+import { TemplateConfig, VariablesConfig } from './types';
+import { viewIndexFromPath } from './templates';
 import { SourceContext } from './registry';
 import { TemplateRender, templateList } from './template-source';
 import { getDashboardPath, getLovelacePanel } from './utils';
@@ -307,8 +307,9 @@ export async function loadCardEditorPicker(): Promise<void> {
   if (cls && (cls as any).getConfigElement) await (cls as any).getConfigElement();
 }
 
-// The things a template can define, exactly one of which it must. A group is a kind of card.
-export const THING_TYPE_KEYS = ['card', 'row', 'element', 'badge', 'group'];
+// The things a template can define, what it builds and of which kind: in build.ts, which the
+// docs site's Try a template page shares with the card (#427).
+export { THING_TYPE_KEYS, getThingType, thingContent } from './build';
 
 /*
  * How a card using `template_by_domain:` chooses each copy's template, from that copy's
@@ -319,19 +320,6 @@ export interface TemplatePicker {
   pick(variables: VariablesConfig[] | undefined): { name: string; template: TemplateConfig; entity?: string };
   /** Whether any template it can choose reads the registry through a resolver. */
   resolvers: boolean;
-}
-
-export function getThingType(templateConfig: TemplateConfig): LovelaceThingType | undefined {
-  const thingTypes = Object.keys(templateConfig).filter((key) => THING_TYPE_KEYS.includes(key));
-  if (thingTypes.length !== 1) return undefined;
-  return thingTypes[0] === 'group' ? 'card' : (thingTypes[0] as LovelaceThingType);
-}
-
-// What a template builds, before its variables are put in. A group builds the card that lays it out.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function thingContent(templateConfig: TemplateConfig): any {
-  if (templateConfig.group !== undefined) return groupCard(templateConfig.group);
-  return templateConfig.card ?? templateConfig.element ?? templateConfig.row ?? templateConfig.badge;
 }
 
 /** Whether this page has defined a custom element - which Home Assistant's own elements come and go with releases. */

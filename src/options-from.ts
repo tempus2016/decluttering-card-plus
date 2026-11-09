@@ -1,7 +1,7 @@
 import { TemplateConfig } from './types';
 import deepReplace from './deep-replace';
 import { isRegistrySource, resolveRegistryItems } from './registry';
-import { forEachVariables, VariableDeclaration } from './variables';
+import { forEachVariables, restoreHaText, VariableDeclaration } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -23,8 +23,26 @@ export function hasOptionsFrom(declaration: VariableDeclaration | undefined): bo
   return isRegistrySource(declaration?.options_from);
 }
 
-function filled(content: unknown, variables: any[], hass: any): string | undefined {
-  const out = deepReplace(variables, {} as TemplateConfig, content, undefined, hass, true);
+/*
+ * `keep` keeps Home Assistant's text marked, for an option's value: the value is written into
+ * the card's config, where the build reads it again, and a friendly name of `[[secret]]` must
+ * still be text there. The build takes the marks off when it is done, as it does a resolver's.
+ * A label is only shown, so it is written out.
+ */
+function filled(content: unknown, variables: any[], hass: any, keep = false): string | undefined {
+  const out = deepReplace(
+    variables,
+    {} as TemplateConfig,
+    content,
+    undefined,
+    hass,
+    true,
+    undefined,
+    0,
+    undefined,
+    undefined,
+    keep,
+  );
   if (out === undefined || out === null) return undefined;
   const text = typeof out === 'string' ? out : JSON.stringify(out);
   return text.trim() === '' ? undefined : text;
@@ -47,11 +65,10 @@ export function optionsFrom(declaration: VariableDeclaration, hass: any): Select
     // area's id, so the area comes last of the ids.
     const own = item.entity ?? item.device_id ?? item.label_id ?? item.floor_id ?? item.area_id ?? item.path;
     const variables = forEachVariables({ value: own, ...item }, undefined, index, items.length);
-    const value = filled(valueOf, variables, hass);
+    const value = filled(valueOf, variables, hass, true);
     if (value === undefined || seen.has(value)) return;
     seen.add(value);
-    const label =
-      declaration.option_label === undefined ? value : (filled(declaration.option_label, variables, hass) ?? value);
+    const label = filled(declaration.option_label ?? valueOf, variables, hass) ?? restoreHaText(value);
     options.push({ value, label });
   });
   return options;

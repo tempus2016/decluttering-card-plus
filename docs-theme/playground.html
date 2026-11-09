@@ -9,7 +9,7 @@ description: Give it some variables and a placeholder, and see what every step o
 
 <p>Whether a value is text or a number matters when the placeholder is the whole value of an option - <code>columns: '[[count]]'</code> gets the number 3. Inside a longer piece of text everything becomes text. Both are shown below.</p>
 
-<p>To make a template from cards you already have, use the <a href="builder.html">template builder</a>.</p>
+<p>To build a whole card from your templates - the final YAML, the warnings and the debug report - use <a href="try-template.html">Try a template</a>. To make a template from cards you already have, use the <a href="builder.html">template builder</a>.</p>
 
 <noscript><blockquote>This page runs in your browser and needs JavaScript. Without it, <a href="Variables.html#reference">the reference on the Variables page</a> lists what every step gives.</blockquote></noscript>
 
@@ -20,25 +20,46 @@ description: Give it some variables and a placeholder, and see what every step o
   <label class="builder-label" for="try-expression">Placeholder</label>
   <input id="try-expression" class="builder-input try-expression" type="text" spellcheck="false" autocapitalize="off" autocomplete="off">
 
-  <div class="try-examples" id="try-examples" aria-label="Things to try"></div>
-
   <div id="try-output" class="try-output" aria-live="polite"></div>
+
+  <div class="try-share">
+    <button type="button" id="try-copy" class="builder-copy">Copy link</button>
+    <span id="try-link-note" class="try-link-note" role="status"></span>
+    <label class="visually-hidden" for="try-link">Link to this example</label>
+    <input id="try-link" class="describe-input try-link" type="text" readonly hidden>
+  </div>
+
+  <details class="try-box" id="try-entities-box">
+    <summary>Your own entities</summary>
+    <p class="builder-help">Add entities to the sample house below, one entry each. <code>domain:</code> is all an entry needs; <code>count: 20</code> makes twenty, numbered <code>01</code> to <code>20</code> wherever <code>[[index]]</code> is written. Areas, floors and labels are found by id or name, and made when there is none. Anything not given is left out.</p>
+    <textarea id="try-entities" class="builder-input try-small" rows="8" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="try-entities-note" placeholder="my_light:&#10;  domain: light&#10;  state: 'on'&#10;  area: kitchen&#10;  attributes: {brightness: 120}&#10;my_sensors:&#10;  domain: sensor&#10;  count: 20&#10;  name: sensor_[[index]]"></textarea>
+    <label class="try-check"><input type="checkbox" id="try-only"> Only these - leave the sample house out</label>
+    <div id="try-entities-note" class="try-note" aria-live="polite"></div>
+  </details>
+
+  <details class="try-box" id="try-templates-box">
+    <summary>Item and function templates</summary>
+    <p class="builder-help">Templates with an <code>item:</code> body, as under <code>decluttering_templates:</code>, for <code>[[name|with:...]]</code> and <code>[[name|repeat:list]]</code> to fill. Their <code>default:</code>, <code>let:</code> and <code>extends:</code> work as on a dashboard. A template with a <code>function:</code> instead is a step of its own, used as <code>[[room|name]]</code>.</p>
+    <textarea id="try-templates" class="builder-input try-small" rows="8" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="try-templates-note" placeholder="light_row:&#10;  default:&#10;    - area: no area&#10;  item:&#10;    entity: '[[entity]]'&#10;    name: '[[name]]'"></textarea>
+    <div id="try-templates-note" class="try-note" aria-live="polite"></div>
+  </details>
+
+  <h2 id="things-to-try">Things to try</h2>
+  <div class="try-examples" id="try-examples" aria-label="Things to try"></div>
 </div>
 
 <h2 id="the-sample-house">The sample house</h2>
 
-<p>A web page has no Home Assistant, so the steps that ask one - <code>area</code>, <code>state</code>, <code>friendly_name</code> and the rest - read this made-up house instead. Use these entity ids, as a variable or written straight in the placeholder. To try them against your own Home Assistant, paste the <a href="https://github.com/tempus2016/decluttering-card-plus/blob/main/examples/playground-dashboard.yaml">sandbox dashboard</a> into a new dashboard.</p>
+<p>A web page has no Home Assistant, so the steps that ask one - <code>area</code>, <code>state</code>, <code>friendly_name</code>, <code>last_changed</code> and the rest - read this made-up house instead: lights, temperature and humidity sensors, doors and motion, in rooms on two floors, with a few labels, so a <code>repeat:</code> over a <code>domain:</code>, <code>area:</code>, <code>floor:</code> or <code>label:</code> has something to find. Use these entity ids, as a variable or written straight in the placeholder. Entities you add above are listed here too. To try them against your own Home Assistant, paste the <a href="https://github.com/tempus2016/decluttering-card-plus/blob/main/examples/playground-dashboard.yaml">sandbox dashboard</a> into a new dashboard.</p>
 
-<table>
-  <thead><tr><th>Entity</th><th>State</th><th>What else it has</th></tr></thead>
-  <tbody>
-    <tr><td><code>light.kitchen_ceiling</code></td><td><code>on</code></td><td>Named Kitchen ceiling, brightness 180, last_seen <code>2026-10-24T07:42:11+01:00</code>. Its device, Hue ceiling by Signify (model Hue White), is in the Kitchen on the Ground floor. Labelled Evening lights.</td></tr>
-    <tr><td><code>sensor.garden_temperature</code></td><td><code>14.6</code></td><td>Device class temperature, in °C. Its device, Garden sensor by Aqara, is in the Back Garden, which is on no floor.</td></tr>
-    <tr><td><code>binary_sensor.bedroom_window</code></td><td><code>off</code></td><td>Device class window, icon <code>mdi:window-closed-variant</code>. No device; the entity itself is in the Bedroom (icon <code>mdi:bed</code>) on the First floor.</td></tr>
-    <tr><td><code>input_select.house_mode</code></td><td><code>night</code></td><td>Options day, night and away.</td></tr>
-  </tbody>
-</table>
+<div id="try-house"><noscript><p>The list of entities is made by the page's script.</p></noscript></div>
 
 <p>Every one of them can have its state read here. On a real card, <code>|state</code> only answers for entities the card lists in <a href="Variables.html#following-an-entitys-state-rebuild_on-v200"><code>rebuild_on</code></a>. And <code>translate</code> needs your Home Assistant's language, so here it gives back what it was given.</p>
+
+<h2 id="sharing-an-example">Sharing an example</h2>
+
+<p>The address of this page follows what is in the boxes, so <strong>Copy link</strong> - or the address bar - gives a link that opens the page with the same example in it. It is all in the part after <code>#</code>, which your browser never sends anywhere.</p>
+
+<p class="try-wrap">A link can also be written by hand, for a page that wants a "try it" link: <code>playground.html#placeholder=...&amp;variables=...</code>, with <code>entities=</code>, <code>templates=</code> and <code>only=1</code> as well if they are wanted, each URL-encoded. <code>playground.html#placeholder=%5B%5Broom%7Cupper%5D%5D&amp;variables=room%3A%20Hall</code> opens with <code>[[room|upper]]</code> and <code>room: Hall</code>.</p>
 
 <script src="{{ '/assets/js/playground.js' | relative_url }}" defer></script>

@@ -79,6 +79,47 @@ check(
 );
 check('the badge number is everything to look at', toLookAt(report.counts), 3);
 
+// A card's `slots:` fill a template's `|slot` placeholders; they are variables by another
+// name, as the editor's health panel and the lint already read them (idea 35).
+const framed = {
+  light_frame: {
+    variables: [
+      { name: 'body', required: true },
+      { name: 'title', required: true },
+    ],
+    card: { type: 'vertical-stack', cards: [{ type: 'heading', heading: '[[title]]' }, '[[body|slot]]'] },
+  },
+};
+const slotted = {
+  views: [
+    {
+      title: 'Home',
+      cards: [
+        {
+          type: 'custom:decluttering-card-plus',
+          template: 'light_frame',
+          variables: [{ title: 'Lamps' }],
+          slots: { body: { type: 'tile', entity: 'light.a' } },
+        },
+        { type: 'custom:decluttering-card-plus', template: 'light_frame', variables: [{ title: 'Empty' }] },
+      ],
+    },
+  ],
+};
+const slotReport = healthEntries(slotted, framed, 'lovelace');
+check('a slot filled through slots: is not an unset variable', slotReport.counts, {
+  missing: 0,
+  unset: 1,
+  deprecated: 0,
+  fine: 1,
+  cards: 2,
+});
+check(
+  'only the card that fills no slot is listed, naming the slot',
+  slotReport.entries.map((e) => [e.kind, e.label, e.names?.join(',')]),
+  [['unset', 'Empty', 'body']],
+);
+
 check(
   'show reads a list or comma text, and falls back to everything',
   [shownKinds(['missing']), shownKinds('unset, deprecated'), shownKinds('nonsense'), shownKinds(undefined)],

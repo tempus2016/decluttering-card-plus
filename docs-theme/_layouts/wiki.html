@@ -12,9 +12,12 @@
      the raw tags a page could carry to work around this (meta, form, iframe, object,
      embed, base) before Jekyll sees it.
      No frame-ancestors: browsers ignore that directive in a meta tag, so it would only
-     look like protection. It needs the response header, which Pages cannot set. -->
+     look like protection. It needs the response header, which Pages cannot set.
+     connect-src: only Try a template (#427) may fetch anything off this origin, and only
+     GitHub's API, to read a public gist. It says so in its own front matter, which a wiki
+     page cannot set: build.py writes every wiki page's front matter itself. -->
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+      content="default-src 'self';{% if page.connect_github %} connect-src 'self' https://api.github.com;{% endif %} script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>{% if page.title and page.title != site.title %}{{ page.title }} · {% endif %}{{ site.title }}</title>
 <meta name="description" content="{{ page.description | default: site.description }}">
 <link rel="canonical" href="{{ page.url | absolute_url }}">

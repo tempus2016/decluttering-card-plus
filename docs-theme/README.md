@@ -15,7 +15,8 @@ directory on top and hands the result to Jekyll.
 | `assets/css/docs.css` | All of it. Custom properties at the top, dark scheme underneath them. |
 | `assets/js/docs.js` | Enhancement only — placeholder highlighting, the contents column, the marker on the current page. Every page reads fine without it. |
 | `builder.html` | The template builder: paste cards, get the template they are copies of. One of the two pages that are not from the wiki. Its script, `assets/js/builder.js`, is built by rollup from `src/builder-page.ts` and committed - run `npm run build` after changing `src/builder.ts`, `src/similar.ts` or anything they import, and the release rebuilds it too. |
-| `playground.html` | "Try a placeholder": variables and a placeholder in, what each step of the chain gives out. The other page not from the wiki. Its script, `assets/js/playground.js`, is built from `src/playground-page.ts` and committed the same way; the steps that ask Home Assistant read the sample house in `src/playground.ts`, which the page's table describes - change one, change the other. |
+| `playground.html` | "Try a placeholder": variables and a placeholder in, what each step of the chain gives out. The other page not from the wiki. Its script, `assets/js/playground.js`, is built from `src/playground-page.ts` and committed the same way; the steps that ask Home Assistant read the sample house in `src/playground-house.ts` (the card's four entities from `src/playground.ts`, plus the rest of the house), and the page's table of it is made from that same data, so there is nothing to keep in step by hand. Links to an example: see below. |
+| `try-template.html` | "Try a template" (#427): templates and a card in, the YAML the card hands Home Assistant out, with every card of ours inside it built, the warnings, the debug report and a plain stand-in for the card editor's form. Its script, `assets/js/try-template.js`, is built from `src/try-template-page.ts` and committed like the others. The build steps it calls are the card's own (`src/build.ts`, shared with `src/element.ts`); `src/try-template.ts` runs them in the card's order. It is the one page allowed to fetch off this origin - `connect-src https://api.github.com`, set by `connect_github: true` in its front matter, which a wiki page cannot set - to read a public gist (`src/try-template-gist.ts`). |
 | `search_index.py` | Writes `search.json` for the search box in the bar: one entry per h2-h4 of every built page, plus one per key row (below). Runs after Jekyll, over `_site`, so the anchors are the ids Jekyll gave the headings rather than a guess at its slug rules. The box is in `_layouts/wiki.html`, the searching in `docs.js`; `search.json` is only fetched the first time someone uses it. |
 | `assets/fonts/` | IBM Plex, self-hosted (OFL, `LICENSE.txt` alongside). Sans is one variable file covering 400–600. |
 
@@ -50,6 +51,14 @@ one, then the words in `SYNONYMS` in `docs.js` (someone looking for `rebuild_on`
 "refresh"), then the nearest word for a typo. When a search somebody reports finds nothing,
 the fix is usually a line in `SYNONYMS`.
 
+**"Try it" links go straight to an example.** The playground keeps what is in its boxes in
+the address after `#`, so its Copy link button gives a link that opens with the same
+example. For a link written by hand in a wiki page, spell the boxes out, each URL-encoded:
+`playground.html#placeholder=%5B%5Broom%7Cupper%5D%5D&variables=room%3A%20Hall`, with
+`entities=`, `templates=` and `only=1` as well when wanted. `readableHash()` in
+`src/playground-share.ts` writes one. What the button writes is `#try=j.` (JSON, base64url)
+or `#try=z.` (the same, deflated); a link that does not read opens the page as it is and says so.
+
 ## Working on it
 
 There is no way to preview this without Jekyll, so the workflow builds on pull requests
@@ -58,7 +67,7 @@ that touch this directory and checks the output before anything reaches main. Lo
 ```
 git clone https://github.com/tempus2016/decluttering-card-plus.wiki.git site
 python3 docs-theme/build.py site
-cp -r docs-theme/{_config.yml,_layouts,_includes,assets,builder.html,playground.html} site/
+cp -r docs-theme/{_config.yml,_layouts,_includes,assets,builder.html,playground.html,try-template.html} site/
 jekyll build --source site --destination _site
 python3 docs-theme/search_index.py _site
 jekyll serve --source site --destination _site --skip-initial-build --no-watch

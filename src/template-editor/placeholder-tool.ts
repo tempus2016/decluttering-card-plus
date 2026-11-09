@@ -2,13 +2,14 @@ import { LitElement, html, TemplateResult, css, CSSResult, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, FormSchemaEntry } from '../types';
-import { PlaygroundResult, StepResult, kindOf, tryPlaceholderIn } from '../playground';
+import { PlaygroundResult, StepResult, firstRowUnset, kindOf, tryPlaceholderIn } from '../playground';
 import { listPlaceholders } from '../placeholders';
 import { exampleVariables } from '../examples';
-import { collectTemplates } from '../templates';
+import { collectTemplates, itemTemplatesOf } from '../templates';
 import { KNOWN_PARAM_STEPS, KNOWN_STEPS, normaliseVariables, templateDefaults } from '../variables';
+import { knownFunctionNames } from '../closest';
 import { localize } from '../localize';
-import { previewExamples } from '../shared';
+import { previewExamples, sourceContext } from '../shared';
 
 /*
  * Try a placeholder, inside the editor (idea 28): the docs site's playground fed by the
@@ -142,9 +143,10 @@ export class DeclutteringPlaceholderTool extends LitElement {
     return html`
       <div class="chips">
         <span>${localize('placeholder_tool.add_step', undefined, this.hass)}</span>
-        ${(this._more ? [...KNOWN_STEPS, ...KNOWN_PARAM_STEPS.map((step) => `${step}:`)] : CHIP_STEPS).map(
-          (step) => html`<span class="chip" @click=${(): void => this._addStep(value, step)}>${step}</span>`,
-        )}
+        ${(this._more
+          ? [...KNOWN_STEPS, ...KNOWN_PARAM_STEPS.map((step) => `${step}:`), ...knownFunctionNames()]
+          : CHIP_STEPS
+        ).map((step) => html`<span class="chip" @click=${(): void => this._addStep(value, step)}>${step}</span>`)}
         ${
           this._more
             ? nothing
@@ -175,8 +177,11 @@ export class DeclutteringPlaceholderTool extends LitElement {
     const resolved = collectTemplates(this.lovelace, undefined, config)[config.template] ?? config;
     const example = exampleVariables(resolved, previewExamples.get(config.template));
     const variables = example ?? normaliseVariables(templateDefaults(resolved));
+    // Built with what a card on this dashboard builds with, so the function steps offered as
+    // chips (#307) run, and `with:` and `repeat:` find their item templates.
+    const extras = { itemTemplates: itemTemplatesOf(this.lovelace), context: sourceContext(this.lovelace) };
     try {
-      return tryPlaceholderIn(resolved, variables, expression, this.hass);
+      return tryPlaceholderIn(resolved, variables, expression, this.hass, extras);
     } catch {
       return undefined;
     }
@@ -217,7 +222,7 @@ export class DeclutteringPlaceholderTool extends LitElement {
     const gap = row.value === undefined || row.value === '' || row.kind === 'removed';
     const from =
       index === 0
-        ? result.unset.includes(row.step)
+        ? firstRowUnset(row, result)
           ? localize('placeholder_tool.from_unset', undefined, this.hass)
           : localize('placeholder_tool.from_variables', undefined, this.hass)
         : bad

@@ -36,6 +36,7 @@ import {
   usesInstalled,
   usesResolver,
   usesAttributes,
+  stateReads,
   usesTimeStep,
   usesTranslate,
   withInheritedVariables,
@@ -50,7 +51,8 @@ import { renderTemplateOnce, sourceTemplate, TemplateRender } from './template-s
 import { getLovelaceConfig } from './utils';
 import { placeStrict, strictLevels } from './strict';
 import { localize } from './localize';
-import { REBUILD_DEBOUNCE_MS, rebuildOnEntities, rebuildOnRejects, stateSnapshot, statesMoved } from './rebuild';
+import { REBUILD_DEBOUNCE_MS, stateSnapshot, statesMoved, watchedParts } from './rebuild';
+import { rebuildOnFor } from './rebuild-resolve';
 import { handedDownNames, traceRoot, tracePlace, wantsTrace } from './trace';
 import { DeclutteringElement } from './element';
 import {
@@ -86,6 +88,7 @@ import {
 } from './breakpoints';
 import { loadEditors } from './editors-loader';
 import { customMissingDetail, missingTemplateDetail } from './error-card';
+import { hassLanguage } from './translations';
 
 /*
  * Home Assistant's `title` translations - every integration's name - asked for once per
@@ -156,6 +159,8 @@ export class DeclutteringCard extends DeclutteringElement {
   private _rebuildSeen?: (string | undefined)[];
   // Whether the last build read `attr:`, so an attribute change alone rebuilds it (idea 39).
   private _rebuildAttributes = false;
+  // #411: the parts of each entity's state that count, where the card says; undefined is all of it.
+  private _rebuildWatch?: (string[] | undefined)[];
   private _rebuildTimer?: ReturnType<typeof setTimeout>;
   private _rebuildWarnedFor?: unknown;
   private _timeWarnedFor?: DeclutteringCardConfig;
@@ -389,8 +394,8 @@ export class DeclutteringCard extends DeclutteringElement {
     this._error = undefined;
     this._errorDetail = undefined;
     this._ownConfig = this._lastConfig;
-    this._rebuildOn = rebuildOnEntities(config.rebuild_on);
-    this._warnRebuildOn(config);
+    // What it names before its template is known; worked out again with the template (#411).
+    this._rebuildOn = rebuildOnFor(config, undefined, this._hass).entities;
     /*
      * Anything but `contents` leaves the card with a box of its own, which is what it has
      * always had - so a value nobody recognises falls back to the way it worked before
@@ -416,6 +421,9 @@ export class DeclutteringCard extends DeclutteringElement {
      * to be built again a moment later. It waits for hass instead, the way a borrowed
      * template does.
      */
+    // With the template, whose own rebuild_on counts too (#411).
+    if (templateConfig)
+      this._rebuildOn = rebuildOnFor(config, templateConfig, this._hass, this._buildExtras()).entities;
     if (templateConfig && this._rebuildOn.length && !this._hass) {
       this._pendingConfig = config;
       this._holdPlace(config, templateConfig);
@@ -951,10 +959,20 @@ export class DeclutteringCard extends DeclutteringElement {
       this._rendered = {};
       this._rendering.clear();
     }
+    // The card's rebuild_on and its template's, placeholders filled in from the variables (#411).
+    const rebuildOn = rebuildOnFor(config, templateConfig, this._hass, this._buildExtras());
+    this._rebuildOn = rebuildOn.entities;
+    this._warnRebuildOn(config, rebuildOn.rejects);
     // The states this build reads, so only a change from these sets off the next one.
     this._rebuildAttributes = usesAttributes(templateConfig, this._buildExtras().itemTemplates);
+    // Only a card that says what to watch reads what the template reads (#411).
+    const reads = rebuildOn.watch.some((spec) => spec?.read)
+      ? stateReads(templateConfig, this._buildExtras().itemTemplates)
+      : undefined;
+    const watched = rebuildOn.watch.map((spec) => watchedParts(spec, reads));
+    this._rebuildWatch = watched.some(Boolean) ? watched : undefined;
     this._rebuildBuilt = this._rebuildOn.length
-      ? stateSnapshot(this._hass, this._rebuildOn, this._rebuildAttributes)
+      ? stateSnapshot(this._hass, this._rebuildOn, this._rebuildAttributes, this._rebuildWatch)
       : undefined;
     this._rebuildSeen = this._rebuildBuilt;
     this._applyGap(config.gap);
@@ -1069,7 +1087,7 @@ export class DeclutteringCard extends DeclutteringElement {
   private _resolverKey(hass: HomeAssistant, translates: boolean, installs = false): unknown[] {
     return [
       ...registryKey(hass),
-      ...(translates ? [(hass as { localize?: unknown })?.localize] : []),
+      ...(translates ? [(hass as { localize?: unknown })?.localize, hassLanguage(hass)] : []),
       // What is installed moves without the registry: components load, cards and icon sets register.
       ...(installs ? installedKey(hass) : []),
     ];
@@ -1222,14 +1240,15 @@ export class DeclutteringCard extends DeclutteringElement {
    */
   private _watchRebuildOn(hass: HomeAssistant): void {
     if (!this._rebuildOn.length || !this._lastConfig) return;
-    const now = stateSnapshot(hass, this._rebuildOn, this._rebuildAttributes);
+    const now = stateSnapshot(hass, this._rebuildOn, this._rebuildAttributes, this._rebuildWatch);
     if (!statesMoved(this._rebuildSeen, now)) return;
     this._rebuildSeen = now;
     if (this._rebuildTimer) clearTimeout(this._rebuildTimer);
     this._rebuildTimer = setTimeout(() => {
       this._rebuildTimer = undefined;
       // Back where it was built: nothing to do.
-      if (!statesMoved(this._rebuildBuilt, stateSnapshot(this._hass, this._rebuildOn, this._rebuildAttributes))) return;
+      const back = stateSnapshot(this._hass, this._rebuildOn, this._rebuildAttributes, this._rebuildWatch);
+      if (!statesMoved(this._rebuildBuilt, back)) return;
       try {
         this._rebuild();
       } catch (err) {
@@ -1243,11 +1262,13 @@ export class DeclutteringCard extends DeclutteringElement {
    * Something in `rebuild_on:` that is not an entity id is never watched, which looks
    * exactly like the card not reacting. Said once per config rather than refused.
    */
-  private _warnRebuildOn(config: DeclutteringCardConfig): void {
+  private _warnRebuildOn(config: DeclutteringCardConfig, rejects: string[]): void {
     // Keyed on the config as given: the one read here can be a fresh copy on every build.
     if (this._rebuildWarnedFor === this._lastConfig) return;
+    // A placeholder can be waiting on the section's or the library's values, which a first
+    // build does not have yet; it is said of the build that has them (#411).
+    if (rejects.length && (this._placeUnsettled || this._libraryUnsettled)) return;
     this._rebuildWarnedFor = this._lastConfig;
-    const rejects = rebuildOnRejects(config.rebuild_on);
     if (rejects.length) {
       warn({
         kind: 'rebuild_on',

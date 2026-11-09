@@ -1,0 +1,98 @@
+---
+layout: wiki
+title: Try a template
+description: Give it your templates and a card, and see the YAML the card hands Home Assistant, what it warned about, its debug report and a rough card editor form.
+connect_github: true
+---
+<h1>Try a template</h1>
+
+<p>Give it your templates and a card that uses one, and it shows what the card hands Home Assistant: the final YAML, every card of ours inside it built too, with what it warned about and the same debug report <code>debug: report</code> gives. It runs the card's own build, so what you see is what a card on a dashboard gets from the same templates and the same states. Nothing you type leaves your browser.</p>
+
+<p>For a single placeholder and what each step of it gives, use <a href="playground.html">Try a placeholder</a>. To make a template from cards you already have, use the <a href="builder.html">template builder</a>.</p>
+
+<noscript><blockquote>This page runs in your browser and needs JavaScript.</blockquote></noscript>
+
+<div class="try" id="tt" hidden>
+  <div class="tt-gist">
+    <label class="builder-label" for="tt-gist">Load a gist</label>
+    <div class="tt-gist-row">
+      <input id="tt-gist" class="builder-input tt-gist-input" type="text" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="Gist id or https://gist.github.com/... address" aria-describedby="tt-gist-note">
+      <button type="button" id="tt-gist-load" class="builder-copy">Load</button>
+    </div>
+    <div id="tt-gist-note" class="try-note tt-gist-note" role="status"></div>
+  </div>
+
+  <label class="builder-label" for="tt-templates">Templates</label>
+  <p class="builder-help">As under <code>decluttering_templates:</code> on a dashboard - with that key, without it, or a whole dashboard's YAML pasted in. <code>decluttering_defaults:</code> and <code>decluttering_let:</code> beside it work as on a dashboard; card, item and function templates all go here.</p>
+  <textarea id="tt-templates" class="builder-input tt-templates" rows="16" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="tt-templates-note"></textarea>
+  <div id="tt-templates-note" class="try-note tt-note" aria-live="polite"></div>
+
+  <label class="builder-label" for="tt-card">Card</label>
+  <p class="builder-help">The card as it sits on the dashboard: <code>type: custom:decluttering-card-plus</code>, its <code>template:</code> and <code>variables:</code>, and anything else a card takes - <code>for_each:</code>, <code>template_by_domain:</code>, <code>strict:</code>, <code>card:</code>.</p>
+  <textarea id="tt-card" class="builder-input tt-card" rows="8" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="tt-card-note"></textarea>
+  <div id="tt-card-note" class="try-note tt-note" aria-live="polite"></div>
+
+  <details class="try-box" id="tt-entities-box">
+    <summary>Your own entities</summary>
+    <p class="builder-help">Added to the sample house, written as on <a href="playground.html">Try a placeholder</a>: <code>domain:</code> is all an entry needs, and <code>count: 20</code> makes twenty, numbered wherever <code>[[index]]</code> is written.</p>
+    <textarea id="tt-entities" class="builder-input try-small" rows="7" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="tt-entities-note" placeholder="camera_front_door:&#10;  domain: camera&#10;  state: idle&#10;  area: Porch"></textarea>
+    <label class="try-check"><input type="checkbox" id="tt-only"> Only these - leave the sample house out</label>
+    <label class="try-check"><input type="checkbox" id="tt-all"> Every state readable, as if the card listed each one in <code>rebuild_on</code></label>
+    <div id="tt-entities-note" class="try-note" aria-live="polite"></div>
+  </details>
+
+  <h2 id="things-to-try">Things to try</h2>
+  <div class="try-examples" id="tt-examples" aria-label="Things to try"></div>
+
+  <h2 id="the-card-editor-roughly">The card editor, roughly</h2>
+  <p class="builder-help">A stand-in for the card editor's form, made from the template's declared variables. The controls are plain - a text box stands in for an entity, icon or colour picker - but each field's default, whether <code>show_if</code>/<code>hide_if</code> hide it and its group are worked out as the editor works them out. Changing a field writes it into the card box and builds again; emptying it takes it out, so its default applies.</p>
+  <div id="tt-form" class="tt-form"></div>
+
+  <h2 id="what-it-builds">What it builds</h2>
+  <div class="tt-build-row">
+    <span id="tt-status" class="try-link-note" role="status"></span>
+    <button type="button" id="tt-build" class="builder-copy" hidden>Build now</button>
+  </div>
+  <h3 id="what-it-said">What it said</h3>
+  <div id="tt-said" aria-live="polite"></div>
+  <div id="tt-output" class="tt-output"></div>
+
+  <div class="try-share">
+    <button type="button" id="tt-copy" class="builder-copy">Copy link</button>
+    <span id="tt-link-note" class="try-link-note" role="status"></span>
+    <label class="visually-hidden" for="tt-link">Link to this example</label>
+    <input id="tt-link" class="describe-input try-link" type="text" readonly hidden>
+  </div>
+</div>
+
+<h2 id="what-it-does-not-do">What it does not do</h2>
+
+<ul>
+  <li>The card's build runs here, not the cards it builds: nothing is drawn, and a card of Home Assistant's or someone else's is only its YAML.</li>
+  <li><code>for_each_from:</code> and <code>options_from:</code>, and a <code>repeat:</code> over a registry source, read the sample house below - not your Home Assistant - and a <code>for_each_from: {template: ...}</code> that renders Jinja does not build here at all.</li>
+  <li>A state is read only for entities the card lists in <code>rebuild_on</code>, as on a dashboard, unless you tick "Every state readable". The sample house's entities have no history, <code>translate</code> gives back what it was given, and <code>[[...|installed]]</code> steps know of nothing installed.</li>
+  <li>The page is as wide as a desktop: <code>variables_mobile:</code> is not laid over. Section and view <code>decluttering_defaults</code> do not apply; the dashboard's do.</li>
+  <li>The form is a stand-in: selector options a real picker would offer, a card picker, and validation are left out.</li>
+  <li>A template too large for the page to build at typing speed switches to a <strong>Build now</strong> button.</li>
+</ul>
+
+<h2 id="sharing">Sharing an example</h2>
+
+<p>The address follows the boxes, so <strong>Copy link</strong> - or the address bar - gives a link that opens this page with the same templates, card and entities. It is all after the <code>#</code>, which your browser never sends anywhere. A big template makes a long link; past a few thousand characters a gist travels better.</p>
+
+<p>A <strong>public gist</strong> can be opened by id, or with a link ending <code>try-template.html#gist=&lt;id&gt;</code>. The page asks GitHub for it with no login - GitHub allows sixty of those an hour per address - and fills the boxes from:</p>
+
+<ul>
+  <li>files named <code>templates.yaml</code>, <code>card.yaml</code> and <code>entities.yaml</code> (or <code>.yml</code>), one box each, any of them; or</li>
+  <li>a single YAML file with <code>decluttering_templates:</code> (and any <code>decluttering_defaults:</code> beside it), <code>card:</code> and <code>entities:</code> keys.</li>
+</ul>
+
+<p>The page only reads gists. To share one, make it on <a href="https://gist.github.com">gist.github.com</a> and send its link.</p>
+
+<h2 id="the-sample-house">The sample house</h2>
+
+<p>The same made-up house as <a href="playground.html#the-sample-house">Try a placeholder</a>, with your own entities added.</p>
+
+<div id="tt-house"><noscript><p>The list of entities is made by the page's script.</p></noscript></div>
+
+<script src="{{ '/assets/js/try-template.js' | relative_url }}" defer></script>

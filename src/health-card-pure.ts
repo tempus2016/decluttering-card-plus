@@ -5,6 +5,7 @@ import { diagnoseInstance, forEachNames, normaliseVariables, POSITION_NAMES } fr
 import { isRegistrySource, registryNames } from './registry';
 import { rebuildOnEntities } from './rebuild';
 import { structureNames } from './structure';
+import { withSlotVariables } from './slots';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -139,13 +140,16 @@ export function healthEntries(
           entries.push({ kind: 'missing', ...base, ...(closest ? { closest } : {}) });
         }
       } else {
+        // A card's `slots:` are variables by another name (idea 35), so they count as set,
+        // as the editor's health panel and the lint already read them.
+        const variables = withSlotVariables(card).variables;
         const supplements = [
           ...suppliedBy(card),
           ...handed,
-          ...structureNames(template, normaliseVariables(card.variables)),
+          ...structureNames(template, normaliseVariables(variables)),
           ...itemNames,
         ].map((name) => ({ [name]: null }) as VariablesConfig);
-        const missing = diagnoseInstance(card.variables, template, supplements).missing;
+        const missing = diagnoseInstance(variables, template, supplements).missing;
         if (missing.length) {
           counts.unset += 1;
           problems += 1;

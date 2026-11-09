@@ -1059,7 +1059,8 @@ check(
 check(
   'a condition reading itself is stopped rather than followed forever',
   deepReplace([{ loop: '[[v|if:loop]]' }, { v: 'x' }], {}, { a: '[[v|if:loop?]]' }, undefined, undefined, true),
-  { a: 'x' },
+  // The loop can never be filled, so it reads as not set (#429).
+  {},
 );
 check(
   'the example from discussion #150 renders as asked',
@@ -3003,4 +3004,267 @@ console.warn = realWarn;
   );
   check('a quiet build tells nothing', told, []);
   console.warn = realWarn;
+}
+
+// #429: `pick:` looks an entry of a list up by a field, and `repeat:` runs over a plain mapping.
+{
+  const said = [];
+  const before = console.warn;
+  console.warn = (m) => said.push(m);
+  const iconMap = [{ name: 'dog', icon: 'mdi:dog' }, { name: 'cat', icon: 'mdi:cat' }, { name: 'bird' }];
+  const x = {
+    itemTemplates: {
+      detect_item: {
+        item: {
+          name: '[[detect_type]]',
+          entity: 'binary_sensor.[[camera_name]]_[[detect_type]]_found',
+          icon: '[[icon_map|pick:name=[[detect_type]],icon|default:mdi:help]]',
+        },
+      },
+      detection_row: { item: { entity: '[[value]]', name: '[[key|title]] ([[index]]/[[count]])' } },
+      zone_row: { item: { entity: '[[entity]]', name: '[[key]] [[label]]', icon: '[[value.icon]]' } },
+      own_map: { for_each: { name: 'one' }, item: '[[name]] [[index]]/[[count]]' },
+    },
+  };
+  const run = (content, v, trace) =>
+    deepReplace(v, {}, content, 't', undefined, true, undefined, 0, trace, undefined, false, x);
+  const base = [{ icon_map: iconMap }, { camera_name: 'porch' }];
+
+  check(
+    'pick: finds the entry whose field matches and gives back another field (#429)',
+    run({ a: '[[icon_map|pick:name=cat,icon]]', b: 'icon [[icon_map|pick:name=dog,icon]]!' }, base),
+    { a: 'mdi:cat', b: 'icon mdi:dog!' },
+  );
+  check(
+    'pick: no match, or a match without the field, is a gap a default fills',
+    run(
+      {
+        a: '[[icon_map|pick:name=fox,icon|default:mdi:help]]',
+        b: '[[icon_map|pick:name=bird,icon|default:mdi:help]]',
+        c: '[[icon_map|pick:name=fox,icon|or:fallback]]',
+        d: '[[nothing_set|pick:name=dog,icon|default:mdi:help]]',
+      },
+      [...base, { fallback: 'mdi:paw' }],
+    ),
+    { a: 'mdi:help', b: 'mdi:help', c: 'mdi:paw', d: 'mdi:help' },
+  );
+  said.length = 0;
+  check(
+    'pick: with nothing to stand in is left standing, and an optional one drops out',
+    deepReplace(base, {}, { a: '[[icon_map|pick:name=fox,icon]]', b: '[[icon_map|pick:name=fox,icon?]]', c: 1 }, 't'),
+    { a: '[[icon_map|pick:name=fox,icon]]', c: 1 },
+  );
+  check(
+    'and the warning says which entry it looked for',
+    said.some((m) => m.includes('no entry has name = "fox"') && m.includes('pick: gives nothing')),
+    true,
+  );
+  check(
+    'pick: the inner placeholder is filled in a with: and in each repeat copy',
+    run(
+      {
+        one: '[[detect_item|with:detect_type=cat]]',
+        all: '[[detect_item|repeat:types]]',
+      },
+      [...base, { types: [{ detect_type: 'dog' }, { detect_type: 'bird' }, { detect_type: 'fox' }] }],
+    ),
+    {
+      one: { name: 'cat', entity: 'binary_sensor.porch_cat_found', icon: 'mdi:cat' },
+      all: [
+        { name: 'dog', entity: 'binary_sensor.porch_dog_found', icon: 'mdi:dog' },
+        { name: 'bird', entity: 'binary_sensor.porch_bird_found', icon: 'mdi:help' },
+        { name: 'fox', entity: 'binary_sensor.porch_fox_found', icon: 'mdi:help' },
+      ],
+    },
+  );
+  check(
+    'pick: a mapping of mappings is looked through by its values, key being the entry key',
+    run({ a: '[[m|pick:name=Cat,icon]]', b: '[[m|pick:key=dog,icon]]', c: '[[m|pick:name=Dog]]' }, [
+      { m: { dog: { name: 'Dog', icon: 'mdi:dog' }, cat: { name: 'Cat', icon: 'mdi:cat' } } },
+    ]),
+    { a: 'mdi:cat', b: 'mdi:dog', c: '{"name":"Dog","icon":"mdi:dog"}' },
+  );
+  check(
+    'pick: a quoted value may hold a comma, and text has no entries',
+    run({ a: '[[l|pick:name="a,b",icon]]', b: '[[t|pick:name=a,icon|default:none]]' }, [
+      { l: [{ name: 'a,b', icon: 'mdi:comma' }] },
+      { t: 'a' },
+    ]),
+    { a: 'mdi:comma', b: 'none' },
+  );
+
+  const detections = { dog: 'binary_sensor.camera_dog', cat: 'binary_sensor.camera_cat' };
+  const trace = { placeholders: new Map(), dropped: [], warnings: [] };
+  check(
+    'repeat: over a plain mapping runs once per entry, in order, with key and value (#429)',
+    run({ entities: ['sun.sun', '[[detection_row|repeat:detections]]'] }, [{ detections }], trace),
+    {
+      entities: [
+        'sun.sun',
+        { entity: 'binary_sensor.camera_dog', name: 'Dog (1/2)' },
+        { entity: 'binary_sensor.camera_cat', name: 'Cat (2/2)' },
+      ],
+    },
+  );
+  check(
+    'the debug trace has one fill per copy, numbered',
+    (trace.items ?? []).map((item) => [item.placeholder, item.copy]),
+    [
+      ['[[detection_row|repeat:detections]]', { number: 1, count: 2 }],
+      ['[[detection_row|repeat:detections]]', { number: 2, count: 2 }],
+    ],
+  );
+  check(
+    'repeat: over a mapping of mappings spreads each value in, with entity and dotted value',
+    run({ rows: '[[zone_row|repeat:zones]]' }, [
+      {
+        zones: {
+          front: { entity: 'binary_sensor.front', label: 'door', icon: 'mdi:door' },
+          back: { entity: 'binary_sensor.back', label: 'gate', icon: 'mdi:gate' },
+        },
+      },
+    ]),
+    {
+      rows: [
+        { entity: 'binary_sensor.front', name: 'front door', icon: 'mdi:door' },
+        { entity: 'binary_sensor.back', name: 'back gate', icon: 'mdi:gate' },
+      ],
+    },
+  );
+  check(
+    "a mapping's own key and value fields win over the ones the repeat gives",
+    run({ rows: '[[r|repeat:m]]' }, [{ m: { a: { value: 3 } } }, { r: '[[key]]=[[value]]' }]),
+    { rows: ['a=3'] },
+  );
+  check(
+    'repeat: over a plain mapping that is empty gives no copies, and the |flat form works too',
+    run({ a: ['x', '[[r|repeat:m]]'], b: '[[pair|repeat:m2|flat]]' }, [
+      { m: {} },
+      { m2: { p: 1, q: 2 } },
+      { r: '[[key]]' },
+      { pair: ['[[key]]', '[[value]]'] },
+    ]),
+    { a: ['x'], b: ['p', 1, 'q', 2] },
+  );
+  check(
+    "a bare repeat over an item template's own for_each mapping is still one copy",
+    run({ rows: '[[own_map|repeat]]' }, []),
+    { rows: ['one 1/1'] },
+  );
+  console.warn = before;
+}
+
+/*
+ * #430: a repeat source written as a placeholder - a variable whose default is
+ * `[[detections|with]]`, an item template whose body is itself a repeat over a list - is a
+ * list once it is filled, and the steps that read a list see it filled too.
+ */
+{
+  const hass430 = { states: {}, entities: {}, devices: {}, areas: {}, floors: {}, labels: {} };
+  const extras = {
+    itemTemplates: {
+      list_item: { default: { ret: { type: '[[name]]', entity: '[[entity]]' } }, item: '[[ret|with]]' },
+      detections: {
+        default: {
+          source: [
+            { name: 'car', entity: 'binary_sensor.car' },
+            { name: 'cat', entity: 'binary_sensor.cat' },
+          ],
+        },
+        item: ['[[list_item|repeat:source]]'],
+      },
+      trigger: { item: '[[entity]]' },
+    },
+  };
+  const before = console.warn;
+  const said = [];
+  console.warn = (...args) => said.push(args.join(' '));
+  const run = (content) =>
+    deepReplace(
+      [{ detection_list: '[[detections|with]]' }],
+      {},
+      content,
+      'tpl',
+      hass430,
+      false,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      extras,
+    );
+  check(
+    'a repeat over a list made by a with: of a repeat fills (#430)',
+    run({ entities: '[[trigger|repeat:detection_list]]' }),
+    { entities: ['binary_sensor.car', 'binary_sensor.cat'] },
+  );
+  check(
+    'and says nothing about it not being a list',
+    said.filter((s) => s.includes('not a list')),
+    [],
+  );
+  check(
+    'the list steps read the same filled list',
+    run({ n: '[[detection_list|count]]', last: '[[detection_list|last]]' }),
+    { n: 2, last: '{"type":"cat","entity":"binary_sensor.cat"}' },
+  );
+  check('and the list itself still comes out as written', run({ all: '[[detection_list]]' }), {
+    all: [
+      { type: 'car', entity: 'binary_sensor.car' },
+      { type: 'cat', entity: 'binary_sensor.cat' },
+    ],
+  });
+  console.warn = before;
+}
+
+// An `if:` reading a variable whose own placeholder was never filled reads it as not set (#429).
+{
+  const x = {
+    itemTemplates: {
+      gated: {
+        default: [{ label: '[[name]] ([[thing]])' }, { on: '[[thing|if:thing=2]]' }],
+        item: '[[label|if:on?]]',
+      },
+    },
+  };
+  const list = [
+    { name: 'foo', thing: 1 },
+    { name: 'bar', thing: 2 },
+  ];
+  check(
+    'a worked-out flag whose if: did not hold drops its copy (#429)',
+    deepReplace(
+      [{ list }],
+      {},
+      { l: '[[gated|repeat:list]]' },
+      't',
+      undefined,
+      true,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      x,
+    ),
+    { l: ['bar (2)'] },
+  );
+  const realWarn = console.warn;
+  console.warn = () => {};
+  check(
+    'a name nothing fills counts as not set for if: and as set for if:!',
+    deepReplace(
+      [{ name: 'n', flag: '[[nope]]' }],
+      {},
+      { a: '[[name|if:flag?]]', b: '[[name|if:!flag]]', c: '[[name|if:flag=x?]]', d: '[[name|if:flag!=x]]' },
+    ),
+    { b: 'n', d: 'n' },
+  );
+  console.warn = realWarn;
+  check(
+    'button-card JavaScript still counts as text for if:',
+    deepReplace([{ name: 'n', j: '[[[ return 1 ]]]' }], {}, { b: '[[name|if:j]]' }),
+    { b: 'n' },
+  );
 }

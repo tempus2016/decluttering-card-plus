@@ -42,8 +42,8 @@ const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /*
  * What may stand between [[ and ]]: a name (dots and nested brackets allowed, so
- * `colours.[[level]]` passes), then any number of steps, each a bare known step or a known
- * step with a colon and an argument, then an optional ?. Text around the placeholder is
+ * `colours.[[level]]` passes), then any number of steps, each a bare known step, a known
+ * step with a colon and an argument, or a function template's name, then an optional ?. Text around the placeholder is
  * anything. Written for the YAML language server's regular expressions (ECMAScript, no
  * lookbehind needed).
  *
@@ -55,7 +55,18 @@ const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function placeholderPattern({ steps, paramSteps }) {
   const bare = steps.map(escape).sort().join('|');
   const withArg = paramSteps.map(escape).sort().join('|');
-  const step = `(?:${bare}|(?:${withArg}):[^|\\]]*)`;
+  /*
+   * A template can be used as a step (#307), and the schema cannot know a dashboard's
+   * templates, so any other name is a step too - the card and its lint still say when it is
+   * neither. The look-ahead keeps a built-in name out of it, so each step has one reading and
+   * a failure does not backtrack every way round.
+   */
+  const names = [...new Set([...steps, ...paramSteps])]
+    .sort((a, b) => b.length - a.length)
+    .map(escape)
+    .join('|');
+  const named = `(?!(?:${names})(?![A-Za-z0-9_-]))[A-Za-z_][A-Za-z0-9_-]*(?::[^|\\]]*)?`;
+  const step = `(?:${bare}|(?:${withArg}):[^|\\]]*|${named})`;
   const inner = `!?[^|\\[\\]?]+(?:\\[\\[[^\\]]*\\]\\][^|\\[\\]?]*)*(?:\\|${step})*\\??`;
   // Either no placeholder at all, or every [[...]] in the text is well formed.
   return `^(?:[^\\[]|\\[{3,}(?!\\[)|\\[(?!\\[)|\\[\\[${inner}\\]\\])*$`;
@@ -87,6 +98,8 @@ const PLACEHOLDER_HOLDERS = new Set([
   'let',
   'default',
   'defaults',
+  // A function template's result (#307).
+  'function',
 ]);
 
 /*
@@ -99,8 +112,11 @@ function withPlaceholders(schema, definitionName, pattern) {
   schema.$defs.text_with_placeholders = {
     type: 'string',
     pattern,
+    // Shown by the YAML language server in place of the raw pattern when a placeholder is malformed (#410).
+    patternErrorMessage:
+      'A [[placeholder]] here is not well formed. Check that the brackets come in pairs and that a step with a value is written name:value, as in if:name or default:x. Misspelt step names are not checked here: the card editor and lint name them.',
     description:
-      'Text, with any number of [[placeholders]]. Each placeholder is a variable name, then steps the card knows, then an optional ?.',
+      'Text, with any number of [[placeholders]]. Each placeholder is a variable name, then any steps - built-in ones, or a template used as a step - then an optional ?.',
   };
   schema.$defs.config_with_placeholders = {
     description: 'Card, row, badge or element configuration. Strings in it may hold [[placeholders]].',
