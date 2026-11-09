@@ -273,6 +273,7 @@
   "warn.unknown_step": "decluttering-card-plus: {which} Der Platzhalter bleibt so in der Karte, wie er geschrieben ist.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" ist kein Schritt, den diese Karte kennt.",
   "warn.step_not_alone": "Nach {step} dürfen nur if:, unless:, flat, entries oder registry folgen",
+  "warn.with_not_alone": "Nach with: dürfen nur if: oder unless: folgen",
   "warn.registry_no_keys": "{arg} hat keinen der Schlüssel einer Registry-Quelle (area, domain, entities, label usw.), daher findet |registry darin nichts. Nimm |entries, um seine Einträge zu durchlaufen.",
   "warn.fills_itself": "{name} füllt sich endlos selbst aus",
   "warn.read_too_deep": "decluttering-card-plus: {names} wird aus mehr als {depth} Ebenen anderer Werte gebildet und wurde daher halb fertig verwendet. Kürze die Kette der Werte, aus denen er entsteht.",

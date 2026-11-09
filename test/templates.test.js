@@ -2355,11 +2355,13 @@ collectAllTemplates(hass, borrower).then((all) => {
             'index',
             'index0',
             'item',
+            'key',
             'last',
             'name',
             'p',
             'q',
             'total',
+            'value',
           ],
         );
       }

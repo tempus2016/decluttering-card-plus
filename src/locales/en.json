@@ -273,6 +273,7 @@
   "warn.unknown_step": "decluttering-card-plus: {which} The placeholder is left in the card as written.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" is not a step this card knows.",
   "warn.step_not_alone": "{step} can only be followed by if:, unless:, flat, entries or registry",
+  "warn.with_not_alone": "with: can only be followed by if: or unless:",
   "warn.registry_no_keys": "{arg} has none of a registry source's keys (area, domain, entities, label and so on), so |registry finds nothing in it. Use |entries to go through its entries.",
   "warn.fills_itself": "{name} fills itself in without end",
   "warn.read_too_deep": "decluttering-card-plus: {names} is built from other values more than {depth} deep, so it was used part-built. Shorten the chain of values it is made from.",

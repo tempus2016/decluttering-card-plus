@@ -273,6 +273,7 @@
   "warn.unknown_step": "decluttering-card-plus: {which} De placeholder blijft in de kaart staan zoals hij geschreven is.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" is geen stap die deze kaart kent.",
   "warn.step_not_alone": "Na {step} mogen alleen if:, unless:, flat, entries of registry volgen",
+  "warn.with_not_alone": "Na with: mogen alleen if: of unless: volgen",
   "warn.registry_no_keys": "{arg} heeft geen van de sleutels van een registerbron (area, domain, entities, label enzovoort), dus |registry vindt er niets in. Gebruik |entries om de items te doorlopen.",
   "warn.fills_itself": "{name} vult zichzelf eindeloos in",
   "warn.read_too_deep": "decluttering-card-plus: {names} wordt opgebouwd uit meer dan {depth} niveaus andere waarden en is daarom half opgebouwd gebruikt. Maak de keten van waarden waaruit hij bestaat korter.",

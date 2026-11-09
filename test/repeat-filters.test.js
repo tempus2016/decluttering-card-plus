@@ -236,6 +236,31 @@ check(
   true,
 );
 said.length = 0;
+deepReplace(
+  base,
+  {},
+  { out: '[[my_template|with:my_mapping|upper]]' },
+  't',
+  undefined,
+  false,
+  undefined,
+  0,
+  undefined,
+  undefined,
+  false,
+  extras,
+);
+check(
+  'a with: followed by another step names only if: and unless:',
+  said.some((m) => m.includes('with: can only be followed by if: or unless:')),
+  true,
+);
+check(
+  'a repeat whose source is not known here still offers key and value',
+  ['key', 'value'].every((n) => structureNames({ card: { a: '[[entry|repeat:somewhere]]' } }).includes(n)),
+  true,
+);
+said.length = 0;
 check(
   'flat, entries and registry after a with: are refused',
   deepReplace(

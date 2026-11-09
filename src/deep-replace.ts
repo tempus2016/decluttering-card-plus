@@ -1506,6 +1506,8 @@ function deepReplaceBody(
         return { refused: localize('warn.entries_or_registry') };
       }
       if (others.some((part) => !AFTER_REPEAT_STEPS.includes(part)) || (conditions.length && !structural)) {
+        // with: takes only a condition after it; flat, entries and registry belong to repeat:.
+        if (stepName(step) === WITH_STEP) return { refused: localize('warn.with_not_alone') };
         return { refused: localize('warn.step_not_alone', { step: `${stepName(step)}:` }) };
       }
       if (depth >= MAX_EXPAND_DEPTH) return { refused: localize('warn.fills_itself', { name }) };

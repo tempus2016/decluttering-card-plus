@@ -273,6 +273,7 @@
   "warn.unknown_step": "decluttering-card-plus: {which} El marcador se deja en la tarjeta tal como está escrito.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" no es un paso que esta tarjeta conozca.",
   "warn.step_not_alone": "Tras {step} solo pueden ir if:, unless:, flat, entries o registry",
+  "warn.with_not_alone": "Tras with: solo pueden ir if: o unless:",
   "warn.registry_no_keys": "{arg} no tiene ninguna clave de una fuente del registro (area, domain, entities, label, etc.), así que |registry no encuentra nada. Usa |entries para recorrer sus entradas.",
   "warn.fills_itself": "{name} se rellena a sí mismo sin fin",
   "warn.read_too_deep": "decluttering-card-plus: {names} se construye a partir de otros valores con más de {depth} niveles, así que se usó a medio construir. Acorta la cadena de valores de la que sale.",

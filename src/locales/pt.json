@@ -273,6 +273,7 @@
   "warn.unknown_step": "decluttering-card-plus: {which} O marcador fica no cartão tal como está escrito.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" não é um passo que este cartão conheça.",
   "warn.step_not_alone": "Depois de {step} só podem vir if:, unless:, flat, entries ou registry",
+  "warn.with_not_alone": "Depois de with: só podem vir if: ou unless:",
   "warn.registry_no_keys": "{arg} não tem nenhuma das chaves de uma fonte do registo (area, domain, entities, label, etc.), por isso |registry não encontra nada. Usa |entries para percorrer as suas entradas.",
   "warn.fills_itself": "{name} preenche-se a si próprio sem fim",
   "warn.read_too_deep": "decluttering-card-plus: {names} é construído a partir de outros valores com mais de {depth} níveis, por isso foi usado a meio. Encurta a cadeia de valores de que é feito.",

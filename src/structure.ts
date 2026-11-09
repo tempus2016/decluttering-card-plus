@@ -70,7 +70,8 @@ export function structureNames(template: TemplateConfig | undefined, extra?: Var
       }
       continue;
     }
-    for (const name of [...POSITION_NAMES, 'item', 'entity']) names.add(name);
+    // Every copy may carry these; `key` and `value` come with a mapping repeated entry by entry (#429).
+    for (const name of [...POSITION_NAMES, 'item', 'entity', 'key', 'value']) names.add(name);
     const source = values[arg];
     const asSource = tail.includes(REGISTRY_STEP)
       ? !!source && typeof source === 'object' && !Array.isArray(source)
