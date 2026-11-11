@@ -137,7 +137,7 @@ check(
  * reads them). Each case is one that went wrong against real dashboards, passing and failing.
  */
 const Ajv = require('ajv');
-const ajv = new Ajv({ schemaId: 'auto' });
+const ajv = new Ajv({ strict: false });
 const SITE = 'https://tempus2016.github.io/decluttering-card-plus/schema/';
 for (const name of ['template.json', 'card.json', 'dashboard.json']) ajv.addSchema(built[name]);
 const valid = (name, config) => ajv.validate(`${SITE}${name}`, config);
