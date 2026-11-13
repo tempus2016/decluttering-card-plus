@@ -268,6 +268,8 @@
   "warn.no_item_template": "decluttering-card-plus: {whose} verwendet {which}, aber hier gibt es keine Element-Vorlage namens {names}, es wird also wie geschrieben dargestellt. Prüfe den Namen, dass die Vorlage einen item:-Inhalt statt card: hat und dass sie in den decluttering_templates dieses Dashboards steht.",
   "warn.unresolved_template": "Vorlage \"{name}\"",
   "warn.unresolved_this": "diese Vorlage",
+  "warn.unresolved_item_in": "Elementvorlage \"{item}\" in Vorlage \"{name}\"",
+  "warn.unresolved_item": "Elementvorlage \"{item}\"",
   "warn.translation_missing": "decluttering-card-plus: {whose} sucht {keys}, wofür keine seiner Sprachen einen Text hat, es wird also wie geschrieben dargestellt. Füge es dem language:-Block der Vorlage hinzu.",
   "warn.nothing_for": "nichts in Home Assistant für \"{value}\"",
   "warn.no_map_match": "\"{value}\" passt zu keinem der map:-Paare",
