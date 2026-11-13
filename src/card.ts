@@ -63,6 +63,7 @@ import {
   editDialogOnPage,
   getThingType,
   sourceContext,
+  warnLeftOut,
   warnUnlisted,
 } from './shared';
 import { shouldDefer, whenIdle, whenVisible } from './idle';
@@ -164,6 +165,7 @@ export class DeclutteringCard extends DeclutteringElement {
   private _rebuildTimer?: ReturnType<typeof setTimeout>;
   private _rebuildWarnedFor?: unknown;
   private _timeWarnedFor?: DeclutteringCardConfig;
+  private _leftOutWarnedFor?: DeclutteringCardConfig;
   // A first build waiting for idle time (idea 10): what to build, and the config it is for.
   private _deferred?: { templateConfig: TemplateConfig; config: DeclutteringCardConfig; token: unknown };
   private _deferStop?: () => void;
@@ -1163,6 +1165,15 @@ export class DeclutteringCard extends DeclutteringElement {
 
     try {
       const items = resolveRegistryItems(hass, from, context);
+      // Built nothing from a sweep that did match: say what was left out, once per config.
+      // Only marked once said - the registry can land after the first build.
+      if (
+        !items.length &&
+        this._leftOutWarnedFor !== this._lastConfig &&
+        warnLeftOut(from, source.config.template, hass)
+      ) {
+        this._leftOutWarnedFor = this._lastConfig;
+      }
       this._setForEach(source.templateConfig, source.config, items, source.picker);
       this._error = undefined;
       this._errorDetail = undefined;

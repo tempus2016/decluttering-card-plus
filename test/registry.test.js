@@ -4,6 +4,7 @@
  */
 const {
   copyLabel,
+  entitiesLeftOut,
   globMatches,
   isRegistrySource,
   resolveRegistryItems,
@@ -166,6 +167,55 @@ check(
     plugIds({ entities: '*', entity_category: 'all', include_hidden: true }).includes('button.plug_identify'),
   ],
   [false, true],
+);
+
+/* ---------------------------------------------- what a sweep left out (#452) */
+
+check(
+  'a sweep counts what it matched but left out, and says what brings them back',
+  entitiesLeftOut(plugHass, { entities: '*plug*' }),
+  { total: 3, hidden: 1, config: 1, diagnostic: 1, fix: ['entity_category: all', 'include_hidden: true'] },
+);
+
+check('one category left out names that category', entitiesLeftOut(plugHass, { entities: 'switch.plug_*' }), {
+  total: 1,
+  hidden: 0,
+  config: 1,
+  diagnostic: 0,
+  fix: ['entity_category: config'],
+});
+
+check(
+  'a category already asked for is not counted, nor asked for again',
+  entitiesLeftOut(plugHass, { entities: '*plug*', entity_category: 'config' }),
+  { total: 2, hidden: 1, config: 0, diagnostic: 1, fix: ['entity_category: all', 'include_hidden: true'] },
+);
+
+check(
+  'nothing left out is undefined',
+  [
+    entitiesLeftOut(plugHass, { entities: 'switch.plug' }),
+    entitiesLeftOut(plugHass, { entities: '*', entity_category: 'all', include_hidden: true }),
+    entitiesLeftOut(plugHass, { entities: ['sensor.plug_rssi'] }),
+  ],
+  [undefined, undefined, undefined],
+);
+
+check(
+  'exclude: still wins, so what it drops is not counted as left out',
+  entitiesLeftOut(plugHass, { entities: '*plug*', exclude: ['sensor.plug_rssi', 'button.*'] }),
+  { total: 1, hidden: 0, config: 1, diagnostic: 0, fix: ['entity_category: config'] },
+);
+
+check(
+  'only an entity sweep counts: areas, templates and ranges never leave entities out',
+  [
+    entitiesLeftOut(plugHass, { areas: true }),
+    entitiesLeftOut(plugHass, { template: '{{ [] }}' }),
+    entitiesLeftOut(plugHass, { range: 3 }),
+    entitiesLeftOut(plugHass, 'nonsense'),
+  ],
+  [undefined, undefined, undefined, undefined],
 );
 
 check('a diagnostic entity named outright is kept', plugIds({ entities: ['switch.plug', 'sensor.plug_rssi'] }), [

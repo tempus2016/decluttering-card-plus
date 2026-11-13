@@ -139,8 +139,8 @@ const NAMED = /^\s*([A-Za-z_][A-Za-z0-9_-]*)\s*=([\s\S]*)$/;
 
 /**
  * The values a function step's argument gives: `cat,detected` in the order of `parameters:`,
- * `suffix=found` by name, the two mixed if need be. More unnamed ones than parameters is a
- * mistake, said rather than guessed at.
+ * `suffix=found` by name, the two mixed if need be. More unnamed ones than parameters, or a
+ * name that is not one of them, is a mistake, said rather than guessed at.
  */
 export function functionArguments(
   arg: string | undefined,
@@ -152,6 +152,16 @@ export function functionArguments(
   for (const piece of pieces(arg)) {
     const named = quotedText(piece.trim()) === undefined ? NAMED.exec(piece) : null;
     if (named) {
+      // Only what parameters: names can be passed by name (#451): anything else would reach
+      // into the function's own defaults, or - a typo - go nowhere without a word.
+      if (!parameters.includes(named[1])) {
+        return {
+          refused: localize('warn.function_unknown_name', {
+            arg: named[1],
+            names: parameters.length ? parameters.join(', ') : localize('warn.function_no_parameters'),
+          }),
+        };
+      }
       values.push({ [named[1]]: argValue(named[2]) });
       continue;
     }
@@ -183,6 +193,12 @@ export function makeFunctionHost(
   return {
     has: (name) => functions.has(name),
     names: () => [...functions.keys()],
+    refusal: (name, arg) => {
+      const template = functions.get(name);
+      if (!template) return undefined;
+      const parsed = functionArguments(arg, functionParameters(template));
+      return 'refused' in parsed ? parsed.refused : undefined;
+    },
     call: (name, arg, value) => {
       const template = functions.get(name);
       if (!template) return undefined;

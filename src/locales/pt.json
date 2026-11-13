@@ -253,6 +253,10 @@
   "library.counted_grid.summary": "Uma grelha numerada de qualquer coisa, mostrando \"3 de 12\".",
 
   "warn.gave_up": "decluttering-card-plus: desistiu de substituir variáveis após {passes} passagens. Verifique se uma variável se refere a si própria.",
+  "warn.gave_up_names": "decluttering-card-plus: {whose} não conseguiu preencher {which}. {why}",
+  "warn.gave_up_self": "{name} refere-se a si própria, por isso nunca termina. Dê-lhe um valor que não se use a si próprio.",
+  "warn.gave_up_loop": "{loop} volta a si própria, por isso nunca termina. Dê a uma delas um valor que não volte atrás.",
+  "warn.gave_up_deep": "Cada valor traz outro, a mais de {passes} níveis. Verifique se uma variável se refere a si própria, ou encurte a cadeia.",
   "warn.refused": "decluttering-card-plus: deixou {which} no cartão em vez de substituir. {why}",
   "warn.refused_transform": "Uma transformação só molda texto, por isso precisa de um valor escalar - aplicá-la a um mapeamento ou a uma lista corromperia o seu JSON. Dê à variável um valor escalar, ou retire a transformação.",
   "warn.refused_resolver": "Um resolvedor lê o seu valor como um id de entidade e pergunta ao Home Assistant, por isso precisa de um que exista e tenha o que foi pedido.",
@@ -1091,8 +1095,11 @@
   "warn.function_recursive": "{name} chama-se a si próprio ({path}), por isso aí não dá nada.",
   "warn.function_failed": "{name} como passo: {why}",
   "warn.function_too_many": "aceita no máximo {count} argumentos sem nome, um por cada nome em parameters:",
+  "warn.function_unknown_name": "{arg}= não é um dos seus parâmetros ({names}); adicione-o em parameters: para o passar pelo nome",
+  "warn.function_no_parameters": "nenhum",
   "warn.function_not_simple": "o seu function: deu um mapeamento ou uma lista, e um passo só passa texto, um número ou true ou false",
   "warn.function_nothing": "{name} não deu nada para \"{value}\"",
+  "warn.merge_shapes": "merge: junta duas listas ou dois mapeamentos, e estes não são do mesmo tipo",
   "warn.refused_function": "Um modelo usado como passo não dá nada quando nada sai do seu function:. Adicione ? para retirar a opção quando não der nada, ou um default: para mostrar algo no seu lugar.",
   "lint.function_shadowed": "{name} tem o nome de um passo integrado, por isso [[x|{name}]] corre o integrado e nunca este modelo. Dê-lhe outro nome.",
   "lint.parameters_without_function": "parameters: só faz algo num modelo com function:, onde nomeia os seus argumentos por ordem.",
@@ -1113,5 +1120,11 @@
   "warn.entries_or_registry": "um repeat: aceita entries ou registry, não os dois",
   "trace.repeat_filtered": "{placeholder} omitiu {left} de {count} entradas: {condition} não se verificou",
   "report.outline_filtered": "omitido: {condition} não se verificou",
-  "lint.mixed_repeat_source": "{placeholder} repete sobre {name}, que tem chaves de fonte do registo ({filters}) e outras chaves ({others}), por isso é lido como fonte do registo. Acrescente |entries para repetir sobre as suas entradas, ou |registry se se pretende uma fonte."
+  "lint.mixed_repeat_source": "{placeholder} repete sobre {name}, que tem chaves de fonte do registo ({filters}) e outras chaves ({others}), por isso é lido como fonte do registo. Acrescente |entries para repetir sobre as suas entradas, ou |registry se se pretende uma fonte.",
+  "left_out.hidden": "{count} ocultas",
+  "left_out.config": "{count} de configuração",
+  "left_out.diagnostic": "{count} de diagnóstico",
+  "editor.matches_left_out": "Também correspondem mas ficam de fora ({which}), tal como nos painéis do próprio Home Assistant. Adicione {fix} para as manter.",
+  "editor.matches_none_left_out": "Nada é mostrado para isto, por isso o cartão não mostra nada{but}. Corresponde a entidades que o Home Assistant oculta ou classifica como de configuração ou diagnóstico ({which}). Adicione {fix} para as manter.",
+  "warn.repeat_left_out": "decluttering-card-plus: o for_each_from em {template} não constrói nada. Só corresponde a entidades que o Home Assistant oculta ou classifica como de configuração ou diagnóstico ({which}). Adicione {fix} para as manter."
 }

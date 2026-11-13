@@ -253,6 +253,10 @@
   "library.counted_grid.summary": "Une grille numérotée de n'importe quoi, affichant \"3 sur 12\".",
 
   "warn.gave_up": "decluttering-card-plus : a renoncé à substituer les variables après {passes} passes. Vérifiez si une variable se réfère à elle-même.",
+  "warn.gave_up_names": "decluttering-card-plus : {whose} n'a pas pu remplir {which}. {why}",
+  "warn.gave_up_self": "{name} se réfère à elle-même et ne se termine jamais. Donnez-lui une valeur qui ne s'utilise pas elle-même.",
+  "warn.gave_up_loop": "{loop} revient sur elle-même et ne se termine jamais. Donnez à l'une d'elles une valeur qui n'y revient pas.",
+  "warn.gave_up_deep": "Chaque valeur en apporte une autre, sur plus de {passes} niveaux. Vérifiez si une variable se réfère à elle-même, ou raccourcissez la chaîne.",
   "warn.refused": "decluttering-card-plus : a laissé {which} dans la carte plutôt que de substituer. {why}",
   "warn.refused_transform": "Une transformation ne façonne que du texte, il lui faut donc une valeur scalaire - l'appliquer à un mappage ou à une liste brouillerait son JSON. Donnez à la variable une valeur scalaire, ou retirez la transformation.",
   "warn.refused_resolver": "Un résolveur lit sa valeur comme un id d'entité et interroge Home Assistant, il lui en faut donc un qui existe et porte ce qui est demandé.",
@@ -1091,8 +1095,11 @@
   "warn.function_recursive": "{name} s'appelle lui-même ({path}), il ne donne donc rien à cet endroit.",
   "warn.function_failed": "{name} comme étape : {why}",
   "warn.function_too_many": "il prend au plus {count} arguments sans nom, un pour chaque nom sous parameters:",
+  "warn.function_unknown_name": "{arg}= ne fait pas partie de ses paramètres ({names}) ; ajoutez-le sous parameters: pour le passer par son nom",
+  "warn.function_no_parameters": "aucun",
   "warn.function_not_simple": "son function: a donné un mappage ou une liste, et une étape ne transmet que du texte, un nombre, ou true ou false",
   "warn.function_nothing": "{name} n'a rien donné pour « {value} »",
+  "warn.merge_shapes": "merge: joint deux listes ou deux tables, et celles-ci ne sont pas du même genre",
   "warn.refused_function": "Un modèle utilisé comme étape ne donne rien quand rien ne sort de son function:. Ajoutez ? pour retirer l'option dans ce cas, ou un default: pour afficher quelque chose à sa place.",
   "lint.function_shadowed": "{name} porte le nom d'une étape intégrée, donc [[x|{name}]] exécute l'étape intégrée et jamais ce modèle. Donnez-lui un autre nom.",
   "lint.parameters_without_function": "parameters: ne sert que dans un modèle avec function:, où il nomme ses arguments dans l'ordre.",
@@ -1113,5 +1120,11 @@
   "warn.entries_or_registry": "un repeat: prend entries ou registry, pas les deux",
   "trace.repeat_filtered": "{placeholder} a omis {left} entrées sur {count} : {condition} n'était pas vrai",
   "report.outline_filtered": "omis : {condition} n'était pas vrai",
-  "lint.mixed_repeat_source": "{placeholder} répète sur {name}, qui a des clés de source du registre ({filters}) et d'autres clés ({others}), et est donc lu comme une source du registre. Ajoutez |entries pour répéter sur ses entrées, ou |registry si une source est voulue."
+  "lint.mixed_repeat_source": "{placeholder} répète sur {name}, qui a des clés de source du registre ({filters}) et d'autres clés ({others}), et est donc lu comme une source du registre. Ajoutez |entries pour répéter sur ses entrées, ou |registry si une source est voulue.",
+  "left_out.hidden": "{count} masquées",
+  "left_out.config": "{count} de configuration",
+  "left_out.diagnostic": "{count} de diagnostic",
+  "editor.matches_left_out": "Correspondent aussi mais sont écartées ({which}), comme le font les tableaux de bord de Home Assistant. Ajoutez {fix} pour les garder.",
+  "editor.matches_none_left_out": "Rien n'est affiché pour ceci, la carte n'affiche donc rien{but}. Cela correspond pourtant à des entités que Home Assistant masque ou classe en configuration ou diagnostic ({which}). Ajoutez {fix} pour les garder.",
+  "warn.repeat_left_out": "decluttering-card-plus : le for_each_from de {template} ne construit rien. Il ne correspond qu'à des entités que Home Assistant masque ou classe en configuration ou diagnostic ({which}). Ajoutez {fix} pour les garder."
 }

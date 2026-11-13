@@ -253,6 +253,10 @@
   "library.counted_grid.summary": "A numbered grid of anything, showing \"3 of 12\".",
 
   "warn.gave_up": "decluttering-card-plus: gave up substituting variables after {passes} passes. Check whether a variable refers to itself.",
+  "warn.gave_up_names": "decluttering-card-plus: {whose} could not fill in {which}. {why}",
+  "warn.gave_up_self": "{name} refers to itself, so it never ends. Give it a value that does not use itself.",
+  "warn.gave_up_loop": "{loop} leads back to itself, so it never ends. Give one of them a value that does not lead back.",
+  "warn.gave_up_deep": "Each value brings in another, more than {passes} deep. Check whether a variable refers to itself, or shorten the chain.",
   "warn.refused": "decluttering-card-plus: left {which} in the card rather than substituting. {why}",
   "warn.refused_transform": "A transform only shapes text, so it needs a scalar value - applying one to a mapping or a list would garble its JSON. Give the variable a scalar value, or drop the transform.",
   "warn.refused_resolver": "A resolver reads its value as an entity id and asks Home Assistant, so it needs one that exists and carries what was asked for.",
@@ -1091,8 +1095,11 @@
   "warn.function_recursive": "{name} calls itself ({path}), so it gives nothing there.",
   "warn.function_failed": "{name} as a step: {why}",
   "warn.function_too_many": "it takes at most {count} unnamed arguments, one for each name under parameters:",
+  "warn.function_unknown_name": "{arg}= is not one of its parameters ({names}); add it under parameters: to pass it by name",
+  "warn.function_no_parameters": "none",
   "warn.function_not_simple": "its function: gave a mapping or a list, and a step only passes on text, a number, or a true or false",
   "warn.function_nothing": "{name} gave nothing for \"{value}\"",
+  "warn.merge_shapes": "merge: joins two lists or two mappings, and these are not the same kind",
   "warn.refused_function": "A template used as a step gives nothing when nothing comes out of its function:. Add ? to drop the option when it does not, or a default: to show something in its place.",
   "lint.function_shadowed": "{name} has the name of a built-in step, so [[x|{name}]] runs the built-in one and never this template. Give it another name.",
   "lint.parameters_without_function": "parameters: only does something in a template with a function:, which names its arguments in order.",
@@ -1113,5 +1120,11 @@
   "warn.entries_or_registry": "a repeat: takes entries or registry, not both",
   "trace.repeat_filtered": "{placeholder} left out {left} of {count} entries: {condition} did not hold",
   "report.outline_filtered": "left out: {condition} did not hold",
-  "lint.mixed_repeat_source": "{placeholder} repeats over {name}, which has registry source keys ({filters}) and other keys ({others}), so it is read as a registry source. Add |entries to repeat over its entries, or |registry if a source is meant."
+  "lint.mixed_repeat_source": "{placeholder} repeats over {name}, which has registry source keys ({filters}) and other keys ({others}), so it is read as a registry source. Add |entries to repeat over its entries, or |registry if a source is meant.",
+  "left_out.hidden": "{count} hidden",
+  "left_out.config": "{count} config",
+  "left_out.diagnostic": "{count} diagnostic",
+  "editor.matches_left_out": "Also matched but left out ({which}), the way Home Assistant's own dashboards leave them out. Add {fix} to keep them.",
+  "editor.matches_none_left_out": "Nothing is shown for this, so the card renders nothing{but}. It does match entities that Home Assistant hides or files as config or diagnostic ({which}). Add {fix} to keep them.",
+  "warn.repeat_left_out": "decluttering-card-plus: the for_each_from on {template} builds nothing. It only matches entities that Home Assistant hides or files as config or diagnostic ({which}). Add {fix} to keep them."
 }

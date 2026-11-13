@@ -178,6 +178,8 @@ export function argumentValues(step: string): string[] {
       return ['key=name,value=entity'];
     case 'to_map':
       return ['key=name,value=icon'];
+    case 'merge':
+      return ['other'];
     default:
       return [];
   }

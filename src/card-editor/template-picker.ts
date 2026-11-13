@@ -29,16 +29,24 @@ export interface PickerItem {
 
 const CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group'];
 
+/** `base: true`: a template written only for others to extend, kept out of the pickers (#444). */
+export function isBaseTemplate(template: unknown): boolean {
+  return (template as { base?: unknown } | null)?.base === true;
+}
+
 export function pickerItems(
   templates: Record<string, TemplateConfig>,
   ll: LovelaceConfig | null | undefined,
   hass: unknown,
   borrowedFrom: (name: string) => string | undefined = () => undefined,
+  current?: string,
 ): PickerItem[] {
   const items: PickerItem[] = [];
   for (const [name, template] of Object.entries(templates)) {
     // An item template is not something a card can be built from.
     if (!CONTENT_KEYS.some((key) => key in (template as object))) continue;
+    // Nor is a base, which is only there to be extended (#444) - unless this card already uses it.
+    if (isBaseTemplate(template) && name !== current) continue;
     const retired = deprecationOf(template);
     const description =
       typeof retired === 'string' && retired

@@ -112,6 +112,8 @@ export interface TemplateConfig {
   strict?: boolean | StrictConfig;
   /** Which entities Home Assistant's add-card dialog offers this template for. */
   suggest_for?: unknown;
+  /** Only for other templates to extend: left out of the card editor's template picker. Not inherited. */
+  base?: boolean;
   /** Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field. */
   editor_hide?: string | string[];
   /**

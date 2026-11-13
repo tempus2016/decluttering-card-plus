@@ -680,6 +680,30 @@ export function toMap(source: unknown, arg?: string): Record<string, unknown> | 
   return out;
 }
 
+/*
+ * `merge:other` (#454) joins another variable onto this one: two lists one after the other, or two
+ * mappings key by key, the other's value winning where both have a key. Only the top level is
+ * merged - a key both hold as a mapping takes the other's whole. Anything else is no merge: an
+ * unset other leaves the value as it was, an unset value gives the other, and a list with a
+ * mapping gives nothing.
+ */
+export const MERGE_STEP = 'merge';
+
+/** Two lists end to end, or two mappings with the second's keys over the first's. */
+export function mergeValues(first: unknown, second: unknown): unknown[] | Record<string, unknown> | undefined {
+  const gap = (value: unknown) => value === undefined || value === null || value === '';
+  const shaped = (value: unknown) => !!value && typeof value === 'object';
+  if (gap(second)) return shaped(first) ? (first as unknown[] | Record<string, unknown>) : undefined;
+  if (gap(first)) return shaped(second) ? (second as unknown[] | Record<string, unknown>) : undefined;
+  if (Array.isArray(first) && Array.isArray(second)) return [...first, ...second];
+  if (!shaped(first) || !shaped(second) || Array.isArray(first) || Array.isArray(second)) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const source of [first, second] as Record<string, unknown>[]) {
+    for (const [key, value] of Object.entries(source)) setField(out, key, value);
+  }
+  return out;
+}
+
 /** Whether a step is `to_list` or `to_map`, bare or with its argument. */
 function isConvertStep(step: string): boolean {
   return CONVERT_STEPS.includes(stepName(step));
@@ -840,6 +864,8 @@ export function takesStructure(step: string, value: unknown): boolean {
   if (stepName(step) === PICK_STEP) return !!value && typeof value === 'object';
   // A mapping becomes a list, or a list a mapping (#429).
   if (isConvertStep(step)) return !!value && typeof value === 'object';
+  // Two lists or two mappings are joined (#454); an unset value takes the other's whole.
+  if (stepName(step) === MERGE_STEP) return true;
   // A mapping has a size, and nothing else a list step reads.
   return Array.isArray(value) ? isListStep(step) : step === COUNT_STEP;
 }
@@ -1174,7 +1200,7 @@ export function yieldsList(chain: string | undefined): boolean {
   let list = false;
   for (const step of chain.split('|')) {
     if (isFallback(step) || isCondition(step)) continue;
-    if (stepName(step) === SPLIT_STEP || stepName(step) === TO_LIST_STEP) list = true;
+    if (stepName(step) === SPLIT_STEP || stepName(step) === TO_LIST_STEP || stepName(step) === MERGE_STEP) list = true;
     else if (
       isListStep(step) ||
       isYesNoStep(step) ||
@@ -1188,12 +1214,15 @@ export function yieldsList(chain: string | undefined): boolean {
   return list;
 }
 
-/** Whether a chain ends in a `to_map` (#429), so a whole value it makes goes in as a real mapping. */
+/**
+ * Whether a chain ends in a `to_map` (#429) or a `merge:` (#454), so a whole value it makes goes in
+ * as a real mapping.
+ */
 export function yieldsMapping(chain: string | undefined): boolean {
   if (!chain) return false;
   const doing = chain.split('|').filter((step) => !isFallback(step) && !isCondition(step));
   const last = doing[doing.length - 1];
-  return last !== undefined && stepName(last) === TO_MAP_STEP;
+  return last !== undefined && (stepName(last) === TO_MAP_STEP || stepName(last) === MERGE_STEP);
 }
 
 /** Whether a shaped value can go into the card's JSON as a bare number. */
@@ -1778,6 +1807,7 @@ const PARAM_PREFIXES = [
   CONTAINS_STEP,
   PICK_STEP,
   ...CONVERT_STEPS,
+  MERGE_STEP,
   ...EXTRA_PARAM_STEPS,
 ];
 
@@ -1850,6 +1880,7 @@ export const KNOWN_PARAM_STEPS: string[] = [
   CONTAINS_STEP,
   PICK_STEP,
   ...CONVERT_STEPS,
+  MERGE_STEP,
   ...STRUCTURE_PARAM_STEPS,
   ...EXTRA_PARAM_STEPS,
   ATTRIBUTE_PREFIX.slice(0, -1),
@@ -1906,6 +1937,8 @@ export interface FunctionHost {
   has(name: string): boolean;
   names(): string[];
   call(name: string, arg: string | undefined, value: unknown): string | number | boolean | undefined;
+  /** Why these arguments are refused (#451), or undefined when the function takes them. */
+  refusal?(name: string, arg: string | undefined): string | undefined;
 }
 
 let functionHost: FunctionHost | undefined;
@@ -1996,6 +2029,9 @@ export function applyTransform(
   // Whether a `to_list` has been passed: a stand-in after one is one entry, never a list it spells.
   let listedBefore = false;
 
+  // The mapping a `merge:` just made (#454), so a second `merge:` straight after joins onto it.
+  let merged: Record<string, unknown> | undefined;
+
   // One step that shapes text, applied to one piece of it.
   const reshape = (name: string, input: string): string | undefined => {
     if (isResolver(name)) {
@@ -2030,6 +2066,8 @@ export function applyTransform(
   for (const [index, name] of steps.slice(takesJson ? 1 : 0).entries()) {
     // First in the chain, a step reads the value itself rather than the text of it.
     const firstHand = index === 0 && !takesJson ? value : undefined;
+    const carried = merged;
+    merged = undefined;
 
     if (name === BOOL_STEP) {
       // First in the chain it reads the value itself, so an empty list is a no rather
@@ -2137,6 +2175,26 @@ export function applyTransform(
       } else {
         const made = toMap(source, arg);
         list = undefined;
+        text = made === undefined ? undefined : JSON.stringify(made);
+        empty = !made || Object.keys(made).length === 0;
+        listedBefore = false;
+      }
+      continue;
+    }
+
+    if (stepName(name) === MERGE_STEP) {
+      // The value itself, a list a step before made, or a mapping a `merge:` before made.
+      const other = read(argText(name.slice(MERGE_STEP.length + 1)).trim());
+      const source = list ?? carried ?? (index === 0 && !takesJson ? value : empty ? undefined : text);
+      const made = mergeValues(source, other);
+      if (Array.isArray(made)) {
+        list = made;
+        text = undefined;
+        empty = made.length === 0;
+        listedBefore = true;
+      } else {
+        list = undefined;
+        merged = made;
         text = made === undefined ? undefined : JSON.stringify(made);
         empty = !made || Object.keys(made).length === 0;
         listedBefore = false;

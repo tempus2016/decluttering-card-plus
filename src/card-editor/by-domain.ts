@@ -1,6 +1,7 @@
 import { DeclutteringCardConfig, TemplateConfig } from '../types';
 import { BY_DOMAIN_KEY, deprecationOf } from '../templates';
 import { localize } from '../localize';
+import { isBaseTemplate } from './template-picker';
 
 /*
  * Idea 16: `template_by_domain:` as a table of domain to template. The mapping is written
@@ -71,7 +72,7 @@ export function cardTemplateOptions(
   hass?: unknown,
 ): { value: string; label: string }[] {
   return Object.keys(templates)
-    .filter((name) => isCardTemplate(templates[name]))
+    .filter((name) => isCardTemplate(templates[name]) && !isBaseTemplate(templates[name]))
     .sort()
     .map((name) => ({
       value: name,

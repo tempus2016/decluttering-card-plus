@@ -3,7 +3,7 @@
  * Run with `npm test`, which transpiles the source into .test-build first.
  */
 const deepReplace = require('../.test-build/deep-replace.js').default;
-const { cssSafe, fillSource } = require('../.test-build/deep-replace.js');
+const { cssSafe, fillSource, findLoop } = require('../.test-build/deep-replace.js');
 const { withStateScope } = require('../.test-build/variables.js');
 
 const { check } = require('./check');
@@ -3267,4 +3267,54 @@ console.warn = realWarn;
     deepReplace([{ name: 'n', j: '[[[ return 1 ]]]' }], {}, { b: '[[name|if:j]]' }),
     { b: 'n' },
   );
+}
+
+/* ------------------------------- #443: which variable the passes gave up on */
+{
+  const said = (variables) => {
+    const heard = [];
+    const before = console.warn;
+    console.warn = (m) => heard.push(m);
+    deepReplace(variables, {}, { x: '[[a]]', y: '[[b]]' }, 'room');
+    console.warn = before;
+    return heard;
+  };
+  const pair = said([{ a: 'x[[b]]' }, { b: 'y[[a]]' }]);
+  check(
+    'giving up names the template, the placeholders left and the loop',
+    pair.some(
+      (m) => m.includes('template "room" could not fill in [[a]], [[b]]') && m.includes('[[a]] → [[b]] → [[a]]'),
+    ),
+    true,
+  );
+  check(
+    'a looping variable is not called unset',
+    pair.some((m) => /nothing gives a value/.test(m)),
+    false,
+  );
+  check(
+    'the bare "after 10 passes" warning is gone when names are known',
+    pair.some((m) => /after 10 passes/.test(m)),
+    false,
+  );
+  check(
+    'a variable using itself is said to refer to itself',
+    said([{ a: 'x[[a]]' }, { b: 'fine' }]).some((m) => m.includes('[[a]] refers to itself')),
+    true,
+  );
+  const chain = Array.from({ length: 12 }, (_, i) => ({ [i ? `v${i}` : 'a']: i === 11 ? 'end' : `[[v${i + 1}]]` }));
+  check(
+    'a chain deeper than the passes is told apart from a loop',
+    said([...chain, { b: 'fine' }]).some(
+      (m) => m.includes('could not fill in [[v10]]') && m.includes('more than 10 deep'),
+    ),
+    true,
+  );
+  check(
+    'findLoop follows values back to the start',
+    findLoop('a', { a: '[[b|upper]]', b: { k: '[[c]]' }, c: '[[a?]]' }),
+    ['a', 'b', 'c', 'a'],
+  );
+  check('findLoop ignores escaped placeholders', findLoop('a', { a: '[[!a]]' }), undefined);
+  check('findLoop finds nothing for a chain that ends', findLoop('a', { a: '[[b]]', b: 'end' }), undefined);
 }

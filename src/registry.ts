@@ -715,6 +715,61 @@ function entityItems(hass: any, source: RegistrySource): Record<string, any>[] {
   return items;
 }
 
+/**
+ * What an entity sweep matched but left out because Home Assistant hides it or files it as
+ * config or diagnostic (#452), and the keys that would bring them back. Each is counted
+ * once, hidden first: a hidden config entity needs `include_hidden:` whatever else is set.
+ */
+export interface LeftOut {
+  total: number;
+  hidden: number;
+  config: number;
+  diagnostic: number;
+  /** The YAML to add, as written: `entity_category: config`, `include_hidden: true`. */
+  fix: string[];
+}
+
+/*
+ * A pattern that matches only config entities builds nothing and says nothing, which reads
+ * as a broken pattern rather than a filter doing its job (#452). This walks the same sweep
+ * as entityItems and counts what shownByDefault turned away. Only a plain entity sweep:
+ * areas, devices and the rest gather their entities differently, and a template's or a
+ * named id is never left out.
+ */
+export function entitiesLeftOut(hass: any, source: any): LeftOut | undefined {
+  if (!isRegistrySource(source) || source.range !== undefined || !isEntitySource(source)) return undefined;
+  const drop = excluded(source.exclude);
+  const named = namedOutright(source);
+  const out: LeftOut = { total: 0, hidden: 0, config: 0, diagnostic: 0, fix: [] };
+  const categories = new Set<string>();
+
+  for (const [entityId, entity] of Object.entries(hass?.entities ?? {}) as [string, any][]) {
+    if (named.has(entityId.toLowerCase()) || shownByDefault(entity, source)) continue;
+    if (!entityMatches(hass, entityId, entity, source)) continue;
+    if (drop && entityMatches(hass, entityId, entity, drop)) continue;
+    out.total += 1;
+    const category = typeof entity?.entity_category === 'string' ? entity.entity_category.toLowerCase() : '';
+    if (category && !categoryWanted(source, category)) categories.add(category);
+    if (entity?.hidden && source.include_hidden !== true) out.hidden += 1;
+    else if (category === 'diagnostic') out.diagnostic += 1;
+    else out.config += 1;
+  }
+  if (!out.total) return undefined;
+
+  // What to write is the categories already asked for plus the missing ones, so following
+  // the advice never drops one the card had. Home Assistant has two, and both is `all`.
+  if (categories.size) {
+    for (const each of asList(source.entity_category === true ? 'all' : source.entity_category) ?? []) {
+      categories.add(each.toLowerCase());
+    }
+    const all = categories.has('all') || (categories.has('config') && categories.has('diagnostic'));
+    const list = [...categories].sort();
+    out.fix.push(`entity_category: ${all ? 'all' : list.length === 1 ? list[0] : `[${list.join(', ')}]`}`);
+  }
+  if (out.hidden) out.fix.push('include_hidden: true');
+  return out;
+}
+
 /** The variables one entity's copy is given - the same however the entity was found. */
 function entityItem(hass: any, entityId: string, entity: any, source: RegistrySource): Record<string, any> {
   const area = areaOf(hass, entityId);

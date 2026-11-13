@@ -705,3 +705,93 @@ console.warn = realWarn;
     { name: 'b' },
   ]);
 }
+
+// --- #454: the whole mapping item as [[item]] --------------------------------------------------
+
+{
+  const lists = [
+    { a: [{ entity: 'l1_1' }, { name: 'n1_2' }] },
+    { b: [{ entity: 'l2_1', name: 'n2_1' }] },
+    { whole: '[[item]]' },
+    { picked: { e: '[[item.entity]]', n: '[[item.name?]]' } },
+  ];
+  check(
+    '[[item]] in a repeat over mappings copies each entry whole (#454)',
+    run({ out: ['[[whole|repeat:a]]', '[[whole|repeat:b]]'] }, lists),
+    { out: [{ entity: 'l1_1' }, { name: 'n1_2' }, { entity: 'l2_1', name: 'n2_1' }] },
+  );
+  check('[[item.name]] reads one field of the entry (#454)', run({ out: '[[picked|repeat:b]]' }, lists), {
+    out: [{ e: 'l2_1', n: 'n2_1' }],
+  });
+  check(
+    'an entry with its own item key keeps it (#454)',
+    run({ out: '[[whole|repeat:c]]' }, [{ c: [{ item: 'mine', x: 1 }] }, { whole: '[[item]]' }]),
+    { out: ['mine'] },
+  );
+  check(
+    'the entry beats a card variable called item, as a plain value does (#454)',
+    run({ out: '[[whole|repeat:b]]' }, [{ item: 'card' }, ...lists]),
+    { out: [{ entity: 'l2_1', name: 'n2_1' }] },
+  );
+  check(
+    'a plain value is still [[item]] (#454)',
+    run({ out: '[[whole|repeat:c]]' }, [{ c: ['x', 'y'] }, { whole: '[[item]]' }]),
+    { out: ['x', 'y'] },
+  );
+  check(
+    'a copy from Home Assistant gets no whole item (#454)',
+    run({ out: '[[whole|repeat:src]]' }, [{ src: { area: 'kitchen' } }, { whole: '[[item]]' }], undefined, hass),
+    { out: ['[[item]]'] },
+  );
+}
+
+// --- #454: merge: joins two lists or two mappings ----------------------------------------------
+
+check(
+  'merge: two mappings key by key, the other winning (#454)',
+  run({ v: '[[a|merge:b]]' }, [{ a: { l1: 'f', l2: 'y' } }, { b: { l1: 'z', l3: 'a' } }]),
+  { v: { l1: 'z', l2: 'y', l3: 'a' } },
+);
+check('merge: two lists end to end (#454)', run({ v: '[[a|merge:b]]' }, [{ a: ['z'] }, { b: ['x', 'y'] }]), {
+  v: ['z', 'x', 'y'],
+});
+check(
+  'merge: fills placeholders on both sides (#454)',
+  run({ v: '[[a|merge:b]]' }, [{ a: '[[l]]' }, { l: ['q'] }, { b: ['[[c]]'] }, { c: 'cc' }]),
+  { v: ['q', 'cc'] },
+);
+check(
+  'merge: chains onto a merged mapping (#454)',
+  run({ v: '[[a|merge:b|merge:c]]' }, [{ a: { x: 1 } }, { b: { y: 2 } }, { c: { z: 3 } }]),
+  { v: { x: 1, y: 2, z: 3 } },
+);
+check('merge: an unset other leaves the value as it was (#454)', run({ v: '[[a|merge:none]]' }, [{ a: { x: 1 } }]), {
+  v: { x: 1 },
+});
+check('merge: an unset value gives the other (#454)', run({ v: '[[a|merge:b]]' }, [{ a: '' }, { b: ['x'] }]), {
+  v: ['x'],
+});
+check('merge: a list and a mapping is no merge (#454)', run({ v: '[[a|merge:b]]' }, [{ a: { x: 1 } }, { b: ['y'] }]), {
+  v: '[[a|merge:b]]',
+});
+said.length = 0;
+console.warn = (...args) => said.push(args.join(' '));
+deepReplace([{ m454: { x: 1 } }, { l454: ['y'] }], {}, { w: '[[m454|merge:l454]]' }, 't');
+console.warn = realWarn;
+check(
+  'merge: says a list and a mapping are not the same kind (#454)',
+  said.some((m) => m.includes('not the same kind') && !m.includes('[object Object]')),
+  true,
+);
+check(
+  'merge: only the top level is merged (#454)',
+  run({ v: '[[a|merge:b]]' }, [{ a: { m: { x: 1 } } }, { b: { m: { y: 2 } } }]),
+  { v: { m: { y: 2 } } },
+);
+check(
+  'structureNames offers item.<field> for a repeat over mappings (#454)',
+  structureNames({ card: { a: '[[row|repeat:rows]]' }, default: [{ rows: [{ entity: 'x', name: 'y' }] }] }).filter(
+    (n) => n.startsWith('item.'),
+  ),
+  ['item.entity', 'item.name'],
+);
