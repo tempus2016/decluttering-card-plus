@@ -1,4 +1,5 @@
 import { placeholderJson } from './placeholder-text';
+import { applyListEdits, LIST_EDIT_KEY } from './list-edits';
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
 import { BuildTrace, ItemTrace, SkipTrace } from './trace';
@@ -58,6 +59,7 @@ import {
   withFunctionHost,
   mappingItems,
   PICK_STEP,
+  MERGE_STEP,
   pickArgs,
   AFTER_REPEAT_STEPS,
   ENTRIES_STEP,
@@ -206,10 +208,23 @@ function unsplice(node: any): any {
 
 /*
  * One item of a list to repeat over, as the mapping of variables its copy is given. A
- * mapping is its own variables, as in a `for_each`. A plain value is `item`, and an entity
+ * mapping is its own variables, as in a `for_each`, and `item` as a whole. A plain value is `item`, and an entity
  * id is `entity` as well, so a list of ids reads the way a registry repeat does.
  */
-function scalarAsItem(item: unknown): unknown {
+// The entries scalarAsItem gave an `item` of their own, so `if:item.x` still reads the copy's
+// `x` - including one its item template works out - rather than only the entry's field.
+const wholeItems = new WeakSet<object>();
+const isWholeItem = (value: unknown): boolean => !!value && typeof value === 'object' && wholeItems.has(value);
+function scalarAsItem(item: unknown, fromHa = false): unknown {
+  // A mapping is also `item` as a whole (#454), so a copy can pass its entry on untouched -
+  // `[[item]]` - or read `[[item.name]]`. An entry with an `item` key of its own keeps it. A copy
+  // from Home Assistant does not get one: its text is shielded value by value, and a whole
+  // mapping would carry a name with `[[` in it past that.
+  if (item && typeof item === 'object' && !Array.isArray(item) && !fromHa) {
+    if (Object.prototype.hasOwnProperty.call(item, 'item')) return item;
+    wholeItems.add(item);
+    return { ...item, item };
+  }
   if (item && typeof item === 'object') return item;
   const entityLike = typeof item === 'string' && /^[a-z_]+\.[a-z0-9_]+$/.test(item);
   return entityLike ? { item, entity: item } : { item };
@@ -270,9 +285,11 @@ function asPartOfString(value: any): string {
 function asShapedWholeValue(text: string, chain: string): string {
   if (yieldsBoolean(chain) && (text === 'true' || text === 'false')) return text;
   // A list is only ever the JSON applyTransform wrote for it, read back to be sure.
-  if (yieldsList(chain)) return isJsonList(text) ? text : JSON.stringify(text);
+  // A `merge:` (#454) may make either, so a list chain that did not end in one is still asked about a mapping.
+  if (yieldsList(chain) && isJsonList(text)) return text;
   // A mapping `to_map` wrote (#429); Home Assistant's braces wear markers, so its text never parses as one.
   if (yieldsMapping(chain)) return isJsonMapping(text) ? text : JSON.stringify(text);
+  if (yieldsList(chain)) return JSON.stringify(text);
   if (yieldsNumber(chain) && isJsonNumber(text)) return text;
   return JSON.stringify(text);
 }
@@ -574,6 +591,24 @@ function substitutePass(
          * optional placeholder drops out, and one that stays says which function it was.
          */
         if (isFunctionStep(steps[upTo - 1])) {
+          /*
+           * Arguments the function does not take (#451) are the author's to fix, not a gap: the
+           * placeholder stays, with the reason, and without advice about `?` and `default:`.
+           */
+          const step = steps[upTo - 1];
+          const colon = step.indexOf(':');
+          const wrongArgs = activeFunctionHost()?.refusal?.(
+            stepName(step),
+            colon === -1 ? undefined : step.slice(colon + 1),
+          );
+          if (wrongArgs) {
+            return refuse(
+              match,
+              written,
+              localize('warn.function_failed', { name: stepName(step), why: wrongArgs }),
+              'structure',
+            );
+          }
           if (optional) return match;
           const given =
             upTo === 1 ? input : applyTransform(steps.slice(0, upTo - 1).join('|'), input, hass, values, read);
@@ -597,6 +632,10 @@ function substitutePass(
             localize('warn.no_pick_match', { field: asked?.field ?? '', value: asked?.wanted ?? '' }),
             'pick',
           );
+        }
+        // Two values `merge:` cannot join (#454): a list with a mapping, or text with either.
+        if (stepName(steps[upTo - 1]) === MERGE_STEP) {
+          return refuse(match, written, localize('warn.merge_shapes'), 'structure');
         }
         if (stepName(steps[upTo - 1]) !== MAP_STEP) break;
         const before =
@@ -782,6 +821,41 @@ function substitutePass(
  * there - and neither is a placeholder a transform deliberately refused, which says so
  * for itself in a message of its own.
  */
+/*
+ * The names a value brings in, read from its placeholders as written - escaped ones are
+ * text, so they bring nothing in.
+ */
+function headsIn(value: unknown): string[] {
+  const text = typeof value === 'string' ? value : value && typeof value === 'object' ? placeholderJson(value) : '';
+  const heads: string[] = [];
+  const every = new RegExp(PLACEHOLDER.source, 'g');
+  for (let match = every.exec(text); match !== null; match = every.exec(text)) {
+    if (match[1].startsWith(ESCAPE)) continue;
+    heads.push(withoutOptional(match[1]).split('|')[0]);
+  }
+  return heads;
+}
+
+/**
+ * The way back to `start` through the values variables are given, `[a, b, a]`, or undefined
+ * when no value leads back to it (#443). Only names something gives a value to are followed.
+ */
+export function findLoop(start: string, values: Record<string, unknown>): string[] | undefined {
+  const given = (name: string): boolean => Object.prototype.hasOwnProperty.call(values, name);
+  const seen = new Set<string>();
+  const walk = (name: string, path: string[]): string[] | undefined => {
+    for (const next of headsIn(values[name])) {
+      if (next === start) return [...path, next];
+      if (!given(next) || seen.has(next)) continue;
+      seen.add(next);
+      const found = walk(next, [...path, next]);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  return given(start) ? walk(start, [start]) : undefined;
+}
+
 function unresolvedPlaceholders(json: string, refused: Map<string, Refusal>): string[] {
   const names = new Set<string>();
   const everyPlaceholder = new RegExp(PLACEHOLDER.source, 'g');
@@ -1440,7 +1514,9 @@ function deepReplaceBody(
     const cache = new Map<string, unknown>();
     const readCopy = (asked: string): unknown => {
       const name =
-        asked.startsWith('item.') && !Object.prototype.hasOwnProperty.call(mine, 'item') ? asked.slice(5) : asked;
+        asked.startsWith('item.') && (!Object.prototype.hasOwnProperty.call(mine, 'item') || isWholeItem(mine.item))
+          ? asked.slice(5)
+          : asked;
       if (cache.has(name)) return cache.get(name);
       const text = `[[${name}]]`;
       const below = deeper(name, text);
@@ -1468,7 +1544,7 @@ function deepReplaceBody(
   // One copy per item, each given its item's values and its place, as a `for_each` copy is.
   const repeatOver = (found: Body, items: unknown[], fromHa: boolean, placeholder: string, name: string) =>
     items.map((item, index) => {
-      const own = scalarAsItem(item);
+      const own = scalarAsItem(item, fromHa);
       return fill(
         found,
         forEachVariables(own, undefined, index, items.length),
@@ -1558,7 +1634,7 @@ function deepReplaceBody(
         if (conditions.length) {
           const left: number[] = [];
           items = listed.items.filter((item, index) => {
-            const own = forEachVariables(scalarAsItem(item), undefined, index, listed.items.length);
+            const own = forEachVariables(scalarAsItem(item, listed.fromHa), undefined, index, listed.items.length);
             const pass = copyPasses(found, own, conditions);
             if (!pass) left.push(index);
             return pass;
@@ -1747,6 +1823,8 @@ function deepReplaceBody(
   };
   // Each placeholder a transform refused, and what its value turned out to be.
   const refused = new Map<string, Refusal>();
+  // How many passes the substitution gave up after, said once the placeholders left are known (#443).
+  let gaveUp = 0;
   const substituteAll = (): void => {
     let passes = 0;
     while (PLACEHOLDER.test(jsonConfig) && passes < MAX_PASSES && budget.left > 0) {
@@ -1778,13 +1856,11 @@ function deepReplaceBody(
       // A chain that keeps growing has been stopped mid-expansion; carrying on would only
       // grow it further, so give up here and let the placeholders left standing be reported.
       if (jsonConfig.length > limit || budget.left <= 0) {
-        say(localize('warn.gave_up', { passes }));
+        gaveUp = Math.max(gaveUp, passes);
         break;
       }
     }
-    if (passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) {
-      say(localize('warn.gave_up', { passes: MAX_PASSES }));
-    }
+    if (passes === MAX_PASSES && PLACEHOLDER.test(jsonConfig)) gaveUp = MAX_PASSES;
   };
   /*
    * Anything still saying `default:`, `or:` or `bool` gets its turn after the passes, whether
@@ -1907,6 +1983,37 @@ function deepReplaceBody(
       .join(' ');
     say(localize('warn.unknown_step', { which }), 'other', true);
   }
+  /*
+   * A placeholder still standing although its variable has a value is one whose value keeps
+   * bringing placeholders back - a variable that refers to itself, a pair that refer to each
+   * other, or a chain deeper than the passes go. Calling it unset sends the author looking
+   * for a value that is already there, and "gave up" alone gave no clue which one (#443).
+   */
+  const looping = unresolved.filter((inside) => {
+    if (asksState(inside) || unknownSteps.has(inside)) return false;
+    const head = withoutOptional(inside).split('|')[0];
+    return Object.prototype.hasOwnProperty.call(values, head) && values[head] !== undefined;
+  });
+  if (looping.length) {
+    const which = looping.map((name) => `[[${shown(name)}]]`).join(', ');
+    const whose = templateName
+      ? localize('warn.unresolved_template', { name: templateName })
+      : localize('warn.unresolved_this');
+    let loop: string[] | undefined;
+    for (const inside of looping) {
+      loop = findLoop(withoutOptional(inside).split('|')[0], values);
+      if (loop) break;
+    }
+    const why =
+      loop?.length === 2
+        ? localize('warn.gave_up_self', { name: `[[${loop[0]}]]` })
+        : loop
+          ? localize('warn.gave_up_loop', { loop: loop.map((name) => `[[${name}]]`).join(' → ') })
+          : localize('warn.gave_up_deep', { passes: MAX_PASSES });
+    say(localize('warn.gave_up_names', { whose, which, why }));
+  } else if (gaveUp) {
+    say(localize('warn.gave_up', { passes: gaveUp }));
+  }
   const noTemplate = unresolved.filter(
     (inside) => !asksState(inside) && !unknownSteps.has(inside) && missingItemTemplate(inside, known) !== undefined,
   );
@@ -1938,7 +2045,11 @@ function deepReplaceBody(
   }
   const unset = unresolved.filter(
     (inside) =>
-      !asksState(inside) && !unknownSteps.has(inside) && !noTemplate.includes(inside) && !untranslated.includes(inside),
+      !asksState(inside) &&
+      !looping.includes(inside) &&
+      !unknownSteps.has(inside) &&
+      !noTemplate.includes(inside) &&
+      !untranslated.includes(inside),
   );
   if (unset.length) {
     const which = unset.map((name) => `[[${shown(name)}]]`).join(', ');
@@ -1964,12 +2075,15 @@ function deepReplaceBody(
    */
   const hasOptional = new RegExp(`\\[\\[[^[\\]]*\\${'?'}\\]\\]`).test(jsonConfig);
   const marked = jsonConfig.includes(HA_MARK);
-  const nothingToDo = !substitutes && !hasOptional && !fallbacks && !hasEscape(jsonConfig) && !marked;
+  const listEdits = jsonConfig.includes(`"${LIST_EDIT_KEY}"`);
+  const nothingToDo = !substitutes && !hasOptional && !fallbacks && !hasEscape(jsonConfig) && !marked && !listEdits;
   if (nothingToDo) return content;
 
   const parsed = hasOptional ? pruneEmptyOptions(JSON.parse(jsonConfig), trace?.dropped) : JSON.parse(jsonConfig);
   // The lists a `repeat:` built go into the lists they sit in.
-  const pruned = jsonConfig.includes(`"${SPLICE_KEY}"`) ? unsplice(parsed) : parsed;
+  const spliced = jsonConfig.includes(`"${SPLICE_KEY}"`) ? unsplice(parsed) : parsed;
+  // The list edits `extends:` had to leave until the lists were filled in (#453).
+  const pruned = listEdits ? applyListEdits(spliced) : spliced;
   if (keepEscapes || (!hasEscape(jsonConfig) && !marked)) return pruned;
   return unescapeOutsideConsumers(pruned);
 }

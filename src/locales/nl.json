@@ -253,6 +253,10 @@
   "library.counted_grid.summary": "Een genummerd raster van wat dan ook, met \"3 van 12\".",
 
   "warn.gave_up": "decluttering-card-plus: gestopt met het vervangen van variabelen na {passes} rondes. Kijk of een variabele naar zichzelf verwijst.",
+  "warn.gave_up_names": "decluttering-card-plus: {whose} kon {which} niet invullen. {why}",
+  "warn.gave_up_self": "{name} verwijst naar zichzelf en houdt nooit op. Geef het een waarde die zichzelf niet gebruikt.",
+  "warn.gave_up_loop": "{loop} leidt terug naar zichzelf en houdt nooit op. Geef een ervan een waarde die niet terugleidt.",
+  "warn.gave_up_deep": "Elke waarde haalt een andere binnen, meer dan {passes} diep. Kijk of een variabele naar zichzelf verwijst, of maak de keten korter.",
   "warn.refused": "decluttering-card-plus: heeft {which} in de kaart gelaten in plaats van te vervangen. {why}",
   "warn.refused_transform": "Een transform vormt alleen tekst en heeft dus een scalaire waarde nodig – toegepast op een mapping of lijst zou hij de JSON ervan verhaspelen. Geef de variabele een scalaire waarde, of laat de transform weg.",
   "warn.refused_resolver": "Een resolver leest zijn waarde als entiteits-id en vraagt het aan Home Assistant – hij heeft er dus een nodig die bestaat en draagt wat er gevraagd werd.",
@@ -1091,8 +1095,11 @@
   "warn.function_recursive": "{name} roept zichzelf aan ({path}), dus het geeft daar niets.",
   "warn.function_failed": "{name} als stap: {why}",
   "warn.function_too_many": "het neemt hoogstens {count} naamloze argumenten, één voor elke naam onder parameters:",
+  "warn.function_unknown_name": "{arg}= is geen van zijn parameters ({names}); zet het onder parameters: om het bij naam door te geven",
+  "warn.function_no_parameters": "geen",
   "warn.function_not_simple": "zijn function: gaf een mapping of een lijst, en een stap geeft alleen tekst, een getal of true of false door",
   "warn.function_nothing": "{name} gaf niets voor \"{value}\"",
+  "warn.merge_shapes": "merge: voegt twee lijsten of twee mappings samen, en deze zijn niet van dezelfde soort",
   "warn.refused_function": "Een sjabloon dat als stap wordt gebruikt geeft niets als er uit zijn function: niets komt. Voeg ? toe om de optie dan weg te laten, of een default: om iets anders te tonen.",
   "lint.function_shadowed": "{name} heeft de naam van een ingebouwde stap, dus [[x|{name}]] voert de ingebouwde uit en nooit dit sjabloon. Geef het een andere naam.",
   "lint.parameters_without_function": "parameters: doet alleen iets in een sjabloon met function:, waar het de argumenten op volgorde benoemt.",
@@ -1113,5 +1120,11 @@
   "warn.entries_or_registry": "een repeat: neemt entries of registry, niet allebei",
   "trace.repeat_filtered": "{placeholder} liet {left} van {count} items weg: {condition} klopte niet",
   "report.outline_filtered": "weggelaten: {condition} klopte niet",
-  "lint.mixed_repeat_source": "{placeholder} herhaalt over {name}, dat sleutels van een registerbron ({filters}) en andere sleutels ({others}) heeft, en wordt daarom als registerbron gelezen. Voeg |entries toe om over de items te herhalen, of |registry als een bron bedoeld is."
+  "lint.mixed_repeat_source": "{placeholder} herhaalt over {name}, dat sleutels van een registerbron ({filters}) en andere sleutels ({others}) heeft, en wordt daarom als registerbron gelezen. Voeg |entries toe om over de items te herhalen, of |registry als een bron bedoeld is.",
+  "left_out.hidden": "{count} verborgen",
+  "left_out.config": "{count} configuratie",
+  "left_out.diagnostic": "{count} diagnostisch",
+  "editor.matches_left_out": "Komen ook overeen maar worden weggelaten ({which}), net als op de eigen dashboards van Home Assistant. Voeg {fix} toe om ze te houden.",
+  "editor.matches_none_left_out": "Hiervoor wordt niets getoond, dus de kaart toont niets{but}. Het komt wel overeen met entiteiten die Home Assistant verbergt of als configuratie of diagnostisch indeelt ({which}). Voeg {fix} toe om ze te houden.",
+  "warn.repeat_left_out": "decluttering-card-plus: de for_each_from op {template} bouwt niets. Het komt alleen overeen met entiteiten die Home Assistant verbergt of als configuratie of diagnostisch indeelt ({which}). Voeg {fix} toe om ze te houden."
 }

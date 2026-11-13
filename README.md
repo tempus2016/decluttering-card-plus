@@ -98,8 +98,9 @@ here.
   quoted text (`[["Kitchen"|upper]]`), and values a whole dashboard, view or section sets for
   every card in it. Dates and times (`[[sensor|last_changed|relative]]`), attributes
   (`[[light|attr:brightness]]`), plurals and numbers in the viewer's language, colours worked
-  out from one (`[[accent|lighten:20]]`), `unless:` and `switch:`, and values for a card
-  that is narrow (`variables_mobile:`).
+  out from one (`[[accent|lighten:20]]`), `unless:` and `switch:`, two lists or mappings
+  joined into one (`[[base|merge:extra]]`), and values for a card that is narrow
+  (`variables_mobile:`).
 - [Repeating a template][wiki-repeating] — one copy per item in a list, or per entity, area,
   device, floor or label Home Assistant knows about, filtered, sorted and grouped.
   [Whole sections or views][wiki-repeating-sections] can be repeated too.
@@ -114,7 +115,8 @@ here.
   carrying their author, licence, requirements and the questions to ask on install. An
   export takes the item templates and dashboard values it uses with it, and lists the custom
   cards it needs under `requires:`.
-- Templates built on templates with `extends:`, and one-off tweaks with a card's own
+- Templates built on templates with `extends:`, with `base: true` to keep a parent that is
+  only there to be extended out of the template picker, and one-off tweaks with a card's own
   `card:` block laid over what its template builds. A template with a `function:` is a
   [step of your own][wiki-custom-steps]: `[[room|occupancy]]`.
 - [Visibility][wiki-visibility] and [styling][wiki-styling] inside a template.

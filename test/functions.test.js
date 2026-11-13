@@ -124,6 +124,38 @@ warnings.length = 0;
 check('and the placeholder stays', build({ a: '[[var1|shout:a,b]]' }, [{ var1: 'hi' }]), { a: '[[var1|shout:a,b]]' });
 check('saying why', said('takes at most 1 unnamed arguments'), true);
 
+// Only the names under parameters: can be passed by name (#451).
+check('a name that is not a parameter is refused', 'refused' in functionArguments('opt33=x', ['opt2', 'opt3']), true);
+check(
+  'and says which names it takes',
+  functionArguments('opt33=x', ['opt2', 'opt3']).refused,
+  'opt33= is not one of its parameters (opt2, opt3); add it under parameters: to pass it by name',
+);
+check(
+  'a function with no parameters takes no names',
+  functionArguments('calc=x', []).refused,
+  'calc= is not one of its parameters (none); add it under parameters: to pass it by name',
+);
+check('a parameter by name still goes in', functionArguments('opt3=y', ['opt2', 'opt3']), { values: [{ opt3: 'y' }] });
+warnings.length = 0;
+check(
+  'a default that is not a parameter cannot be passed in by name',
+  build({ a: '[[var1|sees_default:secret=x]]' }, [{ var1: 'v' }]),
+  { a: '[[var1|sees_default:secret=x]]' },
+);
+check('the console says why', said('secret= is not one of its parameters'), true);
+check(
+  'and the card warning gives the same reason, not advice about ? and default:',
+  warnings.some(
+    (w) =>
+      w.includes('left [[var1|sees_default:secret=x]]') &&
+      w.includes('not one of its parameters') &&
+      !w.includes('Add ?'),
+  ),
+  true,
+);
+check('nor can value', build({ a: '[[var1|shout:value=x]]' }, [{ var1: 'hi' }]), { a: '[[var1|shout:value=x]]' });
+
 // Simple values only, and a number or a true goes in as one.
 check('a number result goes in as a number', build({ a: '[[n|double]]' }, [{ n: 4 }]), { a: 8 });
 check('inside text it is text', build({ a: 'x[[n|double]]' }, [{ n: 4 }]), { a: 'x8' });

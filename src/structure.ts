@@ -77,7 +77,15 @@ export function structureNames(template: TemplateConfig | undefined, extra?: Var
       ? !!source && typeof source === 'object' && !Array.isArray(source)
       : !tail.includes(ENTRIES_STEP) && isRegistrySource(source);
     if (asSource) for (const name of registryNames(source)) names.add(name);
-    else if (Array.isArray(source)) for (const name of itemNames(source)) names.add(name);
+    else if (Array.isArray(source)) {
+      for (const name of itemNames(source)) {
+        names.add(name);
+        // A mapping entry is `item` as a whole too, so `[[item.name]]` reads its field (#454).
+        if (source.some((entry) => entry && typeof entry === 'object' && !Array.isArray(entry))) {
+          names.add(`item.${name}`);
+        }
+      }
+    }
     // A plain mapping repeats once per key, each copy given `key`, `value` and its value's own keys (#429).
     else if (source && typeof source === 'object') {
       for (const name of itemNames(mappingItems(source))) names.add(name);

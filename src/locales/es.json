@@ -253,6 +253,10 @@
   "library.counted_grid.summary": "Una cuadrícula numerada de lo que sea, mostrando \"3 de 12\".",
 
   "warn.gave_up": "decluttering-card-plus: dejó de sustituir variables tras {passes} pasadas. Comprueba si una variable se refiere a sí misma.",
+  "warn.gave_up_names": "decluttering-card-plus: {whose} no pudo rellenar {which}. {why}",
+  "warn.gave_up_self": "{name} se refiere a sí misma, así que nunca termina. Dale un valor que no se use a sí mismo.",
+  "warn.gave_up_loop": "{loop} vuelve a sí misma, así que nunca termina. Da a una de ellas un valor que no vuelva atrás.",
+  "warn.gave_up_deep": "Cada valor trae otro, a más de {passes} niveles. Comprueba si una variable se refiere a sí misma, o acorta la cadena.",
   "warn.refused": "decluttering-card-plus: dejó {which} en la tarjeta en lugar de sustituir. {why}",
   "warn.refused_transform": "Una transformación solo moldea texto, así que necesita un valor escalar - aplicarla a un mapeo o a una lista estropearía su JSON. Da a la variable un valor escalar, o quita la transformación.",
   "warn.refused_resolver": "Un resolutor lee su valor como un id de entidad y pregunta a Home Assistant, así que necesita uno que exista y lleve lo que se pidió.",
@@ -1091,8 +1095,11 @@
   "warn.function_recursive": "{name} se llama a sí misma ({path}), así que ahí no da nada.",
   "warn.function_failed": "{name} como paso: {why}",
   "warn.function_too_many": "admite como mucho {count} argumentos sin nombre, uno por cada nombre de parameters:",
+  "warn.function_unknown_name": "{arg}= no es uno de sus parámetros ({names}); añádelo en parameters: para pasarlo por nombre",
+  "warn.function_no_parameters": "ninguno",
   "warn.function_not_simple": "su function: dio un mapeo o una lista, y un paso solo pasa texto, un número o un true o false",
   "warn.function_nothing": "{name} no dio nada para \"{value}\"",
+  "warn.merge_shapes": "merge: une dos listas o dos mapeos, y estos no son del mismo tipo",
   "warn.refused_function": "Una plantilla usada como paso no da nada cuando de su function: no sale nada. Añade ? para quitar la opción cuando no dé nada, o un default: para mostrar algo en su lugar.",
   "lint.function_shadowed": "{name} tiene el nombre de un paso integrado, así que [[x|{name}]] ejecuta el integrado y nunca esta plantilla. Dale otro nombre.",
   "lint.parameters_without_function": "parameters: solo hace algo en una plantilla con function:, donde nombra sus argumentos en orden.",
@@ -1113,5 +1120,11 @@
   "warn.entries_or_registry": "un repeat: admite entries o registry, no los dos",
   "trace.repeat_filtered": "{placeholder} omitió {left} de {count} entradas: {condition} no se cumplió",
   "report.outline_filtered": "omitido: {condition} no se cumplió",
-  "lint.mixed_repeat_source": "{placeholder} repite sobre {name}, que tiene claves de fuente del registro ({filters}) y otras claves ({others}), así que se lee como fuente del registro. Añade |entries para repetir sobre sus entradas, o |registry si se quiere una fuente."
+  "lint.mixed_repeat_source": "{placeholder} repite sobre {name}, que tiene claves de fuente del registro ({filters}) y otras claves ({others}), así que se lee como fuente del registro. Añade |entries para repetir sobre sus entradas, o |registry si se quiere una fuente.",
+  "left_out.hidden": "{count} ocultas",
+  "left_out.config": "{count} de configuración",
+  "left_out.diagnostic": "{count} de diagnóstico",
+  "editor.matches_left_out": "También coinciden pero se dejan fuera ({which}), igual que en los paneles propios de Home Assistant. Añade {fix} para conservarlas.",
+  "editor.matches_none_left_out": "No se muestra nada para esto, así que la tarjeta no muestra nada{but}. Sí coincide con entidades que Home Assistant oculta o clasifica como de configuración o diagnóstico ({which}). Añade {fix} para conservarlas.",
+  "warn.repeat_left_out": "decluttering-card-plus: el for_each_from de {template} no construye nada. Solo coincide con entidades que Home Assistant oculta o clasifica como de configuración o diagnóstico ({which}). Añade {fix} para conservarlas."
 }

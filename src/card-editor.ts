@@ -58,7 +58,7 @@ import {
   PLACEHOLDER,
 } from './variables';
 import { hasOptionsFrom, optionsFromSelector } from './options-from';
-import { copyLabel, isRegistrySource, registryNames, resolveRegistryItems } from './registry';
+import { copyLabel, entitiesLeftOut, isRegistrySource, registryNames, resolveRegistryItems } from './registry';
 import { categoryRegistry, loadCategories, wantsCategories } from './categories';
 import { renderTemplateOnce, sourceTemplate, TemplateRender, templateList } from './template-source';
 import { findRepeatingCard, sectionPerCopy } from './strategy';
@@ -147,6 +147,7 @@ import {
   getThingType,
   isVariablesShape,
   loadCardEditorPicker,
+  leftOutParams,
   pageDashboard,
   rewriteDashboards,
   setOrDelete,
@@ -638,6 +639,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   // Idea 21: the template combo box's rows, as filtered by what was typed.
   @state() private _pickerFilter = '';
   private _pickerItems: PickerItem[] = [];
+
+  // The template the list was made for: a base it uses stays listed (#444).
+  private _pickerCurrent?: string;
   private _pickerFor?: Record<string, TemplateConfig>;
   // The variable groups opened, by title - drawn by the editor itself since #255, so it keeps them.
   @state() private _openGroups = new Set<string>();
@@ -1698,9 +1702,10 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
    */
   private _renderTemplatePicker(error: string | string[] | undefined): TemplateResult {
     if (!this._config || !this._templates) return html``;
-    if (this._pickerFor !== this._templates) {
+    if (this._pickerFor !== this._templates || this._pickerCurrent !== this._config.template) {
       this._pickerFor = this._templates;
-      this._pickerItems = pickerItems(this._templates, this._lovelace, this.hass, borrowedFrom);
+      this._pickerCurrent = this._config.template;
+      this._pickerItems = pickerItems(this._templates, this._lovelace, this.hass, borrowedFrom, this._config.template);
     }
     const shown = filterPickerItems(this._pickerItems, this._pickerFilter);
     const renderer = (item: PickerItem, model: { index: number }): TemplateResult => {
@@ -2027,13 +2032,14 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       return html``;
     }
 
+    // What the sweep matched but Home Assistant hides or files as config or diagnostic (#452).
+    const left = entitiesLeftOut(this.hass, source);
+    const leftOut = left ? leftOutParams(left, this.hass) : undefined;
+
     if (!matched.length) {
+      const but = this._config?.empty ? localize('editor.matches_none_but_empty', undefined, this.hass) : '';
       return html`<ha-alert alert-type="warning">
-        ${localize(
-          'editor.matches_none',
-          { but: this._config?.empty ? localize('editor.matches_none_but_empty', undefined, this.hass) : '' },
-          this.hass,
-        )}
+        ${localize(leftOut ? 'editor.matches_none_left_out' : 'editor.matches_none', { but, ...leftOut }, this.hass)}
       </ha-alert>`;
     }
 
@@ -2064,6 +2070,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
           ${localize(this._matchesOpen ? 'editor.repeat.matches_hide' : 'editor.repeat.matches_show', undefined, this.hass)}
         </ha-button>
       </div>
+      ${leftOut ? html`<p class="hint">${localize('editor.matches_left_out', leftOut, this.hass)}</p>` : html``}
       ${
         this._matchesOpen
           ? html`<div class="matches">

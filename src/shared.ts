@@ -2,7 +2,7 @@ import { html, TemplateResult } from 'lit';
 import { HomeAssistant, fireEvent, LovelaceConfig } from 'custom-card-helpers';
 import { TemplateConfig, VariablesConfig } from './types';
 import { viewIndexFromPath } from './templates';
-import { SourceContext } from './registry';
+import { entitiesLeftOut, LeftOut, SourceContext } from './registry';
 import { TemplateRender, templateList } from './template-source';
 import { getDashboardPath, getLovelacePanel } from './utils';
 import { localize } from './localize';
@@ -58,6 +58,31 @@ export function warnUnlisted(template: string, render: TemplateRender, hass?: Ho
   const source = template.length > 60 ? `${template.slice(0, 57)}...` : template;
   const key = listed.problem === 'error' ? 'warn.repeat_template_failed' : 'warn.repeat_template_not_list';
   warn({ kind: 'other', message: localize(key, { source, detail: listed.detail }, hass) });
+}
+
+/** The words a left-out count is said in (#452): `{count}`, `{which}` and `{fix}`. */
+export function leftOutParams(left: LeftOut, hass?: HomeAssistant): Record<string, string | number> {
+  const which = (['hidden', 'config', 'diagnostic'] as const)
+    .filter((kind) => left[kind] > 0)
+    .map((kind) => localize(`left_out.${kind}`, { count: left[kind] }, hass))
+    .join(', ');
+  return { count: left.total, which, fix: left.fix.join(', ') };
+}
+
+/*
+ * Says in the console why an entity sweep built nothing when it did match entities, only
+ * ones Home Assistant hides or files as config or diagnostic (#452). Without it the card is
+ * just empty, and a pattern that matched looks like one that is broken.
+ */
+export function warnLeftOut(source: unknown, template: string | undefined, hass?: HomeAssistant): boolean {
+  const left = entitiesLeftOut(hass, source);
+  if (!left) return false;
+  warn({
+    kind: 'other',
+    message: localize('warn.repeat_left_out', { ...leftOutParams(left, hass), template: template ?? '' }, hass),
+    template,
+  });
+  return true;
 }
 
 /** The element's parent, stepping out of a shadow root to its host. */

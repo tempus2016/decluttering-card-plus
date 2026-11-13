@@ -2303,6 +2303,56 @@ collectAllTemplates(hass, borrower).then((all) => {
         check('an item template with only extends: is found', extended.item_3, {
           item: { test: 'string1', entities: ['[[e1?]]', 'sun.sun'] },
         });
+        // #453: a list edit onto a list that is still a placeholder, or adding one, waits for the
+        // build, which splices the filled-in lists together.
+        {
+          const deepReplace = require('../.test-build/deep-replace.js').default;
+          const lists = {
+            decluttering_defaults: { my_list1: ['l1_1', 'l1_2'], my_list2: ['l2_1', 'l2_2'] },
+            decluttering_templates: {
+              ml1: { item: { list: '[[my_list1]]' } },
+              ml2: { extends: 'ml1', item: { list: { __append__: '[[my_list2]]' } } },
+              ml3: { extends: 'ml2', item: { list: { __prepend__: ['first'], __remove__: [0] } } },
+              lit: { item: { list: ['a'] } },
+              lit2: { extends: 'lit', item: { list: { __append__: '[[my_list2]]' } } },
+              plain: { extends: 'lit', item: { list: { __append__: 'b' } } },
+              cardp: { card: { type: 'entities', entities: '[[my_list1]]' } },
+              cardc: { extends: 'cardp', card: { entities: { __prepend__: '[[my_list2]]' } } },
+            },
+          };
+          const { collectDefaults: defaultsOf } = require('../.test-build/templates.js');
+          const items = itemTemplatesOf(lists);
+          check('a list edit with nothing to fill in is still done at once', items.plain.item.list, ['a', 'b']);
+          const build = (content) =>
+            deepReplace(
+              defaultsOf(lists),
+              {},
+              content,
+              'x',
+              undefined,
+              true,
+              undefined,
+              0,
+              undefined,
+              undefined,
+              false,
+              {
+                itemTemplates: items,
+              },
+            );
+          const built = build({ a: '[[ml2|with]]', b: '[[ml3|with]]', c: '[[lit2|with]]' });
+          check('__append__ onto a placeholder list joins both lists (#453)', built.a.list, [
+            'l1_1',
+            'l1_2',
+            'l2_1',
+            'l2_2',
+          ]);
+          check('edits stack through a chain of extends:', built.b.list, ['first', 'l1_2', 'l2_1', 'l2_2']);
+          check('a list placeholder appended adds its items, not a list', built.c.list, ['a', 'l2_1', 'l2_2']);
+          const { collectTemplates } = require('../.test-build/templates.js');
+          const card = collectTemplates(lists).cardc.card;
+          check('a card template waits the same way', build(card).entities, ['l2_1', 'l2_2', 'l1_1', 'l1_2']);
+        }
         const health = checkDashboard(ll);
         check('names a repeat: or with: supplies are not called unset', health.unsetVariables, []);
         check(

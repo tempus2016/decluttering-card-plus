@@ -32,6 +32,7 @@ const PAGES: Record<string, string> = {
   defaults: 'Variables.html',
   let: 'Variables.html',
   extends: 'Defining-Templates.html',
+  base: 'Defining-Templates.html',
   examples: 'Describing-Variables.html',
   for_each: 'Repeating-a-Template.html',
   for_each_from: 'Repeating-a-Template.html',

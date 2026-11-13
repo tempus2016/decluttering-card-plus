@@ -31,6 +31,7 @@ import { LANGUAGE_KEY, mergeLanguages } from './translations';
 
 export { closestTemplate };
 import { withSlotVariables } from './slots';
+import { mergeOver } from './list-edits';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -652,7 +653,7 @@ export function isStepOnlyTemplate(template: unknown): boolean {
  * wherever it is written (#193).
  */
 function deepMergeConfig(parent: any, child: any): any {
-  return child === undefined ? parent : mergeOver(parent, child);
+  return child === undefined ? parent : mergeOver(parent, child, true);
 }
 
 /** Parent order kept, a child declaration of the same name replacing in place, new ones after. */
@@ -694,10 +695,11 @@ function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): Template
  * a child does not take them from its parent - a template built on a deprecated one is new,
  * not deprecated, and a parent's examples were never checked against the child's content.
  * The sharing details - who wrote it, its licence, its links, its readme, what belongs with
- * it - are the same kind of thing. What it needs and asks for on install is not: a child
+ * it - are the same kind of thing, and so is `base:` (#444): a child of a base is the card
+ * people pick, not another base. What it needs and asks for on install is not: a child
  * builds what its parent builds, so it needs the same.
  */
-const NOT_INHERITED = ['deprecated', 'examples', 'author', 'license', 'help', 'homepage', 'readme', 'related'];
+const NOT_INHERITED = ['base', 'deprecated', 'examples', 'author', 'license', 'help', 'homepage', 'readme', 'related'];
 
 /**
  * The templates one names in `extends:`, as a list - one name, or several written as a
@@ -781,73 +783,6 @@ export function extendsLoops(ll: LovelaceConfig | null | undefined): string[][] 
 
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
-
-const LIST_EDITS = ['__append__', '__prepend__', '__update__', '__remove__'];
-
-/** A mapping written where a list is: every key one of the list edits. */
-function isListEdit(base: unknown, over: Record<string, unknown>): boolean {
-  const keys = Object.keys(over);
-  return (
-    (base === undefined || Array.isArray(base)) && keys.length > 0 && keys.every((key) => LIST_EDITS.includes(key))
-  );
-}
-
-/** A list index as written, negative counting from the end; anything else is no index. */
-function listIndex(written: unknown, length: number): number | undefined {
-  const index = typeof written === 'string' && /^-?\d+$/.test(written.trim()) ? Number(written) : written;
-  if (typeof index !== 'number' || !Number.isInteger(index)) return undefined;
-  return index < 0 ? (length + index >= 0 ? length + index : undefined) : index;
-}
-
-const asList = (value: unknown): unknown[] =>
-  value === undefined || value === null ? [] : Array.isArray(value) ? value : [value];
-
-/*
- * Edits to a list rather than a new one (#209). Every index means a place in the list as the
- * template had it, so the edits do not move each other: `__update__` merges into an item the
- * way the rest of an override does (null removes it, an index past the end adds it there),
- * `__remove__` takes items out, and `__prepend__` / `__append__` go on either end.
- */
-function editList(base: unknown, edits: Record<string, unknown>): unknown[] {
-  const original = Array.isArray(base) ? base : [];
-  const items: unknown[] = [...original];
-  const removed = new Set<number>();
-  const added: unknown[] = [];
-  const update = isMapping(edits.__update__) ? edits.__update__ : {};
-  for (const [written, value] of Object.entries(update)) {
-    const index = listIndex(written, original.length);
-    if (index === undefined) continue;
-    if (index >= original.length) {
-      if (value !== null) added.push(mergeOver(undefined, value));
-    } else if (value === null) removed.add(index);
-    else items[index] = mergeOver(items[index], value);
-  }
-  for (const written of asList(edits.__remove__)) {
-    const index = listIndex(written, original.length);
-    if (index !== undefined) removed.add(index);
-  }
-  return [
-    ...asList(edits.__prepend__),
-    ...items.filter((_, index) => !removed.has(index)),
-    ...added,
-    ...asList(edits.__append__),
-  ];
-}
-
-/** Child over parent, a mapping merging key by key and a null taking the key away. */
-function mergeOver(base: unknown, over: unknown): unknown {
-  if (!isMapping(over)) return over;
-  if (isListEdit(base, over)) return editList(base, over);
-  const out: Record<string, unknown> = isMapping(base) ? { ...base } : {};
-  for (const [key, value] of Object.entries(over)) {
-    // Assigning `out.__proto__` would reparent the result rather than set a key; a card has
-    // no use for that key, so it is dropped.
-    if (key === '__proto__') continue;
-    if (value === null) delete out[key];
-    else out[key] = mergeOver(out[key], value);
-  }
-  return out;
-}
 
 /*
  * A card can carry its own `card:` (or `badge:`, `row:`, `element:`) block, laid over
