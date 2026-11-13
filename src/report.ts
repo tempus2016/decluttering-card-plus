@@ -143,7 +143,11 @@ export function redact(text: string, secrets: readonly string[] = []): string {
   // with the middle gone and each end still readable (review 2026-10-25).
   let out = text;
   for (const secret of secrets) out = out.split(secret).join('<redacted>');
-  out = out.replace(LONG_RUN, (run) => `${run.slice(0, half)} … ${run.slice(-half)}`);
+  // Looked for only when there is one: the pattern itself tries every place a run starts,
+  // which on a long line of JSON cost more than the rest of the report (#456).
+  if (out.length > LONGEST_RUN && out.split(/\s+/).some((word) => word.length > LONGEST_RUN)) {
+    out = out.replace(LONG_RUN, (run) => `${run.slice(0, half)} … ${run.slice(-half)}`);
+  }
   return REDACTIONS.reduce((done, [pattern, replacement]) => done.replace(pattern, replacement as string), out);
 }
 

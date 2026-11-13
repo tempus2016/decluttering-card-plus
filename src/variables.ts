@@ -2470,6 +2470,35 @@ function addDotted(name: string, value: unknown, entries: VariablesConfig[], dep
 }
 
 /*
+ * The dotted names under one mapping, as suffixes (`.light`, `.light.entity`) with their
+ * values, in the order addDotted gives them. They depend on the value alone, not the name it
+ * is set under, so they are worked out once per mapping and kept against it (#456): every
+ * nested build of a card reads its whole scope again, every item template's body included,
+ * and a dashboard with many item templates spent most of its build walking the same
+ * mappings over and over. A WeakMap, as compiled.ts does, so a config that is replaced lets
+ * its entry go.
+ */
+const DOTTED_SUFFIXES = new WeakMap<object, [string, unknown][]>();
+function dottedSuffixes(value: object): [string, unknown][] {
+  let found = DOTTED_SUFFIXES.get(value);
+  if (!found) {
+    const entries: VariablesConfig[] = [];
+    addDotted('', value, entries, 0);
+    found = entries.map((entry) => {
+      const key = Object.keys(entry)[0];
+      return [key, entry[key]];
+    });
+    DOTTED_SUFFIXES.set(value, found);
+  }
+  return found;
+}
+
+// Whether a value has dotted names under it at all: a mapping, not a list.
+function isDottable(value: unknown): value is object {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/*
  * HA's `choose` selector saves every field the user filled in, plus `active_choice` naming
  * the one picked (discussion #346). `[[name.chosen]]` is that one's value, so a template
  * does not need an `if:` chain on active_choice to pull it out. A choice the user actually
@@ -2520,7 +2549,8 @@ export function normaliseVariables(variables: unknown): VariablesConfig[] {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
     for (const [name, value] of Object.entries(entry)) {
       entries.push({ [name]: value });
-      addDotted(name, value, entries, 0);
+      if (isDottable(value))
+        for (const [suffix, inner] of dottedSuffixes(value)) entries.push({ [name + suffix]: inner });
     }
   };
 
@@ -2771,11 +2801,26 @@ export function variableValues(variableArray: VariablesConfig[] | VariablesConfi
   // Object.prototype - a variable legitimately named `toString`, `constructor` or `valueOf`
   // is kept like any other, and a `__proto__` key sets a plain entry instead of reparenting.
   const map: Record<string, any> = Object.create(null);
-  for (const entry of normaliseVariables(variableArray)) {
-    const key = firstKey(entry);
-    if (key !== undefined && !(key in map)) map[key] = entry[key];
-  }
+  if (Array.isArray(variableArray)) for (const entry of variableArray) addVariableValues(map, entry);
+  else addVariableValues(map, variableArray);
   return map;
+}
+
+/**
+ * One more entry read into what variableValues gave, as if it had been at the end of the
+ * list: normaliseVariables read straight into the map, without a list of entries in between,
+ * the same names in the same order, so the first of each still wins (#456).
+ */
+export function addVariableValues(map: Record<string, any>, entry: unknown): void {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
+  for (const [name, value] of Object.entries(entry)) {
+    if (!(name in map)) map[name] = value;
+    if (!isDottable(value)) continue;
+    for (const [suffix, inner] of dottedSuffixes(value)) {
+      const dotted = name + suffix;
+      if (!(dotted in map)) map[dotted] = inner;
+    }
+  }
 }
 
 function placeholdersIn(value: unknown): string[] {
