@@ -22,6 +22,16 @@ const injectVersion = {
 
 const dev = process.env.ROLLUP_WATCH;
 
+// The docs-site builder and the command-line linter fold every dynamic import into one file,
+// so each language would land in them whole. Both read English, so the other locales are
+// loaded as empty and every lookup falls back to en.json.
+const englishOnly = {
+  name: 'english-only',
+  load(id) {
+    return /[\\/]src[\\/]locales[\\/](?!en\.json$)[^\\/]+\.json$/.test(id) ? '{}' : null;
+  },
+};
+
 // The modules reachable from the card's entry through static imports only - the dynamic
 // imports (the editors, the languages) start chunks of their own. Worked out once per build.
 const ENTRY_ID = resolvePath('src/decluttering-card-plus.ts');
@@ -123,10 +133,10 @@ export default [
     output: {
       file: './docs-theme/assets/js/builder.js',
       format: 'iife',
-      // One file: the language chunks the card build splits off are folded back in here.
+      // One file; the languages are left out by englishOnly, so this stays English.
       inlineDynamicImports: true,
     },
-    plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
+    plugins: [englishOnly, ...plugins.filter((plugin) => plugin && plugin.name !== 'serve')],
   },
   // The command-line linter's library (idea 57): the lint and health modules plus js-yaml,
   // as one CommonJS file bin/dcp-lint.js can require. Committed like the docs-site scripts.
@@ -138,7 +148,7 @@ export default [
       exports: 'named',
       inlineDynamicImports: true,
     },
-    plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
+    plugins: [englishOnly, ...plugins.filter((plugin) => plugin && plugin.name !== 'serve')],
   },
   // "Try a placeholder", the other docs-site tool, committed for the same reason.
   {
@@ -148,7 +158,7 @@ export default [
       format: 'iife',
       inlineDynamicImports: true,
     },
-    plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
+    plugins: [englishOnly, ...plugins.filter((plugin) => plugin && plugin.name !== 'serve')],
   },
   // "Try a template" (#427), the third docs-site tool, committed for the same reason.
   {
@@ -158,6 +168,6 @@ export default [
       format: 'iife',
       inlineDynamicImports: true,
     },
-    plugins: plugins.filter((plugin) => plugin && plugin.name !== 'serve'),
+    plugins: [englishOnly, ...plugins.filter((plugin) => plugin && plugin.name !== 'serve')],
   },
 ];

@@ -427,6 +427,11 @@ export abstract class DeclutteringElement extends LitElement {
 
   static get styles(): CSSResult {
     return css`
+      /* Code stays left to right inside a right-to-left sentence. */
+      code {
+        direction: ltr;
+        unicode-bidi: isolate;
+      }
       @media (prefers-reduced-motion: reduce) {
         *,
         *::before,
@@ -469,6 +474,9 @@ export abstract class DeclutteringElement extends LitElement {
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.85em;
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
         word-break: break-word;
       }
       /*
@@ -489,7 +497,7 @@ export abstract class DeclutteringElement extends LitElement {
       /* The error card (idea 49). */
       .error-card {
         padding: 12px 16px;
-        border-left: 4px solid var(--error-color, #db4437);
+        border-inline-start: 4px solid var(--error-color, #db4437);
       }
       .error-card .title {
         font-weight: 500;
@@ -510,6 +518,9 @@ export abstract class DeclutteringElement extends LitElement {
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.85em;
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
         word-break: break-word;
       }
       .error-card .line .note {
@@ -527,6 +538,9 @@ export abstract class DeclutteringElement extends LitElement {
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.8em;
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
         word-break: break-word;
         -webkit-user-select: text;
         user-select: text;
@@ -607,7 +621,7 @@ export abstract class DeclutteringElement extends LitElement {
         margin: 0 0 2px;
       }
       .report .tree details details {
-        margin-left: 18px;
+        margin-inline-start: 18px;
       }
       .report .tree summary {
         padding: 4px 6px;
@@ -620,7 +634,7 @@ export abstract class DeclutteringElement extends LitElement {
       .report .tree summary small,
       .report .tree .leaf small {
         color: var(--secondary-text-color);
-        margin-left: 8px;
+        margin-inline-start: 8px;
       }
       .report .tree .leaf {
         padding: 2px 6px 2px 24px;
@@ -638,7 +652,7 @@ export abstract class DeclutteringElement extends LitElement {
       .report .tree td {
         border: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
         padding: 3px 6px;
-        text-align: left;
+        text-align: start;
         vertical-align: top;
         word-break: break-word;
       }
@@ -739,6 +753,9 @@ export abstract class DeclutteringElement extends LitElement {
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.8em;
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
         word-break: break-word;
       }
       /*

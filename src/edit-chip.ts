@@ -80,7 +80,7 @@ export class DeclutteringChip extends LitElement {
       :host {
         position: absolute;
         top: -10px;
-        left: 10px;
+        inset-inline-start: 10px;
         z-index: 3;
         font-family: var(--ha-font-family-body, var(--paper-font-body1_-_font-family, inherit));
       }
@@ -114,7 +114,7 @@ export class DeclutteringChip extends LitElement {
       .menu {
         position: absolute;
         top: 24px;
-        left: 0;
+        inset-inline-start: 0;
         min-width: 220px;
         background: var(--card-background-color, #fff);
         color: var(--primary-text-color);

@@ -140,11 +140,11 @@ export class DeclutteringFieldMenus extends LitElement {
         background: color-mix(in srgb, var(--primary-color) 12%, transparent);
       }
       .menu div small {
-        margin-left: auto;
+        margin-inline-start: auto;
         color: var(--secondary-text-color);
       }
       .menu .sub {
-        padding-left: 28px;
+        padding-inline-start: 28px;
         font-family: var(--ha-font-family-code, monospace);
       }
       .dialog {

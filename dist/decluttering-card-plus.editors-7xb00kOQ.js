@@ -1,4 +1,4 @@
-import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l as c,c as h,d as u,s as p,e as m,f as v,g as _,h as f,k as g,m as b,O as y,o as $,p as w,q as x,W as k,u as j,v as O,w as A,S,x as C,y as P,P as E,z as L,B as T,C as N,D as M,F as V,G as D,H as z,I as F,J as H,K as R,L as q,M as I,N as W,Q as J,R as U,T as B,U as K,X as Z,Y,Z as G,$ as Q,a0 as X,a1 as ee,a2 as te,a3 as ie,a4 as se,a5 as ae,a6 as oe,a7 as re,a8 as ne,a9 as le,aa as de,ab as ce,ac as he,ad as ue,ae as pe,af as me,ag as ve,ah as _e,ai as fe,aj as ge,ak as be,al as ye,am as $e,an as we,ao as xe,ap as ke,aq as je,ar as Oe,as as Ae,at as Se,au as Ce,av as Pe,aw as Ee,ax as Le,ay as Te,az as Ne,aA as Me,aB as Ve,aC as De,aD as ze,aE as Fe,aF as He,aG as Re,aH as qe,aI as Ie,aJ as We,aK as Je,aL as Ue,aM as Be,aN as Ke,aO as Ze,aP as Ye,aQ as Ge,aR as Qe,aS as Xe,aT as et,aU as tt,aV as it,aW as st,aX as at,aY as ot,aZ as rt,a_ as nt,a$ as lt,b0 as dt,b1 as ct,b2 as ht,b3 as ut,b4 as pt,b5 as mt,b6 as vt,b7 as _t,b8 as ft,b9 as gt,ba as bt,bb as yt,bc as $t,bd as wt,be as xt,bf as kt,bg as jt,bh as Ot,bi as At,bj as St,bk as Ct,bl as Pt,bm as Et,bn as Lt,bo as Tt,bp as Nt,bq as Mt,br as Vt,bs as Dt,bt as zt,bu as Ft,bv as Ht,bw as Rt,bx as qt,by as It,bz as Wt,bA as Jt,bB as Ut,bC as Bt,bD as Kt,bE as Zt,bF as Yt,bG as Gt,bH as Qt,bI as Xt,bJ as ei,bK as ti,bL as ii,bM as si,bN as ai,bO as oi,bP as ri,bQ as ni,bR as li,bS as di,bT as ci,bU as hi,bV as ui,bW as pi,bX as mi,bY as vi,bZ as _i,b_ as fi,V as gi,b$ as bi,c0 as yi,c1 as $i,c2 as wi,c3 as xi,c4 as ki,c5 as ji,c6 as Oi,c7 as Ai,c8 as Si,c9 as Ci,ca as Pi,cb as Ei,cc as Li,cd as Ti,ce as Ni,cf as Mi,cg as Vi,ch as Di,ci as zi,cj as Fi,ck as Hi,cl as Ri,cm as qi,cn as Ii,co as Wi,cp as Ji,cq as Ui,cr as Bi,cs as Ki,ct as Zi,cu as Yi,cv as Gi,cw as Qi,cx as Xi,cy as es,cz as ts,cA as is,cB as ss,cC as as,cD as os,cE as rs,cF as ns,cG as ls,cH as ds,cI as cs,cJ as hs,cK as us,cL as ps,cM as ms,cN as vs,cO as _s}from"./decluttering-card-plus.core-2YPjes8F.js";import{l as fs,S as gs,t as bs}from"./decluttering-card-plus.placeholder-tool-D-UkTFYh.js";
+import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l as c,c as h,d as u,s as p,e as m,f as v,g as _,h as f,k as g,m as b,O as y,o as $,p as w,q as x,W as k,u as j,v as O,w as A,S,x as C,y as P,P as E,z as L,B as T,C as N,D as M,F as V,G as D,H as z,I as F,J as H,K as R,L as q,M as I,N as W,Q as J,R as U,T as B,U as K,X as Z,Y,Z as G,$ as Q,a0 as X,a1 as ee,a2 as te,a3 as ie,a4 as se,a5 as ae,a6 as oe,a7 as re,a8 as ne,a9 as le,aa as de,ab as ce,ac as he,ad as ue,ae as pe,af as me,ag as ve,ah as _e,ai as fe,aj as ge,ak as be,al as ye,am as $e,an as we,ao as xe,ap as ke,aq as je,ar as Oe,as as Ae,at as Se,au as Ce,av as Pe,aw as Ee,ax as Le,ay as Te,az as Ne,aA as Me,aB as Ve,aC as De,aD as ze,aE as Fe,aF as He,aG as Re,aH as qe,aI as Ie,aJ as We,aK as Je,aL as Ue,aM as Be,aN as Ke,aO as Ze,aP as Ye,aQ as Ge,aR as Qe,aS as Xe,aT as et,aU as tt,aV as it,aW as st,aX as at,aY as ot,aZ as rt,a_ as nt,a$ as lt,b0 as dt,b1 as ct,b2 as ht,b3 as ut,b4 as pt,b5 as mt,b6 as vt,b7 as _t,b8 as ft,b9 as gt,ba as bt,bb as yt,bc as $t,bd as wt,be as xt,bf as kt,bg as jt,bh as Ot,bi as At,bj as St,bk as Ct,bl as Pt,bm as Et,bn as Lt,bo as Tt,bp as Nt,bq as Mt,br as Vt,bs as Dt,bt as zt,bu as Ft,bv as Ht,bw as Rt,bx as qt,by as It,bz as Wt,bA as Jt,bB as Ut,bC as Bt,bD as Kt,bE as Zt,bF as Yt,bG as Gt,bH as Qt,bI as Xt,bJ as ei,bK as ti,bL as ii,bM as si,bN as ai,bO as oi,bP as ri,bQ as ni,bR as li,bS as di,bT as ci,bU as hi,bV as ui,bW as pi,bX as mi,bY as vi,bZ as _i,b_ as fi,V as gi,b$ as bi,c0 as yi,c1 as $i,c2 as wi,c3 as xi,c4 as ki,c5 as ji,c6 as Oi,c7 as Ai,c8 as Si,c9 as Ci,ca as Pi,cb as Ei,cc as Li,cd as Ti,ce as Ni,cf as Mi,cg as Vi,ch as Di,ci as zi,cj as Fi,ck as Hi,cl as Ri,cm as qi,cn as Ii,co as Wi,cp as Ji,cq as Ui,cr as Bi,cs as Ki,ct as Zi,cu as Yi,cv as Gi,cw as Qi,cx as Xi,cy as es,cz as ts,cA as is,cB as ss,cC as as,cD as os,cE as rs,cF as ns,cG as ls,cH as ds,cI as cs,cJ as hs,cK as us,cL as ps,cM as ms,cN as vs,cO as _s}from"./decluttering-card-plus.core-CC30K_s7.js";import{l as fs,S as gs,t as bs}from"./decluttering-card-plus.placeholder-tool-DRG9-3z7.js";
 /**
  * @license
  * Copyright 2020 Google LLC
@@ -59,8 +59,8 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
         position: relative;
       }
       .stage.narrow {
-        border-left: 1px dashed var(--secondary-text-color);
-        border-right: 1px dashed var(--secondary-text-color);
+        border-inline-start: 1px dashed var(--secondary-text-color);
+        border-inline-end: 1px dashed var(--secondary-text-color);
         border-radius: 0;
       }
       /*
@@ -104,6 +104,9 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
         display: block;
         min-height: 1.5em;
         white-space: pre;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
       }
       pre .hl {
         background: color-mix(in srgb, var(--warning-color, #ffa600) 20%, transparent);
@@ -218,6 +221,11 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
               `}
       </div>
     `}_togglePick(){this._picking=!this._picking}_toggleEdit(){this._editing=!this._editing}_picked(e){var t;e.stopPropagation(),this._picking=!1,this._set(null===(t=e.detail)||void 0===t?void 0:t.config)}_edited(e){var t;e.stopPropagation(),this._set(null===(t=e.detail)||void 0===t?void 0:t.config)}_set(e){this._editing=this._editing&&!!e,M(this,"value-changed",{value:e&&"object"==typeof e?e:void 0})}}function ja(e,t){const i=Math.max(0,t-e);return i<1?"<1 ms":`${Math.round(i)} ms`}s([a({attribute:!1})],ka.prototype,"hass",void 0),s([a({attribute:!1})],ka.prototype,"lovelace",void 0),s([a({attribute:!1})],ka.prototype,"value",void 0),s([a()],ka.prototype,"label",void 0),s([a()],ka.prototype,"emptyHint",void 0),s([o()],ka.prototype,"_picking",void 0),s([o()],ka.prototype,"_editing",void 0),"undefined"==typeof customElements||customElements.get(xa)||customElements.define(xa,ka);const Oa="decluttering-card-plus-return";function Aa(e){try{return"undefined"==typeof sessionStorage?void 0:sessionStorage}catch(t){return}}const Sa="default";function Ca(e){const t=null==e?void 0:e[z];return t&&"object"==typeof t&&!Array.isArray(t)?t:void 0}function Pa(e,t,i){var s,a;const o={};for(const n of t){const e=null===(s=n.domain)||void 0===s?void 0:s.trim(),t=null===(a=n.template)||void 0===a?void 0:a.trim();e&&t&&e!==Sa&&(o[e]=t)}(null==i?void 0:i.trim())&&(o[Sa]=i.trim());const r=Object.assign({},e);return Object.keys(o).length?r[z]=o:delete r[z],r}function Ea(e,t){const i=new Set(t.map(e=>e.domain));return e.filter(e=>!i.has(e))}const La=["entities","areas","devices","floors","labels","views"];function Ta(e){if(!e||"object"!=typeof e||Array.isArray(e))return;const t=e;if(void 0!==t.template||void 0!==t.range||void 0!==t.with)return;if(void 0!==t.exclude&&"object"==typeof t.exclude&&!Array.isArray(t.exclude))return;const i=La.filter(e=>void 0!==t[e]);return i.length>1?void 0:1===i.length?i[0]:v(e)?"entities":void 0}function Na(e){var t;return void 0!==e.for_each_from?null!==(t=Ta(e.for_each_from))&&void 0!==t?t:"other":void 0!==e.for_each?"list":"none"}function Ma(e){if(null==e||!0===e)return;return(Array.isArray(e)?e:[e]).filter(e=>"string"==typeof e&&""!==e.trim()).map(e=>e.trim())}function Va(e){const t="number"==typeof e?e:"string"==typeof e&&e.trim()?Number(e):NaN;return Number.isFinite(t)?t:void 0}const Da=["domain","area","floor","label","device_class","integration","exclude"];function za(e){if(e&&e.length)return 1===e.length?e[0]:e}function Fa(e,t){var i,s;const a=Object.assign({},null!=e?e:{});a[null!==(i=Ta(e))&&void 0!==i?i:"entities"]=!t.patterns||!t.patterns.length||za(t.patterns.map(e=>e.trim()).filter(Boolean));for(const l of Da){const e=za(null===(s=t[l])||void 0===s?void 0:s.filter(e=>e.trim()));void 0===e?delete a[l]:a[l]=e}const o=[t.sort,t.then].filter(e=>"string"==typeof e&&""!==e.trim());o.length?a.sort=1===o.length?o[0]:o:delete a.sort,!0===t.reverse?a.reverse=!0:delete a.reverse;const r=Va(t.limit);void 0===r?delete a.limit:a.limit=r;const n=Va(t.offset);return void 0===n||0===n?delete a.offset:a.offset=n,"string"==typeof t.group_by&&t.group_by?a.group_by=t.group_by:delete a.group_by,!0===t.entity_category?Array.isArray(a.entity_category)||"string"==typeof a.entity_category||(a.entity_category="all"):delete a.entity_category,a}function Ha(e){return e.split(".")[0]}function Ra(e){var t;return[...new Set(Object.keys(null!==(t=null==e?void 0:e.states)&&void 0!==t?t:{}).map(Ha))].sort()}function qa(e){var t,i;const s=new Set;for(const a of Object.values(null!==(t=null==e?void 0:e.states)&&void 0!==t?t:{})){const e=null===(i=null==a?void 0:a.attributes)||void 0===i?void 0:i.device_class;"string"==typeof e&&e&&s.add(e)}return[...s].sort()}function Ia(e){var t;const i=new Set;for(const s of Object.values(null!==(t=null==e?void 0:e.entities)&&void 0!==t?t:{}))"string"==typeof(null==s?void 0:s.platform)&&s.platform&&i.add(s.platform);return[...i].sort()}const Wa=["name","-name","entity","area","floor","domain","entity_count","none"],Ja=["","area","floor","domain","label"];function Ua(e,t){return{select:{mode:"dropdown",multiple:!0,custom_value:!0,options:[...e,...(null!=t?t:[]).filter(t=>!e.includes(t))].map(e=>({value:e,label:e}))}}}function Ba(e,t){const i=["none","list",...La];return"other"===t&&i.push("other"),i.map(t=>({value:t,label:c(`editor.repeat.mode_${t}`,void 0,e)}))}const Ka=["card","badge","row","element","group"];function Za(e,t){const i=t.toLowerCase().split(/\s+/).filter(Boolean);return i.length?e.filter(e=>i.every(t=>e.search.includes(t))):e}function Ya(e,t,i){const s=e=>e?""+(e.borrowed?"b:"+e.borrowed:e.category?"c:"+e.category:""):"";if(""!==s(e)&&s(e)!==s(t))return e.borrowed?c("editor.picker.borrowed_from",{dashboard:e.borrowed},i):e.category}function Ga(e,t){return 0===e?c("editor.picker.unused",void 0,t):1===e?c("editor.picker.used_one",void 0,t):c("editor.picker.used_many",{count:e},t)}function Qa(e,t,i){const s=new Map(function(e,t){return e.map((e,i)=>({id:e.value,primary:e.label,secondary:[e.description,Ga(e.count,t)].filter(Boolean).join(" · "),search:e.search,sorting_label:String(i).padStart(6,"0")}))}(e,i).map(e=>[e.id,e])),a=[];let o;for(const r of Za(e,t)){const e=Ya(r,o,i);e&&a.push(e),a.push(s.get(r.value)),o=r}return a}const Xa={card:{type:"entity",entity:"sun.sun"},badge:{type:"entity",entity:"sun.sun"},row:{entity:"sun.sun"},element:{type:"icon",icon:"mdi:weather-sunny",style:{color:"yellow"}}},eo=50,to=e=>e.actions.length>0||e.urls.length>0||e.embeds||e.scripts||e.placeholders||e.overlay;const io=500,so="M7,19V17H9V19H7M11,19V17H13V19H11M15,19V17H17V19H15M7,15V13H9V15H7M11,15V13H13V15H11M15,15V13H17V15H15M7,11V9H9V11H7M11,11V9H13V11H11M15,11V9H17V11H15M7,7V5H9V7H7M11,7V5H13V7H11M15,7V5H17V7H15Z";async function ao(e,t,i,s){var a;if(!H())return e._toolError=c("tools.cannot_save_here",void 0,e.hass),!1;e._busy=!0,e._toolError=void 0;try{return await R(e,e.hass,i,[{urlPath:q(),build:t}],s),e._undoChanged=void 0,oo(e,c("undo.toast",{operation:I(i,e.hass)},e.hass)),!0}catch(o){return e._toolError=c("tools.save_failed",{message:null!==(a=null==o?void 0:o.message)&&void 0!==a?a:o},e.hass),!1}finally{e._busy=!1}}function oo(e,t){e.dispatchEvent(new CustomEvent("decluttering-announce",{detail:{text:t},bubbles:!0,composed:!0}))}function ro(e,t,i){const s=U(t)[i];if(!s)return e;const a=B(e.variables),o=new Set(s.map(e=>K(e))),r=a.filter(e=>!o.has(K(e)));return Object.assign(Object.assign({},e),{variables:[...r,...s]})}const no="variable:";function lo(e,t,i){var s;const a=e&&"object"==typeof e?e:{},o=null!==(s=["areas","devices","floors","labels","views","entities"].find(e=>void 0!==a[e]))&&void 0!==s?s:v(e)?"entities":"items";return c(`editor.matches_${o}_${1===t?"one":"many"}`,void 0,i)}const co=/^[a-z0-9_]+\.[a-z0-9_]+$/i;let ho,uo;function po(e,t){const i=e.indexOf(t);return-1===i?[e,""]:[e.slice(0,i),e.slice(i+t.length)]}const mo=new Set(["true","yes","on","1"]),vo=/:host|\.decluttering-container/;class _o extends r{constructor(){super(...arguments),this._shownAs=new Map,this._loadingTemplates=!1,this._ejectPending=!1,this._sectionsPending=!1,this._previewMode="yaml",this._holdStops=[],this._builds=new Ws,this._resultDue=!1,this._copied=!1,this._markedLines=[],this._cannotOpen=!1,this._matchesOpen=!1,this._openItems=new Set,this._pickerFilter="",this._pickerItems=[],this._openGroups=new Set,this._renderedTemplates={},this._renderingTemplates=new Set,this._optionsFrom=new Map}static get styles(){return n`
+      /* Code stays left to right inside a right-to-left sentence. */
+      code {
+        direction: ltr;
+        unicode-bidi: isolate;
+      }
       @media (prefers-reduced-motion: reduce) {
         *,
         *::before,
@@ -248,7 +256,7 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
       }
       .risks {
         margin: 4px 0 0;
-        padding-left: 18px;
+        padding-inline-start: 18px;
       }
       .result {
         padding: 0 8px 8px;
@@ -265,7 +273,7 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
       .advanced .count {
         color: var(--secondary-text-color);
         font-size: 0.85em;
-        margin-left: 8px;
+        margin-inline-start: 8px;
       }
       .advanced-body {
         padding: 8px 8px 0;
@@ -279,7 +287,7 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
       /* The words line up with the field's helper above them, the boxes with the field. */
       .rebuild-label {
         margin: 0 0 4px;
-        padding-left: 16px;
+        padding-inline-start: 16px;
       }
       .rebuild-list {
         list-style: none;
@@ -292,7 +300,7 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
         flex-wrap: wrap;
         gap: 0 8px;
         min-height: 40px;
-        padding-left: 12px;
+        padding-inline-start: 12px;
         border-radius: 8px;
         border: 1px solid var(--divider-color);
         margin-bottom: 4px;
@@ -309,11 +317,11 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
       }
       .rebuild-remove {
         --mdc-icon-button-size: 40px;
-        margin-left: auto;
+        margin-inline-start: auto;
       }
       .rebuild-template {
         margin: 0;
-        padding-left: 16px;
+        padding-inline-start: 16px;
         overflow-wrap: anywhere;
       }
       .preview {
@@ -371,6 +379,9 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
       pre.yaml .l {
         display: block;
         white-space: pre;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
       }
       pre.yaml .l.changed {
         background: rgba(var(--rgb-accent-color, 255, 152, 0), 0.18);
@@ -381,7 +392,7 @@ import{b as e,j as t,E as i,_ as s,n as a,r as o,i as r,a as n,t as l,A as d,l a
         flex-wrap: wrap;
       }
       .edit-template {
-        margin-left: 6px;
+        margin-inline-start: 6px;
       }
       ha-alert .actions {
         margin-top: 8px;
@@ -1026,6 +1037,11 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
               ${c(1===$.length?"editor.unused_one":"editor.unused_many",{names:$.join(", ")},this.hass)}
             </ha-alert>`:e``}
     `}_failedChecks(e){return ot(e).length&&this._config?this._builds.get("checks",this._readsKey(e),()=>this._failedChecksNow(e)):[]}_failedChecksNow(e){var t;if(!this._config)return[];const i=null!==(t=this._lovelace)&&void 0!==t?t:se(),s=fe(this.hass,this._rebuildOnFor(e)),a=this._config.template,o=$e(this._config).variables;try{return rt(e,a,t=>b(o,e,t,a,s,!0,void 0,0,void 0,void 0,!1,{itemTemplates:be(i),context:ve(i)}),this.hass).filter(e=>"info"!==e.level)}catch(r){return[]}}_valueChanged(e){var t,i;const s=e.detail.value,a=le(null===(t=this._templates)||void 0===t?void 0:t[s.template]);if(!a.length)return void M(this,"config-changed",{config:s});const o=[];for(const l of a){let e=s[no+l.name];const t=this._shownAs.get(l.name);t&&_a(e,t.shown)&&(e=t.written),void 0!==e&&""!==e&&o.push({[l.name]:e})}Array.isArray(s.extras)&&o.push(...s.extras);const r=Object.assign(Object.assign({},this._config),{template:s.template}),n=nt(B(null===(i=this._config)||void 0===i?void 0:i.variables),o);n.length?r.variables=n:delete r.variables,ue(r,"columns",s.columns),ue(r,"min_column_width",s.min_column_width),ue(r,"gap",s.gap),ue(r,"lazy",!0===s.lazy||void 0),ue(r,"lazy_eager",s.lazy_eager),M(this,"config-changed",{config:r})}_loadBorrowedTemplates(){if(!lt(this._lovelace))return;this._loadingTemplates=!0;const e=this._editingPlace();dt(this.hass,this._lovelace,e.view,void 0,e.section).then(e=>{this._templates=oe(e,this.hass),this._schema=void 0}).finally(()=>{this._loadingTemplates=!1,this.requestUpdate()})}}s([o()],_o.prototype,"_lovelace",void 0),s([o()],_o.prototype,"_config",void 0),s([a()],_o.prototype,"hass",void 0),s([o()],_o.prototype,"_loadingTemplates",void 0),s([o()],_o.prototype,"_ejectPending",void 0),s([o()],_o.prototype,"_sectionsPending",void 0),s([o()],_o.prototype,"_sectionsError",void 0),s([o()],_o.prototype,"_onErrorMode",void 0),s([o()],_o.prototype,"_previewMode",void 0),s([o()],_o.prototype,"_builtAnyway",void 0),s([o()],_o.prototype,"_copied",void 0),s([o()],_o.prototype,"_cannotOpen",void 0),s([o()],_o.prototype,"_resume",void 0),s([o()],_o.prototype,"_matchesOpen",void 0),s([o()],_o.prototype,"_byDomainDraft",void 0),s([o()],_o.prototype,"_openItems",void 0),s([o()],_o.prototype,"_pickerFilter",void 0),s([o()],_o.prototype,"_openGroups",void 0),s([o()],_o.prototype,"_presetPending",void 0),s([o()],_o.prototype,"_renderedTemplates",void 0);const fo=/^[a-z_]+\.[a-z0-9_]+$/,go={base:"entity",label:"Entity",selector:{entity:{}},matches:e=>fo.test(e)};function bo(e,t){return{base:e,label:t,selector:{text:{}},matches:e=>e.trim().length>0}}const yo={entity:go,entity_id:go,name:bo("name","Name"),title:bo("title","Title"),heading:bo("heading","Heading"),icon:{base:"icon",label:"Icon",selector:{icon:{}},matches:e=>e.includes(":")}};function $o(e,t){return 1===t?e.label:`${e.label} ${t}`}const wo=(e,t=200)=>{if("number"==typeof e&&(e=String(e)),"string"!=typeof e)return;const i=e.trim();return i?i.length>t?`${i.slice(0,t-1)}…`:i:void 0};function xo(e){const t=wo(e,2e3);if(t&&/^https?:\/\/[^\s/]+/i.test(t))return t}const ko=e=>[].concat(null!=e?e:[]).map(e=>wo(e)).filter(e=>!!e).slice(0,50);function jo(e){if("string"==typeof e){const t=wo(e);return t?{name:t}:void 0}if(!e||"object"!=typeof e||Array.isArray(e))return;const t=e,i=wo(t.github),s={name:wo(t.name),github:i&&/^[a-z\d](?:[a-z\d]|-(?=[a-z\d])){0,38}$/i.test(i)?i:void 0,email:wo(t.email),url:xo(t.url)};for(const a of Object.keys(s))void 0===s[a]&&delete s[a];return Object.keys(s).length?s:void 0}function Oo(e){const t=e&&"object"==typeof e?e:{},i={author:jo(t.author),license:wo(t.license),help:xo(t.help),homepage:xo(t.homepage),readme:wo(t.readme,8e3),related:ko(t.related),setup:ko(t.setup)};for(const s of["author","license","help","homepage","readme"])void 0===i[s]&&delete i[s];return i}const Ao=["author","license","help","homepage","readme","requires","setup","related"];function So(e){if(!e||"object"!=typeof e||Array.isArray(e))return e;const t=Object.assign({},e);for(const i of Ao)delete t[i];return t}const Co={integrations:{kind:"integration",key:"integration"},entities:{kind:"entity",key:"entity"},custom_cards:{kind:"custom_card",key:"card"}},Po=e=>{const t=wo(e,40);return t&&t.replace(/\+$/,"").trim()||void 0};function Eo(e){var t;const i=null==e?void 0:e.requires;if(!i||"object"!=typeof i||Array.isArray(i))return[];const s=[];for(const[a,{kind:o,key:r}]of Object.entries(Co))for(const e of[].concat(null!==(t=i[a])&&void 0!==t?t:[]).slice(0,50)){const t=e&&"object"==typeof e&&!Array.isArray(e)?e:void 0,i=ko(t?t[r]:e).map(e=>"custom_card"===o?e.replace(/^custom:/,""):e);if(!i.length)continue;const a=t?wo(t.message,300):void 0;s.push(a?{kind:o,any:i,message:a}:{kind:o,any:i})}for(const a of["homeassistant","card"]){const e=Po(i[a]);e&&s.push({kind:a,any:[e]})}return s}function Lo(e,t){var i,s;const a=e=>e.split(".").map(e=>parseInt(e,10)||0),o=a(e),r=a(t);for(let n=0;n<Math.max(o.length,r.length);n++){const e=null!==(i=o[n])&&void 0!==i?i:0,t=null!==(s=r[n])&&void 0!==s?s:0;if(e!==t)return e>t}return!0}function To(e,t){switch(e.kind){case"integration":return e.any.some(e=>vt(t.components,e));case"entity":return e.any.some(e=>{const i=function(e){const t=e.replace(/[.+?^${}()|[\]\\]/g,"\\$&").replace(/\*/g,".*");return new RegExp(`^${t}$`,"i")}(e);return t.entities.some(e=>i.test(e))});case"custom_card":return e.any.some(e=>t.isDefined(e));case"homeassistant":return!t.homeassistant||Lo(t.homeassistant,e.any[0]);case"card":return t.card.startsWith("0.0.0")||Lo(t.card,e.any[0])}}function No(e,t){const i=pt(e),s=Array.isArray(i)?i.filter(e=>e&&"object"==typeof e):i&&"object"==typeof i?Object.entries(i).map(([e,t])=>({[e]:t})):[],a=s.find(e=>Object.prototype.hasOwnProperty.call(e,t)),o=null==a?void 0:a[t];return"string"==typeof o||"number"==typeof o?String(o):void 0}function Mo(e,t){const i=Oo(e).setup.filter(e=>"string"==typeof t[e]&&""!==t[e]);if(!i.length)return e;const s=pt(e),a=(Array.isArray(s)?s.filter(e=>e&&"object"==typeof e):s&&"object"==typeof s?Object.entries(s).map(([e,t])=>({[e]:t})):[]).filter(e=>!i.some(t=>Object.prototype.hasOwnProperty.call(e,t))),o=Object.assign(Object.assign({},e),{default:[...i.map(e=>({[e]:t[e]})),...a]});return delete o[mt],o}const Vo={integrations:"requires_integrations",entities:"requires_entities",custom_cards:"requires_custom_cards"},Do=e=>"string"==typeof e?e:"number"==typeof e?String(e):void 0,zo=e=>[].concat(null!=e?e:[]).filter(e=>"string"==typeof e);const Fo=e=>"string"==typeof e&&e.trim()?e.trim():void 0,Ho=e=>[].concat(null!=e?e:[]).map(Fo).filter(e=>!!e);const Ro=[xt,kt,...jt],qo=["card","badge","row","element","group"],Io=["type","template","description","author","license","help","homepage","readme","requires","setup","related","variables","default",...qo,"style","language"];function Wo(e,t){if(Array.isArray(e))for(const i of e)Wo(i,t);else if(e&&"object"==typeof e){t(e);for(const i of Object.values(e))Wo(i,t)}}function Jo(e){const t=new Set,i=new Set;Wo(e,e=>{const s=e.type;if("string"==typeof s){s.startsWith("custom:")&&!Ro.includes(s)&&t.add(s);for(const t of Ot(e))i.add(t)}});for(const s of _t(e))i.add(s);return{customTypes:[...t].sort(),templateRefs:[...i].sort()}}const Uo=/\[\[!?([A-Za-z0-9_-]+)/g;function Bo(e,t){const i=ft(null!=e?e:null),s=[];for(let a=Uo.exec(i);null!==a;a=Uo.exec(i)){const e=a[1];if(s.includes(e)||!Object.prototype.hasOwnProperty.call(t,e))continue;const i=t[e];i&&"object"==typeof i&&"item"in i&&s.push(e)}Uo.lastIndex=0;for(const a of gt(null!=e?e:null))!s.includes(a)&&Object.prototype.hasOwnProperty.call(t,a)&&bt(t[a])&&!yt(a)&&s.push(a);return s}function Ko(e){return e.includes("[[")}function Zo(e,t){const i=e.split(/\[\[[^\]]*\]\]/);if(!i.join(""))return[];const s=i.map(e=>e.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join(".+"),a=new RegExp(`^${s}$`);return t.filter(e=>a.test(e))}function Yo(e,t){var i,s;const a=e&&"object"==typeof e&&void 0!==e[mt]?Object.assign(Object.assign({},e),{default:pt(e)}):e,o={};for(const c of Io)void 0!==(null==a?void 0:a[c])&&(o[c]=a[c]);for(const c of Object.keys(null!=a?a:{}))c in o||c===mt||"source"===c||(o[c]=a[c]);const{customTypes:r,templateRefs:n}=Jo(e),l=new Set,d=new Set,h=null==t?void 0:t[null==e?void 0:e.template],u=(e,t)=>{const i=function(e,t){const i={template:e,bundled:[],askedFor:[]};if(!e||"object"!=typeof e||!t||!($t in t))return i;const s=L(pt(e)),a=L(t.default).slice(L(t[$t]).length);if(!a.length)return i;const o=new Set(s.map(e=>Object.keys(e)[0])),r=new Set(wt(Object.assign(Object.assign({},e),{default:[...s,...a]}))),n=new Set(Oo(e).setup),l=[],d=[],c=[];for(const h of a){const e=Object.keys(h)[0];!r.has(e)||o.has(e)||d.includes(e)||c.includes(e)||(n.has(e)?c.push(e):(l.push(h),d.push(e)))}return l.length?{template:Object.assign(Object.assign({},e),{default:[...s,...l]}),bundled:d,askedFor:c}:{template:e,bundled:d,askedFor:c}}(e,t);for(const s of i.bundled)l.add(s);for(const s of i.askedFor)d.add(s);return i.template};if(h){const t=u(Object.assign(Object.assign({},e),{default:o.default}),h);void 0!==t.default&&(o.default=t.default)}const p=[],m=[];let v=!1;if(t){const i={},s=[...n,...Bo(e,t)],a=null==e?void 0:e.template,r=new Set(Oo(e).related.filter(e=>e!==a));for(s.push(...r);s.length;){const e=s.shift();if(e in i||e===a)continue;if(Ko(e)){m.includes(e)||m.push(e);const i=Zo(e,Object.keys(t)).filter(e=>e!==a);i.length&&(v=!0),s.push(...i);continue}const o=t[e];if(o){i[e]=u(Qo(Go(o)),o),s.push(...Jo(o).templateRefs,...Bo(o,t));for(const e of Oo(o).related)e===a||r.has(e)||(r.add(e),s.push(e))}else r.has(e)||p.push(e)}Object.keys(i).length&&(o.includes=i)}else for(const c of n)(Ko(c)?m:p).push(c);const _=new Set(r);for(const c of Object.values(null!==(i=o.includes)&&void 0!==i?i:{}))for(const e of Jo(c).customTypes)_.add(e);const f=new Set;for(const c of Eo(o))"custom_card"===c.kind&&c.any.forEach(e=>f.add(e));const g=[..._].map(e=>e.replace(/^custom:/,"")).filter(e=>!f.has(e));if(g.length){const e=o.requires,t=e&&"object"==typeof e&&!Array.isArray(e)?Object.assign({},e):{};t.custom_cards=[...[].concat(null!==(s=t.custom_cards)&&void 0!==s?s:[]),...g.sort()],o.requires=t,function(e){const t=Object.entries(e);for(const[s]of t)delete e[s];const i=e=>{const t=Io.indexOf(e);return-1===t?Io.length:t};for(const[s,a]of t.sort((e,t)=>i(e[0])-i(t[0])))e[s]=a}(o)}const b=[];if(p.length&&b.push(c("share.uses_other_templates",{names:p.join(", ")})),m.length){const e=v?"share.picked_templates_found":"share.picked_templates";b.push(c(e,{names:m.join(", ")}))}l.size&&b.push(c("share.bundled_values",{names:[...l].sort().join(", ")})),d.size&&b.push(c("share.setup_values_left_out",{names:[...d].sort().join(", ")}));const y=function(e){const t=null==e?void 0:e.requires;return t&&"object"==typeof t?["homeassistant","card"].filter(e=>"number"==typeof t[e]):[]}(e);return y.length&&b.push(c("share.version_unquoted",{keys:y.join(", ")})),{payload:o,notes:b}}function Go(e){if(!e||"object"!=typeof e||Array.isArray(e))return e;const t=Object.assign({},e);return delete t.source,t}function Qo(e){if(!e||"object"!=typeof e||!($t in e))return e;const t=e[$t],i=Object.assign({},e);return null==t||Array.isArray(t)&&!t.length?delete i.default:i.default=t,i}function Xo(e,t){if(!t.includes(e))return e;let i=2;for(;t.includes(`${e}_${i}`);)i+=1;return`${e}_${i}`}function er(e){if(!e||"object"!=typeof e||Array.isArray(e))return{ok:!1,errors:[c("share.import_not_a_template")]};const t=[];"string"==typeof e.template&&e.template.trim()||t.push(c("share.import_no_name"));const i=qo.filter(t=>void 0!==e[t]);return 0===i.length?t.push(c("share.import_defines_nothing")):i.length>1&&t.push(c("share.import_defines_both",{first:i[0],second:i[1]})),{ok:0===t.length,errors:t}}function tr(e,t){const i=new Set;for(const s of e)for(const e of Jo(s).customTypes){const s=e.slice(7);s&&!t(s)&&i.add(s)}return[...i].sort()}const ir=["card","badge","row","element","group"],sr=/^[A-Za-z0-9_-]+$/,ar=/^[a-z_]+\.[a-z0-9_]+$/;function or(e){return ir.find(t=>void 0!==(null==e?void 0:e[t])&&null!==(null==e?void 0:e[t]))}function rr(e){return e.map(e=>"number"==typeof e?`#${e+1}`:e).join(" › ")}function nr(e){const t=new Set;for(const a of At(null==e?void 0:e.variables))a&&"string"==typeof a.name&&t.add(a.name);const i=ft(null!=e?e:{}),s=/\[\[([A-Za-z0-9_-]+)/g;for(let a=s.exec(i);a;a=s.exec(i))t.add(a[1]);return[...t]}function lr(e){return"boolean"==typeof e?"boolean":"number"==typeof e?"number":"string"==typeof e&&ar.test(e)?"entity":"string"==typeof e&&/^[a-z]+:[a-z0-9-]+$/.test(e)?"icon":"text"}function dr(e,t,i){if(!t.length)return i;const[s,...a]=t;return Array.isArray(e)?e.map((e,t)=>t===s?dr(e,a,i):e):Object.assign(Object.assign({},e),{[s]:dr(null==e?void 0:e[s],a,i)})}function cr(e,t){return t.reduce((e,t)=>null==e?void 0:e[t],e)}function hr(e,t,i){if(!sr.test(i))return{ok:!1,error:"name_invalid"};if(nr(e).includes(i))return{ok:!1,error:"name_taken"};const s=or(e),a=s?cr(e[s],t):void 0;if(!s||null==a||"object"==typeof a)return{ok:!1,error:"gone"};const o={name:i,type:lr(a),default:a};return{ok:!0,template:Object.assign(Object.assign({},e),{[s]:dr(e[s],t,`[[${i}]]`),variables:St(e.variables,[o])})}}function ur(e,t){const i=or(e);return i?cr(e[i],t):void 0}function pr(e){const t=Object.assign({},e);return delete t.name,t}const mr=["card","badge","row","element","group","style","let","default","grid_options","name","alert","function"],vr="dashboard",_r="default:";function fr(e){return e.startsWith("or:")?ai(e):Nt(e)}function gr(e,t,i){if(!e.includes("[[")&&!e.includes("]]"))return;const s=function(e){let t=0,i=!1;for(let s=0;s<e.length-1;s+=1){const a=e.slice(s,s+2);"[["===a?(t+=1,s+=1):"]]"===a&&(0===t?i=!0:t-=1,s+=1)}return{unclosed:t>0,stray:i}}(e);s.unclosed&&i.findings.push({level:"warning",key:"lint.unclosed",params:{},path:t}),s.stray&&i.findings.push({level:"warning",key:"lint.stray_close",params:{},path:t});let a=e;for(let o=0;o<5;o+=1){let e=!1;if(a=a.replace(new RegExp("\\[\\[([^[\\]]*)\\]\\]","g"),(s,a)=>(e=!0,a.startsWith(ei)||br(a,t,i),"_")),!e)break}}function br(e,t,i){var s;const a=e.endsWith("?")?e.slice(0,-1):e,[o,...r]=a.split("|"),n=`[[${e}]]`,l=o.endsWith("?")?o.slice(0,-1):o;Zt(l)&&i.lookups.push({key:l.slice(1),placeholder:n,path:t});const d=void 0!==ti(l)||Zt(l)?void 0:l.split(".")[0];d&&"_"!==d&&!i.heads.has(d)&&i.heads.set(d,t);let c=!1,h=!1;const u=r.findIndex(e=>/^repeat:./.test(e));-1!==u&&d&&(null!==(s=i.repeats)&&void 0!==s?s:i.repeats=[]).push({source:r[u].slice(7),after:r.slice(u+1),placeholder:n,path:t});for(const p of r){if(!ii(p,i.functions)){const e=si(p,i.functions);i.findings.push({level:"warning",key:"lint.unknown_step",params:e?{step:p,placeholder:n,closest:e}:{step:p,placeholder:n},path:t});continue}(p.startsWith(_r)||p.startsWith("or:"))&&c&&i.findings.push({level:"warning",key:"lint.after_default",params:{step:p,placeholder:n},path:t}),p.startsWith(_r)&&p.length>8&&(c=!0);const e=fr(p);!e||"_"===e||h&&Nt(p)||i.targets.push({name:e,placeholder:n,path:t}),/^(?:with|repeat)(?::|$)/.test(p)&&(h=!0)}}function yr(e,t,i){if("string"!=typeof e){if(Array.isArray(e))e.forEach((e,s)=>yr(e,`${t}[${s}]`,i));else if(e&&"object"==typeof e)for(const[s,a]of Object.entries(e))gr(s,t,i),yr(a,t?`${t}.${s}`:s,i)}else gr(e,t,i)}const $r=/\[\[(\$[^|[\]?]+)[^[\]]*\]\]/g;function wr(e,t,i){if("string"!=typeof e||!e.includes("[[$"))return;const s=new RegExp($r.source,"g");for(let a=s.exec(e);null!==a;a=s.exec(e))i.lookups.push({key:a[1].slice(1),placeholder:a[0],path:t})}const xr=["label","description","helper","group"];function kr(e){const t=new Set(Ht(e).map(e=>Rt+e));for(const i of le(e))t.add(i.name);for(const i of[...L(pt(e)),...L(null==e?void 0:e.let)]){const e=K(i);void 0!==e&&t.add(e)}return[...t]}function jr(e,t=[],i={}){var s;if(!e||"object"!=typeof e)return[];const a=null!==(s=i.functions)&&void 0!==s?s:Ct(),o={findings:[],heads:new Map,targets:[],functions:a,lookups:[]};!function(e,t){wr(e.description,"description",t),le(e).forEach((e,i)=>{for(const s of xr)wr(e[s],`variables[${i}].${s}`,t)});const i=e.examples;(Array.isArray(i)?i:i?[i]:[]).forEach((e,i)=>{wr(null==e?void 0:e.name,`examples[${i}].name`,t)})}(e,o);for(const p of mr){const t=e[p];void 0!==t&&yr(t,p,o)}if(void 0!==e[vr]){const{rest:t}=Pt(e[vr]);yr(Et(t),vr,o);const i={findings:[],heads:new Map,targets:[],functions:a,lookups:[]};yr(t,vr,i),o.findings.push(...i.findings)}le(e).forEach((e,t)=>{void 0!==e.default&&yr(e.default,`variables[${t}].default`,o);for(const i of["show_if","hide_if"]){const s=`variables[${t}].${i}`;for(const t of Lt(e,i)){const e=t.slice(3);if(!Tt(t)){o.findings.push({level:"warning",key:"lint.condition_malformed",params:{key:i,condition:e},path:s});continue}const a=Nt(t);a&&o.targets.push({name:a.split(".")[0],placeholder:`${i}: ${e}`,path:s})}}}),function(e,t){const i=e[qt];null!=i&&(Array.isArray(i)?i.forEach((e,i)=>{const s=`${qt}[${i}]`;if(!e||"object"!=typeof e||Array.isArray(e))return void t.findings.push({level:"warning",key:"lint.check_not_mapping",params:{},path:s});const a=e;yr(a.message,`${s}.message`,t);for(const l of Object.keys(a))It.includes(l)||t.findings.push({level:"warning",key:"lint.check_key_unknown",params:{key:l},path:s});void 0===Wt(a.level)&&t.findings.push({level:"warning",key:"lint.check_level_unknown",params:{level:String(a.level)},path:`${s}.level`});const o=a.condition;if(null==o||""===o)return void t.findings.push({level:"warning",key:"lint.check_no_condition",params:{},path:s});if("boolean"==typeof o||"number"==typeof o)return;if("string"!=typeof o)return void t.findings.push({level:"warning",key:"lint.check_condition_malformed",params:{condition:JSON.stringify(o)},path:`${s}.condition`});const r=Jt(o);if(void 0===r)return void yr(o,`${s}.condition`,t);if(/^(?:true|false)$/i.test(o.trim()))return;if(!Tt(r))return void t.findings.push({level:"warning",key:"lint.check_condition_malformed",params:{condition:o},path:`${s}.condition`});const n=Nt(r);n&&t.targets.push({name:n.split(".")[0],placeholder:`condition: ${o}`,path:`${s}.condition`})}):t.findings.push({level:"warning",key:"lint.checks_not_list",params:{},path:qt}))}(e,o);const r=bt(e);r&&i.name&&yt(i.name)&&o.findings.push({level:"warning",key:"lint.function_shadowed",params:{name:i.name},path:"function"}),r||void 0===e.parameters||o.findings.push({level:"info",key:"lint.parameters_without_function",params:{},path:"parameters"});const n=new Set([...kr(e),...t,...Ie,...Mt,...et(e),Vt,...r?[Dt,...zt(e)]:[]]),l=[...o.findings];!function(e,t,i,s){const a=e[Ut];if(null!=a)if("object"!=typeof a||Array.isArray(a))s.push({level:"warning",key:"lint.language_not_mapping",params:{},path:Ut});else for(const[d,c]of Object.entries(a))c&&"object"==typeof c&&!Array.isArray(c)||s.push({level:"warning",key:"lint.language_entry_not_mapping",params:{language:d},path:`${Ut}.${d}`});const o=Bt(e),r=Ht(e);if(o&&Object.keys(o).length>1)for(const[d,c]of Object.entries(o)){const e=Kt(c),t=r.filter(t=>!e.has(t));t.length&&s.push({level:"warning",key:"lint.translation_missing_in",params:{language:d,keys:t.join(", ")},path:`${Ut}.${d}`})}const n=new Set([...r,...t.filter(Zt).map(e=>e.slice(1))]),l=new Set;for(const d of i.lookups){if(n.has(d.key)||l.has(d.key))continue;l.add(d.key);const e=C(d.key,[...n]);s.push({level:"warning",key:"lint.translation_unknown",params:e?{key:d.key,placeholder:d.placeholder,closest:e}:{key:d.key,placeholder:d.placeholder},path:d.path})}}(e,t,o,l),function(e,t,i){var s;if(!(null===(s=t.repeats)||void 0===s?void 0:s.length))return;const a=T(N(void 0,e));for(const o of t.repeats){if(o.after.includes(Yt)||o.after.includes(Gt))continue;const e=a[o.source];if(!v(e))continue;const t=Object.keys(e),s=t.filter(e=>Qt.includes(e)),r=t.filter(e=>!Xt.includes(e));s.length&&r.length&&i.push({level:"warning",key:"lint.mixed_repeat_source",params:{placeholder:o.placeholder,name:o.source,filters:s.join(", "),others:r.join(", ")},path:o.path})}}(e,o,l);const d=e=>n.has(e)||o.heads.has(e),c=e=>d(e)||e.split(".").some((e,t,i)=>t>0&&d(i.slice(0,t).join(".")));for(const p of o.targets){if(c(p.name))continue;const e=C(p.name,[...n,...o.heads.keys()]);l.push({level:"warning",key:"lint.target_unknown",params:e?{name:p.name,placeholder:p.placeholder,closest:e}:{name:p.name,placeholder:p.placeholder},path:p.path})}const h=[...o.heads.entries()].filter(([e])=>!n.has(e));h.length&&l.push({level:"info",key:"lint.undeclared",params:{names:h.map(([e,t])=>h.length>1?`${e} (${t})`:e).join(", ")},path:h.length>1?"":h[0][1]});for(const p of function(e){return ua(e).filter(e=>!ca.includes(e)).map(e=>{const t=C(e,ca);return t?{name:e,closest:t}:{name:e}})}(e))l.push({level:"warning",key:"lint.editor_hide_unknown",params:Object.assign({},p),path:"editor_hide"});for(const p of Ft(e.strict))l.push({level:"warning",key:"lint.strict_unknown",params:p,path:"strict"});const u=new Set;return l.filter(e=>{const t=JSON.stringify([e.key,e.params,e.path]);return!u.has(t)&&(u.add(t),!0)})}const Or=n`
+  /* Code stays left to right inside a right-to-left sentence. */
+  code {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
   /* The Settings tab's three panels (idea 32). */
   ha-expansion-panel {
     display: block;
@@ -1034,7 +1050,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
   ha-expansion-panel small {
     color: var(--secondary-text-color);
     font-weight: 400;
-    margin-left: 6px;
+    margin-inline-start: 6px;
   }
   .panel {
     padding: 12px 4px 4px;
@@ -1100,7 +1116,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
   }
   .usages ul {
     margin: 0;
-    padding-left: 20px;
+    padding-inline-start: 20px;
   }
   .usages li {
     margin-bottom: 4px;
@@ -1191,7 +1207,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
   }
   .share .installed {
     margin: 0 0 8px;
-    padding-left: 20px;
+    padding-inline-start: 20px;
   }
   .share .installed li {
     margin-bottom: 8px;
@@ -1217,7 +1233,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
   }
   .similar ul {
     margin: 0 0 8px;
-    padding-left: 20px;
+    padding-inline-start: 20px;
   }
   .similar ha-textfield,
   .similar ha-input {
@@ -1260,7 +1276,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-left: 6px;
+    margin-inline-start: 6px;
     min-width: 18px;
     height: 18px;
     padding: 0 6px;
@@ -1284,7 +1300,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
     display: inline-block;
     width: 8px;
     height: 8px;
-    margin-left: 6px;
+    margin-inline-start: 6px;
     border-radius: 50%;
     background: var(--warning-color, #ffa600);
     vertical-align: middle;
@@ -1309,6 +1325,9 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
   }
   .dcp-diff div {
     white-space: pre;
+    /* Code reads left to right in a right-to-left dashboard too. */
+    direction: ltr;
+    text-align: left;
     padding: 0 8px;
   }
   .dcp-diff .add {
@@ -1752,7 +1771,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
       }
       .pick ul {
         margin: 4px 0 0;
-        padding-left: 18px;
+        padding-inline-start: 18px;
       }
       .pick a {
         cursor: pointer;
@@ -1941,7 +1960,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
       }
       .pop {
         position: absolute;
-        right: 0;
+        inset-inline-end: 0;
         top: 30px;
         z-index: 5;
         width: min(420px, 80vw);
@@ -1952,7 +1971,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
         padding: 12px 14px;
         font-size: 0.9em;
         line-height: 1.5;
-        text-align: left;
+        text-align: start;
       }
       .pop h5 {
         margin: 0 0 6px;
@@ -1970,6 +1989,9 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.9em;
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
         overflow: auto;
         max-height: 160px;
       }
@@ -1985,7 +2007,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
         text-decoration: none;
       }
       .foot .esc {
-        margin-left: auto;
+        margin-inline-start: auto;
       }
     `}render(){return e`
       <button
@@ -2070,11 +2092,11 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
         background: color-mix(in srgb, var(--primary-color) 12%, transparent);
       }
       .menu div small {
-        margin-left: auto;
+        margin-inline-start: auto;
         color: var(--secondary-text-color);
       }
       .menu .sub {
-        padding-left: 28px;
+        padding-inline-start: 28px;
         font-family: var(--ha-font-family-code, monospace);
       }
       .dialog {
@@ -2182,7 +2204,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
         height: 12px;
         border-radius: 3px;
         vertical-align: -1px;
-        margin-right: 5px;
+        margin-inline-end: 5px;
       }
       .legend .ok {
         background: color-mix(in srgb, var(--warning-color, #e39400) 40%, transparent);
@@ -2224,7 +2246,7 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
         background: color-mix(in srgb, var(--primary-color) 14%, transparent);
       }
       .pop div.opt small {
-        margin-left: auto;
+        margin-inline-start: auto;
         color: var(--secondary-text-color);
         font-family: var(--ha-font-family, inherit);
       }
@@ -2236,6 +2258,9 @@ ${this._markedLines.map(t=>e`<span class="l ${t.changed?"changed":""}">${t.text}
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.85em;
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
         word-break: break-word;
       }
       pre.copy .dcp-ph {
@@ -2766,6 +2791,11 @@ ${d.map(e=>`# ${c("family.from",{name:e.from},this.hass)}\n${l(e.content).replac
       <h4 class="preview-header">${c("preview.header",void 0,this.hass)}</h4>
       <decluttering-preview-frame .hass=${this.hass} .config=${r} kind="card"></decluttering-preview-frame>
     `:e``}async connectedCallback(){var e;super.connectedCallback();const t=as();t&&(this._selectedTab=t),null!==(e=this._stopLanguageListener)&&void 0!==e||(this._stopLanguageListener=ee(()=>this.requestUpdate())),this._unwatchTrash=os(()=>{this._loadTrash()}),this._loadTrash(),this.addEventListener("decluttering-announce",this._onAnnounce),this._loadedElements||(await te(),await async function(){let e=customElements.get("hui-entities-card");if(!e){if(!W)return;(await W).createCardElement({type:"entities",entities:[]}),await customElements.whenDefined("hui-entities-card"),e=customElements.get("hui-entities-card")}e&&e.getConfigElement&&await e.getConfigElement()}(),this._loadedElements=!0)}disconnectedCallback(){var e,t;super.disconnectedCallback(),null===(e=this._stopLanguageListener)||void 0===e||e.call(this),this._stopLanguageListener=void 0,this.removeEventListener("decluttering-announce",this._onAnnounce),null===(t=this._unwatchTrash)||void 0===t||t.call(this),this._unwatchTrash=void 0}updated(e){var t;super.updated(e);const i=null!==(t=this.renderRoot.querySelector("hui-card-element-editor"))&&void 0!==t?t:void 0;for(const s of["decluttering-field-menus","decluttering-code-hooks"]){const e=this.renderRoot.querySelector(s);e&&e.target!==i&&(e.target=i)}}}s([o()],Ad.prototype,"_config",void 0),s([o()],Ad.prototype,"_selectedTab",void 0),s([o()],Ad.prototype,"_trash",void 0),s([o()],Ad.prototype,"_updateCount",void 0),s([o()],Ad.prototype,"_suggestion",void 0),s([o()],Ad.prototype,"_suggestedNothing",void 0),s([o()],Ad.prototype,"_toolError",void 0),s([o()],Ad.prototype,"_busy",void 0),s([o()],Ad.prototype,"_declutterOriginal",void 0),s([o()],Ad.prototype,"_declutterSection",void 0),s([o()],Ad.prototype,"_declutterPending",void 0),s([o()],Ad.prototype,"_promotePath",void 0),s([o()],Ad.prototype,"_promoteName",void 0),s([o()],Ad.prototype,"_promoteError",void 0),s([a()],Ad.prototype,"lovelace",void 0),s([a()],Ad.prototype,"hass",void 0),s([o()],Ad.prototype,"_announcement",void 0);function Sd(e){const t=null==e?void 0:e.version,i="number"==typeof t?t:"string"==typeof t?Number(t):NaN;return Number.isFinite(i)?i:void 0}const Cd="[A-Za-z_][\\w.]*";function Pd(e,t){const i=t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),s=[new RegExp(`\\b${i}\\b\\s+(?:is now|became|renamed to|replaced by|->|→)\\s+\`?(${Cd})\`?`,"i"),new RegExp(`\`${i}\`\\s+(?:is now|became|renamed to|replaced by|->|→)\\s+\`?(${Cd})\`?`,"i")];for(const a of s){const i=a.exec(e);if(i&&i[1]!==t)return i[1]}}function Ed(e,t){const i=new RegExp(`(^|[^\\w])${t.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^\\w]|$)`);for(const s of function(e){const t=null==e?void 0:e.changes;if(!t||"object"!=typeof t)return[];const i=[];for(const[s,a]of Object.entries(t)){const e=Number(s);if(!Number.isFinite(e))continue;const t=Array.isArray(a)?a:[a];for(const s of t)"string"==typeof s&&s.trim()&&i.push({version:e,note:s.trim()})}return i.sort((e,t)=>t.version-e.version)}(e)){if(!i.test(s.note))continue;const e=Pd(s.note,t);return e?Object.assign(Object.assign({},s),{replacement:e}):s}}function Ld(e,t,i,s,a){const o=e=>{if(Array.isArray(e))return e.map(o);if(!e||"object"!=typeof e)return e;if(jt.includes(e.type)&&e.template===i&&(t=e,JSON.stringify(t).includes(`"${s}"`)))return _d(e,s,a);var t;const r={};for(const[i,s]of Object.entries(e))r[i]=o(s);return r},r=Array.isArray(null==e?void 0:e.views)?e.views:[];return Object.assign(Object.assign({},e),{views:r.map((e,i)=>i===t?o(e):e)})}const Td="decluttering-card-plus-stats";function Nd(e){var t,i;return void 0!==e.card?`card:${e.card}`:JSON.stringify([e.template,null!==(t=e.name)&&void 0!==t?t:null,null!==(i=e.view)&&void 0!==i?i:null])}function Md(e,t){var i;const s=new Map,a=new Set;let o=0;for(const n of e){const e=null!==(i=s.get(n.template))&&void 0!==i?i:{template:n.template,views:[],builds:0,total:0,slowest:0};e.builds+=1,e.total+=n.ms,e.slowest=Math.max(e.slowest,n.ms),n.view&&!e.views.includes(n.view)&&e.views.push(n.view),s.set(n.template,e);const t=Nd(n);a.has(t)&&n.follows&&(o+=1),a.add(t)}const r=[...s.values()];for(const n of r){const e=null==t?void 0:t[n.template];e&&(n.delta=Math.round(n.total-e.total),n.builds<e.builds&&n.delta<0?n.reason="lazy":n.builds>e.builds&&n.delta>0&&(n.reason="rebuilt"))}return r.sort((e,t)=>t.total-e.total||e.template.localeCompare(t.template)),{cardsBuilt:a.size,templatesInUse:r.length,totalMs:Math.round(r.reduce((e,t)=>e+t.total,0)),rebuiltOnState:o,rows:r.map(e=>Object.assign(Object.assign({},e),{total:Math.round(e.total),slowest:Math.round(e.slowest)}))}}class Vd extends r{constructor(){super(...arguments),this.expanded=!1,this._sortBy="total",this._copiedStats=!1,this._snapshotRead=!1,this._loadedAt=performance.now(),this._writeSnapshot=()=>{try{sessionStorage.setItem(Td,JSON.stringify(function(e){const t={};for(const i of e.rows)t[i.template]={total:i.total,builds:i.builds};return t}(Md(rs.entries()))))}catch(e){}}}connectedCallback(){var e;super.connectedCallback(),null!==(e=this._stopLanguageListener)&&void 0!==e||(this._stopLanguageListener=ee(()=>this.requestUpdate())),window.addEventListener("pagehide",this._writeSnapshot)}disconnectedCallback(){var e;super.disconnectedCallback(),null===(e=this._stopLanguageListener)||void 0===e||e.call(this),this._stopLanguageListener=void 0,window.removeEventListener("pagehide",this._writeSnapshot)}static get styles(){return n`
+      /* Code stays left to right inside a right-to-left sentence. */
+      code {
+        direction: ltr;
+        unicode-bidi: isolate;
+      }
       :host {
         display: block;
       }
@@ -2783,13 +2813,13 @@ ${d.map(e=>`# ${c("family.from",{name:e.from},this.hass)}\n${l(e.content).replac
       }
       .timings {
         margin: 0 0 8px;
-        padding-left: 20px;
+        padding-inline-start: 20px;
         font-size: 0.9em;
       }
       .timings-header small {
         color: var(--secondary-text-color);
         font-weight: 400;
-        margin-left: 6px;
+        margin-inline-start: 6px;
       }
       .kpis {
         display: grid;
@@ -2816,7 +2846,7 @@ ${d.map(e=>`# ${c("family.from",{name:e.from},this.hass)}\n${l(e.content).replac
         font-size: 0.9em;
       }
       table.stats th {
-        text-align: left;
+        text-align: start;
         font-weight: 500;
         color: var(--secondary-text-color);
         padding: 6px 8px;
@@ -2834,7 +2864,7 @@ ${d.map(e=>`# ${c("family.from",{name:e.from},this.hass)}\n${l(e.content).replac
         vertical-align: top;
       }
       table.stats td.num {
-        text-align: right;
+        text-align: end;
         white-space: nowrap;
         font-variant-numeric: tabular-nums;
       }
@@ -2844,7 +2874,7 @@ ${d.map(e=>`# ${c("family.from",{name:e.from},this.hass)}\n${l(e.content).replac
         border-radius: 2px;
         background: var(--primary-color);
         vertical-align: middle;
-        margin-right: 6px;
+        margin-inline-end: 6px;
       }
       .bar.slow {
         background: var(--warning-color, #ffa600);
@@ -2863,7 +2893,7 @@ ${d.map(e=>`# ${c("family.from",{name:e.from},this.hass)}\n${l(e.content).replac
       td.trend small {
         font-family: var(--ha-font-family, inherit);
         color: var(--secondary-text-color);
-        margin-left: 4px;
+        margin-inline-start: 4px;
       }
     `}render(){var t,i,s,a,o,r,n,l,d,h;const u=this.lovelace,p=lt(u);if(p&&(null===(t=this._borrowed)||void 0===t?void 0:t.ll)!==u){this._borrowed={ll:u};const e=new Set(Object.keys(re(u)));dt(this.hass,u).then(t=>{var i;(null===(i=this._borrowed)||void 0===i?void 0:i.ll)===u&&(this._borrowed={ll:u,names:Object.keys(t).filter(t=>!e.has(t)),templates:t})})}p&&(null===(i=this._lenders)||void 0===i?void 0:i.ll)!==u&&(this._lenders={ll:u,templates:{},from:{}},ns(this.hass,u).then(e=>{var t;(null===(t=this._lenders)||void 0===t?void 0:t.ll)===u&&(this._lenders=Object.assign({ll:u},e))}));const m=this._lenders?function(e,t,i){var s;const a=[];for(const[o,r]of Object.entries(e)){const e=Sd(r),n=Sd(t[o]);void 0===e||void 0===n||n>=e||a.push({template:o,here:e,there:n,dashboard:null!==(s=i[o])&&void 0!==s?s:""})}return a}(re(u),this._lenders.templates,this._lenders.from):[],v=p&&!(null===(s=this._borrowed)||void 0===s?void 0:s.names),_=ss(u,p&&null!==(o=null===(a=this._borrowed)||void 0===a?void 0:a.names)&&void 0!==o?o:[]),f=v?Object.assign(Object.assign({},_),{missingTemplates:[]}):_,g=ls(u),b=ds(u),y=null===(r=this._borrowed)||void 0===r?void 0:r.names,$=this._examplesChecked;v||(null==$?void 0:$.ll)===u&&(null==$?void 0:$.borrowed)===y||(this._examplesChecked={ll:u,borrowed:y,failed:xi(re(u),null!=y?y:[],this.hass)});const w=v?[]:null!==(l=null===(n=this._examplesChecked)||void 0===n?void 0:n.failed)&&void 0!==l?l:[],x=null!==(h=null===(d=this._borrowed)||void 0===d?void 0:d.templates)&&void 0!==h?h:re(u),k=(j=hd(u,x),O=x,j.map(e=>{const t=Ed(Object.prototype.hasOwnProperty.call(O,e.template)?O[e.template]:void 0,e.name);return t?Object.assign(Object.assign({},e),{since:t}):e}));var j,O;const A=!(f.missingTemplates.length||f.unsetVariables.length||f.unusedTemplates.length||g.length||b.length||w.length||k.length||m.length);return e`
       <ha-expansion-panel outlined .expanded=${this.expanded}>
@@ -3066,7 +3096,7 @@ ${d.map(e=>`# ${c("family.from",{name:e.from},this.hass)}\n${l(e.content).replac
         overflow: hidden;
         background: var(--card-background-color);
         cursor: pointer;
-        text-align: left;
+        text-align: start;
         padding: 0;
         font: inherit;
         color: inherit;
@@ -3255,4 +3285,4 @@ ${d.map(e=>`# ${c("family.from",{name:e.from},this.hass)}\n${l(e.content).replac
         ${us(e`<ha-button slot="primaryAction" @click=${this._close}>${this._t("gallery.close")}</ha-button>`)}
       </ha-dialog>
     `}}s([a({attribute:!1})],Dd.prototype,"hass",void 0),s([a({attribute:!1})],Dd.prototype,"entries",void 0),s([a({type:Boolean})],Dd.prototype,"open",void 0),s([a({attribute:!1})],Dd.prototype,"selectedKey",void 0),s([a({attribute:!1})],Dd.prototype,"status",void 0),s([o()],Dd.prototype,"_source",void 0),s([o()],Dd.prototype,"_category",void 0),s([o()],Dd.prototype,"_query",void 0),s([o()],Dd.prototype,"_showYaml",void 0),ps(ms,_o),ps(vs,Ad),ps(_s,Vd),ps(fi,Dd);export{_o as DeclutteringCardEditor,Dd as DeclutteringGalleryDialog,Vd as DeclutteringHealthPanel,Ad as DeclutteringTemplateEditor};
-//# sourceMappingURL=decluttering-card-plus.editors-B3O5u-q6.js.map
+//# sourceMappingURL=decluttering-card-plus.editors-7xb00kOQ.js.map

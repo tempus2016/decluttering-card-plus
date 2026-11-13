@@ -42,7 +42,7 @@ export class DeclutteringHelpIcon extends LitElement {
       }
       .pop {
         position: absolute;
-        right: 0;
+        inset-inline-end: 0;
         top: 30px;
         z-index: 5;
         width: min(420px, 80vw);
@@ -53,7 +53,7 @@ export class DeclutteringHelpIcon extends LitElement {
         padding: 12px 14px;
         font-size: 0.9em;
         line-height: 1.5;
-        text-align: left;
+        text-align: start;
       }
       .pop h5 {
         margin: 0 0 6px;
@@ -71,6 +71,9 @@ export class DeclutteringHelpIcon extends LitElement {
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.9em;
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
         overflow: auto;
         max-height: 160px;
       }
@@ -86,7 +89,7 @@ export class DeclutteringHelpIcon extends LitElement {
         text-decoration: none;
       }
       .foot .esc {
-        margin-left: auto;
+        margin-inline-start: auto;
       }
     `;
   }

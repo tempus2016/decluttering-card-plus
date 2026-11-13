@@ -59,6 +59,11 @@ export class DeclutteringHealthPanel extends LitElement {
 
   static get styles(): CSSResult {
     return css`
+      /* Code stays left to right inside a right-to-left sentence. */
+      code {
+        direction: ltr;
+        unicode-bidi: isolate;
+      }
       :host {
         display: block;
       }
@@ -76,13 +81,13 @@ export class DeclutteringHealthPanel extends LitElement {
       }
       .timings {
         margin: 0 0 8px;
-        padding-left: 20px;
+        padding-inline-start: 20px;
         font-size: 0.9em;
       }
       .timings-header small {
         color: var(--secondary-text-color);
         font-weight: 400;
-        margin-left: 6px;
+        margin-inline-start: 6px;
       }
       .kpis {
         display: grid;
@@ -109,7 +114,7 @@ export class DeclutteringHealthPanel extends LitElement {
         font-size: 0.9em;
       }
       table.stats th {
-        text-align: left;
+        text-align: start;
         font-weight: 500;
         color: var(--secondary-text-color);
         padding: 6px 8px;
@@ -127,7 +132,7 @@ export class DeclutteringHealthPanel extends LitElement {
         vertical-align: top;
       }
       table.stats td.num {
-        text-align: right;
+        text-align: end;
         white-space: nowrap;
         font-variant-numeric: tabular-nums;
       }
@@ -137,7 +142,7 @@ export class DeclutteringHealthPanel extends LitElement {
         border-radius: 2px;
         background: var(--primary-color);
         vertical-align: middle;
-        margin-right: 6px;
+        margin-inline-end: 6px;
       }
       .bar.slow {
         background: var(--warning-color, #ffa600);
@@ -156,7 +161,7 @@ export class DeclutteringHealthPanel extends LitElement {
       td.trend small {
         font-family: var(--ha-font-family, inherit);
         color: var(--secondary-text-color);
-        margin-left: 4px;
+        margin-inline-start: 4px;
       }
     `;
   }
