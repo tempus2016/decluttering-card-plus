@@ -13,8 +13,12 @@ export type ErrorKind = 'missing_template' | 'custom_missing' | 'unset' | 'check
 export interface ErrorLine {
   key: string;
   value: string;
-  /** What is wrong with it, in a few words: "not found", "not registered", "required by the template". */
-  note: string;
+  /*
+   * What is wrong with it, in a few words ("not found", "not registered", "required by the
+   * template"), as the locale key rather than the words: the card is often built before its
+   * language has loaded, and the words are looked up again each time it is drawn.
+   */
+  noteKey: 'errorcard.not_found' | 'errorcard.not_registered' | 'errorcard.required';
 }
 
 export interface ErrorDetail {
@@ -34,34 +38,33 @@ export function missingTemplateDetail(
   ll: LovelaceConfig | null | undefined,
   template: string,
   available: string[],
-  notFound: string,
 ): ErrorDetail {
   const closest = closestTemplate(template, available);
   return {
     kind: 'missing_template',
     template,
-    line: { key: 'template', value: template, note: notFound },
+    line: { key: 'template', value: template, noteKey: 'errorcard.not_found' },
     ...(closest ? { closest: { name: closest, uses: totalUsages(ll, closest) } } : {}),
   };
 }
 
 /** A built card whose custom element is not on the page. */
-export function customMissingDetail(template: string | undefined, types: string[], notRegistered: string): ErrorDetail {
+export function customMissingDetail(template: string | undefined, types: string[]): ErrorDetail {
   return {
     kind: 'custom_missing',
     template,
     missingTypes: types,
-    line: { key: 'type', value: types[0] ?? '', note: notRegistered },
+    line: { key: 'type', value: types[0] ?? '', noteKey: 'errorcard.not_registered' },
   };
 }
 
 /** A strict card that refused because a variable has no value. */
-export function unsetDetail(template: string | undefined, names: string[], required: string): ErrorDetail {
+export function unsetDetail(template: string | undefined, names: string[]): ErrorDetail {
   return {
     kind: 'unset',
     template,
     unset: names,
-    line: { key: names[0] ?? '', value: '', note: required },
+    line: { key: names[0] ?? '', value: '', noteKey: 'errorcard.required' },
   };
 }
 
