@@ -2847,6 +2847,8 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
       variables && (Array.isArray(variables) ? variables.length : Object.keys(variables).length)
         ? toYaml(variables)
         : localize('errorcard.nothing_passed', undefined, hass);
+    // Worked out first so the line stays one line: the code block keeps every space and newline in it.
+    const note = detail.line ? localize(detail.line.noteKey, undefined, hass) : '';
     return html`
       <ha-card class="error-card">
         <div class="title">${title}</div>
@@ -2854,8 +2856,7 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
         ${
           detail.line
             ? html`<code class="line"
-                >${detail.line.key}: ${detail.line.value}
-                <span class="note">← ${localize(detail.line.noteKey, undefined, hass)}</span></code
+                >${detail.line.key}: ${detail.line.value} <span class="note">← ${note}</span></code
               >`
             : ''
         }
