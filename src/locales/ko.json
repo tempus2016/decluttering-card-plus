@@ -23,6 +23,7 @@
 
   "card.debug_builds": "디버그: 이 카드가 빌드하는 내용.",
   "card.preview_paused": "미리보기가 일시 중지되어 편집하는 동안 이 카드를 빌드하지 않습니다. 한 번 빌드하려면 지금 렌더링을 선택하세요.",
+  "card.preview_paused_slow": "미리보기가 스스로 일시 중지되었습니다. 이 카드를 만드는 데 {ms}ms가 걸렸고, 편집할 때마다 다시 만들어집니다. 한 번만 만들려면 지금 렌더링을, 편집할 때마다 다시 만들려면 카드 편집기에서 미리보기 다시 시작를 선택하세요.",
   "card.preview_required_one": "카드를 보려면 {which}을(를) 입력하세요. 템플릿에 필요하므로 미리보기가 입력을 기다립니다.",
   "card.preview_required_many": "카드를 보려면 {which}을(를) 입력하세요. 템플릿에 필요하므로 미리보기가 입력을 기다립니다.",
   "card.preview_render_now": "지금 렌더링",
@@ -275,6 +276,7 @@
   "warn.no_map_match": "\"{value}\"이(가) map: 쌍 중 어느 것과도 일치하지 않습니다",
   "warn.refused_map": "map:은 지정한 쌍에 대해서만 값을 줍니다. 나머지 값을 모두 받으려면 *=something을 추가하세요.",
   "warn.no_pick_match": "{field} = \"{value}\"인 항목이 없습니다",
+  "warn.pick_written": "pick:는 field=value 형식으로 쓰고, 필요하면 쉼표 뒤에 돌려줄 필드를 씁니다. 예: pick:name=dog,icon",
   "warn.refused_pick": "pick:은 그 값을 가진 항목이 없거나 찾은 항목에 그 필드가 없으면 아무것도 주지 않습니다. 뒤에 |default:something을 추가하세요.",
   "warn.unknown_step": "decluttering-card-plus: {which} 자리표시자를 작성된 그대로 카드에 남겼습니다.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\"은(는) 이 카드가 아는 단계가 아닙니다.",

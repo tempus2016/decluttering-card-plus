@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: wat deze kaart bouwt.",
   "card.preview_paused": "Het voorbeeld is gepauzeerd, dus deze kaart wordt niet gebouwd terwijl je bewerkt. Kies Nu weergeven om hem één keer te bouwen.",
+  "card.preview_paused_slow": "De voorbeeldweergave heeft zichzelf gepauzeerd: het bouwen van deze kaart duurde {ms} ms, en hij zou bij elke wijziging opnieuw worden gebouwd. Kies Nu weergeven om hem één keer te bouwen, of Voorbeeld hervatten in de kaarteditor om weer bij elke wijziging te bouwen.",
   "card.preview_required_one": "Vul {which} in om de kaart te zien. De template heeft het nodig, dus het voorbeeld wacht erop.",
   "card.preview_required_many": "Vul {which} in om de kaart te zien. De template heeft ze nodig, dus het voorbeeld wacht erop.",
   "card.preview_render_now": "Nu weergeven",
@@ -275,6 +276,7 @@
   "warn.no_map_match": "\"{value}\" past bij geen van de map:-paren",
   "warn.refused_map": "map: geeft alleen een waarde voor de paren die het noemt. Voeg *=iets toe om elke andere waarde op te vangen.",
   "warn.no_pick_match": "geen item heeft {field} = \"{value}\"",
+  "warn.pick_written": "pick: schrijf je als field=value, eventueel met na een komma het veld dat het moet geven, zoals pick:name=dog,icon",
   "warn.refused_pick": "pick: geeft niets als geen item die waarde heeft, of het gevonden item dat veld niet heeft. Zet er |default:iets achter.",
   "warn.unknown_step": "decluttering-card-plus: {which} De placeholder blijft in de kaart staan zoals hij geschreven is.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" is geen stap die deze kaart kent.",

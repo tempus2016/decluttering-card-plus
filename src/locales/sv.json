@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Felsökning: vad det här kortet bygger.",
   "card.preview_paused": "Förhandsvisningen är pausad, så kortet byggs inte medan du redigerar. Välj Rendera nu för att bygga det en gång.",
+  "card.preview_paused_slow": "Förhandsvisningen pausade sig själv: det tog {ms} ms att bygga det här kortet, och det skulle byggas om vid varje ändring. Välj Rendera nu för att bygga det en gång, eller Återuppta förhandsvisning i kortredigeraren för att bygga vid varje ändring igen.",
   "card.preview_required_one": "Fyll i {which} för att se kortet. Mallen behöver den, så förhandsvisningen väntar på den.",
   "card.preview_required_many": "Fyll i {which} för att se kortet. Mallen behöver dem, så förhandsvisningen väntar på dem.",
   "card.preview_render_now": "Rendera nu",
@@ -275,6 +276,7 @@
   "warn.no_map_match": "\"{value}\" matchar inget av map:-paren",
   "warn.refused_map": "map: ger bara ett värde för de par den namnger. Lägg till *=något för att fånga alla andra värden.",
   "warn.no_pick_match": "ingen post har {field} = \"{value}\"",
+  "warn.pick_written": "pick: skrivs field=value, med fältet som ska ges efter ett kommatecken om du vill, till exempel pick:name=dog,icon",
   "warn.refused_pick": "pick: ger ingenting när ingen post har det värdet, eller när posten den hittar saknar det fältet. Lägg till |default:något efter den.",
   "warn.unknown_step": "decluttering-card-plus: {which} Platshållaren lämnas i kortet som den är skriven.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" är inte ett steg som det här kortet känner till.",

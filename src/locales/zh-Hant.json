@@ -23,6 +23,7 @@
 
   "card.debug_builds": "除錯：此面板建構的內容。",
   "card.preview_paused": "預覽已暫停，編輯時不會建構此面板。選擇「立即渲染」以建構一次。",
+  "card.preview_paused_slow": "預覽已自動暫停：建置此卡片花了 {ms} 毫秒，而每次編輯都會重新建置。選擇「立即渲染」建置一次，或在卡片編輯器中選擇「繼續預覽」以重新在每次編輯時建置。",
   "card.preview_required_one": "請填入 {which} 以檢視面板。模板需要此值，因此預覽會等待輸入。",
   "card.preview_required_many": "請填入 {which} 以檢視面板。模板需要這些值，因此預覽會等待輸入。",
   "card.preview_render_now": "立即渲染",
@@ -275,6 +276,7 @@
   "warn.no_map_match": "「{value}」不符合任何 map: 配對",
   "warn.refused_map": "map: 只為其列出的配對提供值。加上 *=something 以涵蓋其他所有值。",
   "warn.no_pick_match": "沒有項目的 {field} =「{value}」",
+  "warn.pick_written": "pick: 寫作 field=value，如需要可在逗號後寫上要給出的欄位，例如 pick:name=dog,icon",
   "warn.refused_pick": "若沒有項目具有該值，或找到的項目沒有該欄位，pick: 就不會提供任何值。請在其後加上 |default:something。",
   "warn.unknown_step": "decluttering-card-plus：{which} 預留位置依原樣保留在面板中。",
   "warn.unknown_step_one": "{placeholder}：「{step}」不是此面板認得的步驟。",

@@ -113,6 +113,36 @@ check(
     .unused,
   [],
 );
+// #459: a value an item template reads uses what that value reads in turn.
+{
+  const template = {
+    default: [{ show_weather: false }, { show: { ele: { weather: '[[debug|and:[[show_weather]]]]' } } }],
+    card: { type: 'x', elements: '[[elements_item|with]]' },
+  };
+  const bodies = [{ item: ['[[weather_item|with|if:show.ele.weather?]]'] }];
+  check(
+    'a variable reached through a value an item template reads is not called unused (#459)',
+    diagnoseInstance([{ show_weather: true }], template, [{ elements_item: null }], undefined, bodies).unused,
+    [],
+  );
+  check(
+    'a mapping an item template reads one key of is not called unused (#459)',
+    diagnoseInstance([{ show: { ele: { weather: true } } }], template, [{ elements_item: null }], undefined, bodies)
+      .unused,
+    [],
+  );
+  check(
+    'a variable nothing reads is still called unused alongside item templates',
+    diagnoseInstance([{ show_weather: true }, { stray: 1 }], template, [{ elements_item: null }], undefined, bodies)
+      .unused,
+    ['stray'],
+  );
+  check(
+    'what an item template reads is still never called missing',
+    diagnoseInstance([], { card: { a: '[[e|with]]' } }, [{ e: null }], undefined, [{ item: '[[nowhere]]' }]).missing,
+    [],
+  );
+}
 check('placeholders are found in a group', usedVariables({ group: { cards: [{ entity: '[[light]]' }] } }), ['light']);
 check('placeholders are found in the style block', usedVariables({ card: {}, style: 'border: [[colour]]' }), [
   'colour',
@@ -2046,4 +2076,20 @@ check('the five position names, for the checks that have to know them', POSITION
     ['key', 'value', 'entity', 'label'].every((name) => names.includes(name)),
     true,
   );
+}
+
+// A step that makes one value out of a list - first, last, join, pick: - leaves a stand-in after it as text, not a list.
+{
+  const icons = { cat: 'mdi:cat' };
+  check(
+    'default after to_list and pick: is text',
+    applyTransform('to_list|pick:key=zebra,value|default:mdi:help', icons),
+    'mdi:help',
+  );
+  check('default after split and first is text', applyTransform('split|first|default:x', ''), 'x');
+  check('default after split and last is text', applyTransform('split|last|default:x', ''), 'x');
+  check('default after split and join is text', applyTransform('split|join|default:x', ''), 'x');
+  check('default after split and pick: is text', applyTransform('split|pick:k=z|default:x', ''), 'x');
+  check('default straight after split is still a list', applyTransform('split|default:a,b', ''), '["a","b"]');
+  check('default straight after to_list is still a list', applyTransform('to_list|default:a,b', {}), '["a","b"]');
 }

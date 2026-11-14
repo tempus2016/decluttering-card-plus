@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: cosa costruisce questa scheda.",
   "card.preview_paused": "L'anteprima è in pausa, quindi questa scheda non viene costruita mentre modifichi. Scegli Mostra ora per costruirla una volta.",
+  "card.preview_paused_slow": "L'anteprima si è messa in pausa da sola: creare questa scheda ha richiesto {ms} ms, e verrebbe ricreata a ogni modifica. Scegli Mostra ora per crearla una volta, oppure Riprendi l'anteprima nell'editor della scheda per ricrearla a ogni modifica.",
   "card.preview_required_one": "Compila {which} per vedere la scheda. Il modello ne ha bisogno, quindi l'anteprima lo aspetta.",
   "card.preview_required_many": "Compila {which} per vedere la scheda. Il modello ne ha bisogno, quindi l'anteprima li aspetta.",
   "card.preview_render_now": "Mostra ora",
@@ -275,6 +276,7 @@
   "warn.no_map_match": "\"{value}\" non corrisponde a nessuna delle coppie map:",
   "warn.refused_map": "map: dà un valore solo per le coppie che nomina. Aggiungi *=qualcosa per coprire tutti gli altri valori.",
   "warn.no_pick_match": "nessuna voce ha {field} = \"{value}\"",
+  "warn.pick_written": "pick: si scrive field=value, con il campo da restituire dopo una virgola se serve, come pick:name=dog,icon",
   "warn.refused_pick": "pick: non dà nulla quando nessuna voce ha quel valore, o quando la voce trovata non ha quel campo. Aggiungi |default:qualcosa dopo.",
   "warn.unknown_step": "decluttering-card-plus: {which} Il segnaposto resta nella scheda così come è scritto.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" non è un passaggio che questa scheda conosce.",

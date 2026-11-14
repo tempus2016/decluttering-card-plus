@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Ladění: co tato karta sestavuje.",
   "card.preview_paused": "Náhled je pozastaven, takže se tato karta při úpravách nesestavuje. Zvolte Vykreslit nyní pro jednorázové sestavení.",
+  "card.preview_paused_slow": "Náhled se sám pozastavil: sestavení této karty trvalo {ms} ms a sestavovala by se znovu při každé úpravě. Zvolte Vykreslit nyní pro jedno sestavení, nebo Obnovit náhled v editoru karty, aby se sestavovala znovu při každé úpravě.",
   "card.preview_required_one": "Pro zobrazení karty vyplňte {which}. Šablona tuto hodnotu potřebuje, takže náhled na ni čeká.",
   "card.preview_required_many": "Pro zobrazení karty vyplňte {which}. Šablona tyto hodnoty potřebuje, takže náhled na ně čeká.",
   "card.preview_render_now": "Vykreslit nyní",
@@ -275,6 +276,7 @@
   "warn.no_map_match": "„{value}“ neodpovídá žádné z dvojic map:",
   "warn.refused_map": "map: dává hodnotu jen pro dvojice, které uvádí. Přidejte *=něco pro zachycení všech ostatních hodnot.",
   "warn.no_pick_match": "žádná položka nemá {field} = „{value}“",
+  "warn.pick_written": "pick: se píše jako field=value, případně za čárkou pole, které má vrátit, například pick:name=dog,icon",
   "warn.refused_pick": "pick: nedá nic, když žádná položka nemá tuto hodnotu nebo nalezená položka takové pole nemá. Přidejte za něj |default:něco.",
   "warn.unknown_step": "decluttering-card-plus: {which} Zástupný symbol zůstává v kartě tak, jak je zapsán.",
   "warn.unknown_step_one": "{placeholder}: „{step}“ není krok, který tato karta zná.",

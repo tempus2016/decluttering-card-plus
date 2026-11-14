@@ -23,6 +23,7 @@
 
   "card.debug_builds": "调试：此卡片构建的内容。",
   "card.preview_paused": "预览已暂停，编辑时不会构建此卡片。选择“立即渲染”可构建一次。",
+  "card.preview_paused_slow": "预览已自动暂停：构建此卡片用了 {ms} 毫秒，而每次编辑都会重新构建。选择“立即渲染”构建一次，或在卡片编辑器中选择“恢复预览”以重新在每次编辑时构建。",
   "card.preview_required_one": "填写 {which} 后即可看到卡片。模板需要它，因此预览会等待。",
   "card.preview_required_many": "填写 {which} 后即可看到卡片。模板需要它们，因此预览会等待。",
   "card.preview_render_now": "立即渲染",
@@ -275,6 +276,7 @@
   "warn.no_map_match": "“{value}”不匹配任何 map: 对",
   "warn.refused_map": "map: 只为其列出的对给出值。添加 *=something 以匹配其他所有值。",
   "warn.no_pick_match": "没有条目的 {field} = “{value}”",
+  "warn.pick_written": "pick: 写作 field=value，如需要可在逗号后写上要给出的字段，例如 pick:name=dog,icon",
   "warn.refused_pick": "当没有条目具有该值，或找到的条目没有该字段时，pick: 不返回任何内容。请在其后添加 |default:something。",
   "warn.unknown_step": "decluttering-card-plus：{which} 占位符按原样保留在卡片中。",
   "warn.unknown_step_one": "{placeholder}：“{step}”不是此卡片支持的步骤。",

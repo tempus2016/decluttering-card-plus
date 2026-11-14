@@ -2156,6 +2156,9 @@ export function applyTransform(
       const picked = pickFrom(list ?? firstHand, name.slice(PICK_STEP.length + 1));
       text = picked === undefined || picked === null ? undefined : itemText(picked);
       list = undefined;
+      // One entry, not a list: a stand-in after it is text.
+      splitBefore = false;
+      listedBefore = false;
       empty = text === undefined || text === '';
       continue;
     }
@@ -2249,6 +2252,11 @@ export function applyTransform(
       // Noted whether or not there is anything to split yet: a stand-in further along is
       // what fills the gap, and it is read as a list because this step came first.
       if (step === SPLIT_STEP) splitBefore = true;
+      // Every other list step makes one value of the list, so a stand-in after it is text.
+      else {
+        splitBefore = false;
+        listedBefore = false;
+      }
       const items =
         list ??
         (Array.isArray(firstHand)
@@ -2496,6 +2504,12 @@ function dottedSuffixes(value: object): [string, unknown][] {
 // Whether a value has dotted names under it at all: a mapping, not a list.
 function isDottable(value: unknown): value is object {
   return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** The dotted names one value gives under a name, one entry each; none for anything but a mapping. */
+export function dottedEntries(name: string, value: unknown): VariablesConfig[] {
+  if (!isDottable(value)) return [];
+  return dottedSuffixes(value).map(([suffix, inner]) => ({ [name + suffix]: inner }));
 }
 
 /*
@@ -2920,7 +2934,12 @@ function checkReads(template: TemplateConfig | undefined): unknown[] {
  * value of a variable nothing refers to is never substituted, so it does not count.
  */
 function reachable(template: TemplateConfig | undefined, values: Record<string, any>): string[] {
-  const queue = placeholdersIn(contentOf(template));
+  return reachableFrom(placeholdersIn(contentOf(template)), values);
+}
+
+// The names given, and then the ones their values pull in, and theirs, each once.
+function reachableFrom(start: string[], values: Record<string, any>): string[] {
+  const queue = [...start];
   const seen = new Set<string>();
   const used: string[] = [];
   while (queue.length) {
@@ -3313,9 +3332,14 @@ export function diagnoseInstance(
   // reached only through one of its keys (`[[room.light]]`) is still used.
   const passed = ownVariables(variables);
   const readByBodies = new Set<string>();
-  for (const body of bodies ?? []) for (const name of placeholdersIn(body)) readByBodies.add(name);
+  // Followed through the card's values too (#459): an item template reading
+  // `[[show.ele.weather]]` uses whatever that value reads in turn.
+  for (const body of bodies ?? [])
+    for (const name of reachableFrom(placeholdersIn(body), values)) readByBodies.add(name);
   const reached = (name: string): boolean =>
-    isUsed.has(name) || readByBodies.has(name) || used.some((each) => each.startsWith(name + '.'));
+    isUsed.has(name) ||
+    readByBodies.has(name) ||
+    [...used, ...readByBodies].some((each) => each.startsWith(name + '.'));
   const unused: string[] = [];
   for (const entry of passed) {
     const name = firstKey(entry);

@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: o que este cartão constrói.",
   "card.preview_paused": "A pré-visualização está em pausa, por isso este cartão não é construído enquanto editas. Escolhe Renderizar agora para o construir uma vez.",
+  "card.preview_paused_slow": "A pré-visualização pausou sozinha: construir este cartão demorou {ms} ms, e voltaria a ser construído a cada alteração. Escolha Renderizar agora para o construir uma vez, ou Retomar pré-visualização no editor do cartão para voltar a construir a cada alteração.",
   "card.preview_required_one": "Preenche {which} para ver o cartão. O modelo precisa dele, por isso a pré-visualização espera.",
   "card.preview_required_many": "Preenche {which} para ver o cartão. O modelo precisa deles, por isso a pré-visualização espera.",
   "card.preview_render_now": "Renderizar agora",
@@ -275,6 +276,7 @@
   "warn.no_map_match": "\"{value}\" não corresponde a nenhum dos pares de map:",
   "warn.refused_map": "map: só dá um valor para os pares que nomeia. Adicione *=algo para apanhar qualquer outro valor.",
   "warn.no_pick_match": "nenhuma entrada tem {field} = \"{value}\"",
+  "warn.pick_written": "pick: escreve-se field=value, com o campo a devolver depois de uma vírgula se quiser, como pick:name=dog,icon",
   "warn.refused_pick": "pick: não dá nada quando nenhuma entrada tem esse valor ou a entrada encontrada não tem esse campo. Acrescente |default:algo a seguir.",
   "warn.unknown_step": "decluttering-card-plus: {which} O marcador fica no cartão tal como está escrito.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" não é um passo que este cartão conheça.",
