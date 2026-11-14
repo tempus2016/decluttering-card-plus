@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" nie pasuje do żadnej pary map:",
   "warn.refused_map": "map: daje wartość tylko dla par, które wymienia. Dodaj *=coś, aby objąć każdą inną wartość.",
   "warn.no_pick_match": "żaden wpis nie ma {field} = \"{value}\"",
+  "warn.pick_written": "pick: zapisuje się jako field=value, opcjonalnie z polem do zwrócenia po przecinku, np. pick:name=dog,icon",
   "warn.refused_pick": "pick: nie daje nic, gdy żaden wpis nie ma tej wartości albo znaleziony wpis nie ma takiego pola. Dodaj po nim |default:coś.",
   "warn.unknown_step": "decluttering-card-plus: {which} Placeholder zostaje w karcie w zapisanej postaci.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" nie jest krokiem znanym tej karcie.",

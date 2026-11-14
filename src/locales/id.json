@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" tidak cocok dengan pasangan map: mana pun",
   "warn.refused_map": "map: hanya memberi nilai untuk pasangan yang disebutkannya. Tambahkan *=sesuatu untuk menangkap semua nilai lainnya.",
   "warn.no_pick_match": "tidak ada entri dengan {field} = \"{value}\"",
+  "warn.pick_written": "pick: ditulis field=value, dengan kolom yang diberikan setelah koma jika perlu, misalnya pick:name=dog,icon",
   "warn.refused_pick": "pick: tidak memberi apa pun jika tidak ada entri dengan nilai itu, atau entri yang ditemukan tidak punya kolom tersebut. Tambahkan |default:sesuatu setelahnya.",
   "warn.unknown_step": "decluttering-card-plus: {which} Placeholder dibiarkan di kartu apa adanya.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" bukan langkah yang dikenal kartu ini.",

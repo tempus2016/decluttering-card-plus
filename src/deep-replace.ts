@@ -633,10 +633,12 @@ function substitutePass(
         if (stepName(steps[upTo - 1]) === PICK_STEP) {
           if (optional) return match;
           const asked = pickArgs(steps[upTo - 1].slice(PICK_STEP.length + 1));
+          // Written without field=value it has nothing to look for, and a default: would not fix that.
+          if (!asked) return refuse(match, written, localize('warn.pick_written'), 'structure');
           return refuse(
             match,
             written,
-            localize('warn.no_pick_match', { field: asked?.field ?? '', value: asked?.wanted ?? '' }),
+            localize('warn.no_pick_match', { field: asked.field, value: asked.wanted }),
             'pick',
           );
         }
@@ -647,6 +649,8 @@ function substitutePass(
         if (stepName(steps[upTo - 1]) !== MAP_STEP) break;
         const before =
           upTo === 1 ? input : applyTransform(steps.slice(0, upTo - 1).join('|'), input, hass, values, read);
+        // A placeholder that filled in a mapping or a list is refused as a written-out one is, not quoted as text.
+        if (before !== null && typeof before === 'object') return refuse(match, written, kindOf(before));
         return refuse(match, written, localize('warn.no_map_match', { value: before }), 'map');
       }
       return refuse(match, written, localize('warn.nothing_for', { value }), 'missing');

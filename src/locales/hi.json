@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" किसी भी map: जोड़े से मेल नहीं खाता",
   "warn.refused_map": "map: केवल उन्हीं जोड़ों के लिए मान देता है जिनका वह नाम लेता है। बाकी हर मान पकड़ने के लिए *=something जोड़ें।",
   "warn.no_pick_match": "किसी प्रविष्टि में {field} = \"{value}\" नहीं है",
+  "warn.pick_written": "pick: को field=value के रूप में लिखा जाता है, चाहें तो कॉमा के बाद देने वाला फ़ील्ड, जैसे pick:name=dog,icon",
   "warn.refused_pick": "pick: तब कुछ नहीं देता जब किसी प्रविष्टि में वह मान न हो, या मिली प्रविष्टि में वह field न हो। इसके बाद |default:something जोड़ें।",
   "warn.unknown_step": "decluttering-card-plus: {which} प्लेसहोल्डर कार्ड में जैसा लिखा है वैसा ही छोड़ा गया है।",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" ऐसा step नहीं है जिसे यह कार्ड जानता हो।",

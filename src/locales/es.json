@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" no coincide con ninguno de los pares de map:",
   "warn.refused_map": "map: solo da un valor para los pares que nombra. Añade *=algo para recoger cualquier otro valor.",
   "warn.no_pick_match": "ninguna entrada tiene {field} = \"{value}\"",
+  "warn.pick_written": "pick: se escribe field=value, con el campo que debe dar tras una coma si quieres, como pick:name=dog,icon",
   "warn.refused_pick": "pick: no da nada cuando ninguna entrada tiene ese valor o la entrada encontrada no tiene ese campo. Añade |default:algo después.",
   "warn.unknown_step": "decluttering-card-plus: {which} El marcador se deja en la tarjeta tal como está escrito.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" no es un paso que esta tarjeta conozca.",

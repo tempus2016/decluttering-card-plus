@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" не відповідає жодній парі map:",
   "warn.refused_map": "map: дає значення лише для пар, які в ньому названо. Додайте *=щось, щоб охопити всі інші значення.",
   "warn.no_pick_match": "жоден запис не має {field} = \"{value}\"",
+  "warn.pick_written": "pick: записується як field=value, за бажання з полем для виведення після коми, наприклад pick:name=dog,icon",
   "warn.refused_pick": "pick: нічого не дає, коли жоден запис не має такого значення або знайдений запис не має такого поля. Додайте після нього |default:щось.",
   "warn.unknown_step": "decluttering-card-plus: {which} Заповнювач залишено в картці як є.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" - невідомий цій картці крок.",
