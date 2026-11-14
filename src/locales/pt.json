@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: o que este cartão constrói.",
   "card.preview_paused": "A pré-visualização está em pausa, por isso este cartão não é construído enquanto editas. Escolhe Renderizar agora para o construir uma vez.",
+  "card.preview_paused_slow": "A pré-visualização pausou sozinha: construir este cartão demorou {ms} ms, e voltaria a ser construído a cada alteração. Escolha Renderizar agora para o construir uma vez, ou Retomar pré-visualização no editor do cartão para voltar a construir a cada alteração.",
   "card.preview_required_one": "Preenche {which} para ver o cartão. O modelo precisa dele, por isso a pré-visualização espera.",
   "card.preview_required_many": "Preenche {which} para ver o cartão. O modelo precisa deles, por isso a pré-visualização espera.",
   "card.preview_render_now": "Renderizar agora",

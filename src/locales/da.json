@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Fejlsøgning: hvad dette kort bygger.",
   "card.preview_paused": "Forhåndsvisningen er sat på pause, så kortet bygges ikke, mens du redigerer. Vælg Vis nu for at bygge det én gang.",
+  "card.preview_paused_slow": "Forhåndsvisningen satte sig selv på pause: det tog {ms} ms at bygge dette kort, og det ville blive bygget igen ved hver ændring. Vælg Vis nu for at bygge det én gang, eller Genoptag forhåndsvisning i korteditoren for at bygge ved hver ændring igen.",
   "card.preview_required_one": "Udfyld {which} for at se kortet. Skabelonen kræver den, så forhåndsvisningen venter på den.",
   "card.preview_required_many": "Udfyld {which} for at se kortet. Skabelonen kræver dem, så forhåndsvisningen venter på dem.",
   "card.preview_render_now": "Vis nu",

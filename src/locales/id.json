@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: apa yang dibuat kartu ini.",
   "card.preview_paused": "Pratinjau dijeda, jadi kartu ini tidak dibuat selama Anda mengedit. Pilih Render sekarang untuk membuatnya sekali.",
+  "card.preview_paused_slow": "Pratinjau menjeda dirinya sendiri: membuat kartu ini memakan waktu {ms} ms, dan kartu akan dibuat ulang pada setiap perubahan. Pilih Render sekarang untuk membuatnya sekali, atau Lanjutkan pratinjau di editor kartu untuk membuat ulang pada setiap perubahan.",
   "card.preview_required_one": "Isi {which} untuk melihat kartu. Templat memerlukannya, jadi pratinjau menunggunya.",
   "card.preview_required_many": "Isi {which} untuk melihat kartu. Templat memerlukannya, jadi pratinjau menunggu semuanya.",
   "card.preview_render_now": "Render sekarang",

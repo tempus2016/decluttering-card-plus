@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: co buduje ta karta.",
   "card.preview_paused": "Podgląd jest wstrzymany, więc ta karta nie jest budowana podczas edycji. Wybierz Renderuj teraz, aby zbudować ją raz.",
+  "card.preview_paused_slow": "Podgląd sam się wstrzymał: zbudowanie tej karty zajęło {ms} ms, a byłaby budowana od nowa przy każdej zmianie. Wybierz Renderuj teraz, aby zbudować ją raz, lub Wznów podgląd w edytorze karty, aby znów budować przy każdej zmianie.",
   "card.preview_required_one": "Uzupełnij {which}, aby zobaczyć kartę. Szablon tego wymaga, więc podgląd czeka.",
   "card.preview_required_many": "Uzupełnij {which}, aby zobaczyć kartę. Szablon ich wymaga, więc podgląd czeka.",
   "card.preview_render_now": "Renderuj teraz",

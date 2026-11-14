@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: what this card builds.",
   "card.preview_paused": "The preview is paused, so this card is not built while you edit. Choose Render now to build it once.",
+  "card.preview_paused_slow": "The preview paused itself: building this card took {ms} ms, and it would build again on every edit. Choose Render now to build it once, or Resume preview in the card editor to build on every edit again.",
   "card.preview_required_one": "Fill in {which} to see the card. The template needs it, so the preview waits for it.",
   "card.preview_required_many": "Fill in {which} to see the card. The template needs them, so the preview waits for them.",
   "card.preview_render_now": "Render now",

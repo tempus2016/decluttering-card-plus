@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Hata ayıklama: bu kartın oluşturduğu.",
   "card.preview_paused": "Önizleme duraklatıldı, bu yüzden düzenleme sırasında bu kart oluşturulmuyor. Bir kez oluşturmak için Şimdi oluştur'u seçin.",
+  "card.preview_paused_slow": "Önizleme kendini duraklattı: bu kartı oluşturmak {ms} ms sürdü ve her düzenlemede yeniden oluşturulacaktı. Bir kez oluşturmak için Şimdi oluştur'u, her düzenlemede yeniden oluşturmak için kart düzenleyicide Önizlemeyi sürdür'ü seçin.",
   "card.preview_required_one": "Kartı görmek için şunu doldurun: {which}. Şablon buna ihtiyaç duyuyor, bu yüzden önizleme onu bekliyor.",
   "card.preview_required_many": "Kartı görmek için şunları doldurun: {which}. Şablon bunlara ihtiyaç duyuyor, bu yüzden önizleme onları bekliyor.",
   "card.preview_render_now": "Şimdi oluştur",

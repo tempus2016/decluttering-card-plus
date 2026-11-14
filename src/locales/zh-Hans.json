@@ -23,6 +23,7 @@
 
   "card.debug_builds": "调试：此卡片构建的内容。",
   "card.preview_paused": "预览已暂停，编辑时不会构建此卡片。选择“立即渲染”可构建一次。",
+  "card.preview_paused_slow": "预览已自动暂停：构建此卡片用了 {ms} 毫秒，而每次编辑都会重新构建。选择“立即渲染”构建一次，或在卡片编辑器中选择“恢复预览”以重新在每次编辑时构建。",
   "card.preview_required_one": "填写 {which} 后即可看到卡片。模板需要它，因此预览会等待。",
   "card.preview_required_many": "填写 {which} 后即可看到卡片。模板需要它们，因此预览会等待。",
   "card.preview_render_now": "立即渲染",

@@ -27,6 +27,16 @@ const listeners = new Set<Listener>();
 let paused = false;
 let editors = 0;
 let openings = 0;
+// How long the build took that switched the pause on by itself (#456), while that pause holds.
+let slowMs: number | undefined;
+
+/*
+ * #456: a build this slow, with a card editor open, switches the pause on by itself. Every
+ * edit builds the preview again, so a card that takes seconds to build leaves the editor
+ * waiting on each keystroke, whether the template is heavy or something has gone wrong.
+ * Long enough that an ordinary card never comes near it.
+ */
+export const SLOW_PREVIEW_MS = 1500;
 
 function tell(event: PreviewHoldEvent): void {
   for (const listener of [...listeners]) listener(event);
@@ -72,7 +82,25 @@ export function previewEditorOpenings(): number {
 export function setPreviewPaused(value: boolean): void {
   if (paused === value) return;
   paused = value;
+  slowMs = undefined;
   tell('changed');
+}
+
+/**
+ * A preview build and how long it took. One slow enough, with a card editor open and the
+ * pause not already on, switches the pause on and says why. Told after this turn rather than
+ * at once, as builds happen while the editor and card are drawing themselves.
+ */
+export function notePreviewBuild(ms: number): void {
+  if (paused || editors === 0 || !(ms >= SLOW_PREVIEW_MS)) return;
+  paused = true;
+  slowMs = Math.round(ms);
+  queueMicrotask(() => tell('changed'));
+}
+
+/** How long the build took that paused the preview by itself, while that pause is on (#456). */
+export function previewSlowPause(): number | undefined {
+  return paused ? slowMs : undefined;
 }
 
 /** Builds every held preview once, with the config it has now. */
@@ -93,6 +121,7 @@ export function resetPreviewHold(): void {
   paused = false;
   editors = 0;
   openings = 0;
+  slowMs = undefined;
 }
 
 /**
