@@ -134,8 +134,9 @@ here.
   offers the fix.
 - A health panel for missing templates, unset variables and unused templates, also as a card
   or badge on the dashboard, and `debug: report` to write up what a card built, with an
-  outline of what built what, what each variable worked out to and how, and a box to try a
-  placeholder in, ready to paste into an issue.
+  outline of what built what, what each variable worked out to and how, a box to try a
+  placeholder in, and any card inside that refused its config, ready to paste into an issue.
+  It folds to a one-line bar, and one entity can switch every report on a page off.
 - In the editors: presets from a template's examples, a gallery to install templates from,
   a preview in light and dark at phone and tablet widths, a pause for previews that are
   expensive to build, an extends family tree, a diff against the library copy, and a
