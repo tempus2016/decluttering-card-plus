@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" لا يطابق أياً من أزواج map:",
   "warn.refused_map": "map: لا يعطي قيمة إلا للأزواج التي يذكرها. أضف *=something لالتقاط كل القيم الأخرى.",
   "warn.no_pick_match": "لا يوجد إدخال فيه {field} = \"{value}\"",
+  "warn.pick_written": "يُكتب pick: بالشكل field=value، مع الحقل المطلوب بعد فاصلة إن أردت، مثل pick:name=dog,icon",
   "warn.refused_pick": "pick: لا يعطي شيئاً عندما لا يحمل أي إدخال تلك القيمة، أو عندما لا يحتوي الإدخال الذي يجده على ذلك الحقل. أضف |default:something بعده.",
   "warn.unknown_step": "decluttering-card-plus: {which} يُترك العنصر النائب في البطاقة كما هو مكتوب.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" ليست خطوة تعرفها هذه البطاقة.",

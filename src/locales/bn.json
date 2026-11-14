@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" কোনো map: জোড়ার সাথে মেলে না",
   "warn.refused_map": "map: কেবল তার উল্লেখ করা জোড়াগুলোর জন্য মান দেয়। বাকি সব মান ধরতে *=something যোগ করুন।",
   "warn.no_pick_match": "কোনো এন্ট্রিতে {field} = \"{value}\" নেই",
+  "warn.pick_written": "pick: লেখা হয় field=value আকারে, চাইলে কমার পরে যে ফিল্ডটি দেবে সেটি, যেমন pick:name=dog,icon",
   "warn.refused_pick": "কোনো এন্ট্রিতে সেই মান না থাকলে, বা খুঁজে পাওয়া এন্ট্রিতে সেই ফিল্ড না থাকলে pick: কিছুই দেয় না। এর পরে |default:something যোগ করুন।",
   "warn.unknown_step": "decluttering-card-plus: {which} প্লেসহোল্ডারটি যেমন লেখা তেমনই কার্ডে রেখে দেওয়া হয়েছে।",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" এমন কোনো ধাপ নয় যা এই কার্ড চেনে।",

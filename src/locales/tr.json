@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" değeri map: çiftlerinin hiçbiriyle eşleşmiyor",
   "warn.refused_map": "map: yalnızca adını verdiği çiftler için değer verir. Diğer tüm değerleri yakalamak için *=bir_şey ekleyin.",
   "warn.no_pick_match": "hiçbir girdide {field} = \"{value}\" yok",
+  "warn.pick_written": "pick: field=value biçiminde yazılır; istersen virgülden sonra verilecek alanı ekle, örneğin pick:name=dog,icon",
   "warn.refused_pick": "pick:, hiçbir girdide o değer yoksa veya bulduğu girdide böyle bir alan yoksa hiçbir şey vermez. Arkasına |default:bir_şey ekleyin.",
   "warn.unknown_step": "decluttering-card-plus: {which} Yer tutucu kartta yazıldığı gibi bırakıldı.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" bu kartın bildiği bir adım değil.",

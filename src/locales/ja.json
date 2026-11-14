@@ -275,6 +275,7 @@
   "warn.no_map_match": "「{value}」はどの map: のペアにも一致しません",
   "warn.refused_map": "map: は指定したペアにしか値を返しません。他のすべての値を受けるには *=something を追加してください。",
   "warn.no_pick_match": "{field} =「{value}」の項目がありません",
+  "warn.pick_written": "pick: は field=value の形で書き、必要ならカンマの後に返すフィールドを書きます。例: pick:name=dog,icon",
   "warn.refused_pick": "pick: は、その値を持つ項目がないか、見つかった項目にそのフィールドがない場合、何も返しません。後ろに |default:something を追加してください。",
   "warn.unknown_step": "decluttering-card-plus: {which} プレースホルダーは書かれたままカードに残ります。",
   "warn.unknown_step_one": "{placeholder}: 「{step}」はこのカードが認識しないステップです。",

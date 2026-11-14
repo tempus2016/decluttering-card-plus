@@ -275,6 +275,7 @@
   "warn.no_map_match": "“{value}”不匹配任何 map: 对",
   "warn.refused_map": "map: 只为其列出的对给出值。添加 *=something 以匹配其他所有值。",
   "warn.no_pick_match": "没有条目的 {field} = “{value}”",
+  "warn.pick_written": "pick: 写作 field=value，如需要可在逗号后写上要给出的字段，例如 pick:name=dog,icon",
   "warn.refused_pick": "当没有条目具有该值，或找到的条目没有该字段时，pick: 不返回任何内容。请在其后添加 |default:something。",
   "warn.unknown_step": "decluttering-card-plus：{which} 占位符按原样保留在卡片中。",
   "warn.unknown_step_one": "{placeholder}：“{step}”不是此卡片支持的步骤。",

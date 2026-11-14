@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\"이(가) map: 쌍 중 어느 것과도 일치하지 않습니다",
   "warn.refused_map": "map:은 지정한 쌍에 대해서만 값을 줍니다. 나머지 값을 모두 받으려면 *=something을 추가하세요.",
   "warn.no_pick_match": "{field} = \"{value}\"인 항목이 없습니다",
+  "warn.pick_written": "pick:는 field=value 형식으로 쓰고, 필요하면 쉼표 뒤에 돌려줄 필드를 씁니다. 예: pick:name=dog,icon",
   "warn.refused_pick": "pick:은 그 값을 가진 항목이 없거나 찾은 항목에 그 필드가 없으면 아무것도 주지 않습니다. 뒤에 |default:something을 추가하세요.",
   "warn.unknown_step": "decluttering-card-plus: {which} 자리표시자를 작성된 그대로 카드에 남겼습니다.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\"은(는) 이 카드가 아는 단계가 아닙니다.",

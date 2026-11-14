@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" не совпадает ни с одной парой map:",
   "warn.refused_map": "map: даёт значение только для перечисленных пар. Добавьте *=что-то, чтобы охватить все остальные значения.",
   "warn.no_pick_match": "нет записи, где {field} = \"{value}\"",
+  "warn.pick_written": "pick: записывается как field=value, при желании с полем для вывода после запятой, например pick:name=dog,icon",
   "warn.refused_pick": "pick: ничего не даёт, если нет записи с таким значением или у найденной записи нет такого поля. Добавьте после него |default:что-то.",
   "warn.unknown_step": "decluttering-card-plus: {which} Заполнитель оставлен в карточке как есть.",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" - неизвестный этой карточке шаг.",

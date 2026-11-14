@@ -275,6 +275,7 @@
   "warn.no_map_match": "\"{value}\" کسی map: جوڑے سے مطابقت نہیں رکھتا",
   "warn.refused_map": "map: صرف انہی جوڑوں کی قدر دیتا ہے جو اس میں درج ہوں۔ باقی تمام اقدار پکڑنے کے لیے *=something شامل کریں۔",
   "warn.no_pick_match": "کسی اندراج میں {field} = \"{value}\" نہیں",
+  "warn.pick_written": "pick: کو field=value کی صورت میں لکھا جاتا ہے، چاہیں تو کوما کے بعد دینے والا فیلڈ، جیسے pick:name=dog,icon",
   "warn.refused_pick": "pick: کچھ نہیں دیتا جب کسی اندراج میں وہ قدر نہ ہو، یا ملنے والے اندراج میں وہ فیلڈ نہ ہو۔ اس کے بعد |default:something شامل کریں۔",
   "warn.unknown_step": "decluttering-card-plus: {which} پلیس ہولڈر کارڈ میں لکھے ہوئے کی طرح چھوڑ دیا گیا ہے۔",
   "warn.unknown_step_one": "{placeholder}: \"{step}\" ایسا قدم نہیں جو یہ کارڈ جانتا ہو۔",

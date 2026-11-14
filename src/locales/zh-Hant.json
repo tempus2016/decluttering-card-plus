@@ -275,6 +275,7 @@
   "warn.no_map_match": "「{value}」不符合任何 map: 配對",
   "warn.refused_map": "map: 只為其列出的配對提供值。加上 *=something 以涵蓋其他所有值。",
   "warn.no_pick_match": "沒有項目的 {field} =「{value}」",
+  "warn.pick_written": "pick: 寫作 field=value，如需要可在逗號後寫上要給出的欄位，例如 pick:name=dog,icon",
   "warn.refused_pick": "若沒有項目具有該值，或找到的項目沒有該欄位，pick: 就不會提供任何值。請在其後加上 |default:something。",
   "warn.unknown_step": "decluttering-card-plus：{which} 預留位置依原樣保留在面板中。",
   "warn.unknown_step_one": "{placeholder}：「{step}」不是此面板認得的步驟。",
