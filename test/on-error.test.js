@@ -83,4 +83,16 @@ function registry(defined, later = {}) {
     await undefinedElements(['late'], 200, registry([], { late: 10 })),
     [],
   );
+  // #456: a page still busy when the two seconds are up is waited for, so a card script that
+  // runs once the page is free is not called missing.
+  check(
+    'one that turns up while the page is still busy after the wait is not',
+    await undefinedElements(['busy'], 10, registry([], { busy: 40 }), () => new Promise((r) => setTimeout(r, 80))),
+    [],
+  );
+  check(
+    'one never installed is still reported once the page is free',
+    await undefinedElements(['never'], 10, registry([]), () => new Promise((r) => setTimeout(r, 20))),
+    ['never'],
+  );
 })();

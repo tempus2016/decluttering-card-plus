@@ -187,7 +187,7 @@ let nextBuildId = 0;
 
 export abstract class DeclutteringElement extends LitElement {
   @state() protected _hass?: HomeAssistant;
-  @state() private _thing?: LovelaceThing;
+  @state() protected _thing?: LovelaceThing;
 
   // Home Assistant sets both of these on a card element directly. They are declared so
   // that assigning them triggers an update, which is what passes them on to the wrapped

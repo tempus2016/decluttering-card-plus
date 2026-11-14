@@ -56,24 +56,39 @@ export function customTags(config: unknown): string[] {
   return tags;
 }
 
+// The longest an unfinished page can hold off the verdict (#456): busy for longer than this, it is given.
+const IDLE_WAIT_MS = 15000;
+
+/** Resolves once the page has a moment free, or after the longest wait, whichever comes first. */
+function pageIdle(): Promise<void> {
+  const win = globalThis as { requestIdleCallback?: (fn: () => void, opts: { timeout: number }) => number };
+  if (typeof win.requestIdleCallback !== 'function') return Promise.resolve();
+  return new Promise((resolve) => win.requestIdleCallback?.(() => resolve(), { timeout: IDLE_WAIT_MS }));
+}
+
 /**
  * The ones of these elements still not defined after waiting a moment for them, the way
  * Home Assistant waits before showing "Custom element doesn't exist": a card's resource can
- * finish loading after the dashboard has started drawing.
+ * finish loading after the dashboard has started drawing. The moment is counted as two
+ * seconds and then the page being free (#456): on a dashboard busy building, a card's script
+ * can sit downloaded but not yet run for longer than two seconds, and calling it missing then
+ * drew an error that was gone a few seconds later.
  */
 export async function undefinedElements(
   tags: string[],
   wait = 2000,
   registry: Pick<CustomElementRegistry, 'get' | 'whenDefined'> = customElements,
+  idle: () => Promise<void> = pageIdle,
 ): Promise<string[]> {
   const missing = tags.filter((tag) => !registry.get(tag));
   if (!missing.length) return [];
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const defined = Promise.all(missing.map((tag) => registry.whenDefined(tag)));
   await Promise.race([
-    Promise.all(missing.map((tag) => registry.whenDefined(tag))),
+    defined,
     new Promise<void>((resolve) => {
       timer = setTimeout(resolve, wait);
-    }),
+    }).then(idle),
   ]);
   if (timer !== undefined) clearTimeout(timer);
   return missing.filter((tag) => !registry.get(tag));

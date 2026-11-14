@@ -3096,6 +3096,18 @@ export function usesInstalled(
 }
 
 /**
+ * Whether the template shows an entity's labels (`|labels`), the one step that reads the
+ * label registry DCP fetches itself. Only a card that does waits for that fetch and builds
+ * again when it lands (#456): the word "label" anywhere in a config is not enough.
+ */
+export function usesLabels(
+  template: TemplateConfig | undefined,
+  itemTemplates?: Record<string, TemplateConfig>,
+): boolean {
+  return usesStep(template, (step) => step.trim() === 'labels', itemTemplates);
+}
+
+/**
  * Whether the template asks for a translation, whose answer changes when Home Assistant
  * loads more of them or the language changes - not when the registry does.
  */
