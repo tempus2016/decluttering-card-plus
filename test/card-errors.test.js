@@ -153,3 +153,23 @@ check(
   advancedSchema().some((entry) => entry.name === 'show_card_errors'),
   true,
 );
+
+// A custom card the page has not defined is DCP's own "not installed" error, not a refused config.
+globalThis.customElements = { get: (tag) => (tag === 'known-card' ? class {} : undefined) };
+check(
+  'errorOf: an undefined custom card is left to the card itself',
+  errorOf(
+    errorCard({
+      type: 'error',
+      message: "Custom element doesn't exist: nope-card.",
+      origConfig: { type: 'custom:nope-card' },
+    }),
+  ),
+  undefined,
+);
+check(
+  'errorOf: a defined custom card that refused is reported',
+  errorOf(errorCard({ type: 'error', message: 'bad option', origConfig: { type: 'custom:known-card' } })),
+  { type: 'custom:known-card', message: 'bad option' },
+);
+delete globalThis.customElements;
