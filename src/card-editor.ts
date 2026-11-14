@@ -285,6 +285,11 @@ const HOST_SELECTOR = /:host|\.decluttering-container/;
 export class DeclutteringCardEditor extends LitElement implements LovelaceCardEditor {
   static get styles(): CSSResult {
     return css`
+      /* Code stays left to right inside a right-to-left sentence. */
+      code {
+        direction: ltr;
+        unicode-bidi: isolate;
+      }
       @media (prefers-reduced-motion: reduce) {
         *,
         *::before,
@@ -315,7 +320,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       }
       .risks {
         margin: 4px 0 0;
-        padding-left: 18px;
+        padding-inline-start: 18px;
       }
       .result {
         padding: 0 8px 8px;
@@ -332,7 +337,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       .advanced .count {
         color: var(--secondary-text-color);
         font-size: 0.85em;
-        margin-left: 8px;
+        margin-inline-start: 8px;
       }
       .advanced-body {
         padding: 8px 8px 0;
@@ -346,7 +351,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       /* The words line up with the field's helper above them, the boxes with the field. */
       .rebuild-label {
         margin: 0 0 4px;
-        padding-left: 16px;
+        padding-inline-start: 16px;
       }
       .rebuild-list {
         list-style: none;
@@ -359,7 +364,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         flex-wrap: wrap;
         gap: 0 8px;
         min-height: 40px;
-        padding-left: 12px;
+        padding-inline-start: 12px;
         border-radius: 8px;
         border: 1px solid var(--divider-color);
         margin-bottom: 4px;
@@ -376,11 +381,11 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       }
       .rebuild-remove {
         --mdc-icon-button-size: 40px;
-        margin-left: auto;
+        margin-inline-start: auto;
       }
       .rebuild-template {
         margin: 0;
-        padding-left: 16px;
+        padding-inline-start: 16px;
         overflow-wrap: anywhere;
       }
       .preview {
@@ -438,6 +443,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       pre.yaml .l {
         display: block;
         white-space: pre;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
       }
       pre.yaml .l.changed {
         background: rgba(var(--rgb-accent-color, 255, 152, 0), 0.18);
@@ -448,7 +456,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         flex-wrap: wrap;
       }
       .edit-template {
-        margin-left: 6px;
+        margin-inline-start: 6px;
       }
       ha-alert .actions {
         margin-top: 8px;

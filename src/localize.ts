@@ -17,11 +17,28 @@ const LANGUAGES: Record<string, Record<string, string>> = { en };
 
 // One loader per bundled language; a dynamic import each, so rollup makes each a chunk.
 const LOADERS: Record<string, () => Promise<{ default: Record<string, string> }>> = {
+  ar: () => import('./locales/ar.json'),
+  bn: () => import('./locales/bn.json'),
+  cs: () => import('./locales/cs.json'),
+  da: () => import('./locales/da.json'),
   de: () => import('./locales/de.json'),
   es: () => import('./locales/es.json'),
   fr: () => import('./locales/fr.json'),
+  hi: () => import('./locales/hi.json'),
+  id: () => import('./locales/id.json'),
+  it: () => import('./locales/it.json'),
+  ja: () => import('./locales/ja.json'),
+  ko: () => import('./locales/ko.json'),
   nl: () => import('./locales/nl.json'),
+  pl: () => import('./locales/pl.json'),
   pt: () => import('./locales/pt.json'),
+  ru: () => import('./locales/ru.json'),
+  sv: () => import('./locales/sv.json'),
+  tr: () => import('./locales/tr.json'),
+  uk: () => import('./locales/uk.json'),
+  ur: () => import('./locales/ur.json'),
+  'zh-Hans': () => import('./locales/zh-Hans.json'),
+  'zh-Hant': () => import('./locales/zh-Hant.json'),
 };
 
 const loading = new Map<string, Promise<void>>();
@@ -69,9 +86,26 @@ export function onLanguageLoaded(listener: () => void): () => void {
 
 const FALLBACK = 'en';
 
+/*
+ * Home Assistant names Chinese by script (zh-Hans, zh-Hant); a browser usually names it by
+ * region. Without this a zh-TW browser would get English rather than Traditional Chinese.
+ * Same table as Home Assistant's own frontend, bare zh included.
+ */
+const CHINESE: Record<string, string> = {
+  'zh-cn': 'zh-Hans',
+  'zh-sg': 'zh-Hans',
+  'zh-my': 'zh-Hans',
+  'zh-tw': 'zh-Hant',
+  'zh-hk': 'zh-Hant',
+  'zh-mo': 'zh-Hant',
+  zh: 'zh-Hant',
+};
+
 /** "pt-BR" is worth trying as "pt" too, most specific first. */
 function candidatesFor(language: string): string[] {
   const candidates = [language];
+  const chinese = CHINESE[language.toLowerCase()];
+  if (chinese) candidates.push(chinese);
   if (language.includes('-')) candidates.push(language.split('-')[0]);
   return candidates;
 }
