@@ -42,34 +42,30 @@ const ll = {
 
 check(
   'a misspelt template names the nearest one and how many cards use it',
-  missingTemplateDetail(ll, 'room_ligth_tile', ['room_light_tile', 'sensor_line'], 'not found'),
+  missingTemplateDetail(ll, 'room_ligth_tile', ['room_light_tile', 'sensor_line']),
   {
     kind: 'missing_template',
     template: 'room_ligth_tile',
-    line: { key: 'template', value: 'room_ligth_tile', note: 'not found' },
+    line: { key: 'template', value: 'room_ligth_tile', noteKey: 'errorcard.not_found' },
     closest: { name: 'room_light_tile', uses: 2 },
   },
 );
 check(
   'with nothing close, there is no suggestion',
-  missingTemplateDetail(ll, 'zzz', ['room_light_tile'], 'not found').closest,
+  missingTemplateDetail(ll, 'zzz', ['room_light_tile']).closest,
   undefined,
 );
-check(
-  'a missing custom element names the first type on the line',
-  customMissingDetail('t', ['custom:a', 'custom:b'], 'not registered'),
-  {
-    kind: 'custom_missing',
-    template: 't',
-    missingTypes: ['custom:a', 'custom:b'],
-    line: { key: 'type', value: 'custom:a', note: 'not registered' },
-  },
-);
-check('an unset variable is the line', unsetDetail('sensor_line', ['entity'], 'required by the template'), {
+check('a missing custom element names the first type on the line', customMissingDetail('t', ['custom:a', 'custom:b']), {
+  kind: 'custom_missing',
+  template: 't',
+  missingTypes: ['custom:a', 'custom:b'],
+  line: { key: 'type', value: 'custom:a', noteKey: 'errorcard.not_registered' },
+});
+check('an unset variable is the line', unsetDetail('sensor_line', ['entity']), {
   kind: 'unset',
   template: 'sensor_line',
   unset: ['entity'],
-  line: { key: 'entity', value: '', note: 'required by the template' },
+  line: { key: 'entity', value: '', noteKey: 'errorcard.required' },
 });
 check('a failed check names only the template, its message being the error', checkDetail('camera_card'), {
   kind: 'check',

@@ -1650,11 +1650,7 @@ export abstract class DeclutteringElement extends LitElement {
     if (this._strictLevels.errors !== 'fail' || !unresolved.length) return false;
     const which = unresolved.map((name) => `[[${name}]]`).join(', ');
     this._dropThing();
-    this._errorDetail = unsetDetail(
-      this._templateName,
-      unresolved,
-      localize('errorcard.required', undefined, this._hass),
-    );
+    this._errorDetail = unsetDetail(this._templateName, unresolved);
     this._error = localize(unresolved.length === 1 ? 'error.strict_one' : 'error.strict_many', { which }, this._hass);
     this._reportRefusal();
     return true;
@@ -2695,7 +2691,8 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
         ${
           detail.line
             ? html`<code class="line"
-                >${detail.line.key}: ${detail.line.value} <span class="note">← ${detail.line.note}</span></code
+                >${detail.line.key}: ${detail.line.value}
+                <span class="note">← ${localize(detail.line.noteKey, undefined, hass)}</span></code
               >`
             : ''
         }
