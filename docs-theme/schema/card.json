@@ -108,6 +108,14 @@
           "type": "boolean",
           "description": "`false` leaves passwords, tokens, addresses and hosts in the `debug: report` text as they are."
         },
+        "report_open": {
+          "type": "boolean",
+          "description": "`false` starts the `debug: report` folded to a one-line bar with a button to show it."
+        },
+        "report_entity": {
+          "type": "string",
+          "description": "An entity, such as an `input_boolean`, whose `off` state hides the `debug: report`. Nothing is rebuilt when it changes."
+        },
         "strict": {
           "anyOf": [
             {

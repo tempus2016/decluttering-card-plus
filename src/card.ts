@@ -92,6 +92,7 @@ import {
 import { loadEditors } from './editors-loader';
 import { customMissingDetail, missingTemplateDetail } from './error-card';
 import { hassLanguage } from './translations';
+import { reportEntity } from './report-visibility';
 
 /*
  * Home Assistant's `title` translations - every integration's name - asked for once per
@@ -987,6 +988,7 @@ export class DeclutteringCard extends DeclutteringElement {
     this._reportMode = config.debug === 'report';
     this._reportForced = undefined;
     this._reportUnredacted = config.redact === false;
+    this._setReportVisibility(config.report_open !== false, reportEntity(config.report_entity));
     this._lastReport = undefined;
     if (!this._reportMode) this._reportResult = undefined;
     this._tracePlace = tracePlace(config);

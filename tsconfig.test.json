@@ -18,6 +18,7 @@
     "src/repeat-kinds.ts",
     "src/slots.ts",
     "src/visibility.ts",
+    "src/report-visibility.ts",
     "src/breakpoints.ts",
     "src/version-check.ts",
     "src/error-card.ts",
