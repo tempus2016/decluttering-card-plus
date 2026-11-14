@@ -1,4 +1,4 @@
-import { placeholderJson } from './placeholder-text';
+import { findAcross, placeholderJson } from './placeholder-text';
 import { applyListEdits, LIST_EDIT_KEY } from './list-edits';
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
@@ -32,6 +32,7 @@ import {
   resolveFallback,
   takesStructure,
   variableValues,
+  addVariableValues,
   withoutOptional,
   isOptional,
   OPTIONAL,
@@ -1137,16 +1138,13 @@ function exposeFillValues(
   build: (variables: VariablesConfig[], template: TemplateConfig, key: string) => unknown,
   // The with: arguments filled in here first, as the pass that fills the fill would have.
   settleText: (text: string) => unknown,
-): void {
-  if (!Object.keys(itemTemplates).length) return;
+): Record<string, any> | undefined {
+  // Hands back what variableValues gives for the list as it ends up, when it had to work
+  // that out, so the build does not read the whole list over again (#456).
+  if (!Object.keys(itemTemplates).length) return undefined;
+  const asked = new Set(findAcross(content, variableArray, DOTTED_ASK));
+  if (!asked.size) return undefined;
   const values = variableValues(variableArray);
-  const text = placeholderJson([content, variableArray]);
-  if (typeof text !== 'string' || !text.includes('.')) return;
-  const asked = new Set<string>();
-  for (let match = DOTTED_ASK.exec(text); match !== null; match = DOTTED_ASK.exec(text)) {
-    asked.add(`${match[1]}.${match[2]}`);
-  }
-  DOTTED_ASK.lastIndex = 0;
   for (const dotted of asked) {
     if (Object.prototype.hasOwnProperty.call(values, dotted)) continue;
     const [name, key] = dotted.split('.');
@@ -1161,7 +1159,9 @@ function exposeFillValues(
     // Nothing in the fill sets it: left alone, so it reads as unset like any other name.
     if (value === undefined || value === `[[${key}]]`) continue;
     variableArray.push({ [dotted]: value });
+    addVariableValues(values, { [dotted]: value });
   }
+  return values;
 }
 
 // The values a `with:` lays over, read the same way as where it is filled in.
@@ -1257,21 +1257,24 @@ function deepReplaceBody(
    * A variable of the same name wins, as it does over an entity.
    */
   const itemTemplates = extras?.itemTemplates ?? {};
+  // The names already set, once, rather than searching the whole list for each template (#456).
+  const named = new Set(variableArray.map((entry) => Object.keys(entry)[0]));
   for (const [name, template] of Object.entries(itemTemplates)) {
     // A function template (#307) is a step, not a value: only one with an `item:` stands as one.
     if (!template || typeof template !== 'object' || !('item' in template)) continue;
-    if (!variableArray.some((entry) => Object.keys(entry)[0] === name)) {
+    if (!named.has(name)) {
+      named.add(name);
       variableArray.push({ [name]: (template as any)?.item });
     }
   }
   // The template's own names, under everything else (#391), when anything here asks for them.
-  if (TEMPLATE_NAME_USE.test(placeholderJson([content, variableArray]))) {
+  if (findAcross(content, variableArray, TEMPLATE_NAME_USE).length) {
     for (const entry of templatePlaceholders(templateName, extras?.templateChain)) {
       const name = Object.keys(entry)[0];
       if (!variableArray.some((each) => Object.keys(each)[0] === name)) variableArray.push(entry);
     }
   }
-  exposeFillValues(
+  const exposed = exposeFillValues(
     variableArray,
     content,
     itemTemplates,
@@ -1298,7 +1301,7 @@ function deepReplaceBody(
     (text) =>
       deepReplace(variableArray, {}, text, templateName, hass, true, undefined, depth + 1, undefined, shield, true),
   );
-  const values = variableValues(variableArray);
+  const values = exposed ?? variableValues(variableArray);
 
   /*
    * `with:` and `repeat:` (#227) fill a body in again with values of their own: the same
