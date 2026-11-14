@@ -34,6 +34,7 @@ import {
   forEachItems,
   getDeclarations,
   usesInstalled,
+  usesLabels,
   usesResolver,
   usesAttributes,
   stateReads,
@@ -45,7 +46,8 @@ import { installedKey, whenInstalledChanges } from './installed';
 import { chainOf, describeCycle, describeTooDeep, findCycle, MAX_NESTING } from './cycles';
 import { customTags, OnError, onErrorOf, undefinedElements } from './on-error';
 import { isRegistrySource, registryKey, resolveRegistryItems, sameRegistry } from './registry';
-import { loadLabels } from './labels';
+import { resolverRegistryKey } from './registry-index';
+import { labelRegistry, loadLabels } from './labels';
 import { loadCategories, wantsCategories, whenCategoriesChange } from './categories';
 import { renderTemplateOnce, sourceTemplate, TemplateRender } from './template-source';
 import { getLovelaceConfig } from './utils';
@@ -94,6 +96,9 @@ import { customMissingDetail, missingTemplateDetail } from './error-card';
 import { hassLanguage } from './translations';
 import { reportEntity } from './report-visibility';
 
+// How long a first build waits for the label registry before building with the ids (#456).
+const LABELS_WAIT_MS = 3000;
+
 /*
  * Home Assistant's `title` translations - every integration's name - asked for once per
  * page and language, by the first card that uses `|translate`. Per language because they
@@ -140,6 +145,8 @@ export class DeclutteringCard extends DeclutteringElement {
     translates?: boolean;
     // Asks what is installed (#397), so it builds again when a card or an icon set turns up.
     installs?: boolean;
+    // Shows labels (#456): only then does the label registry landing build it again.
+    labels?: boolean;
     picker?: TemplatePicker;
   };
   private _resolverRegistry?: unknown[];
@@ -847,8 +854,21 @@ export class DeclutteringCard extends DeclutteringElement {
       this._error = message;
     }
     const waitingOn = this._lastConfig;
+    const thing = this._thing;
     void Promise.all(missing.map((tag) => customElements.whenDefined(tag))).then(() => {
-      if (this._lastConfig === waitingOn) this._rebuild();
+      if (this._lastConfig !== waitingOn) return;
+      /*
+       * What was built is still right: only the element was late, and Home Assistant's own
+       * card wrappers draw it themselves once it is defined. So the error comes off and the
+       * build stays, rather than building every such card on the page again (#456). A
+       * stand-in from `on_error:` was built in place of the real card, so that one builds.
+       */
+      if (thing && this._thing === thing && this._thingConfig === config && config !== this._fallbackConfig) {
+        this._error = undefined;
+        this._errorDetail = undefined;
+        return;
+      }
+      this._rebuild();
     });
   }
 
@@ -920,6 +940,7 @@ export class DeclutteringCard extends DeclutteringElement {
         return picked;
       },
       resolvers: named.some((name) => usesResolver(lookup(name), this._buildExtras().itemTemplates)),
+      labels: named.some((name) => usesLabels(lookup(name), this._buildExtras().itemTemplates)),
     };
 
     const repeats = forEachItems(config.for_each) !== undefined || isRegistrySource(config.for_each_from);
@@ -1027,14 +1048,15 @@ export class DeclutteringCard extends DeclutteringElement {
     const resolvers = picker ? picker.resolvers : usesResolver(templateConfig, itemTemplates);
     const translates = !!usesTranslate(templateConfig, itemTemplates);
     const installs = !!usesInstalled(templateConfig, itemTemplates);
+    const labels = picker ? !!picker.labels : usesLabels(templateConfig, itemTemplates);
     // A template that reads the viewer's language or locale - `|translate`, `|format_number`
     // - is recorded too, even with nothing to resolve, so it builds again when the language
     // changes rather than keeping its first wording for good (idea 40).
     this._fromResolvers =
-      resolvers || translates ? { templateConfig, config, picker, translates, installs } : undefined;
+      resolvers || translates ? { templateConfig, config, picker, translates, installs, labels } : undefined;
     this._listenForInstalled();
     // What was just built is up to date with the hass in hand; only a later change rebuilds.
-    this._resolverRegistry = this._hass ? this._resolverKey(this._hass, translates, installs) : undefined;
+    this._resolverRegistry = this._hass ? this._resolverKey(this._hass, translates, installs, labels) : undefined;
 
     // A single mapping counts as a list of one, the same forgiveness `variables` gets. A
     // written-out list wins over a registry source: it is the more particular of the two,
@@ -1084,9 +1106,9 @@ export class DeclutteringCard extends DeclutteringElement {
    * when the language changes or more translations load, and only then. Only a template
    * that translates pays for that part of the key.
    */
-  private _resolverKey(hass: HomeAssistant, translates: boolean, installs = false): unknown[] {
+  private _resolverKey(hass: HomeAssistant, translates: boolean, installs = false, labels = false): unknown[] {
     return [
-      ...registryKey(hass),
+      ...resolverRegistryKey(hass, labels),
       ...(translates ? [(hass as { localize?: unknown })?.localize, hassLanguage(hass)] : []),
       // What is installed moves without the registry: components load, cards and icon sets register.
       ...(installs ? installedKey(hass) : []),
@@ -1106,7 +1128,7 @@ export class DeclutteringCard extends DeclutteringElement {
     // `|translate` reads hass.localize, which is replaced when more translations load or
     // the language changes - and only then, so it joins the key without costing a rebuild
     // per state change. Only for a template that translates, so nobody else pays for it.
-    const key = this._resolverKey(hass, !!pending.translates, !!pending.installs);
+    const key = this._resolverKey(hass, !!pending.translates, !!pending.installs, !!pending.labels);
     if (sameRegistry(this._resolverRegistry, key)) return;
     this._resolverRegistry = key;
 
@@ -1208,8 +1230,14 @@ export class DeclutteringCard extends DeclutteringElement {
    * Only cards that mention labels at all ask, so nobody else pays for the call.
    */
   private _loadLabelsIfWanted(hass: HomeAssistant): void {
-    const using = [this._fromRegistry, this._fromResolvers].filter(Boolean);
-    const labels = using.some((source) => /label/i.test(JSON.stringify(source)));
+    // Only a card that shows labels or repeats over them asks (#456). Testing the whole config
+    // for the word "label" sent every card with a `label:` option of its own, such as a
+    // camera card's menu, to fetch the registry and then build again when it landed.
+    const labels =
+      !!this._fromResolvers?.labels ||
+      (!!this._fromRegistry &&
+        (/label/i.test(JSON.stringify(this._fromRegistry.config.for_each_from)) ||
+          usesLabels(this._fromRegistry.templateConfig, this._buildExtras().itemTemplates)));
     // Categories the same way, for a repeat narrowing by one - see categories.ts.
     const categories = !!this._fromRegistry && wantsCategories(this._fromRegistry.config.for_each_from);
     if (!labels && !categories) return;
@@ -1355,9 +1383,26 @@ export class DeclutteringCard extends DeclutteringElement {
     findTemplateAnywhere(hass, ll, config.template, place.view, place.section)
       .then((templateConfig) => {
         if (templateConfig) {
-          this._buildOrDefer(templateConfig, config);
-          this._loadLabelsIfWanted(hass);
-          this._loadTranslationsIfWanted(hass);
+          /*
+           * A template that shows labels waits a moment for the label registry before its
+           * first build (#456). Built first and again when the registry landed, a page of
+           * such cards built every one of them twice on load. The fetch is one call for the
+           * whole page, and a slow one is not waited for: the card builds with the ids, and
+           * builds again when the names arrive, as before.
+           */
+          const build = (): void => {
+            this._buildOrDefer(templateConfig, config);
+            this._loadLabelsIfWanted(hass);
+            this._loadTranslationsIfWanted(hass);
+          };
+          const token = this._lastConfig;
+          if (!labelRegistry(hass) && usesLabels(templateConfig, this._buildExtras().itemTemplates)) {
+            void Promise.race([loadLabels(hass), new Promise((resolve) => setTimeout(resolve, LABELS_WAIT_MS))]).then(
+              () => {
+                if (this._lastConfig === token && !this._pendingConfig) build();
+              },
+            );
+          } else build();
         } else {
           // Only a dashboard that names somewhere to borrow from is told it was looked for there.
           const key = getTemplateSources(ll).length ? 'error.template_missing_anywhere' : 'error.template_missing';

@@ -345,6 +345,8 @@ export interface TemplatePicker {
   pick(variables: VariablesConfig[] | undefined): { name: string; template: TemplateConfig; entity?: string };
   /** Whether any template it can choose reads the registry through a resolver. */
   resolvers: boolean;
+  /** Whether any template it can choose shows labels, which wait for the label registry (#456). */
+  labels?: boolean;
 }
 
 /** Whether this page has defined a custom element - which Home Assistant's own elements come and go with releases. */

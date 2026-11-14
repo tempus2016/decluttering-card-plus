@@ -42,6 +42,15 @@ export function registryKey(hass: any): unknown[] {
   return [hass?.entities, hass?.devices, hass?.areas, hass?.floors, labelRegistry(hass), categoryRegistry()];
 }
 
+/**
+ * The registry key for a card's resolvers (#456): the parts carried on hass, plus the label
+ * registry only for a card that shows labels. Another card's label fetch landing then
+ * leaves this one as it is, instead of building every card on the page again.
+ */
+export function resolverRegistryKey(hass: any, labels: boolean): unknown[] {
+  return [hass?.entities, hass?.devices, hass?.areas, hass?.floors, labels ? labelRegistry(hass) : undefined];
+}
+
 /** Whether two registry keys describe the same registry, compared entry by entry. */
 export function sameRegistry(a: unknown[] | undefined, b: unknown[]): boolean {
   return !!a && a.length === b.length && a.every((value, index) => value === b[index]);
