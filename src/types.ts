@@ -56,6 +56,8 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   fit?: 'box' | 'contents';
   /** What to show instead of an error when the card cannot be built: a config of the template's kind, or `hide`. */
   on_error?: 'hide' | Record<string, unknown>;
+  /** `true`: a card the template built that refused its config says why outside edit mode too, not only "Configuration error" (#463). */
+  show_card_errors?: boolean;
   /** A template per entity domain, chosen copy by copy from the `entity` variable; `default:` for the rest. */
   template_by_domain?: Record<string, string>;
   /** Builds the copies of a repeat past the first few only as they near the screen. */
@@ -105,6 +107,8 @@ export interface TemplateConfig {
   examples?: unknown;
   /** What a card using this template shows instead of an error, unless the card says otherwise. */
   on_error?: 'hide' | Record<string, unknown>;
+  /** `true`: a card the template built that refused its config says why outside edit mode too, not only "Configuration error" (#463). */
+  show_card_errors?: boolean;
   /**
    * What counts as a problem with the values a card gives it (#389): each a `condition`, a
    * `message`, a `level` - info, warn or error - and for an error whether to go on building.

@@ -92,6 +92,7 @@ import { manyConfig, MANY_TYPE } from './row-repeat';
 import { itemLabel, skippedConfig, templateVisibility } from './visibility';
 import './skipped';
 import { checkDetail, ErrorDetail, findCardPath, templateEditPath, unsetDetail, withTemplate } from './error-card';
+import { CardError, errorLine, findCardErrors, sameErrors } from './card-errors';
 import { ChipAction } from './edit-chip-pure';
 import './edit-chip';
 import {
@@ -185,6 +186,12 @@ const DEBUG_ELEMENT_STYLE: Record<string, string> = {
 // Numbers each card element as it is made, for BuildTiming.card.
 let nextBuildId = 0;
 
+// #463: the error cards already said in the console, and those shown in full by `show_card_errors:`.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const TOLD = new WeakSet<any>();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const FORCED = new WeakSet<any>();
+
 export abstract class DeclutteringElement extends LitElement {
   @state() protected _hass?: HomeAssistant;
   @state() protected _thing?: LovelaceThing;
@@ -248,6 +255,7 @@ export abstract class DeclutteringElement extends LitElement {
   private _reportCache?: {
     result: ExpansionResult;
     error?: string;
+    cardErrors: CardError[];
     unredacted: boolean;
     text: string;
     nodes: ReportNode[];
@@ -260,6 +268,12 @@ export abstract class DeclutteringElement extends LitElement {
   // #460: `report_entity:` - the entity whose `off` hides the report, and whether it does now.
   private _reportEntity?: string;
   @state() private _reportOff = false;
+  // #463: the cards inside that refused their config, as last looked for, for the report.
+  @state() protected _cardErrors: CardError[] = [];
+  // #463: `show_card_errors: true` - a refused card says why outside edit mode too.
+  protected _showCardErrors = false;
+  private _cardErrorLook?: number;
+  private readonly _onCardUpdated = (): void => this._lookForCardErrorsSoon();
   // `redact: false` (#217): the report keeps everything as the card has it.
   protected _reportUnredacted = false;
   // How the report is shown on the card: formatted, as a folding tree (idea 51), or as its Markdown.
@@ -839,6 +853,8 @@ export abstract class DeclutteringElement extends LitElement {
       const previewing = this._previewing;
       if (thing.preview !== previewing) {
         thing.preview = previewing;
+        // Home Assistant sets the error card inside back to what edit mode says, after this.
+        this._lookForCardErrorsSoon();
         /*
          * Whether the wrapped thing is hidden is otherwise noticed by watching it resize,
          * and a thing that is being un-hidden inside a host that is still display: none
@@ -1219,7 +1235,14 @@ export abstract class DeclutteringElement extends LitElement {
     if (!result) return undefined;
     const cached = this._reportCache;
     const unredacted = this._reportUnredacted;
-    if (cached && cached.result === result && cached.error === this._error && cached.unredacted === unredacted)
+    const cardErrors = this._cardErrors;
+    if (
+      cached &&
+      cached.result === result &&
+      cached.error === this._error &&
+      cached.cardErrors === cardErrors &&
+      cached.unredacted === unredacted
+    )
       return cached.text;
     const hass = this._hass as unknown as {
       config?: { version?: string };
@@ -1243,6 +1266,7 @@ export abstract class DeclutteringElement extends LitElement {
           result.full === undefined && !this._error && this._thingConfig ? withoutStamps(this._thingConfig) : undefined,
         neverBuilt: result.neverBuilt,
         error: this._error,
+        cardErrors: cardErrors.map(errorLine),
         unredacted,
       },
       this._hass,
@@ -1255,13 +1279,14 @@ export abstract class DeclutteringElement extends LitElement {
           result.full === undefined && !this._error && this._thingConfig ? withoutStamps(this._thingConfig) : undefined,
         neverBuilt: result.neverBuilt,
         error: this._error,
+        cardErrors: cardErrors.map(errorLine),
         unredacted,
       },
       this._hass,
     );
     // Redacted as the tree is: the names in it are the same names (#428).
     const outline = reportOutline(result.reports, this._hass, unredacted ? undefined : treeRedactor(result.reports));
-    this._reportCache = { result, error: this._error, unredacted, text, nodes, outline };
+    this._reportCache = { result, error: this._error, cardErrors, unredacted, text, nodes, outline };
     return text;
   }
 
@@ -2311,6 +2336,63 @@ export abstract class DeclutteringElement extends LitElement {
     if (this._hass) thing.hass = this._hass;
     this._watchForHiding(thing);
     this._announceSize();
+    this._lookForCardErrorsSoon();
+    /*
+     * A card that is still loading, or one inside a stack that builds its cards a little
+     * later, is only an error card once it has: looked for again after a while as well.
+     * The one Home Assistant puts in place of a custom card that never loaded is hidden for
+     * the first couple of seconds, so the last look is after that.
+     */
+    for (const after of [1000, 3500])
+      setTimeout(() => {
+        if (this._thing === thing) this._lookForCardErrors();
+      }, after);
+  }
+
+  /** The look for refused cards, a frame from now: once, however many times it is asked for meanwhile. */
+  private _lookForCardErrorsSoon(): void {
+    if (this._cardErrorLook !== undefined || typeof requestAnimationFrame === 'undefined') return;
+    this._cardErrorLook = requestAnimationFrame(() => {
+      this._cardErrorLook = undefined;
+      this._lookForCardErrors();
+    });
+  }
+
+  /*
+   * #463: the cards the template built that refused their config. Each is said once in the
+   * console - by whichever card finds it first, a card inside another finding its own - and
+   * kept for the report. With `show_card_errors: true` Home Assistant's error card is put in
+   * the state it is in while the dashboard is edited, which is when it says what was wrong.
+   */
+  protected _lookForCardErrors(): void {
+    const thing = this._thing;
+    if (!thing || !this.isConnected) return;
+    const found = findCardErrors(thing);
+    const previewing = this._previewing;
+    for (const { element, error } of found) {
+      if (!TOLD.has(element)) {
+        TOLD.add(element);
+        warn({
+          kind: 'card_error',
+          message: localize(
+            'warn.card_error',
+            { error: errorLine(error), template: this._templateName ?? '' },
+            this._hass,
+          ),
+          ...(this._templateName ? { template: this._templateName } : {}),
+        });
+      }
+      if (previewing) continue;
+      if (this._showCardErrors && element.preview !== true) {
+        element.preview = true;
+        FORCED.add(element);
+      } else if (!this._showCardErrors && FORCED.has(element)) {
+        element.preview = false;
+        FORCED.delete(element);
+      }
+    }
+    const errors = found.map(({ error }) => error);
+    if (!sameErrors(errors, this._cardErrors)) this._cardErrors = errors;
   }
 
   /*
@@ -2353,6 +2435,8 @@ export abstract class DeclutteringElement extends LitElement {
   public connectedCallback(): void {
     super.connectedCallback();
     this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
+    // A card inside that rebuilt - a custom card that loaded late - may have refused its config (#463).
+    this.addEventListener('card-updated', this._onCardUpdated);
     // Home Assistant moves cards between views rather than rebuilding them, so a card
     // put back on the page has to start watching again.
     if (this._thing) this._watchForHiding(this._thing);
@@ -2410,6 +2494,7 @@ export abstract class DeclutteringElement extends LitElement {
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.removeEventListener('card-updated', this._onCardUpdated);
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
     this._resizes?.disconnect();

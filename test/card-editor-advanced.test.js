@@ -216,6 +216,7 @@ check(
     'grid_rows',
     'style',
     'on_error_mode',
+    'show_card_errors',
     'strict_errors',
     'strict_warnings',
     'rebuild_on',

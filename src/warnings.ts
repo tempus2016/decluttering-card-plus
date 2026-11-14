@@ -34,6 +34,7 @@ export type WarningKind =
   | 'rebuild_on'
   | 'on_error'
   | 'check'
+  | 'card_error'
   | 'other';
 
 export interface Warning {

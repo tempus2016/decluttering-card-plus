@@ -93,6 +93,7 @@ import {
 } from './breakpoints';
 import { loadEditors } from './editors-loader';
 import { customMissingDetail, missingTemplateDetail } from './error-card';
+import { showCardErrors } from './card-errors';
 import { hassLanguage } from './translations';
 import { reportEntity } from './report-visibility';
 
@@ -1010,6 +1011,9 @@ export class DeclutteringCard extends DeclutteringElement {
     this._reportForced = undefined;
     this._reportUnredacted = config.redact === false;
     this._setReportVisibility(config.report_open !== false, reportEntity(config.report_entity));
+    // #463: the card's own word beats its template's; read again in case the card built is the same as before.
+    this._showCardErrors = showCardErrors(config, templateConfig);
+    this._lookForCardErrors();
     this._lastReport = undefined;
     if (!this._reportMode) this._reportResult = undefined;
     this._tracePlace = tracePlace(config);

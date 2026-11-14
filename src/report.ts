@@ -35,6 +35,8 @@ export interface ReportInput {
   neverBuilt?: string[];
   /** What the card refused with, if it did. */
   error?: string;
+  /** The cards inside that refused their config (#463), each as `type: message`. */
+  cardErrors?: string[];
 }
 
 /*
@@ -555,6 +557,10 @@ export function formatReport(input: ReportInput, hass?: any): string {
       ...alerts.map((alert) => `- **${line(alert.level)}** ${line(alert.message)} (${line(checkWhere(alert, hass))})`),
       '',
     );
+  }
+  // A card the template built that refused its config (#463): the dashboard only says why in edit mode.
+  if (input.cardErrors?.length) {
+    body.push(`## ${t('report.card_errors')}`, '', ...input.cardErrors.map((each) => `- ${line(each)}`), '');
   }
   const warnings = allWarnings(input.reports);
   if (warnings.length) {
