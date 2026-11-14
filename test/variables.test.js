@@ -2047,3 +2047,19 @@ check('the five position names, for the checks that have to know them', POSITION
     true,
   );
 }
+
+// A step that makes one value out of a list - first, last, join, pick: - leaves a stand-in after it as text, not a list.
+{
+  const icons = { cat: 'mdi:cat' };
+  check(
+    'default after to_list and pick: is text',
+    applyTransform('to_list|pick:key=zebra,value|default:mdi:help', icons),
+    'mdi:help',
+  );
+  check('default after split and first is text', applyTransform('split|first|default:x', ''), 'x');
+  check('default after split and last is text', applyTransform('split|last|default:x', ''), 'x');
+  check('default after split and join is text', applyTransform('split|join|default:x', ''), 'x');
+  check('default after split and pick: is text', applyTransform('split|pick:k=z|default:x', ''), 'x');
+  check('default straight after split is still a list', applyTransform('split|default:a,b', ''), '["a","b"]');
+  check('default straight after to_list is still a list', applyTransform('to_list|default:a,b', {}), '["a","b"]');
+}
