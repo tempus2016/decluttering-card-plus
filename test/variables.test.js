@@ -113,6 +113,36 @@ check(
     .unused,
   [],
 );
+// #459: a value an item template reads uses what that value reads in turn.
+{
+  const template = {
+    default: [{ show_weather: false }, { show: { ele: { weather: '[[debug|and:[[show_weather]]]]' } } }],
+    card: { type: 'x', elements: '[[elements_item|with]]' },
+  };
+  const bodies = [{ item: ['[[weather_item|with|if:show.ele.weather?]]'] }];
+  check(
+    'a variable reached through a value an item template reads is not called unused (#459)',
+    diagnoseInstance([{ show_weather: true }], template, [{ elements_item: null }], undefined, bodies).unused,
+    [],
+  );
+  check(
+    'a mapping an item template reads one key of is not called unused (#459)',
+    diagnoseInstance([{ show: { ele: { weather: true } } }], template, [{ elements_item: null }], undefined, bodies)
+      .unused,
+    [],
+  );
+  check(
+    'a variable nothing reads is still called unused alongside item templates',
+    diagnoseInstance([{ show_weather: true }, { stray: 1 }], template, [{ elements_item: null }], undefined, bodies)
+      .unused,
+    ['stray'],
+  );
+  check(
+    'what an item template reads is still never called missing',
+    diagnoseInstance([], { card: { a: '[[e|with]]' } }, [{ e: null }], undefined, [{ item: '[[nowhere]]' }]).missing,
+    [],
+  );
+}
 check('placeholders are found in a group', usedVariables({ group: { cards: [{ entity: '[[light]]' }] } }), ['light']);
 check('placeholders are found in the style block', usedVariables({ card: {}, style: 'border: [[colour]]' }), [
   'colour',
