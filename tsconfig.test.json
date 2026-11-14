@@ -19,6 +19,7 @@
     "src/slots.ts",
     "src/visibility.ts",
     "src/report-visibility.ts",
+    "src/card-errors.ts",
     "src/breakpoints.ts",
     "src/version-check.ts",
     "src/error-card.ts",

@@ -4,6 +4,7 @@ import { localize } from '../localize';
 import { isRebuildObject, rebuildOnEntities } from '../rebuild';
 import { isRebuildPlaceholder } from '../rebuild-resolve';
 import { ON_ERROR_HIDE, ON_ERROR_KEY } from '../on-error';
+import { SHOW_CARD_ERRORS_KEY } from '../card-errors';
 import { ERROR_MODES, ErrorMode, STRICT_TRUE, strictLayer, WARNING_MODES, WarningMode } from '../strict';
 
 /*
@@ -24,6 +25,8 @@ export interface AdvancedData {
   grid_rows?: string;
   style?: string;
   on_error_mode: OnErrorMode;
+  /** `show_card_errors: true` (#463). */
+  show_card_errors?: boolean;
   /** `strict:` one level at a time (#390); `ignore` for both writes nothing. */
   strict_errors: ErrorMode;
   strict_warnings: WarningMode;
@@ -54,6 +57,7 @@ export const ADVANCED_KEYS = [
   'grid_options',
   'style',
   ON_ERROR_KEY,
+  SHOW_CARD_ERRORS_KEY,
   'strict',
   'rebuild_on',
   'rebuild_on_watch',
@@ -134,6 +138,7 @@ export function advancedData(config: DeclutteringCardConfig): AdvancedData {
   if (rebuild.length) data.rebuild_on = rebuild;
   if (typeof config.name === 'string' && config.name) data.name = config.name;
   if (config.inherit_variables === true) data.inherit_variables = true;
+  if (config.show_card_errors === true) data.show_card_errors = true;
   return data;
 }
 
@@ -170,6 +175,10 @@ export function applyAdvanced(config: DeclutteringCardConfig, data: AdvancedData
     default:
       delete out[ON_ERROR_KEY];
   }
+
+  // `false` written out is kept: it is how one card turns off what its template asks for.
+  if (data.show_card_errors === true) out[SHOW_CARD_ERRORS_KEY] = true;
+  else if (config.show_card_errors !== false) delete out[SHOW_CARD_ERRORS_KEY];
 
   // What `strict: true` has always meant is still written that way; anything else level by level.
   const errors = data.strict_errors ?? 'ignore';
@@ -257,6 +266,7 @@ export function advancedCount(config: DeclutteringCardConfig, template?: Templat
   if (data.grid_columns !== undefined || data.grid_rows !== undefined) count += 1;
   if (data.style !== undefined) count += 1;
   if (data.on_error_mode !== 'show') count += 1;
+  if (data.show_card_errors) count += 1;
   if (data.strict_errors !== 'ignore' || data.strict_warnings !== 'ignore') count += 1;
   const fromTemplate = rebuildList((template as { rebuild_on?: unknown } | undefined)?.rebuild_on);
   if (data.rebuild_on || rebuildPlaceholders(config).length || fromTemplate.length) count += 1;
@@ -340,6 +350,12 @@ export function advancedSchema(
           ],
         },
       },
+    },
+    {
+      name: 'show_card_errors',
+      label: text('editor.advanced.show_card_errors_label'),
+      helper: text('editor.advanced.show_card_errors_helper'),
+      selector: { boolean: {} },
     },
     {
       name: 'strict_errors',

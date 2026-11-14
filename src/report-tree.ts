@@ -48,6 +48,8 @@ export interface TreeInput extends Pick<ExpansionResult, 'reports' | 'neverBuilt
   /** What it built, when it has none. */
   built?: unknown;
   error?: string;
+  /** The cards inside that refused their config (#463), each as `type: message`. */
+  cardErrors?: string[];
   /** `redact: false`: nothing is taken out. */
   unredacted?: boolean;
 }
@@ -234,6 +236,21 @@ export function reportTree(input: TreeInput, hass?: any): ReportNode[] {
         kind: 'leaf' as const,
         title: keep(`${alert.level}: ${alert.message}`),
         meta: keep(checkWhere(alert, hass)),
+        warn: true,
+      })),
+    });
+  }
+  if (input.cardErrors?.length) {
+    nodes.push({
+      id: 'card-errors',
+      kind: 'group',
+      title: t('report.card_errors'),
+      meta: String(input.cardErrors.length),
+      open: true,
+      children: input.cardErrors.map((each, i) => ({
+        id: `card-errors-${i}`,
+        kind: 'leaf' as const,
+        title: keep(each),
         warn: true,
       })),
     });

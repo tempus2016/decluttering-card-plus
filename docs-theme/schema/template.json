@@ -49,6 +49,10 @@
           ],
           "description": "What a card using this template shows instead of an error, unless the card says otherwise."
         },
+        "show_card_errors": {
+          "type": "boolean",
+          "description": "`true`: a card the template built that refused its config says why outside edit mode too, not only \"Configuration error\" (#463)."
+        },
         "checks": {
           "type": "array",
           "items": {
