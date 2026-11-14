@@ -2498,6 +2498,12 @@ function isDottable(value: unknown): value is object {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** The dotted names one value gives under a name, one entry each; none for anything but a mapping. */
+export function dottedEntries(name: string, value: unknown): VariablesConfig[] {
+  if (!isDottable(value)) return [];
+  return dottedSuffixes(value).map(([suffix, inner]) => ({ [name + suffix]: inner }));
+}
+
 /*
  * HA's `choose` selector saves every field the user filled in, plus `active_choice` naming
  * the one picked (discussion #346). `[[name.chosen]]` is that one's value, so a template

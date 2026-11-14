@@ -69,6 +69,7 @@ import {
   isCondition,
   splitCopyConditions,
   yieldsMapping,
+  dottedEntries,
 } from './variables';
 import { closestStep, knownStep } from './closest';
 import { FUNCTION_KEY, functionTemplatesOf, makeFunctionHost } from './functions';
@@ -1170,6 +1171,48 @@ function exposeFillValues(
   return values;
 }
 
+/*
+ * A variable whose value is a placeholder - `alert: '[[mdi|merge:fr]]'`, or just `'[[mdi]]'` -
+ * is a mapping only once it is filled in, so the dotted names a written-out mapping gives
+ * were never there for it (#458). Each one something here asks for is worked out by filling
+ * the variable in once, and its dotted names go in under everything already set. A fill an
+ * item template answers is left to exposeFillValues: its dotted names are the template's own.
+ */
+function exposeSettledMappings(
+  variableArray: VariablesConfig[],
+  content: unknown,
+  values: Record<string, any>,
+  itemTemplates: Record<string, TemplateConfig>,
+  settleText: (text: string) => unknown,
+): void {
+  // Most builds have no variable that is a placeholder and something reaching into it: said without reading the config.
+  const candidates = new Set<string>();
+  for (const name in values) {
+    const raw = values[name];
+    if (typeof raw === 'string' && raw.includes('[[') && !name.includes('.')) candidates.add(name);
+  }
+  if (!candidates.size) return;
+  const asked = new Set(findAcross(content, variableArray, DOTTED_ASK));
+  const settled = new Set<string>();
+  for (const dotted of asked) {
+    if (Object.prototype.hasOwnProperty.call(values, dotted)) continue;
+    const name = dotted.split('.')[0];
+    if (!candidates.has(name) || settled.has(name)) continue;
+    settled.add(name);
+    const raw = values[name];
+    if (typeof raw !== 'string' || !PLACEHOLDER.test(raw)) continue;
+    const fill = FILL_VALUE.exec(raw);
+    if (fill && Object.prototype.hasOwnProperty.call(itemTemplates, fill[1])) continue;
+    const entries = dottedEntries(name, settleText(raw));
+    for (const entry of entries) {
+      const key = Object.keys(entry)[0];
+      if (Object.prototype.hasOwnProperty.call(values, key)) continue;
+      variableArray.push(entry);
+      values[key] = entry[key];
+    }
+  }
+}
+
 // The values a `with:` lays over, read the same way as where it is filled in.
 function fillOverlay(arg: string, values: Record<string, any>): VariablesConfig[] | undefined {
   if (!arg) return [];
@@ -1319,6 +1362,14 @@ function deepReplaceBody(
       deepReplace(variableArray, {}, text, templateName, hass, true, undefined, depth + 1, undefined, shield, true),
   );
   const values = exposed ?? variableValues(variableArray);
+  if (depth < MAX_EXPAND_DEPTH) {
+    exposeSettledMappings(variableArray, content, values, itemTemplates, (text) =>
+      deepReplace(variableArray, {}, text, templateName, hass, true, undefined, depth + 1, undefined, shield, true, {
+        ...extras,
+        tooDeep: extras?.tooDeep,
+      }),
+    );
+  }
 
   /*
    * `with:` and `repeat:` (#227) fill a body in again with values of their own: the same
