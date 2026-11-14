@@ -42,6 +42,10 @@ export interface DeclutteringCardConfig extends LovelaceCardConfig {
   debug?: boolean | 'yaml' | 'console' | 'report';
   /** `false` leaves passwords, tokens, addresses and hosts in the `debug: report` text as they are. */
   redact?: boolean;
+  /** `false` starts the `debug: report` folded to a one-line bar with a button to show it. */
+  report_open?: boolean;
+  /** An entity, such as an `input_boolean`, whose `off` state hides the `debug: report`. Nothing is rebuilt when it changes. */
+  report_entity?: string;
   /** What the card does about an error or a warning in its build: `true` refuses on errors, or one mode per level (#390). */
   strict?: boolean | StrictConfig;
   /** What `debug: console` calls this card, placeholders and all. Beats the template's. */

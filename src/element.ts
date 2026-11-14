@@ -37,6 +37,7 @@ import { localize, onLanguageLoaded } from './localize';
 import { VERSION } from './version';
 import { toYaml } from './yaml';
 import { anchorId, formatReport } from './report';
+import { reportSwitchedOff } from './report-visibility';
 import { OutlineNode, outlineTags, reportOutline } from './report-outline';
 import { ReportNode, highlightParts, issueFromReport, reportTree, searchTree, treeRedactor } from './report-tree';
 import {
@@ -253,6 +254,12 @@ export abstract class DeclutteringElement extends LitElement {
     outline: OutlineNode[];
   };
   @state() private _reportCopied = false;
+  // #460: `report_open: false` starts the report folded to a bar; the bar's button flips it.
+  private _reportOpenWritten = true;
+  @state() private _reportFolded = false;
+  // #460: `report_entity:` - the entity whose `off` hides the report, and whether it does now.
+  private _reportEntity?: string;
+  @state() private _reportOff = false;
   // `redact: false` (#217): the report keeps everything as the card has it.
   protected _reportUnredacted = false;
   // How the report is shown on the card: formatted, as a folding tree (idea 51), or as its Markdown.
@@ -336,6 +343,9 @@ export abstract class DeclutteringElement extends LitElement {
     if (!hass) return;
     this._hass = hass;
     if (this._thing) this._thing.hass = hass;
+    // Only the showing follows the entity: a changed state is a render, never a rebuild (#460).
+    const off = reportSwitchedOff(hass, this._reportEntity);
+    if (off !== this._reportOff) this._reportOff = off;
     this.hassAvailable(hass);
   }
 
@@ -574,6 +584,17 @@ export abstract class DeclutteringElement extends LitElement {
       .report {
         margin-top: 8px;
         padding: 12px 16px;
+      }
+      .report.folded {
+        padding: 4px 8px 4px 16px;
+      }
+      .report .bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--secondary-text-color);
+        font-size: 0.9em;
       }
       .report p {
         margin: 0 0 8px;
@@ -1506,8 +1527,41 @@ export abstract class DeclutteringElement extends LitElement {
     ></decluttering-report-try>`;
   }
 
+  /*
+   * What `report_open:` and `report_entity:` say (#460). The fold is set again only when the
+   * written `report_open` changes, so an edit elsewhere in the card leaves a report the user
+   * opened or folded as it was.
+   */
+  protected _setReportVisibility(open: boolean, entity: string | undefined): void {
+    if (open !== this._reportOpenWritten) {
+      this._reportOpenWritten = open;
+      this._reportFolded = !open;
+    }
+    this._reportEntity = entity;
+    this._reportOff = reportSwitchedOff(this._hass, entity);
+  }
+
+  /** Whether a report is on the page at all: asked for, and not switched off by its entity. */
+  private get _reportShown(): boolean {
+    return (this._reportMode || this._strictReporting) && !this._reportOff;
+  }
+
+  private _toggleReportFold(): void {
+    this._reportFolded = !this._reportFolded;
+  }
+
   private _renderReport(): TemplateResult | string {
-    if (!this._reportMode && !this._strictReporting) return '';
+    if (!this._reportShown) return '';
+    // Folded, the report is not written out: nothing below reads _reportText until it opens.
+    if (this._reportFolded)
+      return html`
+        <ha-card class="report folded">
+          <div class="bar">
+            <span>${localize('report.folded', undefined, this._hass)}</span>
+            <ha-button @click=${this._toggleReportFold}>${localize('report.unfold', undefined, this._hass)}</ha-button>
+          </div>
+        </ha-card>
+      `;
     const text = this._reportText;
     const ready = text !== undefined;
     return html`
@@ -1517,6 +1571,7 @@ export abstract class DeclutteringElement extends LitElement {
           ${localize(this._reportUnredacted ? 'report.unredacted' : 'report.check', undefined, this._hass)}
         </p>
         <div class="actions">
+          <ha-button @click=${this._toggleReportFold}>${localize('report.fold', undefined, this._hass)}</ha-button>
           <ha-button .disabled=${!ready} @click=${this._copyReport}>
             ${localize(this._reportCopied ? 'report.copied' : 'report.copy', undefined, this._hass)}
           </ha-button>
@@ -2478,7 +2533,7 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     this.classList.toggle('decluttering-fit-contents', this._thingType === 'card' && this._fitContents);
     // Repeated rows or elements: the wrapper takes the slot, so this host has no box of its own.
     this.classList.toggle('decluttering-many', this._thingConfig?.type === MANY_TYPE);
-    this.classList.toggle('decluttering-report', this._reportMode || this._strictReporting || !!this._strictNotice);
+    this.classList.toggle('decluttering-report', this._reportShown || !!this._strictNotice);
 
     const chip = this._renderChip();
     this.classList.toggle('decluttering-chipped', chip !== '');
