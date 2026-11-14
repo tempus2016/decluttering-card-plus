@@ -1079,7 +1079,7 @@ export abstract class DeclutteringElement extends LitElement {
 
   /** A build of this element and how long it took: the card tells the preview pause (#456). */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  protected _built(ms: number): void {}
+  protected _built(_ms: number): void {}
 
   private _noteBuild(template: string, config: DeclutteringCardConfig, copies: number, started: number): void {
     // The view's name, for the health panel's statistics (idea 60): its title, else its path, else its number.
