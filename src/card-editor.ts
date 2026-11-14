@@ -93,9 +93,11 @@ import {
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { buildTime, previewLines, PreviewLine, previewModes, PreviewMode } from './card-editor/result-preview';
 import {
+  notePreviewBuild,
   onPreviewHold,
   previewEditorOpened,
   previewPauseOn,
+  previewSlowPause,
   renderPreviewNow,
   requiredUnset,
   setPreviewPaused,
@@ -1331,6 +1333,14 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
    * renders a third thing, so working out why the result is not what you meant has always
    * meant reading both and doing the substitution in your head. This does it for you.
    */
+  // What the paused preview says: why it paused, when a slow build did it by itself (#456).
+  private _pausedText(): string {
+    const slow = previewSlowPause();
+    return slow !== undefined
+      ? localize('card.preview_paused_slow', { ms: slow }, this.hass)
+      : localize('card.preview_paused', undefined, this.hass);
+  }
+
   // The Result's build itself, with how long it took (#430: kept by _renderResult).
   private _buildResult(
     variables: VariablesConfig[] | undefined,
@@ -1370,7 +1380,10 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         this._config,
         thingType,
       );
-      return { resolved, unresolved, time: buildTime(started, performance.now()) };
+      const finished = performance.now();
+      // The Result is the editor's own preview: as slow a build here pauses both (#456).
+      notePreviewBuild(finished - started);
+      return { resolved, unresolved, time: buildTime(started, finished) };
     } catch (err) {
       return { error: String(err) };
     }
@@ -1514,10 +1527,10 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
             ? html`<div class="rendered">
                 ${
                   !anyway && (paused || needed.length)
-                    ? html`<ha-alert alert-type="info">
+                    ? html`<ha-alert alert-type=${paused && previewSlowPause() !== undefined ? 'error' : 'info'}>
                         ${
                           paused
-                            ? localize('card.preview_paused', undefined, this.hass)
+                            ? this._pausedText()
                             : localize(
                                 needed.length === 1 ? 'card.preview_required_one' : 'card.preview_required_many',
                                 { which: needed.map((name) => `[[${name}]]`).join(', ') },
@@ -1544,7 +1557,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
                 }
               </div>`
             : held
-              ? html`<ha-alert alert-type="info">${localize('card.preview_paused', undefined, this.hass)}</ha-alert>`
+              ? html`<ha-alert alert-type=${previewSlowPause() !== undefined ? 'error' : 'info'}
+                  >${this._pausedText()}</ha-alert
+                >`
               : html`<pre class="yaml">
 ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed' : ''}">${line.text}</span>`)}</pre>`
         }

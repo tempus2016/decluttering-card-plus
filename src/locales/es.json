@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: lo que construye esta tarjeta.",
   "card.preview_paused": "La vista previa está en pausa, así que esta tarjeta no se construye mientras editas. Elige Renderizar ahora para construirla una vez.",
+  "card.preview_paused_slow": "La vista previa se ha pausado sola: crear esta tarjeta tardó {ms} ms y se volvería a crear con cada cambio. Elige Renderizar ahora para crearla una vez, o Reanudar vista previa en el editor de la tarjeta para volver a crearla con cada cambio.",
   "card.preview_required_one": "Rellena {which} para ver la tarjeta. La plantilla lo necesita, así que la vista previa lo espera.",
   "card.preview_required_many": "Rellena {which} para ver la tarjeta. La plantilla los necesita, así que la vista previa los espera.",
   "card.preview_render_now": "Renderizar ahora",

@@ -73,7 +73,9 @@ import {
   PreviewHoldEvent,
   previewEditorOpen,
   previewEditorOpenings,
+  notePreviewBuild,
   previewPauseOn,
+  previewSlowPause,
   renderPreviewNow,
   requiredUnset,
 } from './preview-hold';
@@ -550,6 +552,11 @@ export class DeclutteringCard extends DeclutteringElement {
     }
   }
 
+  // A slow build of the edit dialog's preview pauses it by itself (#456).
+  protected _built(ms: number): void {
+    if (this._inPreview()) notePreviewBuild(ms);
+  }
+
   protected _holdForRequired(unresolved: string[], templateConfig: TemplateConfig): boolean {
     if (this._lastConfig === this._builtAnyway || !this._inPreview()) return false;
     const names = requiredUnset(getDeclarations(templateConfig), unresolved);
@@ -560,15 +567,18 @@ export class DeclutteringCard extends DeclutteringElement {
 
   protected render(): TemplateResult | void {
     if (!this._held) return super.render();
+    const slow = this._held.reason === 'paused' ? previewSlowPause() : undefined;
     const message =
-      this._held.reason === 'paused'
-        ? localize('card.preview_paused', undefined, this._hass)
-        : localize(
-            this._held.names.length === 1 ? 'card.preview_required_one' : 'card.preview_required_many',
-            { which: this._held.names.map((name) => `[[${name}]]`).join(', ') },
-            this._hass,
-          );
-    return html`<ha-alert alert-type="info">
+      slow !== undefined
+        ? localize('card.preview_paused_slow', { ms: slow }, this._hass)
+        : this._held.reason === 'paused'
+          ? localize('card.preview_paused', undefined, this._hass)
+          : localize(
+              this._held.names.length === 1 ? 'card.preview_required_one' : 'card.preview_required_many',
+              { which: this._held.names.map((name) => `[[${name}]]`).join(', ') },
+              this._hass,
+            );
+    return html`<ha-alert alert-type=${slow !== undefined ? 'error' : 'info'}>
       ${message}
       <ha-button slot="action" @click=${(): void => renderPreviewNow()}>
         ${localize('card.preview_render_now', undefined, this._hass)}

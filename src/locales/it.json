@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: cosa costruisce questa scheda.",
   "card.preview_paused": "L'anteprima è in pausa, quindi questa scheda non viene costruita mentre modifichi. Scegli Mostra ora per costruirla una volta.",
+  "card.preview_paused_slow": "L'anteprima si è messa in pausa da sola: creare questa scheda ha richiesto {ms} ms, e verrebbe ricreata a ogni modifica. Scegli Mostra ora per crearla una volta, oppure Riprendi l'anteprima nell'editor della scheda per ricrearla a ogni modifica.",
   "card.preview_required_one": "Compila {which} per vedere la scheda. Il modello ne ha bisogno, quindi l'anteprima lo aspetta.",
   "card.preview_required_many": "Compila {which} per vedere la scheda. Il modello ne ha bisogno, quindi l'anteprima li aspetta.",
   "card.preview_render_now": "Mostra ora",

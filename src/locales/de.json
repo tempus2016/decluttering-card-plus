@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug: was diese Karte baut.",
   "card.preview_paused": "Die Vorschau ist pausiert, daher wird diese Karte beim Bearbeiten nicht erstellt. Wähle Jetzt rendern, um sie einmal zu erstellen.",
+  "card.preview_paused_slow": "Die Vorschau hat sich selbst pausiert: Das Erstellen dieser Karte dauerte {ms} ms, und sie würde bei jeder Änderung neu erstellt. Wähle Jetzt rendern, um sie einmal zu erstellen, oder Vorschau fortsetzen im Karteneditor, um sie wieder bei jeder Änderung zu erstellen.",
   "card.preview_required_one": "Fülle {which} aus, um die Karte zu sehen. Die Vorlage braucht es, daher wartet die Vorschau darauf.",
   "card.preview_required_many": "Fülle {which} aus, um die Karte zu sehen. Die Vorlage braucht sie, daher wartet die Vorschau darauf.",
   "card.preview_render_now": "Jetzt rendern",

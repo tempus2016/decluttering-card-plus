@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Felsökning: vad det här kortet bygger.",
   "card.preview_paused": "Förhandsvisningen är pausad, så kortet byggs inte medan du redigerar. Välj Rendera nu för att bygga det en gång.",
+  "card.preview_paused_slow": "Förhandsvisningen pausade sig själv: det tog {ms} ms att bygga det här kortet, och det skulle byggas om vid varje ändring. Välj Rendera nu för att bygga det en gång, eller Återuppta förhandsvisning i kortredigeraren för att bygga vid varje ändring igen.",
   "card.preview_required_one": "Fyll i {which} för att se kortet. Mallen behöver den, så förhandsvisningen väntar på den.",
   "card.preview_required_many": "Fyll i {which} för att se kortet. Mallen behöver dem, så förhandsvisningen väntar på dem.",
   "card.preview_render_now": "Rendera nu",

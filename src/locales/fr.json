@@ -23,6 +23,7 @@
 
   "card.debug_builds": "Debug : ce que cette carte construit.",
   "card.preview_paused": "L'aperçu est en pause : cette carte n'est pas construite pendant que vous modifiez. Choisissez Afficher maintenant pour la construire une fois.",
+  "card.preview_paused_slow": "L'aperçu s'est mis en pause tout seul : la construction de cette carte a pris {ms} ms, et elle se reconstruirait à chaque modification. Choisissez Afficher maintenant pour la construire une fois, ou Reprendre l'aperçu dans l'éditeur de carte pour la reconstruire à chaque modification.",
   "card.preview_required_one": "Renseignez {which} pour voir la carte. Le modèle en a besoin, l'aperçu l'attend donc.",
   "card.preview_required_many": "Renseignez {which} pour voir la carte. Le modèle en a besoin, l'aperçu les attend donc.",
   "card.preview_render_now": "Afficher maintenant",
