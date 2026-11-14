@@ -1,4 +1,4 @@
-import { placeholderJson } from './placeholder-text';
+import { findAcross, placeholderJson } from './placeholder-text';
 import { applyListEdits, LIST_EDIT_KEY } from './list-edits';
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
@@ -32,6 +32,7 @@ import {
   resolveFallback,
   takesStructure,
   variableValues,
+  addVariableValues,
   withoutOptional,
   isOptional,
   OPTIONAL,
@@ -144,6 +145,12 @@ export interface BuildExtras {
   // The templates whose cards this one sits inside, outermost first, for `__template_path__`
   // and the names beside it (#391).
   templateChain?: string[];
+  // The item template a `with:` or `repeat:` is filling in, so what it warns about names the
+  // template the placeholder is written in rather than only the card's (#456).
+  itemTemplate?: string;
+  // The placeholders a fill inside this build has already warned about as left standing, so
+  // the build around it does not say the same again under its own name (#456).
+  unsetSaid?: Set<string>;
 }
 
 /*
@@ -175,7 +182,7 @@ const SPLICE_KEY = '__dcp_splice__';
 type Expansion = { value: unknown; splice?: boolean } | { refused: string } | { closed: true };
 
 // What a `with:` or `repeat:` fills in: an item template's `item:`, or a mapping variable's value.
-type Body = { body: unknown; template: TemplateConfig; source: 'item' | 'variable' };
+type Body = { body: unknown; template: TemplateConfig; source: 'item' | 'variable'; name?: string };
 
 function isSplice(node: any): boolean {
   return (
@@ -1137,16 +1144,13 @@ function exposeFillValues(
   build: (variables: VariablesConfig[], template: TemplateConfig, key: string) => unknown,
   // The with: arguments filled in here first, as the pass that fills the fill would have.
   settleText: (text: string) => unknown,
-): void {
-  if (!Object.keys(itemTemplates).length) return;
+): Record<string, any> | undefined {
+  // Hands back what variableValues gives for the list as it ends up, when it had to work
+  // that out, so the build does not read the whole list over again (#456).
+  if (!Object.keys(itemTemplates).length) return undefined;
+  const asked = new Set(findAcross(content, variableArray, DOTTED_ASK));
+  if (!asked.size) return undefined;
   const values = variableValues(variableArray);
-  const text = placeholderJson([content, variableArray]);
-  if (typeof text !== 'string' || !text.includes('.')) return;
-  const asked = new Set<string>();
-  for (let match = DOTTED_ASK.exec(text); match !== null; match = DOTTED_ASK.exec(text)) {
-    asked.add(`${match[1]}.${match[2]}`);
-  }
-  DOTTED_ASK.lastIndex = 0;
   for (const dotted of asked) {
     if (Object.prototype.hasOwnProperty.call(values, dotted)) continue;
     const [name, key] = dotted.split('.');
@@ -1161,7 +1165,9 @@ function exposeFillValues(
     // Nothing in the fill sets it: left alone, so it reads as unset like any other name.
     if (value === undefined || value === `[[${key}]]`) continue;
     variableArray.push({ [dotted]: value });
+    addVariableValues(values, { [dotted]: value });
   }
+  return values;
 }
 
 // The values a `with:` lays over, read the same way as where it is filled in.
@@ -1178,6 +1184,17 @@ function fillOverlay(arg: string, values: Record<string, any>): VariablesConfig[
   }
   const mapping = values[arg];
   return mapping && typeof mapping === 'object' && !Array.isArray(mapping) ? normaliseVariables(mapping) : undefined;
+}
+
+// Who a warning is about: the item template the placeholder is written in when a fill is
+// being built, with the card's template beside it, else the card's template alone (#456).
+function whoseText(templateName: string | undefined, itemTemplate: string | undefined): string {
+  if (itemTemplate) {
+    return templateName
+      ? localize('warn.unresolved_item_in', { item: itemTemplate, name: templateName })
+      : localize('warn.unresolved_item', { item: itemTemplate });
+  }
+  return templateName ? localize('warn.unresolved_template', { name: templateName }) : localize('warn.unresolved_this');
 }
 
 function deepReplaceBody(
@@ -1257,21 +1274,24 @@ function deepReplaceBody(
    * A variable of the same name wins, as it does over an entity.
    */
   const itemTemplates = extras?.itemTemplates ?? {};
+  // The names already set, once, rather than searching the whole list for each template (#456).
+  const named = new Set(variableArray.map((entry) => Object.keys(entry)[0]));
   for (const [name, template] of Object.entries(itemTemplates)) {
     // A function template (#307) is a step, not a value: only one with an `item:` stands as one.
     if (!template || typeof template !== 'object' || !('item' in template)) continue;
-    if (!variableArray.some((entry) => Object.keys(entry)[0] === name)) {
+    if (!named.has(name)) {
+      named.add(name);
       variableArray.push({ [name]: (template as any)?.item });
     }
   }
   // The template's own names, under everything else (#391), when anything here asks for them.
-  if (TEMPLATE_NAME_USE.test(placeholderJson([content, variableArray]))) {
+  if (findAcross(content, variableArray, TEMPLATE_NAME_USE).length) {
     for (const entry of templatePlaceholders(templateName, extras?.templateChain)) {
       const name = Object.keys(entry)[0];
       if (!variableArray.some((each) => Object.keys(each)[0] === name)) variableArray.push(entry);
     }
   }
-  exposeFillValues(
+  const exposed = exposeFillValues(
     variableArray,
     content,
     itemTemplates,
@@ -1298,7 +1318,7 @@ function deepReplaceBody(
     (text) =>
       deepReplace(variableArray, {}, text, templateName, hass, true, undefined, depth + 1, undefined, shield, true),
   );
-  const values = variableValues(variableArray);
+  const values = exposed ?? variableValues(variableArray);
 
   /*
    * `with:` and `repeat:` (#227) fill a body in again with values of their own: the same
@@ -1311,7 +1331,7 @@ function deepReplaceBody(
     if (typeof name !== 'string' || !name) return undefined;
     const template = Object.prototype.hasOwnProperty.call(itemTemplates, name) ? itemTemplates[name] : undefined;
     if (template && typeof template === 'object' && 'item' in template) {
-      return { body: (template as any).item, template, source: 'item' };
+      return { body: (template as any).item, template, source: 'item', name };
     }
     if (Object.prototype.hasOwnProperty.call(values, name))
       return { body: values[name], template: {} as TemplateConfig, source: 'variable' };
@@ -1360,7 +1380,14 @@ function deepReplaceBody(
        * `[[secret]]` to the next pass as a live placeholder. This build unwraps them at its end.
        */
       true,
-      { ...extras, budget, tooDeep, haNames: fromHa ? new Set([...(haNames ?? []), ...fromHa]) : haNames },
+      {
+        ...extras,
+        budget,
+        tooDeep,
+        haNames: fromHa ? new Set([...(haNames ?? []), ...fromHa]) : haNames,
+        unsetSaid,
+        ...(found.source === 'item' && found.name ? { itemTemplate: found.name } : {}),
+      },
       names,
     );
     // What the outline needs of what it built (#428): the cards of ours in it, and whether it was anything.
@@ -1713,6 +1740,7 @@ function deepReplaceBody(
   // How much the text may still grow, counted across every fill this build makes.
   const limit = outputLimit(jsonConfig.length);
   const budget = extras?.budget ?? { left: limit - jsonConfig.length, fills: 0 };
+  const unsetSaid = extras?.unsetSaid ?? new Set<string>();
 
   /*
    * A stylesheet inside the card - card-mod's, button-card's - is built first, with the shield
@@ -1989,16 +2017,23 @@ function deepReplaceBody(
    * other, or a chain deeper than the passes go. Calling it unset sends the author looking
    * for a value that is already there, and "gave up" alone gave no clue which one (#443).
    */
+  /*
+   * A placeholder a fill inside this build already warned about, naming the item template it
+   * is written in, is not said again here under the card's name (#456). Only what was said
+   * counts: a quiet build tells nobody, so the build around it still does.
+   */
+  const told = (inside: string): boolean => unsetSaid.has(inside);
+  const tell = (names: string[]): void => {
+    if (quiet !== true) for (const name of names) unsetSaid.add(name);
+  };
   const looping = unresolved.filter((inside) => {
-    if (asksState(inside) || unknownSteps.has(inside)) return false;
+    if (asksState(inside) || unknownSteps.has(inside) || told(inside)) return false;
     const head = withoutOptional(inside).split('|')[0];
     return Object.prototype.hasOwnProperty.call(values, head) && values[head] !== undefined;
   });
   if (looping.length) {
     const which = looping.map((name) => `[[${shown(name)}]]`).join(', ');
-    const whose = templateName
-      ? localize('warn.unresolved_template', { name: templateName })
-      : localize('warn.unresolved_this');
+    const whose = whoseText(templateName, extras?.itemTemplate);
     let loop: string[] | undefined;
     for (const inside of looping) {
       loop = findLoop(withoutOptional(inside).split('|')[0], values);
@@ -2011,19 +2046,23 @@ function deepReplaceBody(
           ? localize('warn.gave_up_loop', { loop: loop.map((name) => `[[${name}]]`).join(' → ') })
           : localize('warn.gave_up_deep', { passes: MAX_PASSES });
     say(localize('warn.gave_up_names', { whose, which, why }));
+    tell(looping);
   } else if (gaveUp) {
     say(localize('warn.gave_up', { passes: gaveUp }));
   }
   const noTemplate = unresolved.filter(
-    (inside) => !asksState(inside) && !unknownSteps.has(inside) && missingItemTemplate(inside, known) !== undefined,
+    (inside) =>
+      !asksState(inside) &&
+      !unknownSteps.has(inside) &&
+      !told(inside) &&
+      missingItemTemplate(inside, known) !== undefined,
   );
   if (noTemplate.length) {
     const which = noTemplate.map((name) => `[[${name}]]`).join(', ');
     const names = [...new Set(noTemplate.map((inside) => missingItemTemplate(inside, known)))].join(', ');
-    const whose = templateName
-      ? localize('warn.unresolved_template', { name: templateName })
-      : localize('warn.unresolved_this');
+    const whose = whoseText(templateName, extras?.itemTemplate);
     say(localize('warn.no_item_template', { whose, which, names }), 'unset', true);
+    tell(noTemplate);
   }
   /*
    * A `$` key no language of the template has (#392) is a text missing from the template, not
@@ -2038,14 +2077,13 @@ function deepReplaceBody(
   );
   if (untranslated.length) {
     const keys = [...new Set(untranslated.map(lookupKey))].join(', ');
-    const whose = templateName
-      ? localize('warn.unresolved_template', { name: templateName })
-      : localize('warn.unresolved_this');
+    const whose = whoseText(templateName, extras?.itemTemplate);
     say(localize('warn.translation_missing', { whose, keys }), 'unset', true);
   }
   const unset = unresolved.filter(
     (inside) =>
       !asksState(inside) &&
+      !told(inside) &&
       !looping.includes(inside) &&
       !unknownSteps.has(inside) &&
       !noTemplate.includes(inside) &&
@@ -2053,10 +2091,9 @@ function deepReplaceBody(
   );
   if (unset.length) {
     const which = unset.map((name) => `[[${shown(name)}]]`).join(', ');
-    const whose = templateName
-      ? localize('warn.unresolved_template', { name: templateName })
-      : localize('warn.unresolved_this');
+    const whose = whoseText(templateName, extras?.itemTemplate);
     say(localize('warn.unresolved', { whose, which, escape: `${ESCAPE}${shown(unset[0])}` }), 'unset', true);
+    tell(unset);
   }
 
   // Escapes are unwrapped only once every substitution is done, so `[[!name]]` cannot be

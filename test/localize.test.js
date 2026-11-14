@@ -96,6 +96,17 @@ check('Spanish is wired in', localize('tools.rename_header', undefined, { langua
 check('German is wired in', localize('tools.rename_header', undefined, { language: 'de' }), 'Umbenennen');
 check('Dutch is wired in', localize('tools.rename_header', undefined, { language: 'nl' }), 'Hernoemen');
 check(
+  'a script-and-region code is looked up whole',
+  localize('tools.rename_header', undefined, { language: 'zh-Hant' }) !==
+    localize('tools.rename_header', undefined, { language: 'zh-Hans' }),
+  true,
+);
+check(
+  'a browser region code reaches the script Home Assistant uses',
+  localize('tools.rename_header', undefined, { language: 'zh-TW' }),
+  localize('tools.rename_header', undefined, { language: 'zh-Hant' }),
+);
+check(
   'a regional language falls back to its base',
   localize('share.import_header', undefined, { language: 'pt-BR' }),
   'Importar',

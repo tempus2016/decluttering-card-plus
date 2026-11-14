@@ -244,7 +244,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
       }
       .pick ul {
         margin: 4px 0 0;
-        padding-left: 18px;
+        padding-inline-start: 18px;
       }
       .pick a {
         cursor: pointer;

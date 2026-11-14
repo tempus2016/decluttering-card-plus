@@ -65,7 +65,7 @@ export class DeclutteringPlaceholderTool extends LitElement {
         font-size: 0.9em;
       }
       th {
-        text-align: left;
+        text-align: start;
         color: var(--secondary-text-color);
         font-weight: 500;
         padding: 6px 8px;
@@ -83,6 +83,9 @@ export class DeclutteringPlaceholderTool extends LitElement {
       /* Only the value keeps its spaces: on the cell, the template's own indent showed too. */
       td.code .value {
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
       }
       td.gap {
         color: var(--secondary-text-color);

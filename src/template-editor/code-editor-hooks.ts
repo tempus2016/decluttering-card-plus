@@ -134,7 +134,7 @@ export class DeclutteringCodeHooks extends LitElement {
         height: 12px;
         border-radius: 3px;
         vertical-align: -1px;
-        margin-right: 5px;
+        margin-inline-end: 5px;
       }
       .legend .ok {
         background: color-mix(in srgb, var(--warning-color, #e39400) 40%, transparent);
@@ -176,7 +176,7 @@ export class DeclutteringCodeHooks extends LitElement {
         background: color-mix(in srgb, var(--primary-color) 14%, transparent);
       }
       .pop div.opt small {
-        margin-left: auto;
+        margin-inline-start: auto;
         color: var(--secondary-text-color);
         font-family: var(--ha-font-family, inherit);
       }
@@ -188,6 +188,9 @@ export class DeclutteringCodeHooks extends LitElement {
         font-family: var(--ha-font-family-code, monospace);
         font-size: 0.85em;
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
         word-break: break-word;
       }
       pre.copy .dcp-ph {

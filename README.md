@@ -179,8 +179,10 @@ Common problems are in [Troubleshooting][wiki-troubleshooting]. If you need to a
 `debug: report` on the card and paste what it gives you into an [issue][issues] or the
 [forum thread][forum].
 
-The card speaks Dutch, English, French, German, Portuguese and Spanish, following your Home
-Assistant profile. Adding a language is one file and no code: see
+The card speaks Arabic, Bengali, Chinese (Simplified and Traditional), Czech, Danish, Dutch,
+English, French, German, Hindi, Indonesian, Italian, Japanese, Korean, Polish, Portuguese,
+Russian, Spanish, Swedish, Turkish, Ukrainian and Urdu, following your Home Assistant
+profile. Adding a language is one file and no code: see
 [Translations][wiki-translations].
 
 A shared template can carry its own words in several languages too. Put them in a

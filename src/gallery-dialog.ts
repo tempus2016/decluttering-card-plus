@@ -121,7 +121,7 @@ export class DeclutteringGalleryDialog extends LitElement {
         overflow: hidden;
         background: var(--card-background-color);
         cursor: pointer;
-        text-align: left;
+        text-align: start;
         padding: 0;
         font: inherit;
         color: inherit;

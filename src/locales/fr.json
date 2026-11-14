@@ -268,6 +268,8 @@
   "warn.no_item_template": "decluttering-card-plus : {whose} utilise {which}, mais il n'y a ici aucun modèle d'élément nommé {names}, il est donc affiché tel qu'écrit. Vérifiez le nom, que le modèle a un corps item: et non card:, et qu'il figure dans les decluttering_templates de ce tableau de bord.",
   "warn.unresolved_template": "le modèle \"{name}\"",
   "warn.unresolved_this": "ce modèle",
+  "warn.unresolved_item_in": "le modèle d'élément \"{item}\" du modèle \"{name}\"",
+  "warn.unresolved_item": "le modèle d'élément \"{item}\"",
   "warn.translation_missing": "decluttering-card-plus : {whose} cherche {keys}, pour lequel aucune de ses langues n'a de texte, il est donc affiché tel qu'écrit. Ajoutez-le au bloc language: du modèle.",
   "warn.nothing_for": "rien dans Home Assistant pour \"{value}\"",
   "warn.no_map_match": "\"{value}\" ne correspond à aucune des paires de map:",

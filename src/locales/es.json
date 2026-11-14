@@ -268,6 +268,8 @@
   "warn.no_item_template": "decluttering-card-plus: {whose} usa {which}, pero aquí no hay ninguna plantilla de elemento llamada {names}, así que se muestra tal como está escrito. Revisa el nombre, que la plantilla tenga un cuerpo item: en lugar de card:, y que esté en las decluttering_templates de este panel.",
   "warn.unresolved_template": "la plantilla \"{name}\"",
   "warn.unresolved_this": "esta plantilla",
+  "warn.unresolved_item_in": "la plantilla de elemento \"{item}\" de la plantilla \"{name}\"",
+  "warn.unresolved_item": "la plantilla de elemento \"{item}\"",
   "warn.translation_missing": "decluttering-card-plus: {whose} busca {keys}, para lo que ninguno de sus idiomas tiene texto, así que se muestra tal como está escrito. Añádelo al bloque language: de la plantilla.",
   "warn.nothing_for": "nada en Home Assistant para \"{value}\"",
   "warn.no_map_match": "\"{value}\" no coincide con ninguno de los pares de map:",

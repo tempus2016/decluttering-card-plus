@@ -268,6 +268,8 @@
   "warn.no_item_template": "decluttering-card-plus: {whose} uses {which}, but there is no item template called {names} here, so it is rendered as written. Check the name, that the template has an item: body rather than card:, and that it is in this dashboard's decluttering_templates.",
   "warn.unresolved_template": "template \"{name}\"",
   "warn.unresolved_this": "this template",
+  "warn.unresolved_item_in": "item template \"{item}\" in template \"{name}\"",
+  "warn.unresolved_item": "item template \"{item}\"",
   "warn.translation_missing": "decluttering-card-plus: {whose} looks up {keys}, which none of its languages has a text for, so it is rendered as written. Add it to the template's language: block.",
   "warn.nothing_for": "nothing in Home Assistant for \"{value}\"",
   "warn.no_map_match": "\"{value}\" matches none of the map: pairs",

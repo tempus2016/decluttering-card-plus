@@ -3,6 +3,11 @@ import { DeclutteringElement } from '../element';
 
 /* The one stylesheet the template editor and its tabs share. */
 export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
+  /* Code stays left to right inside a right-to-left sentence. */
+  code {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
   /* The Settings tab's three panels (idea 32). */
   ha-expansion-panel {
     display: block;
@@ -11,7 +16,7 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
   ha-expansion-panel small {
     color: var(--secondary-text-color);
     font-weight: 400;
-    margin-left: 6px;
+    margin-inline-start: 6px;
   }
   .panel {
     padding: 12px 4px 4px;
@@ -77,7 +82,7 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
   }
   .usages ul {
     margin: 0;
-    padding-left: 20px;
+    padding-inline-start: 20px;
   }
   .usages li {
     margin-bottom: 4px;
@@ -168,7 +173,7 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
   }
   .share .installed {
     margin: 0 0 8px;
-    padding-left: 20px;
+    padding-inline-start: 20px;
   }
   .share .installed li {
     margin-bottom: 8px;
@@ -194,7 +199,7 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
   }
   .similar ul {
     margin: 0 0 8px;
-    padding-left: 20px;
+    padding-inline-start: 20px;
   }
   .similar ha-textfield,
   .similar ha-input {
@@ -237,7 +242,7 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-left: 6px;
+    margin-inline-start: 6px;
     min-width: 18px;
     height: 18px;
     padding: 0 6px;
@@ -261,7 +266,7 @@ export const TEMPLATE_EDITOR_STYLES: CSSResult = css`
     display: inline-block;
     width: 8px;
     height: 8px;
-    margin-left: 6px;
+    margin-inline-start: 6px;
     border-radius: 50%;
     background: var(--warning-color, #ffa600);
     vertical-align: middle;

@@ -64,6 +64,9 @@ export class DeclutteringTemplate extends DeclutteringElement {
       .step-only pre {
         margin: 6px 0 0;
         white-space: pre-wrap;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
         word-break: break-word;
       }
     `;

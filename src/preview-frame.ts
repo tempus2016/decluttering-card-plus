@@ -181,8 +181,8 @@ export class DeclutteringPreviewFrame extends LitElement {
         position: relative;
       }
       .stage.narrow {
-        border-left: 1px dashed var(--secondary-text-color);
-        border-right: 1px dashed var(--secondary-text-color);
+        border-inline-start: 1px dashed var(--secondary-text-color);
+        border-inline-end: 1px dashed var(--secondary-text-color);
         border-radius: 0;
       }
       /*
@@ -226,6 +226,9 @@ export class DeclutteringPreviewFrame extends LitElement {
         display: block;
         min-height: 1.5em;
         white-space: pre;
+        /* Code reads left to right in a right-to-left dashboard too. */
+        direction: ltr;
+        text-align: left;
       }
       pre .hl {
         background: color-mix(in srgb, var(--warning-color, #ffa600) 20%, transparent);

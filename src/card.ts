@@ -441,12 +441,7 @@ export class DeclutteringCard extends DeclutteringElement {
       // Said rather than thrown (idea 49): thrown, Home Assistant draws its own red card in
       // this one's place, and the line, the nearest name and the fix could not be offered.
       const available = Object.keys(collectTemplates(ll));
-      this._errorDetail = missingTemplateDetail(
-        ll,
-        config.template,
-        available,
-        localize('errorcard.not_found', undefined, this._hass),
-      );
+      this._errorDetail = missingTemplateDetail(ll, config.template, available);
       this._error =
         localize('error.template_missing', { template: config.template }, this._hass) +
         didYouMean(config.template, available);
@@ -833,11 +828,7 @@ export class DeclutteringCard extends DeclutteringElement {
     if (!missing.length || this._thingConfig !== config) return;
     const types = missing.map((tag) => `custom:${tag}`);
     const message = localize('error.custom_element_missing', { types: types.join(', ') }, this._hass);
-    this._errorDetail = customMissingDetail(
-      this._templateName,
-      types,
-      localize('errorcard.not_registered', undefined, this._hass),
-    );
+    this._errorDetail = customMissingDetail(this._templateName, types);
     if (config === this._fallbackConfig) {
       this._fallbackFailed = true;
       this._error = this._fallbackFor ?? message;
@@ -895,12 +886,7 @@ export class DeclutteringCard extends DeclutteringElement {
     } catch (err) {
       if (err instanceof MissingTemplateError) {
         this._templateName = err.template;
-        this._errorDetail = missingTemplateDetail(
-          getLovelaceConfig(),
-          err.template,
-          err.available,
-          localize('errorcard.not_found', undefined, this._hass),
-        );
+        this._errorDetail = missingTemplateDetail(getLovelaceConfig(), err.template, err.available);
       }
       this._error = (err as Error)?.message ?? String(err);
     }
@@ -1364,14 +1350,13 @@ export class DeclutteringCard extends DeclutteringElement {
           // Only a dashboard that names somewhere to borrow from is told it was looked for there.
           const key = getTemplateSources(ll).length ? 'error.template_missing_anywhere' : 'error.template_missing';
           const missing = localize(key, { template: config.template }, hass);
-          const notFound = localize('errorcard.not_found', undefined, hass);
-          this._errorDetail = missingTemplateDetail(ll, config.template, [], notFound);
+          this._errorDetail = missingTemplateDetail(ll, config.template, []);
           this._error = missing;
           // Every name there is, borrowed ones included, is known by the time this runs.
           // Not added once `on_error:` has taken the error's place - it has been said.
           collectAllTemplates(hass, ll).then((all) => {
             if (this._error !== missing) return;
-            this._errorDetail = missingTemplateDetail(ll, config.template, Object.keys(all), notFound);
+            this._errorDetail = missingTemplateDetail(ll, config.template, Object.keys(all));
             this._error = missing + didYouMean(config.template, Object.keys(all));
           });
         }

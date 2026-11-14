@@ -31,6 +31,9 @@ const DIFF_STYLE = html`<style>
   }
   .dcp-diff div {
     white-space: pre;
+    /* Code reads left to right in a right-to-left dashboard too. */
+    direction: ltr;
+    text-align: left;
     padding: 0 8px;
   }
   .dcp-diff .add {
