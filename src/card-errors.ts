@@ -46,6 +46,13 @@ function stillWaiting(element: any): boolean {
   return element?.style?.display?.toLowerCase?.() === 'none';
 }
 
+/** Whether a `custom:` type names an element this page has not defined. */
+function notDefined(type: string): boolean {
+  if (!type.startsWith('custom:')) return false;
+  const registry = (globalThis as { customElements?: { get(tag: string): unknown } }).customElements;
+  return !!registry && !registry.get(type.slice('custom:'.length));
+}
+
 /** What an error card was told, or undefined for an element that is not one or says nothing. */
 export function errorOf(element: any): CardError | undefined {
   if (!element || !ERROR_TAGS.includes(String(element.localName ?? '').toLowerCase())) return undefined;
@@ -54,6 +61,9 @@ export function errorOf(element: any): CardError | undefined {
   if (typeof said !== 'string' || !said.trim()) return undefined;
   // The hui-card or hui-badge around it holds the config that was refused.
   const type = element.parentElement?.config?.type ?? config?.origConfig?.type;
+  // A custom card that is not defined has not refused anything: it is not there. The card
+  // already says so in its own error card, naming the type, so this would say it twice.
+  if (typeof type === 'string' && notDefined(type)) return undefined;
   return { ...(typeof type === 'string' && type ? { type } : {}), message: said.trim() };
 }
 
