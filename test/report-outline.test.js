@@ -221,6 +221,18 @@ check(
   check('a badge template says so', reportOutline([badge])[0].kind, 'badge');
 }
 
+{
+  // A template whose content sits under group: is a group, whether it lists cards or badges.
+  const cards = report('"pair"', { template: { name: 'pair', config: { group: { cards: [{ type: 'tile' }] } } } });
+  const listed = report('"chips"', { template: { name: 'chips', config: { group: [{ type: 'entity' }] } } });
+  check(
+    'a group template says so, not card',
+    [reportOutline([cards])[0].kind, reportOutline([listed])[0].kind],
+    ['group', 'group'],
+  );
+  check('a group template is tagged group', outlineTags(reportOutline([cards])[0]), ['group']);
+}
+
 /* --- from a real build --- */
 
 {

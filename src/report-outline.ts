@@ -12,7 +12,7 @@ import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type OutlineKind = 'card' | 'badge' | 'element' | 'row' | 'item' | 'variable';
+export type OutlineKind = 'card' | 'badge' | 'element' | 'row' | 'group' | 'item' | 'variable';
 
 export interface OutlineNode {
   /** Unique within the outline, for keyed rendering. */
@@ -47,11 +47,12 @@ function labelParts(label: string): { name: string; template?: string } {
   return { name: plain ? plain[1] : label };
 }
 
-// What a template builds, from the key its content sits under.
+// What a template builds, from the key its content sits under. A `group:` builds cards or badges
+// of its own, so it is named for itself rather than taken for a card.
 function kindOf(report: TraceReport): OutlineKind {
   const config = report.template?.config as Record<string, unknown> | undefined;
   if (config && typeof config === 'object') {
-    for (const kind of ['card', 'badge', 'element', 'row'] as const) if (kind in config) return kind;
+    for (const kind of ['card', 'badge', 'element', 'row', 'group'] as const) if (kind in config) return kind;
   }
   return 'card';
 }

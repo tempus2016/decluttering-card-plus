@@ -41,6 +41,8 @@
   --slab-ink:  #C9D6E0;
   --slab-rule: #24313D;
   --slab-mute: #818F9B;
+  /* A search match: a tint of the amber behind the word. */
+  --mark:      color-mix(in srgb, var(--amber) 20%, transparent);
 
   --sans:  'Plex Sans', system-ui, -apple-system, sans-serif;
   --serif: 'Plex Serif', Georgia, serif;
@@ -66,6 +68,7 @@
     --link:      #74B8EF;
     --slab:      #0A1017;
     --slab-rule: #1E2A35;
+    --mark:      color-mix(in srgb, var(--amber) 24%, transparent);
   }
 }
 
@@ -160,7 +163,12 @@ a:hover { text-decoration-thickness: 2px; }
 .search-fixed { padding: .375rem .625rem .5rem; font-size: .8125rem; color: var(--ink-soft); }
 .search-where { display: block; font-size: .875rem; font-weight: 500; line-height: 1.4; color: var(--link); }
 .search-text { display: block; margin-top: .15rem; font-size: .8125rem; line-height: 1.5; color: var(--ink-soft); }
-.search-results mark { background: none; color: inherit; font-weight: 600; box-shadow: inset 0 -2px 0 var(--amber); }
+/* The match is ink on an amber tint, at least 7:1 in both schemes, hovered or not; the
+   lines around it are softer, so it would not reach 4.5:1 left in their colour. */
+.search-results mark {
+  background: var(--mark); color: var(--ink); font-weight: 600;
+  border-radius: 2px; box-shadow: inset 0 -2px 0 var(--amber-dim);
+}
 .search-message { padding: .625rem; font-size: .8125rem; color: var(--ink-soft); }
 
 /* ------------------------------------------------------------ shell */

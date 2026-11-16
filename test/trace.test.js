@@ -10,6 +10,7 @@ const {
   describeSection,
   workOutRows,
   headline,
+  logTrace,
   handedDownNames,
   wantsTrace,
   withTrace,
@@ -577,3 +578,29 @@ check('the card itself is a dot', formatPath([]), '.');
 
   Object.assign(console, saved);
 })();
+
+{
+  // debug: console lists what was taken out under a heading that fits a repeat's if: as well.
+  const logged = [];
+  const saved = {
+    groupCollapsed: console.groupCollapsed,
+    log: console.log,
+    groupEnd: console.groupEnd,
+    table: console.table,
+  };
+  console.groupCollapsed = console.groupEnd = console.table = () => {};
+  console.log = (...args) => logged.push(args);
+  const filtered = '[[row|repeat:rows|if:on]] left out 1 of 3 entries: if:on did not hold';
+  logTrace({
+    label: '"x"',
+    chain: [],
+    ms: 1,
+    sections: [{ variables: [], trace: { placeholders: new Map(), dropped: [filtered], warnings: [] }, built: {} }],
+  });
+  Object.assign(console, saved);
+  check(
+    'the console heads the taken-out list without blaming an empty variable',
+    logged.find((l) => l[1]?.[0] === filtered)?.[0],
+    'Taken out:',
+  );
+}

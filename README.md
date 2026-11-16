@@ -123,7 +123,10 @@ here.
 - [Visual editors][wiki-editors] that show what a card builds, where a template is used,
   rename a template or a variable everywhere, turn existing cards into a template, and keep
   the last 20 deleted or replaced templates to restore. Variables are edited as rows, with
-  help beside each field, and a template can show or hide its fields depending on the others.
+  help beside each field, and a template can show or hide its fields, or whole groups of them,
+  depending on the others. A field's shape can be named once and reused as a type of your own
+  (`decluttering_types:`), and the card editor points out fields you set by hand that an edit
+  left behind.
   The card editor shows each field's default, sets up a repeat as a form with its filters,
   order and a live count, and edits `template_by_domain` as a table. Templates are picked from
   a search box with descriptions and use counts, any field on the Card tab can be made a
@@ -134,8 +137,9 @@ here.
   offers the fix.
 - A health panel for missing templates, unset variables and unused templates, also as a card
   or badge on the dashboard, and `debug: report` to write up what a card built, with an
-  outline of what built what, what each variable worked out to and how, a box to try a
-  placeholder in, and any card inside that refused its config, ready to paste into an issue.
+  outline of what built what, what each variable worked out to and how, the card as written,
+  its recent rebuilds and the checks that passed, a box to try a placeholder in, and any card
+  inside that refused its config, ready to paste into an issue.
   It folds to a one-line bar, and one entity can switch every report on a page off.
 - In the editors: presets from a template's examples, a gallery to install templates from,
   a preview in light and dark at phone and tablet widths, a pause for previews that are

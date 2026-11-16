@@ -116,7 +116,14 @@ function itemNodes(base: string, items: ItemTables[], hide: (text: string) => st
   });
 }
 
-const plainTitle = (text: string): string => text.replace(/[,:]\s*$/, '').replace(/, and what each became$/, '');
+/**
+ * A heading's text without its closing colon, so it reads as a title. French puts a space
+ * before the colon, and Chinese uses the full-width one, so both go too.
+ */
+export const headingTitle = (text: string): string => text.replace(/\s*[:\uFF1A]\s*$/, '');
+
+const plainTitle = (text: string): string =>
+  text.replace(/\s*[,:\uFF0C\uFF1A]\s*$/, '').replace(/, and what each became$/, '');
 
 function cardNode(
   report: TraceReport,
@@ -172,7 +179,7 @@ function cardNode(
       own.push({
         id: `${base}-dropped`,
         kind: 'group',
-        title: t('trace.taken_out').replace(/:\s*$/, ''),
+        title: headingTitle(t('trace.removed')),
         meta: String(section.trace.dropped.length),
         children: section.trace.dropped.map((path, i) => ({
           id: `${base}-d${i}`,
@@ -186,7 +193,7 @@ function cardNode(
       own.push({
         id: `${base}-warnings`,
         kind: 'group',
-        title: t('report.warnings').replace(/:\s*$/, ''),
+        title: headingTitle(t('report.warnings')),
         meta: String(section.trace.warnings.length),
         open: true,
         children: section.trace.warnings.map((warning, i) => ({
@@ -200,7 +207,7 @@ function cardNode(
     own.push({
       id: `${base}-built`,
       kind: 'code',
-      title: t('trace.result').replace(/:\s*$/, ''),
+      title: headingTitle(t('trace.result')),
       text: hide(toYaml(section.built)),
     });
     if (section.label) {
@@ -296,7 +303,7 @@ export function reportTree(input: TreeInput, hass?: any): ReportNode[] {
     nodes.push({
       id: 'warnings',
       kind: 'group',
-      title: t('report.warnings').replace(/:\s*$/, ''),
+      title: headingTitle(t('report.warnings')),
       meta: String(warnings.length),
       open: true,
       children: warnings.map(({ where, warning }, i) => ({
@@ -330,7 +337,7 @@ export function reportTree(input: TreeInput, hass?: any): ReportNode[] {
     nodes.push({
       id: 'never',
       kind: 'group',
-      title: t('trace.never_built').replace(/:\s*$/, ''),
+      title: headingTitle(t('trace.never_built')),
       meta: String(input.neverBuilt.length),
       children: input.neverBuilt.map((path, i) => ({ id: `never-${i}`, kind: 'leaf' as const, title: keep(path) })),
     });

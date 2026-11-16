@@ -280,8 +280,10 @@ function asWholeValue(value: any, match: string): string {
 }
 
 // Inside a longer string an object cannot be injected as JSON structure, so it goes in as
-// its JSON text. That is what issue #83 asked for.
+// its JSON text. That is what issue #83 asked for. A null is the exception: inside text it
+// reads as nothing, as an empty value does, rather than as the word "null".
 function asPartOfString(value: any): string {
+  if (value === null) return '';
   if (typeof value === 'object') return escapeForJsonString(JSON.stringify(value));
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return escapeForJsonString(String(value));
@@ -638,6 +640,24 @@ function substitutePass(
           const asked = pickArgs(steps[upTo - 1].slice(PICK_STEP.length + 1));
           // Written without field=value it has nothing to look for, and a default: would not fix that.
           if (!asked) return refuse(match, written, localize('warn.pick_written'), 'structure');
+          /*
+           * pick: looks through the value itself, or a list a step before it made. Text - what
+           * `first`, `join` or `upper` leave - has no entries, and saying none matched would send
+           * the author looking at the list; a default: would not fix it either.
+           */
+          if (upTo === 1 && !gap && (input === null || typeof input !== 'object')) {
+            return refuse(match, written, localize('warn.pick_not_list', { value: input }), 'structure');
+          }
+          const stepsBefore = steps.slice(0, upTo - 1).join('|');
+          if (upTo > 1 && !yieldsList(stepsBefore)) {
+            const before = applyTransform(stepsBefore, input, hass, values, read);
+            return refuse(
+              match,
+              written,
+              localize('warn.pick_not_list_after', { step: stepName(steps[upTo - 2]), value: before }),
+              'structure',
+            );
+          }
           return refuse(
             match,
             written,
@@ -1052,6 +1072,81 @@ function blankNestedOptionals(json: string, trace?: BuildTrace): string {
     if (depth <= 0 || inside.startsWith(ESCAPE) || !isOptional(inside)) return match;
     if (trace && !trace.placeholders.has(match)) trace.placeholders.set(match, '');
     return '';
+  });
+}
+
+/*
+ * A placeholder inside a step's argument that nothing sets leaves that step nothing to work
+ * with - `[[l|pick:k=[[who]],n|default:zz]]` with no `who` cannot look anything up - and the
+ * outer placeholder's brackets never match the fallback pass, which reads one level only. So
+ * once the passes are done, an outer one whose chain goes on to a `default:` or `or:` gets
+ * that stand-in, the steps after the gap applied to nothing, exactly as for an unset variable:
+ * and as there, nothing is said about the name the default covered. One with no fallback after
+ * the gap is left as written, to be reported unset as before.
+ */
+const NESTED_ONCE = '(?:[^[\\]]|\\[\\[[^[\\]]*\\]\\])*\\[\\[[^[\\]]*\\]\\](?:[^[\\]]|\\[\\[[^[\\]]*\\]\\])*';
+const WHOLE_AROUND = new RegExp(`"\\[\\[(${NESTED_ONCE})\\]\\]"`, 'g');
+const PART_AROUND = new RegExp(`\\[\\[(${NESTED_ONCE})\\]\\]`, 'g');
+
+/** A chain split at the bars outside any placeholder in it. */
+function splitOutside(chain: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let at = 0; at < chain.length; at += 1) {
+    if (chain.startsWith('[[', at)) {
+      depth += 1;
+      at += 1;
+    } else if (chain.startsWith(']]', at)) {
+      depth -= 1;
+      at += 1;
+    } else if (chain[at] === '|' && depth === 0) {
+      parts.push(chain.slice(from, at));
+      from = at + 1;
+    }
+  }
+  parts.push(chain.slice(from));
+  return parts;
+}
+
+function fillAroundUnset(
+  json: string,
+  values: Record<string, any>,
+  read: (name: string) => unknown,
+  hass?: any,
+  trace?: BuildTrace,
+  shield?: (text: string) => string,
+): string {
+  const unset = (inner: string): boolean => {
+    if (inner.startsWith(ESCAPE)) return false;
+    const head = withoutOptional(inner).split('|')[0];
+    if (quotedText(head) !== undefined) return false;
+    return !Object.prototype.hasOwnProperty.call(values, head) || read(head) === undefined;
+  };
+  const standIn = (inside: string): string | undefined => {
+    if (inside.startsWith(ESCAPE)) return undefined;
+    const [head, ...steps] = splitOutside(withoutOptional(inside));
+    if (head.includes('[[')) return undefined;
+    let gap = -1;
+    for (let index = 0; index < steps.length; index += 1) {
+      const inners: string[] = steps[index].match(/\[\[[^[\]]*\]\]/g) ?? [];
+      if (inners.some((inner) => unset(inner.slice(2, -2)))) gap = index;
+    }
+    if (gap === -1) return undefined;
+    const rest = steps.slice(gap + 1);
+    if (!rest.some(isFallback) || isFallback(steps[gap])) return undefined;
+    const text = applyTransform(rest.join('|'), undefined, hass, values, read, shield);
+    return text === '' && isOptional(inside) ? undefined : text;
+  };
+  const whole = json.replace(WHOLE_AROUND, (match: string, inside: string) => {
+    const text = standIn(inside);
+    if (text === undefined) return match;
+    const rest = splitOutside(withoutOptional(inside)).slice(1);
+    return noted(trace, `[[${inside}]]`, asShapedWholeValue(text, rest.join('|')), true);
+  });
+  return whole.replace(PART_AROUND, (match: string, inside: string) => {
+    const text = standIn(inside);
+    return text === undefined ? match : noted(trace, match, escapeForJsonString(text), false);
   });
 }
 
@@ -2008,7 +2103,8 @@ function deepReplaceBody(
     // An empty optional inside another placeholder is nothing, now rather than at the end,
     // so the placeholder around it can still be filled - then the passes go over it again.
     if (blanking >= MAX_FALLBACK_ROUNDS || budget.left <= 0) break;
-    const blanked = blankNestedOptionals(jsonConfig, trace);
+    // So is one nothing sets inside a step's argument, when a default: after it can stand in.
+    const blanked = fillAroundUnset(blankNestedOptionals(jsonConfig, trace), values, read, hass, trace, shield);
     if (blanked === jsonConfig) break;
     jsonConfig = blanked;
   }
@@ -2120,8 +2216,32 @@ function deepReplaceBody(
   const tell = (names: string[]): void => {
     if (quiet !== true) for (const name of names) unsetSaid.add(name);
   };
+  /*
+   * A value that came out empty, with an `or:` that falls back to a variable nothing sets,
+   * is stuck on that variable, not on a chain: `[[n|or:O]]` with `n: ''` and no `O`. It is
+   * said as such, naming the variable, rather than as more than ten deep.
+   */
+  const orUnsetTarget = (inside: string): string | undefined => {
+    const [head, ...steps] = withoutOptional(inside).split('|');
+    if (!Object.prototype.hasOwnProperty.call(values, head) || values[head] === undefined) return undefined;
+    return steps
+      .map(orTarget)
+      .find((target) => target !== undefined && !target.includes('[[') && values[target] === undefined);
+  };
+  const orUnset = unresolved.filter(
+    (inside) => !asksState(inside) && !unknownSteps.has(inside) && !told(inside) && orUnsetTarget(inside) !== undefined,
+  );
+  if (orUnset.length) {
+    const whose = whoseText(templateName, extras?.itemTemplate);
+    for (const inside of orUnset) {
+      const target = orUnsetTarget(inside) as string;
+      const why = localize('warn.or_target_unset', { target: `[[${shown(target)}]]`, text: `or:"${shown(target)}"` });
+      say(localize('warn.gave_up_names', { whose, which: `[[${shown(inside)}]]`, why }), 'unset', true);
+    }
+    tell(orUnset);
+  }
   const looping = unresolved.filter((inside) => {
-    if (asksState(inside) || unknownSteps.has(inside) || told(inside)) return false;
+    if (asksState(inside) || unknownSteps.has(inside) || told(inside) || orUnset.includes(inside)) return false;
     const head = withoutOptional(inside).split('|')[0];
     return Object.prototype.hasOwnProperty.call(values, head) && values[head] !== undefined;
   });
@@ -2179,6 +2299,7 @@ function deepReplaceBody(
       !asksState(inside) &&
       !told(inside) &&
       !looping.includes(inside) &&
+      !orUnset.includes(inside) &&
       !unknownSteps.has(inside) &&
       !noTemplate.includes(inside) &&
       !untranslated.includes(inside),

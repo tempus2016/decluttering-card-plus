@@ -515,3 +515,25 @@ check(
   check('its placeholders too', text.includes('| \\[\\[entity\\|exists\\]\\] | false |'), true);
   check('a secret among them is taken out', text.includes('swordfish'), false);
 }
+
+/* ------------------------------------------------- the taken-out list's heading */
+{
+  // A repeat's if: leaving entries out is listed with the rest; no variable was empty for it.
+  const filtered = '[[row|repeat:rows|if:on]] left out 1 of 3 entries: if:on did not hold';
+  const text = formatReport({
+    context: { version: '1' },
+    reports: [
+      {
+        label: '"x"',
+        chain: [],
+        ms: 1,
+        sections: [{ variables: [], trace: { placeholders: new Map(), dropped: [filtered], warnings: [] }, built: {} }],
+      },
+    ],
+  });
+  check(
+    'the taken-out heading does not blame an empty variable for every line',
+    [text.includes('**Taken out:**'), text.includes('because a variable was empty')],
+    [true, false],
+  );
+}
