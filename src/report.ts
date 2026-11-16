@@ -460,7 +460,7 @@ function buildSection(
     lines.push(`**${t('trace.placeholders')}**`, '');
     lines.push(...(section.placeholders.length ? table(section.placeholders, line) : [t('trace.none')]), '');
     if (section.dropped.length) {
-      lines.push(`**${t('trace.taken_out')}**`, '', ...section.dropped.map((path) => `- ${line(path)}`), '');
+      lines.push(`**${t('trace.removed')}**`, '', ...section.dropped.map((path) => `- ${line(path)}`), '');
     }
     items(section.items, 4, `r${index}-s${s}`);
     lines.push(`**${t('trace.result')}**`, '', ...block(section.built), '');

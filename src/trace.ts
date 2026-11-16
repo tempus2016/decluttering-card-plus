@@ -648,7 +648,7 @@ export function logTrace(report: TraceReport, hass?: any): void {
     console.log(localize('trace.placeholders', undefined, hass));
     if (described.placeholders.length) console.table(described.placeholders);
     else console.log(localize('trace.none', undefined, hass));
-    if (described.dropped.length) console.log(localize('trace.taken_out', undefined, hass), described.dropped);
+    if (described.dropped.length) console.log(localize('trace.removed', undefined, hass), described.dropped);
     logItems(section.trace.items, hass);
     console.log(localize('trace.result', undefined, hass), section.built);
     if (section.label) console.groupEnd();

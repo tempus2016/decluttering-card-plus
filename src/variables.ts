@@ -2068,22 +2068,24 @@ export function applyTransform(
   // off the front before anything turns a mapping into "[object Object]".
   const takesJson = writesWhole(steps[0]) || steps[0] === RAW_STEP;
   // A mapping or a list that reaches a text step anyway is its JSON, never "[object Object]".
+  // A null is empty text, as it is inside text, unless `json` or `yaml` asked for it as it was.
   let text: string | undefined =
     value === undefined
       ? undefined
-      : steps[0] === YAML_STEP
-        ? toYaml(value)
-        : (takesJson && steps[0] !== RAW_STEP) || (!!value && typeof value === 'object')
-          ? JSON.stringify(value)
-          : String(value);
+      : value === null && !writesWhole(steps[0])
+        ? ''
+        : steps[0] === YAML_STEP
+          ? toYaml(value)
+          : (takesJson && steps[0] !== RAW_STEP) || (!!value && typeof value === 'object')
+            ? JSON.stringify(value)
+            : String(value);
   if (steps[0] === RAW_STEP && text !== undefined) text = escapeAll(text);
 
   /*
    * Whether there is anything to show, which is not the same as whether there is a value.
    * A stand-in is for gaps, and unset, null and the empty string are all gaps - while a
    * zero and a false are values and keep their place. Tracked from the value rather than
-   * from the text, so a null still shapes as "null" for a plain transform, which is what
-   * it has always done.
+   * from the text: a null is empty text, but `json` and `yaml` still write it as null.
    */
   let empty = value === undefined || value === null || value === '';
 

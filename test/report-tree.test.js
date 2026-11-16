@@ -4,6 +4,7 @@
  */
 const { check } = require('./check');
 const {
+  headingTitle,
   reportTree,
   searchTree,
   nodeHits,
@@ -299,3 +300,15 @@ check(
   check('and each has the same columns, in order', tables, headers);
   check("an item fill's secret stays out of the tree", JSON.stringify(tables).includes('swordfish'), false);
 }
+
+{
+  // Not everything taken out was taken out for an empty variable: each line says why.
+  const dropped = tree[3].children.find((n) => n.id.endsWith('-dropped'));
+  check('the taken-out group has a heading that fits every line in it', dropped.title, 'Taken out');
+}
+
+check(
+  'a heading loses its colon as a title, French and Chinese colons too',
+  ['Taken out:', 'Retiré :', '已移除：', 'Warnings', 'Result: '].map(headingTitle),
+  ['Taken out', 'Retiré', '已移除', 'Warnings', 'Result'],
+);

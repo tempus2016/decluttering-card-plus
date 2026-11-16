@@ -202,6 +202,17 @@ export function defaultTarget(
   return { value: row.value, source };
 }
 
+/**
+ * Whether a declared field keeps a place for its Reset. Only a field something else would
+ * give a value to can ever have one, and a disabled field never can; every other field
+ * leaves the place out, so a narrow editor does not lose the width to an empty slot. The
+ * place stays whether the card sets the field or not, so the first keystroke does not
+ * move the field (#255).
+ */
+export function hasResetSlot(reset: { set?: boolean } | undefined, disabled?: boolean): boolean {
+  return !disabled && reset !== undefined;
+}
+
 /** A default as one line of text, the way it would be typed: a mapping or list as flow YAML. */
 export function defaultText(value: unknown): string {
   if (value === null || value === undefined) return '';

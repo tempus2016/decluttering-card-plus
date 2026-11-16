@@ -68,4 +68,49 @@ check(
   said.some((m) => m.includes('"zz" matches none')),
   true,
 );
+/*
+ * A pick: after a step that left text has nothing to look through, so it says that, and which
+ * step it came after, rather than that no entry matched.
+ */
+const pickList = [{ l: [{ k: 'a', n: 1 }] }, { s: 'hi' }];
+for (const [placeholder, step] of [
+  ['[[l|first|pick:k=a,n]]', 'first'],
+  ['[[l|join|pick:k=a,n]]', 'join'],
+  ['[[s|upper|pick:k=a,n]]', 'upper'],
+]) {
+  check(`${placeholder} is left as written`, run({ v: placeholder }, pickList), { v: placeholder });
+  check(
+    `${placeholder} does not say no entry matched`,
+    said.some((m) => m.includes('no entry has')),
+    false,
+  );
+  check(
+    `${placeholder} says pick: had no list after ${step}`,
+    said.some((m) => m.includes(`pick: has no list to look through after ${step}`)),
+    true,
+  );
+}
+check(
+  'it quotes what the step before gave',
+  run({ v: '[[s|upper|pick:k=a,n]]' }, pickList) && said.some((m) => m.includes('which gave "HI"')),
+  true,
+);
+check(
+  'it does not ask for a default: that would not help',
+  said.some((m) => m.includes('|default:something')),
+  false,
+);
+run({ v: '[[s|pick:k=a,n]]' }, pickList);
+check(
+  'pick: on text says the text is neither a list nor a mapping',
+  said.some((m) => m.includes('pick: looks through a list or a mapping, and "hi" is neither')),
+  true,
+);
+run({ v: '[[s|split|pick:k=a,n]]' }, [{ s: 'a,b' }]);
+check(
+  'a pick: after split has a list, so it still says no entry matched',
+  said.some((m) => m.includes('no entry has k = "a"')),
+  true,
+);
+check('a default: after it still stands in', run({ v: '[[l|first|pick:k=a,n|default:d]]' }, pickList), { v: 'd' });
 console.warn = realWarn;

@@ -90,6 +90,7 @@ import {
   filledDefault,
   isShownValue,
   defaultTarget,
+  hasResetSlot,
   resetVariable,
   shownDefaults,
   withoutVariable,
@@ -589,7 +590,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         flex: 1;
         min-width: 0;
       }
-      /* The Reset's place, kept on every declared field so widths never move (#255). */
+      /* The Reset's place, kept on every field that could have one so widths never move (#255). */
       .declared-field .reset-slot {
         flex: none;
         width: 48px;
@@ -2680,26 +2681,30 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       const name = entry.name.slice(VARIABLE_FIELD_PREFIX.length);
       const reset = entry.disabled ? undefined : resets.get(name);
       /*
-       * Every declared field keeps the Reset's place, set or not, so the first keystroke in
-       * an unset field only puts the button into a place already there: the field keeps its
-       * width, and the fields line up whether they can have a Reset or not.
+       * A field that could have a Reset keeps its place, set or not, so the first keystroke in
+       * an unset field only puts the button into a place already there and the field keeps its
+       * width. A field that never can has no place, so it gets the width back on a phone.
        */
       return html`<div class="declared-field">
         ${form([entry])} ${this._leftBehindNote(name, template)}
-        <span class="reset-slot"
-          >${
-            reset?.set
-              ? html`<ha-icon-button
-                  class="reset"
-                  .path=${RESET_PATH}
-                  .label=${localize('editor.default.reset', { name: entry.label ?? name }, this.hass)}
-                  title=${localize('editor.default.reset', { name: entry.label ?? name }, this.hass)}
-                  data-variable=${name}
-                  @click=${(): void => this._resetVariable(name)}
-                ></ha-icon-button>`
-              : html``
-          }</span
-        >
+        ${
+          hasResetSlot(reset, entry.disabled)
+            ? html`<span class="reset-slot"
+                >${
+                  reset?.set
+                    ? html`<ha-icon-button
+                        class="reset"
+                        .path=${RESET_PATH}
+                        .label=${localize('editor.default.reset', { name: entry.label ?? name }, this.hass)}
+                        title=${localize('editor.default.reset', { name: entry.label ?? name }, this.hass)}
+                        data-variable=${name}
+                        @click=${(): void => this._resetVariable(name)}
+                      ></ha-icon-button>`
+                    : html``
+                }</span
+              >`
+            : html``
+        }
       </div>`;
     };
     const key = (entry: SchemaEntry): string =>
