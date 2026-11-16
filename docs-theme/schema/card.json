@@ -522,6 +522,20 @@
             }
           ]
         },
+        "groups": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/VariableGroupSettings"
+          },
+          "description": "What each `group:` of variables shares (#473), keyed by the group's name: a `show_if` and `hide_if` for the whole group, whether its section starts open, and a line under its title. `extends:` merges them group by group, the child's keys winning."
+        },
+        "types": {
+          "description": "Named variable types for this template's declarations (#472), over the dashboard's `decluttering_types:` of the same name: a declaration or an object field saying `type: <name>` takes the type's keys, and its own over them.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/VariableDeclarationByName"
+          }
+        },
         "language": {
           "type": "object",
           "additionalProperties": {
@@ -803,6 +817,48 @@
       "required": [
         "name"
       ]
+    },
+    "VariableGroupSettings": {
+      "type": "object",
+      "properties": {
+        "show_if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Shows every variable in the group only while one of these holds, as a variable's own show_if does."
+        },
+        "hide_if": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ],
+          "description": "Hides every variable in the group while any of these holds."
+        },
+        "expanded": {
+          "type": "boolean",
+          "description": "Whether the group's section starts open in the card editor."
+        },
+        "description": {
+          "type": "string",
+          "description": "A line shown under the group's title."
+        }
+      },
+      "description": "What a template's `groups:` says about one `group:` of its variables (#473): when the whole group is worth showing, whether its section starts open, and a line under its title."
     },
     "VariableDeclarationByName": {
       "type": "object",

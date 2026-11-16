@@ -83,6 +83,13 @@
         }
       ]
     },
+    "decluttering_types": {
+      "description": "Named variable types (#472): a declaration shape written once. A declaration or an object field saying `type: <name>` takes its keys, its own over them.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json#/definitions/VariableDeclarationByName"
+      }
+    },
     "decluttering_templates_from": {
       "description": "Dashboards to borrow templates from, by url path; \"*\" for all of them.",
       "anyOf": [
@@ -273,6 +280,13 @@
               }
             }
           ]
+        },
+        "decluttering_types": {
+          "description": "Named variable types (#472): a declaration shape written once. A declaration or an object field saying `type: <name>` takes its keys, its own over them.",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "https://tempus2016.github.io/decluttering-card-plus/schema/template.json#/definitions/VariableDeclarationByName"
+          }
         },
         "decluttering_templates_from": {
           "description": "Dashboards to borrow templates from, by url path; \"*\" for all of them.",

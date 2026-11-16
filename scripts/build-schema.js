@@ -239,6 +239,12 @@ function patchTemplateDefinition(schema, definitionName, { visibility }) {
     description: declarations.description,
     anyOf: [declarations, declarationMapping('#/definitions/VariableDeclarationByName')],
   };
+  // Named types (#472) are declarations without a name, keyed by the type's name.
+  definition.properties.types = {
+    description: definition.properties.types.description,
+    type: 'object',
+    additionalProperties: { $ref: '#/definitions/VariableDeclarationByName' },
+  };
   definition.properties.extends = {
     description: definition.properties.extends.description,
     anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
@@ -329,6 +335,12 @@ function build() {
         { type: 'array', items: { $ref: `${BASE}template.json#/definitions/VariableDeclaration` } },
         declarationMapping(`${BASE}template.json#/definitions/VariableDeclarationByName`),
       ],
+    },
+    decluttering_types: {
+      description:
+        'Named variable types (#472): a declaration shape written once. A declaration or an object field saying `type: <name>` takes its keys, its own over them.',
+      type: 'object',
+      additionalProperties: { $ref: `${BASE}template.json#/definitions/VariableDeclarationByName` },
     },
     decluttering_templates_from: {
       description: 'Dashboards to borrow templates from, by url path; "*" for all of them.',

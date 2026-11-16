@@ -44,6 +44,8 @@ import {
   PLACEHOLDER,
   insideButtonCardJs,
   resolveVariables,
+  bareRead,
+  isBareTemplate,
   readsState,
   restoreHaText,
   stateScope,
@@ -1149,13 +1151,16 @@ function exposeFillValues(
   build: (variables: VariablesConfig[], template: TemplateConfig, key: string) => unknown,
   // The with: arguments filled in here first, as the pass that fills the fill would have.
   settleText: (text: string) => unknown,
+  // The list's values when they are already worked out and shared (#471): copied before anything is added.
+  shared?: () => Record<string, any>,
 ): Record<string, any> | undefined {
   // Hands back what variableValues gives for the list as it ends up, when it had to work
   // that out, so the build does not read the whole list over again (#456).
   if (!Object.keys(itemTemplates).length) return undefined;
   const asked = new Set(findAcross(content, variableArray, DOTTED_ASK));
   if (!asked.size) return undefined;
-  const values = variableValues(variableArray);
+  let values = shared ? shared() : variableValues(variableArray);
+  let own = !shared;
   for (const dotted of asked) {
     if (Object.prototype.hasOwnProperty.call(values, dotted)) continue;
     const [name, key] = dotted.split('.');
@@ -1170,6 +1175,10 @@ function exposeFillValues(
     // Nothing in the fill sets it: left alone, so it reads as unset like any other name.
     if (value === undefined || value === `[[${key}]]`) continue;
     variableArray.push({ [dotted]: value });
+    if (!own) {
+      values = Object.assign(Object.create(null), values);
+      own = true;
+    }
     addVariableValues(values, { [dotted]: value });
   }
   return values;
@@ -1188,14 +1197,13 @@ function exposeSettledMappings(
   values: Record<string, any>,
   itemTemplates: Record<string, TemplateConfig>,
   settleText: (text: string) => unknown,
-): void {
+  // Whether values are shared with other builds (#471), to be copied before anything is added.
+  shared = false,
+): Record<string, any> {
   // Most builds have no variable that is a placeholder and something reaching into it: said without reading the config.
-  const candidates = new Set<string>();
-  for (const name in values) {
-    const raw = values[name];
-    if (typeof raw === 'string' && raw.includes('[[') && !name.includes('.')) candidates.add(name);
-  }
-  if (!candidates.size) return;
+  const candidates = placeholderNames(values, shared);
+  if (!candidates.size) return values;
+  let own = !shared;
   const asked = new Set(findAcross(content, variableArray, DOTTED_ASK));
   const settled = new Set<string>();
   for (const dotted of asked) {
@@ -1212,9 +1220,28 @@ function exposeSettledMappings(
       const key = Object.keys(entry)[0];
       if (Object.prototype.hasOwnProperty.call(values, key)) continue;
       variableArray.push(entry);
+      if (!own) {
+        values = Object.assign(Object.create(null), values);
+        own = true;
+      }
       values[key] = entry[key];
     }
   }
+  return values;
+}
+
+// The names whose values are placeholders, worked out once for values shared between builds (#471).
+const PLACEHOLDER_NAMES = new WeakMap<Record<string, any>, Set<string>>();
+function placeholderNames(values: Record<string, any>, shared: boolean): Set<string> {
+  const known = shared ? PLACEHOLDER_NAMES.get(values) : undefined;
+  if (known) return known;
+  const names = new Set<string>();
+  for (const name in values) {
+    const raw = values[name];
+    if (typeof raw === 'string' && raw.includes('[[') && !name.includes('.')) names.add(name);
+  }
+  if (shared) PLACEHOLDER_NAMES.set(values, names);
+  return names;
 }
 
 // The values a `with:` lays over, read the same way as where it is filled in.
@@ -1281,7 +1308,10 @@ function deepReplaceBody(
     }
     warn({ kind, message, template: templateName, expansion: trace?.expansion });
   };
-  const variableArray = resolveVariables(variables, templateConfig);
+  // A value read inside a build is built from that build's own list (#471): worked out once.
+  const bare = Array.isArray(variables) && isBareTemplate(templateConfig) ? bareRead(variables) : undefined;
+  const variableArray = bare ? bare.list : resolveVariables(variables, templateConfig);
+  const resolvedLength = variableArray.length;
   /*
    * An entity the card rebuilds on can be written straight into a placeholder -
    * `[[input_select.layout|state]]` - with no variable to carry it. It stands for itself,
@@ -1338,6 +1368,8 @@ function deepReplaceBody(
       if (!variableArray.some((each) => Object.keys(each)[0] === name)) variableArray.push(entry);
     }
   }
+  // Nothing added to the list since: its values are the ones worked out for it already.
+  const shared = bare && variableArray.length === resolvedLength ? bare.values : undefined;
   const exposed = exposeFillValues(
     variableArray,
     content,
@@ -1364,14 +1396,21 @@ function deepReplaceBody(
           ),
     (text) =>
       deepReplace(variableArray, {}, text, templateName, hass, true, undefined, depth + 1, undefined, shield, true),
+    shared,
   );
-  const values = exposed ?? variableValues(variableArray);
+  let values = exposed ?? (shared ? shared() : variableValues(variableArray));
   if (depth < MAX_EXPAND_DEPTH) {
-    exposeSettledMappings(variableArray, content, values, itemTemplates, (text) =>
-      deepReplace(variableArray, {}, text, templateName, hass, true, undefined, depth + 1, undefined, shield, true, {
-        ...extras,
-        tooDeep: extras?.tooDeep,
-      }),
+    values = exposeSettledMappings(
+      variableArray,
+      content,
+      values,
+      itemTemplates,
+      (text) =>
+        deepReplace(variableArray, {}, text, templateName, hass, true, undefined, depth + 1, undefined, shield, true, {
+          ...extras,
+          tooDeep: extras?.tooDeep,
+        }),
+      !!shared && values === shared(),
     );
   }
 

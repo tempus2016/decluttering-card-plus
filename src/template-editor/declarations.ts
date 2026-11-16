@@ -3,7 +3,7 @@ import { property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { HomeAssistant, fireEvent } from 'custom-card-helpers';
 import { FormSchemaEntry } from '../types';
-import { VARIABLE_TYPES, VariableDeclaration } from '../variables';
+import { VARIABLE_TYPES, VariableDeclaration, isBuiltinType } from '../variables';
 import {
   DeclRow,
   DeclShape,
@@ -34,7 +34,8 @@ import { DRAG_PATH } from './common';
  */
 
 // The row's always-visible fields, drawn as one grid of Home Assistant selectors.
-const ROW_SCHEMA = (hass?: HomeAssistant): FormSchemaEntry[] => [
+// Named types (#472) follow the built-in ones in the type list, by the name they were given.
+const ROW_SCHEMA = (hass?: HomeAssistant, named: string[] = []): FormSchemaEntry[] => [
   {
     name: '',
     type: 'grid',
@@ -51,6 +52,7 @@ const ROW_SCHEMA = (hass?: HomeAssistant): FormSchemaEntry[] => [
               { value: '', label: localize('declarations.type_any', undefined, hass) },
               ...VARIABLE_TYPES.map((type) => ({ value: type, label: localize(`type_name.${type}`, undefined, hass) })),
               { value: 'card', label: localize('type_name.card', undefined, hass) },
+              ...named.map((type) => ({ value: type, label: type })),
             ],
           },
         },
@@ -73,9 +75,24 @@ const DEFAULT_AS_OBJECT = (hass?: HomeAssistant): FormSchemaEntry => ({
 const MORE_PATH =
   'M16,12A2,2 0 0,1 18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12M10,12A2,2 0 0,1 12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12M4,12A2,2 0 0,1 6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12Z';
 
-/** The fields the open row shows, by its type. */
-function extraSchema(row: DeclRow, hass?: HomeAssistant): FormSchemaEntry[] {
+/*
+ * The built-in type a row's type comes down to: a named type (#472) stands for the built-in
+ * one it says, if any, so a row typed `percent` gets the number fields a `type: number` would.
+ */
+function builtinType(row: DeclRow, types: Record<string, Record<string, unknown>>): string {
   const type = rowType(row);
+  if (isBuiltinType(type) || type === 'card' || !Object.prototype.hasOwnProperty.call(types, type)) return type;
+  const under = types[type].type;
+  return typeof under === 'string' ? under : '';
+}
+
+/** The fields the open row shows, by its type. */
+function extraSchema(
+  row: DeclRow,
+  hass?: HomeAssistant,
+  types: Record<string, Record<string, unknown>> = {},
+): FormSchemaEntry[] {
+  const type = builtinType(row, types);
   const description: FormSchemaEntry = {
     name: 'description',
     label: localize('declarations.description', undefined, hass),
@@ -159,6 +176,8 @@ export class DeclutteringDeclarationsEditor extends LitElement {
   @state() private _reorderedAsList = false;
   /** The dashboard's shared declarations, offered by "Take one from the dashboard". */
   @property({ attribute: false }) public shared: VariableDeclaration[] = [];
+  /** The named variable types the template can use (#472): the dashboard's, the library's and its own. */
+  @property({ attribute: false }) public types: Record<string, Record<string, unknown>> = {};
 
   // The template whose `language:` texts (#392) a `[[$key]]` label is shown in, as the card editor will show it.
   @property({ attribute: false }) public texts?: unknown;
@@ -408,7 +427,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
       <ha-form
         .hass=${this.hass}
         .data=${data}
-        .schema=${extraSchema(row, this.hass)}
+        .schema=${extraSchema(row, this.hass, this.types)}
         .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
         .computeHelper=${(s: FormSchemaEntry): string => this._translatedHelper(row, s.name)}
         @value-changed=${(ev: CustomEvent): void => this._moreChanged(ev, index)}
@@ -490,7 +509,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
 
   private _rowSchema(row: DeclRow): FormSchemaEntry[] {
     const scalar = row.default === undefined || ['string', 'number', 'boolean'].includes(typeof row.default);
-    const [grid] = ROW_SCHEMA(this.hass);
+    const [grid] = ROW_SCHEMA(this.hass, Object.keys(this.types));
     if (scalar) return [grid];
     const schema = (grid.schema as FormSchemaEntry[]).map((entry) =>
       entry.name === 'default' ? DEFAULT_AS_OBJECT(this.hass) : entry,
@@ -539,7 +558,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
   private _defaultFrom(value: unknown, row: DeclRow): unknown {
     if (value === '' || value === undefined || value === null) return undefined;
     if (typeof value !== 'string') return value;
-    const type = rowType(row);
+    const type = builtinType(row, this.types);
     if (type === 'number' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value);
     if (type === 'boolean' && ['true', 'false'].includes(value.trim().toLowerCase())) return value.trim() === 'true';
     return value;

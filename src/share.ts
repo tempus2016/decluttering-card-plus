@@ -6,7 +6,10 @@ import {
   OWN_DEFAULTS,
   isBuiltinStepName,
   normaliseVariables,
+  TYPES_KEY,
   templateDefaults,
+  typesOf,
+  typesUsed,
   usedVariables,
 } from './variables';
 import type { VariablesConfig } from './types';
@@ -37,7 +40,11 @@ const EXPORT_KEY_ORDER = [
   'requires',
   'setup',
   'related',
+  // The named types (#472) before the declarations that use them.
+  TYPES_KEY,
   'variables',
+  // What each group of variables shares (#473), beside the variables that name them.
+  'groups',
   'default',
   ...THING_KEYS,
   'style',
@@ -170,6 +177,17 @@ export function buildExport(
     const out = withValues({ ...config, default: payload.default }, resolvedSelf);
     if (out.default !== undefined) payload.default = out.default;
   }
+  const typesBundled = new Set<string>();
+  const withTypes = (written: any, resolved: any): any => {
+    const out = bundleTypes(written, resolved);
+    for (const name of out.bundled) typesBundled.add(name);
+    return out.template;
+  };
+  const typed = withTypes(payload, resolvedSelf);
+  if (typed !== payload) {
+    payload[TYPES_KEY] = typed[TYPES_KEY];
+    reorder(payload);
+  }
 
   /*
    * With the dashboard's templates to hand, the ones this one uses ride along under
@@ -206,7 +224,7 @@ export function buildExport(
         if (!related.has(name)) missing.push(name);
         continue;
       }
-      includes[name] = withValues(asWritten(withoutSource(found)), found);
+      includes[name] = withTypes(withValues(asWritten(withoutSource(found)), found), found);
       queue.push(...scanDependencies(found).templateRefs, ...itemTemplateRefs(found, templates));
       for (const each of shareInfo(found).related) {
         if (each === self || related.has(each)) continue;
@@ -250,6 +268,7 @@ export function buildExport(
     notes.push(localize(key, { names: picked.join(', ') }));
   }
   if (bundled.size) notes.push(localize('share.bundled_values', { names: [...bundled].sort().join(', ') }));
+  if (typesBundled.size) notes.push(localize('share.bundled_types', { names: [...typesBundled].sort().join(', ') }));
   if (askedFor.size) notes.push(localize('share.setup_values_left_out', { names: [...askedFor].sort().join(', ') }));
   const unquoted = unquotedVersions(config);
   if (unquoted.length) notes.push(localize('share.version_unquoted', { keys: unquoted.join(', ') }));
@@ -330,6 +349,24 @@ function bundleValues(written: any, resolved: any): { template: any; bundled: st
   }
   if (!take.length) return { template: written, bundled, askedFor };
   return { template: { ...written, default: [...own, ...take] }, bundled, askedFor };
+}
+
+/*
+ * The named variable types (#472) a template's declarations use from its dashboard - or the
+ * library's - brought into its own `types:`, so it arrives with the colour list its four
+ * fields name rather than four fields naming nothing. A type it defines itself stays as written.
+ */
+function bundleTypes(written: any, resolved: any): { template: any; bundled: string[] } {
+  if (!written || typeof written !== 'object') return { template: written, bundled: [] };
+  const available = typesOf(resolved ?? written);
+  const ownWritten = written[TYPES_KEY];
+  const own = ownWritten && typeof ownWritten === 'object' && !Array.isArray(ownWritten) ? ownWritten : {};
+  const used = new Set([...typesUsed(written, available), ...(resolved ? typesUsed(resolved, available) : [])]);
+  const bundled = [...used].filter((name) => !Object.prototype.hasOwnProperty.call(own, name));
+  if (!bundled.length) return { template: written, bundled };
+  const types: Record<string, unknown> = { ...own };
+  for (const name of bundled) types[name] = available[name];
+  return { template: { ...written, [TYPES_KEY]: types }, bundled };
 }
 
 /** A pasted template with any `source:` stamp taken off it and off each template it carries. */

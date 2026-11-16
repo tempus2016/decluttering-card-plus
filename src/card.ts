@@ -53,9 +53,17 @@ import { renderTemplateOnce, sourceTemplate, TemplateRender } from './template-s
 import { getLovelaceConfig } from './utils';
 import { placeStrict, strictLevels } from './strict';
 import { localize } from './localize';
-import { REBUILD_DEBOUNCE_MS, stateSnapshot, statesMoved, watchedParts } from './rebuild';
+import {
+  changesText,
+  noteRebuild,
+  REBUILD_DEBOUNCE_MS,
+  snapshotChanges,
+  stateSnapshot,
+  statesMoved,
+  watchedParts,
+} from './rebuild';
 import { rebuildOnFor } from './rebuild-resolve';
-import { handedDownNames, traceRoot, tracePlace, wantsTrace } from './trace';
+import { handedDownNames, traceLabel, traceRoot, tracePlace, wantsTrace } from './trace';
 import { DeclutteringElement } from './element';
 import {
   CARD_EDITOR_TAG,
@@ -1007,6 +1015,8 @@ export class DeclutteringCard extends DeclutteringElement {
     ]);
     this._debug = config.debug === 'yaml' ? 'yaml' : config.debug === true ? 'json' : false;
     this._trace = wantsTrace(config);
+    // The rebuild log is only kept while debugging (#474): off, it is let go.
+    if (!this._trace) this._rebuilds = [];
     this._reportMode = config.debug === 'report';
     this._reportForced = undefined;
     this._reportUnredacted = config.redact === false;
@@ -1290,6 +1300,7 @@ export class DeclutteringCard extends DeclutteringElement {
       // Back where it was built: nothing to do.
       const back = stateSnapshot(this._hass, this._rebuildOn, this._rebuildAttributes, this._rebuildWatch);
       if (!statesMoved(this._rebuildBuilt, back)) return;
+      if (this._trace) this._noteRebuild(back);
       try {
         this._rebuild();
       } catch (err) {
@@ -1297,6 +1308,33 @@ export class DeclutteringCard extends DeclutteringElement {
         this._error = (err as Error)?.message ?? String(err);
       }
     }, REBUILD_DEBOUNCE_MS);
+  }
+
+  /*
+   * While debugging (#474): which entity moved, and which part of it, said in the console as
+   * the card rebuilds and kept for the debug report. Compared against what the card was last
+   * built with, so a burst of changes is one rebuild with everything that moved in it.
+   */
+  private _noteRebuild(now: (string | undefined)[]): void {
+    const changes = snapshotChanges(
+      this._rebuildOn,
+      this._rebuildBuilt,
+      now,
+      this._rebuildAttributes,
+      this._rebuildWatch,
+    );
+    if (!changes.length) return;
+    this._rebuilds = noteRebuild(this._rebuilds, { at: Date.now(), changes });
+    console.info(
+      localize(
+        'rebuild.console',
+        {
+          label: this._traceLabel ?? traceLabel(this._templateName ?? ''),
+          changes: changesText(changes, this._hass),
+        },
+        this._hass,
+      ),
+    );
   }
 
   /*

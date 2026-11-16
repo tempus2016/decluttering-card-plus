@@ -83,7 +83,8 @@ import { loadEditors } from './editors-loader';
 import { dialogButtons } from './dialog-compat';
 import { requestInitialTab } from './initial-tab';
 import { warn } from './warnings';
-import { Alert, alertConsoleMessage, checksOf, stoppingError, wantsAlerts, withAlerts } from './checks';
+import { Alert, alertConsoleMessage, checksOf, PassedCheck, stoppingError, wantsAlerts, withAlerts } from './checks';
+import type { RebuildRecord } from './rebuild';
 import { isRegistrySource } from './registry';
 import { STRICT_OFF, StrictLevels } from './strict';
 import { isPageTemplate } from './page-template';
@@ -244,6 +245,10 @@ export abstract class DeclutteringElement extends LitElement {
   protected _reportMode = false;
   // The template's checks that failed in the last build (#389), every copy's for a repeat.
   protected _alerts: Alert[] = [];
+  // The checks that passed in the last build (#474), written down only while debugging.
+  protected _passedChecks: PassedCheck[] = [];
+  // The last few rebuild_on rebuilds, newest first (#474), kept only while debugging.
+  protected _rebuilds: RebuildRecord[] = [];
   // Set while a failed error check has the report on show that the card did not ask for, with the trace it had.
   protected _reportForced?: { trace: boolean };
   // This card's own entry from its last build, and which build the report on show belongs to.
@@ -956,6 +961,7 @@ export abstract class DeclutteringElement extends LitElement {
     const hush = quiet || (!!instance && this._libraryUnsettled);
     // The template's checks (#389), read with the card's values before anything is built.
     // A template's own preview is not a card, and has nobody's values to check.
+    this._passedChecks = [];
     const alerts = instance ? this._runChecks(variables, templateConfig, templateName, hush, instance) : [];
     this._alerts = alerts;
     const stopped = stoppingError(alerts, this._hass);
@@ -1214,6 +1220,9 @@ export abstract class DeclutteringElement extends LitElement {
             })),
           }
         : {}),
+      ...(this._passedChecks.length ? { passed: this._passedChecks } : {}),
+      ...(this._ownConfig ? { card: withoutStamps(this._ownConfig) } : {}),
+      ...(this._rebuilds.length ? { rebuilds: [...this._rebuilds] } : {}),
     };
     // A build written down only for a report `strict:` might show says nothing in the console.
     if (this._trace) logTrace(report, this._hass);
@@ -1697,6 +1706,8 @@ export abstract class DeclutteringElement extends LitElement {
       this._buildHass,
       this._hass,
       this._buildExtras(),
+      // Only a card writing its build down keeps the checks that passed (#474).
+      this._trace || this._reportMode ? this._passedChecks : undefined,
     );
     if (hush) return alerts;
     const said = this._saidFor(instance);
@@ -2093,6 +2104,7 @@ export abstract class DeclutteringElement extends LitElement {
      * is built: a copy that fails one with `continue_rendering: false` fails the whole card,
      * the way a strict refusal does, and an error anywhere shows the report.
      */
+    this._passedChecks = [];
     const copies = shown.map(({ item, name, template, entity }, index) => {
       // Underneath everything the copy sets: the entity its template was picked by, when
       // that came from the fallback template rather than the copy - see pickTemplate.

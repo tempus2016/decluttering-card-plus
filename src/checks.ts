@@ -60,6 +60,16 @@ export interface Alert {
   stop: boolean;
 }
 
+/*
+ * One check that passed (#474), for the debug report: its name, its condition as written,
+ * and each placeholder the condition read with what it became - the values it compared.
+ */
+export interface PassedCheck {
+  name?: string;
+  condition: string;
+  values: [string, unknown][];
+}
+
 /** The keys a check is read from; anything else in one is a mistake template lint points out. */
 export const CHECK_KEYS = ['name', 'condition', 'fail_on', 'message', 'level', 'continue_rendering'];
 
@@ -125,26 +135,46 @@ function messageOf(check: Record<string, unknown>, fill: CheckFill, template: st
   return localize(name ? 'check.failed_named' : 'check.failed', { name: name ?? '', template: template ?? '' }, hass);
 }
 
-/** The template's checks that fail with these values, in the order they are written. */
+/**
+ * The template's checks that fail with these values, in the order they are written. Given
+ * `passed`, the ones that passed go in it too (#474) - only asked for while debugging, so the
+ * fills a condition makes are only written down then.
+ */
 export function runChecks(
   template: TemplateConfig | undefined,
   templateName: string | undefined,
   fill: CheckFill,
   hass?: any,
+  passed?: PassedCheck[],
 ): Alert[] {
   const alerts: Alert[] = [];
   for (const check of checksOf(template)) {
     let holds: boolean | undefined;
+    const values: [string, unknown][] = [];
+    const reading: CheckFill = passed
+      ? (content) => {
+          const value = fill(content);
+          values.push([String(content), value]);
+          return value;
+        }
+      : fill;
     try {
-      holds = conditionResult(check.condition, fill);
+      holds = conditionResult(check.condition, reading);
     } catch {
       holds = undefined;
     }
     if (holds === undefined) continue;
     const failOn = check.fail_on === undefined ? true : truthy(check.fail_on);
-    if (holds !== failOn) continue;
-    const level = checkLevel(check.level) ?? 'warn';
     const name = typeof check.name === 'string' && check.name ? check.name : undefined;
+    if (holds !== failOn) {
+      passed?.push({
+        ...(name ? { name } : {}),
+        condition: typeof check.condition === 'string' ? check.condition : JSON.stringify(check.condition),
+        values,
+      });
+      continue;
+    }
+    const level = checkLevel(check.level) ?? 'warn';
     alerts.push({
       level,
       message: messageOf(check, fill, templateName, hass),

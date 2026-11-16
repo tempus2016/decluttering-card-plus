@@ -11,6 +11,8 @@ import {
   VIEW_VALUES,
 } from './variables';
 import { CONSUMER_TYPES } from './templates';
+import type { PassedCheck } from './checks';
+import type { RebuildRecord } from './rebuild';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -422,6 +424,12 @@ export interface TraceReport {
   template?: { name: string; config: unknown };
   /** The template's checks that failed (#389), which the report lists ahead of everything else. */
   alerts?: { level: string; message: string; name?: string }[];
+  /** The checks that passed, and the values each read (#474). */
+  passed?: PassedCheck[];
+  /** The card's own config as written - its variables, its rebuild_on - before anything was built (#474). */
+  card?: unknown;
+  /** The last few times the card rebuilt because a rebuild_on entity moved, newest first (#474). */
+  rebuilds?: RebuildRecord[];
 }
 
 // A table cell holds text: a mapping or a list goes in as its JSON, which is how it was written.
@@ -630,6 +638,7 @@ export function headline(report: TraceReport, hass?: any): string {
 export function logTrace(report: TraceReport, hass?: any): void {
   console.groupCollapsed(headline(report, hass));
   if (report.alerts?.length) console.log(localize('report.checks', undefined, hass), report.alerts);
+  if (report.passed?.length) console.log(localize('report.checks_passed', undefined, hass), report.passed);
   for (const section of report.sections) {
     if (section.label) console.groupCollapsed(section.label);
     const described = describeSection(section, hass);

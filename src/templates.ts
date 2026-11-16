@@ -4,6 +4,8 @@ import {
   LetLayer,
   OUTER_LET,
   OWN_DEFAULTS,
+  SHARED_TYPES,
+  TYPES_KEY,
   VIEW_VALUES,
   VariableDeclaration,
   CONSUMER_TYPES,
@@ -63,6 +65,10 @@ const LET_KEY = 'decluttering_let';
 // Variable declarations every template on the dashboard can take up by name, so a
 // selector, label and default written once serve every template that uses the variable.
 const DECLARATIONS_KEY = 'decluttering_variables';
+
+// Named variable types every template on the dashboard can use (#472): a declaration shape
+// written once - a list of colours, a range - that a declaration takes up with `type: <name>`.
+const TYPES_DASHBOARD_KEY = 'decluttering_types';
 
 // The original dashboard has no url_path of its own; the websocket API wants null for it.
 const DEFAULT_DASHBOARD_PATHS = ['lovelace', 'default', ''];
@@ -666,6 +672,22 @@ function mergeDeclarations(parent: any, child: any): any[] {
   return [...merged, ...childList.filter((entry) => !parentNames.has(entry?.name))];
 }
 
+/*
+ * `groups:` (#473) merge group by group, and each group key by key, the child's winning - so a
+ * child can hide a parent's group under a new condition and keep its description. A child that
+ * writes something other than a mapping - `groups: null` - has the last word as written.
+ */
+function mergeGroups(parent: any, child: any): any {
+  const isMapping = (value: any): boolean => !!value && typeof value === 'object' && !Array.isArray(value);
+  if (!isMapping(parent) || !isMapping(child)) return child === undefined ? parent : child;
+  const merged: Record<string, any> = Object.assign(Object.create(null), parent);
+  for (const [name, settings] of Object.entries(child)) {
+    merged[name] =
+      isMapping(merged[name]) && isMapping(settings) ? { ...merged[name], ...(settings as any) } : settings;
+  }
+  return { ...merged };
+}
+
 function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): TemplateConfig {
   const merged: any = { ...parent, ...child };
   // An item template's body merges the same way (#233); it is kept out of the content keys
@@ -679,6 +701,13 @@ function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): Template
   if (language !== undefined) merged[LANGUAGE_KEY] = language;
   const variables = mergeDeclarations((parent as any).variables, (child as any).variables);
   if (variables.length) merged.variables = variables;
+  const groups = mergeGroups((parent as any).groups, (child as any).groups);
+  if (groups !== undefined) merged.groups = groups;
+  // Types (#472) merge name by name, the child's winning, both its own and its dashboard's.
+  const types = mergedTypes((parent as any)[TYPES_KEY], (child as any)[TYPES_KEY]);
+  if (types) merged[TYPES_KEY] = types;
+  const sharedTypes = mergedTypes((parent as any)[SHARED_TYPES], (child as any)[SHARED_TYPES]);
+  if (sharedTypes) merged[SHARED_TYPES] = sharedTypes;
   // The child comes first in both lists, which is what makes its values win downstream. Either
   // may have spelled it `defaults:`; the folded list is written back under the one name.
   const defaults = [...normaliseVariables(templateDefaults(child)), ...normaliseVariables(templateDefaults(parent))];
@@ -687,6 +716,15 @@ function mergeTemplates(parent: TemplateConfig, child: TemplateConfig): Template
   const lets = [...normaliseVariables(child.let), ...normaliseVariables(parent.let)];
   if (lets.length) merged.let = lets;
   return merged as TemplateConfig;
+}
+
+/** Two type mappings as one, the second winning a name; undefined when neither is a mapping. */
+function mergedTypes(under: unknown, over: unknown): Record<string, unknown> | undefined {
+  const isMap = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === 'object' && !Array.isArray(value);
+  if (!isMap(under)) return isMap(over) ? over : undefined;
+  if (!isMap(over)) return under;
+  return { ...under, ...over };
 }
 
 /*
@@ -1005,6 +1043,24 @@ export function itemTemplatesOf(ll: LovelaceConfig | null | undefined): Record<s
   return found;
 }
 
+/** The named variable types a dashboard shares (#472), as written; typesOf checks them where they are used. */
+export function collectSharedTypes(ll: LovelaceConfig | null | undefined): Record<string, unknown> {
+  const written = (ll as any)?.[TYPES_DASHBOARD_KEY];
+  return written && typeof written === 'object' && !Array.isArray(written) ? written : {};
+}
+
+/*
+ * A template copy carrying more of its dashboards' types (#472), under the ones it already
+ * has, the layers given lowest first: a template's dashboard wins over a lender's, and both
+ * over the library's. The template as it was when there are none to add.
+ */
+export function withSharedTypes(template: TemplateConfig, ...under: Record<string, unknown>[]): TemplateConfig {
+  const adding = under.filter((layer) => Object.keys(layer).length);
+  if (!adding.length || !template || typeof template !== 'object') return template;
+  const has = (template as any)[SHARED_TYPES];
+  return { ...template, [SHARED_TYPES]: Object.assign({}, ...adding, has) } as TemplateConfig;
+}
+
 /** The declarations a dashboard shares, in the same shape as a template's own `variables:`. */
 export function collectSharedDeclarations(ll: LovelaceConfig | null | undefined): VariableDeclaration[] {
   return getDeclarations({ variables: (ll as any)?.[DECLARATIONS_KEY] } as TemplateConfig);
@@ -1033,12 +1089,13 @@ export function withSharedDeclarations(template: TemplateConfig, shared: Variabl
 function withShared(
   templates: Record<string, TemplateConfig>,
   shared: VariableDeclaration[],
+  types: Record<string, unknown> = {},
 ): Record<string, TemplateConfig> {
   for (const name of Object.keys(templates)) {
     // Mapping declarations (#223) become the list here, on the way to being rendered from;
     // the raw templates keep the shape they were written in for anything that writes back.
     const template = withDeclarationList(templates[name]);
-    templates[name] = shared.length ? withSharedDeclarations(template, shared) : template;
+    templates[name] = withSharedTypes(shared.length ? withSharedDeclarations(template, shared) : template, types);
   }
   return templates;
 }
@@ -1076,11 +1133,13 @@ function resolvedTemplates(
   own?: DeclutteringTemplateConfig,
 ): Record<string, TemplateConfig> {
   if (own || !ll || typeof ll !== 'object') {
-    return resolveExtends(withShared(withOwn(collectRawTemplates(ll), own), collectSharedDeclarations(ll)));
+    return resolveExtends(
+      withShared(withOwn(collectRawTemplates(ll), own), collectSharedDeclarations(ll), collectSharedTypes(ll)),
+    );
   }
   let found = RESOLVED.get(ll);
   if (!found) {
-    found = resolveExtends(withShared(collectRawTemplates(ll), collectSharedDeclarations(ll)));
+    found = resolveExtends(withShared(collectRawTemplates(ll), collectSharedDeclarations(ll), collectSharedTypes(ll)));
     RESOLVED.set(ll, found);
   }
   return found;
@@ -1101,11 +1160,15 @@ export function collectTemplates(
   const here = collectViewDefaults(ll, view, section);
   const shared = [...collectDefaults(ll), ...library.defaults];
   const lets = [...placeLet(ll, view, section), ...dashboardLet(ll)];
-  if (!here.length && !shared.length && !lets.length && !library.declarations.length) return templates;
+  const libraryTypes = Object.keys(library.types).length > 0;
+  if (!here.length && !shared.length && !lets.length && !library.declarations.length && !libraryTypes) {
+    return templates;
+  }
 
   const out: Record<string, TemplateConfig> = Object.create(null);
   for (const [name, template] of Object.entries(templates)) {
-    out[name] = withDefaults(withSharedDeclarations(template, library.declarations), here, shared, lets);
+    const declared = withSharedTypes(withSharedDeclarations(template, library.declarations), library.types);
+    out[name] = withDefaults(declared, here, shared, lets);
   }
   return out;
 }
@@ -1269,9 +1332,18 @@ export function libraryRead(): LovelaceConfig | null | undefined {
  * view, the template and the template's own dashboard all win - so they only ever fill a
  * name nothing else does. On the library itself they are already its own.
  */
-export function libraryShares(): { defaults: VariablesConfig[]; declarations: VariableDeclaration[] } {
-  if (!libraryConfig || onLibraryDashboard()) return { defaults: [], declarations: [] };
-  return { defaults: collectDefaults(libraryConfig), declarations: collectSharedDeclarations(libraryConfig) };
+export function libraryShares(): {
+  defaults: VariablesConfig[];
+  declarations: VariableDeclaration[];
+  types: Record<string, unknown>;
+} {
+  if (!libraryConfig || onLibraryDashboard()) return { defaults: [], declarations: [], types: {} };
+  return {
+    defaults: collectDefaults(libraryConfig),
+    declarations: collectSharedDeclarations(libraryConfig),
+    // Its decluttering_types too (#472), under a dashboard's own of the same name.
+    types: collectSharedTypes(libraryConfig),
+  };
 }
 
 /** Reads the library dashboard, once a page, and says whether it gives anything to everyone. */
@@ -1279,7 +1351,7 @@ export function loadLibrary(hass: HomeAssistant): Promise<boolean> {
   if (onLibraryDashboard()) return Promise.resolve(false);
   return fetchDashboardConfig(hass, LIBRARY_DASHBOARD).then(() => {
     const shares = libraryShares();
-    return shares.defaults.length > 0 || shares.declarations.length > 0;
+    return shares.defaults.length > 0 || shares.declarations.length > 0 || Object.keys(shares.types).length > 0;
   });
 }
 
@@ -1346,6 +1418,7 @@ export async function collectAllTemplates(
   const viewValues = collectViewDefaults(ll, view, section);
   const here = collectDefaults(ll);
   const declaredHere = collectSharedDeclarations(ll);
+  const typesHere = collectSharedTypes(ll);
   const letsHere = [...placeLet(ll, view, section), ...dashboardLet(ll)];
   // Read once the library has been, so this dashboard's own templates have its values.
   const library = libraryShares();
@@ -1376,13 +1449,15 @@ export async function collectAllTemplates(
       ...collectSharedDeclarations(config),
       ...collectSharedDeclarations(fromLibrary),
     ];
+    // And types the same way (#472), lowest first: its library's, the lender's, then this dashboard's.
+    const types = [collectSharedTypes(fromLibrary), collectSharedTypes(config), typesHere];
     for (const [name, template] of Object.entries(collectRawTemplates(config))) {
       origins[name] = sources[index];
-      raw[name] = withSharedDeclarations(withDeclarationList(template), declarations);
+      raw[name] = withSharedTypes(withSharedDeclarations(withDeclarationList(template), declarations), ...types);
       givenBy[name] = gives;
     }
   }
-  const ownHere = withShared(withOwn(collectRawTemplates(ll), own), declaredHere);
+  const ownHere = withShared(withOwn(collectRawTemplates(ll), own), declaredHere, typesHere);
   const givesHere: Gives = { shared: [...here, ...library.defaults], lets: letsHere };
   for (const [name, template] of Object.entries(ownHere)) {
     raw[name] = template;
@@ -1415,7 +1490,10 @@ export async function collectAllTemplates(
     const gives = [...new Set(chainOf(name).map((at) => givenBy[at]))];
     const shared = onceEach(([] as VariablesConfig[]).concat(...gives.map((give) => give.shared)));
     const lets = onceEach(([] as LetLayer[]).concat(...gives.map((give) => give.lets)));
-    const declared = givenBy[name] === givesHere ? withSharedDeclarations(template, library.declarations) : template;
+    const declared =
+      givenBy[name] === givesHere
+        ? withSharedTypes(withSharedDeclarations(template, library.declarations), library.types)
+        : template;
     out[name] = withDefaults(declared, viewValues, shared, lets);
   }
   return out;

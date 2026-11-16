@@ -84,17 +84,42 @@ export function iconExists(icon: string): boolean | undefined {
   const text = icon.trim();
   const colon = text.indexOf(':');
   if (colon <= 0 || colon === text.length - 1) return false;
-  return iconSets().includes(text.slice(0, colon));
+  const set = text.slice(0, colon);
+  const yes = iconSets().includes(set);
+  if (!yes) missingSets.add(set);
+  return yes;
+}
+
+/*
+ * The icon sets somebody asked about and was told were not there (#471). Only one of these
+ * turning up changes an answer a build gave. Any other set registering - a card's own icons,
+ * which load whenever its script does - used to build every card that asked about icons
+ * again, a whole dashboard of them on every page load.
+ */
+const missingSets = new Set<string>();
+let iconTick = 0;
+
+function noticeIconSets(): number {
+  if (missingSets.size) {
+    const sets = iconSets();
+    for (const set of [...missingSets]) {
+      if (!sets.includes(set)) continue;
+      missingSets.delete(set);
+      iconTick += 1;
+    }
+  }
+  return iconTick;
 }
 
 /*
  * What a build that asked about any of this read, for telling when it has to build again:
- * the components Home Assistant has loaded, the icon sets, and the custom elements that
- * turned up since. Icon sets announce nothing when they register, so they are only noticed
- * at the next hass update - a state change anywhere in the house, which is seldom long.
+ * the components Home Assistant has loaded, the icon sets asked about that have turned up,
+ * and the custom elements that turned up since. Icon sets announce nothing when they
+ * register, so they are only noticed at the next hass update - a state change anywhere in
+ * the house, which is seldom long.
  */
 export function installedKey(hass: any): unknown[] {
-  return [hass?.config?.components, iconSets().join(','), tick];
+  return [hass?.config?.components, noticeIconSets(), tick];
 }
 
 /** Calls back whenever a custom element somebody asked about is defined. Returns the way to stop. */

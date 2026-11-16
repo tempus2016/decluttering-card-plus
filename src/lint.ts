@@ -5,18 +5,30 @@ import {
   quotedText,
   ALERTS_NAME,
   ESCAPE,
+  declarationGroup,
   getDeclarations,
+  GROUPS_KEY,
   isWellFormedCondition,
   normaliseVariables,
   POSITION_NAMES,
   TEMPLATE_PLACEHOLDERS,
   templateDefaults,
   variableName,
+  VariableDeclaration,
   visibilityConditions,
 } from './variables';
 import { closestTemplate, closestStep, knownFunctionNames, knownStep } from './closest';
 import { FUNCTION_VALUE, functionParameters, isFunctionTemplate } from './functions';
-import { ENTRIES_STEP, isBuiltinStepName, REGISTRY_STEP, resolveVariables, variableValues } from './variables';
+import {
+  ENTRIES_STEP,
+  isBuiltinStepName,
+  REGISTRY_STEP,
+  VARIABLE_TYPES,
+  resolveVariables,
+  typesOf,
+  unknownTypes,
+  variableValues,
+} from './variables';
 import { isRegistrySource, REGISTRY_KEYS, SOURCE_KEYS } from './registry';
 
 export { closestStep, knownStep };
@@ -342,6 +354,50 @@ export function definedNames(template: TemplateConfig | undefined): string[] {
   return [...names];
 }
 
+/** show_if and hide_if (#347) are `if:` conditions without the `if:`, not placeholders. */
+function lintVisibility(written: Pick<VariableDeclaration, 'show_if' | 'hide_if'>, at: string, scan: Scan): void {
+  for (const key of ['show_if', 'hide_if'] as const) {
+    const path = `${at}.${key}`;
+    for (const step of visibilityConditions(written, key)) {
+      const condition = step.slice('if:'.length);
+      if (!isWellFormedCondition(step)) {
+        scan.findings.push({ level: 'warning', key: 'lint.condition_malformed', params: { key, condition }, path });
+        continue;
+      }
+      const name = conditionTarget(step);
+      // A dotted name reads a key of a mapping variable, which is what has to exist.
+      if (name) scan.targets.push({ name: name.split('.')[0], placeholder: `${key}: ${condition}`, path });
+    }
+  }
+}
+
+/*
+ * `groups:` (#473): a mapping of the names the variables' `group:` uses, each a mapping whose
+ * show_if and hide_if are read the way a variable's are. A group no variable is in does
+ * nothing - except in a template that extends another, whose variables may be the parent's.
+ */
+function lintGroups(template: TemplateConfig, scan: Scan): void {
+  const written = (template as any)[GROUPS_KEY];
+  if (written === undefined || written === null) return;
+  if (typeof written !== 'object' || Array.isArray(written)) {
+    scan.findings.push({ level: 'warning', key: 'lint.groups_not_mapping', params: {}, path: GROUPS_KEY });
+    return;
+  }
+  const used = new Set(getDeclarations(template).map(declarationGroup));
+  const extended = (template as any).extends !== undefined;
+  for (const [group, settings] of Object.entries(written)) {
+    const path = `${GROUPS_KEY}.${group}`;
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      scan.findings.push({ level: 'warning', key: 'lint.group_not_mapping', params: { group }, path });
+      continue;
+    }
+    if (!used.has(group) && !extended) {
+      scan.findings.push({ level: 'warning', key: 'lint.group_unused', params: { group }, path });
+    }
+    lintVisibility(settings as Pick<VariableDeclaration, 'show_if' | 'hide_if'>, path, scan);
+  }
+}
+
 /*
  * `checks:` (#389): a list of mappings, each with a condition this card can read, a level it
  * knows, and nothing it would not read. Placeholders in a message or a condition are linted
@@ -432,7 +488,8 @@ export function lintTemplate(
   known: string[] = [],
   // The template's own name, and the dashboard's templates that can be used as steps (#307),
   // when the caller knows them; the functions default to the dashboard last read.
-  options: { name?: string; functions?: readonly string[] } = {},
+  // The variable types it can name (#472), when the caller has its dashboard's; its own otherwise.
+  options: { name?: string; functions?: readonly string[]; types?: Record<string, Record<string, unknown>> } = {},
 ): LintFinding[] {
   if (!template || typeof template !== 'object') return [];
   const functions = options.functions ?? knownFunctionNames();
@@ -454,27 +511,10 @@ export function lintTemplate(
   }
   getDeclarations(template).forEach((declaration, index) => {
     if (declaration.default !== undefined) walk(declaration.default, `variables[${index}].default`, scan);
-    // show_if and hide_if (#347) are `if:` conditions without the `if:`, not placeholders.
-    for (const key of ['show_if', 'hide_if'] as const) {
-      const path = `variables[${index}].${key}`;
-      for (const step of visibilityConditions(declaration, key)) {
-        const written = step.slice('if:'.length);
-        if (!isWellFormedCondition(step)) {
-          scan.findings.push({
-            level: 'warning',
-            key: 'lint.condition_malformed',
-            params: { key, condition: written },
-            path,
-          });
-          continue;
-        }
-        const name = conditionTarget(step);
-        // A dotted name reads a key of a mapping variable, which is what has to exist.
-        if (name) scan.targets.push({ name: name.split('.')[0], placeholder: `${key}: ${written}`, path });
-      }
-    }
+    lintVisibility(declaration, `variables[${index}]`, scan);
   });
 
+  lintGroups(template, scan);
   lintChecks(template, scan);
 
   /*
@@ -548,6 +588,24 @@ export function lintTemplate(
   // A `strict:` level written wrong is left to the next place that sets it (#390), so it would quietly do nothing.
   for (const problem of strictProblems((template as any).strict)) {
     findings.push({ level: 'warning', key: 'lint.strict_unknown', params: problem, path: 'strict' });
+  }
+
+  // A `type:` no built-in or named type answers to (#472) is left untyped, which is easy to miss.
+  const types = options.types ?? typesOf(template);
+  for (const unknown of unknownTypes(template, types)) {
+    const name = unknown.field === undefined ? unknown.variable : `${unknown.variable}.${unknown.field}`;
+    const closest = closestTemplate(unknown.type, [...VARIABLE_TYPES, ...Object.keys(types)]);
+    findings.push({
+      level: 'warning',
+      key: 'lint.unknown_type',
+      params: closest
+        ? { name, type: unknown.type, types: VARIABLE_TYPES.join(', '), closest }
+        : { name, type: unknown.type, types: VARIABLE_TYPES.join(', ') },
+      path:
+        unknown.field === undefined
+          ? `variables[${unknown.index}].type`
+          : `variables[${unknown.index}].selector.object.fields.${unknown.field}.type`,
+    });
   }
 
   // The same mistake written twice in one place is one thing to fix.

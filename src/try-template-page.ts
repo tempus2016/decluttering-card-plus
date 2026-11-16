@@ -378,9 +378,14 @@ function renderField(field: StandInField, onSet: (name: string, value: unknown) 
   else said.push('unset, with no default');
   if (field.hidden)
     said.push(
-      `hidden in the editor now (${[...(field.showIf ?? []).map((c) => `show_if ${c}`), ...(field.hideIf ?? []).map((c) => `hide_if ${c}`)].join(', ')})`,
+      `hidden in the editor now (${[
+        ...(field.groupShowIf ?? []).map((c) => `group show_if ${c}`),
+        ...(field.groupHideIf ?? []).map((c) => `group hide_if ${c}`),
+        ...(field.showIf ?? []).map((c) => `show_if ${c}`),
+        ...(field.hideIf ?? []).map((c) => `hide_if ${c}`),
+      ].join(', ')})`,
     );
-  else if (field.showIf || field.hideIf) said.push('shown now');
+  else if (field.showIf || field.hideIf || field.groupShowIf || field.groupHideIf) said.push('shown now');
   const help = el('p', undefined, 'tt-field-help');
   if (field.description) help.appendChild(el('span', `${field.description}. `));
   help.appendChild(document.createTextNode(said.join(' · ')));
