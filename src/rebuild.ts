@@ -1,3 +1,5 @@
+import { localize } from './localize';
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /*
@@ -171,4 +173,73 @@ export function stateSnapshot(
 export function statesMoved(before: (string | undefined)[] | undefined, after: (string | undefined)[]): boolean {
   if (!before || before.length !== after.length) return true;
   return after.some((state, index) => state !== before[index]);
+}
+
+/*
+ * The rebuild log (#474), kept only while the card is debugging. A card that rebuilds on an
+ * entity rebuilds for a reason somebody cannot see from the dashboard - an attribute that
+ * moves every minute, an entity that comes and goes - so the console says which entity and
+ * which part of it moved, and the debug report lists the last few.
+ */
+
+/** What moved on one entity: `state`, `last_updated`, `attr:name`, or `appeared` / `gone`. */
+export interface RebuildChange {
+  entity: string;
+  parts: string[];
+}
+
+/** One rebuild, and when it happened. */
+export interface RebuildRecord {
+  at: number;
+  changes: RebuildChange[];
+}
+
+/** How many rebuilds the report lists. */
+export const REBUILD_LOG_SIZE = 10;
+
+/**
+ * Which parts of which entities differ between two snapshots taken the same way - the parts
+ * the card was watching, compared one by one, so `state` and an attribute are told apart.
+ */
+export function snapshotChanges(
+  entities: string[],
+  before: (string | undefined)[] | undefined,
+  after: (string | undefined)[],
+  attributes = false,
+  watched?: (string[] | undefined)[],
+): RebuildChange[] {
+  const changes: RebuildChange[] = [];
+  entities.forEach((entity, index) => {
+    const was = before?.[index];
+    const now = after[index];
+    if (was === now) return;
+    if (was === undefined || now === undefined) {
+      changes.push({ entity, parts: [was === undefined ? 'appeared' : 'gone'] });
+      return;
+    }
+    const names = watched?.[index] ?? (attributes ? ['state', 'last_updated'] : ['state']);
+    const old = was.split('\u0000');
+    const fresh = now.split('\u0000');
+    const parts = names.filter((_, at) => old[at] !== fresh[at]);
+    changes.push({ entity, parts: parts.length ? parts : names });
+  });
+  return changes;
+}
+
+/** The log with this rebuild put first, cut to the last few. */
+export function noteRebuild(log: RebuildRecord[], record: RebuildRecord): RebuildRecord[] {
+  return [record, ...log].slice(0, REBUILD_LOG_SIZE);
+}
+
+/** What moved, in words: `input_select.layout (state), camera.front (attr:camera_name)`. */
+export function changesText(changes: RebuildChange[], hass?: any): string {
+  const part = (name: string): string =>
+    name === 'appeared' || name === 'gone' ? localize(`rebuild.${name}`, undefined, hass) : name;
+  return changes.map(({ entity, parts }) => `${entity} (${parts.map(part).join(', ')})`).join(', ');
+}
+
+/** A rebuild's time of day, as the report shows it: `14:03:27`. */
+export function clockTime(at: number): string {
+  const time = new Date(at);
+  return [time.getHours(), time.getMinutes(), time.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
 }

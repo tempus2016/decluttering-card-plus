@@ -27,6 +27,7 @@ import {
   getDeclarations,
   isDeclarationsShape,
   templateDefaults,
+  typesOf,
   VariableDeclaration,
 } from './variables';
 import { exampleVariables } from './examples';
@@ -316,6 +317,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                     .hass=${this.hass}
                     .variables=${this._config.variables}
                     .shared=${collectSharedDeclarations(this._savedLovelace)}
+                    .types=${typesOf(this._resolvedTexts())}
                     .texts=${this._resolvedTexts()}
                     @value-changed=${this._declarationsChanged}
                   ></decluttering-declarations-editor>
@@ -516,6 +518,8 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     const findings = lintTemplate(this._config, [...definedNames(resolved), ...Object.keys(items)], {
       name: this._config.template,
       functions,
+      // The dashboard's and the library's types as well as its own (#472).
+      types: typesOf(resolved ?? this._config),
     });
     if (!findings.length) return html``;
     return html`${findings.map(

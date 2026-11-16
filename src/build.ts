@@ -1,5 +1,5 @@
 import deepReplace, { BuildExtras } from './deep-replace';
-import { Alert, ALERT_KEY, checksOf, runChecks } from './checks';
+import { Alert, ALERT_KEY, checksOf, PassedCheck, runChecks } from './checks';
 import { applyOverride, groupCard } from './templates';
 import { usesResolver } from './variables';
 import { BuildTrace } from './trace';
@@ -42,6 +42,7 @@ export function templateAlerts(
   buildHass: any,
   hass: any,
   extras: BuildExtras,
+  passed?: PassedCheck[],
 ): Alert[] {
   if (!checksOf(templateConfig).length) return [];
   if (!hass && usesResolver(templateConfig, extras.itemTemplates)) return [];
@@ -64,6 +65,7 @@ export function templateAlerts(
         extras,
       ),
     hass,
+    passed,
   );
 }
 

@@ -13,12 +13,15 @@ import {
   checkWhere,
   failedChecks,
   oneBuild,
+  passedChecks,
+  passedText,
   redact,
   secretValues,
   sectionTables,
 } from './report';
 import { toYaml } from './yaml';
 import { localize } from './localize';
+import { changesText, clockTime } from './rebuild';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -124,12 +127,29 @@ function cardNode(
 ): ReportNode {
   const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
   const children: ReportNode[] = [];
+  if (report.card !== undefined) {
+    children.push({ id: `r${index}-card`, kind: 'code', title: t('report.card'), text: hide(toYaml(report.card)) });
+  }
   if (report.template) {
     children.push({
       id: `r${index}-template`,
       kind: 'code',
       title: hide(t('report.template', { template: report.template.name })),
       text: hide(toYaml(report.template.config)),
+    });
+  }
+  if (report.rebuilds?.length) {
+    children.push({
+      id: `r${index}-rebuilds`,
+      kind: 'group',
+      title: t('report.rebuilds'),
+      meta: String(report.rebuilds.length),
+      children: report.rebuilds.map((rebuild, i) => ({
+        id: `r${index}-rebuild-${i}`,
+        kind: 'leaf' as const,
+        title: hide(changesText(rebuild.changes, hass)),
+        meta: clockTime(rebuild.at),
+      })),
     });
   }
   const allTables = sectionTables(report, redacting, hass);
@@ -237,6 +257,21 @@ export function reportTree(input: TreeInput, hass?: any): ReportNode[] {
         title: keep(`${alert.level}: ${alert.message}`),
         meta: keep(checkWhere(alert, hass)),
         warn: true,
+      })),
+    });
+  }
+  const passed = passedChecks(input.reports);
+  if (passed.length) {
+    nodes.push({
+      id: 'checks-passed',
+      kind: 'group',
+      title: t('report.checks_passed'),
+      meta: String(passed.length),
+      children: passed.map((check, i) => ({
+        id: `checks-passed-${i}`,
+        kind: 'leaf' as const,
+        title: keep(passedText(check, !input.unredacted)),
+        meta: keep(checkWhere({ label: check.label }, hass)),
       })),
     });
   }

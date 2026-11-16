@@ -280,22 +280,36 @@ export function advancedCount(config: DeclutteringCardConfig, template?: Templat
 const GRID_COLUMNS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'full'];
 const GRID_ROWS = ['1', '2', '3', '4', '5', '6', '7', '8', 'auto'];
 
-/** The form fields of the section, in the order the mockup shows them. Built per call so it speaks the viewer's language. */
+/**
+ * Whether any rebuild_on entry of the card or its template says its own `watch:` (#474).
+ * Such an entry keeps it whatever the card-wide rebuild_on_watch says, so the dropdown says so.
+ */
+export function hasOwnWatch(entries: { entry: unknown }[]): boolean {
+  return entries.some((row) => isRebuildObject(row.entry) && row.entry.watch !== undefined && row.entry.watch !== null);
+}
+
+/**
+ * The form fields of the section, in the order the mockup shows them. Built per call so it speaks the viewer's language.
+ * `ownWatch` is true when an entry says its own watch: (#474), see hasOwnWatch.
+ */
 export function advancedSchema(
   hass?: HomeAssistant,
   config?: DeclutteringCardConfig,
   template?: TemplateConfig,
+  ownWatch = false,
 ): FormSchemaEntry[] {
   const text = (key: string): string => localize(key, undefined, hass);
   // What a card that says nothing gets: the template's word, when it has one (#411).
   const inherited = (template as { rebuild_on_watch?: unknown } | undefined)?.rebuild_on_watch;
+  // An entry with its own watch: keeps it, so the default says it is not for every entry (#474).
+  const own = ownWatch ? '_own' : '';
   const watchOptions = [
     {
       value: 'default',
       label:
         inherited === undefined || inherited === null
-          ? text('editor.advanced.rebuild_on_watch_default')
-          : localize('editor.advanced.rebuild_on_watch_template', { value: watchText(inherited) }, hass),
+          ? text(`editor.advanced.rebuild_on_watch_default${own}`)
+          : localize(`editor.advanced.rebuild_on_watch_template${own}`, { value: watchText(inherited) }, hass),
     },
     { value: 'read', label: text('editor.advanced.rebuild_on_watch_read') },
     { value: 'all', label: text('editor.advanced.rebuild_on_watch_all') },
@@ -388,7 +402,7 @@ export function advancedSchema(
     {
       name: 'rebuild_on_watch',
       label: text('editor.advanced.rebuild_on_watch_label'),
-      helper: text('editor.advanced.rebuild_on_watch_helper'),
+      helper: text(`editor.advanced.rebuild_on_watch_helper${own}`),
       selector: { select: { mode: 'dropdown', options: watchOptions } },
     },
     {

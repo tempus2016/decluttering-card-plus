@@ -9,8 +9,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Ideas are welcome. If it is something the original card could never do, say so — this
-        fork exists to move things forward.
+        Ideas are welcome, big or small. The three short questions near the end are optional,
+        but they help me work out what to build first.
 
   - type: textarea
     id: problem
@@ -34,5 +34,50 @@ body:
     attributes:
       label: What have you tried instead?
       description: Other cards, conditional cards, card-mod, templates in the raw editor.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What would it bring?
+      description: Pick any that fit.
+      multiple: true
+      options:
+        - Something I expected to work but can't do today
+        - Fills a gap in something the card already does
+        - Opens up a new kind of use
+        - An easier way to do something that already works
+        - Faster, or lighter on the browser
+        - Nicer to look at, or easier to use in the editor
+        - Helps with troubleshooting or debugging
+        - Security or privacy
+        - Groundwork for later features
+    validations:
+      required: false
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Who is it mostly for?
+      options:
+        - People new to the card
+        - People who use it day to day
+        - People pushing it well past the usual use
+        - People who wouldn't use the card today
+    validations:
+      required: false
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often would it be used?
+      description: Be honest — a rare need that's critical when it comes up is still worth saying.
+      options:
+        - In nearly every setup
+        - In a lot of setups
+        - In some ordinary setups
+        - Rarely, but critical when needed
+        - Mainly when testing or troubleshooting
     validations:
       required: false

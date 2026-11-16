@@ -1,5 +1,5 @@
 import { HomeAssistant, LovelaceCard, LovelaceCardConfig } from 'custom-card-helpers';
-import { VariableDeclaration } from './variables';
+import { VariableDeclaration, VariableGroupSettings } from './variables';
 import { StrictConfig } from './strict';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -152,6 +152,18 @@ export interface TemplateConfig {
   extends?: string | string[];
   /** The variables the template takes, described so its editor can offer real controls. */
   variables?: VariableDeclaration[];
+  /**
+   * What each `group:` of variables shares (#473), keyed by the group's name: a `show_if` and
+   * `hide_if` for the whole group, whether its section starts open, and a line under its title.
+   * `extends:` merges them group by group, the child's keys winning.
+   */
+  groups?: Record<string, VariableGroupSettings>;
+  /**
+   * Named variable types for this template's declarations (#472), over the dashboard's
+   * `decluttering_types:` of the same name: a declaration or an object field saying
+   * `type: <name>` takes the type's keys, and its own over them.
+   */
+  types?: Record<string, Omit<VariableDeclaration, 'name'>>;
   /**
    * The template's texts in each language (#392), keyed by language code - `en`, `de`, `pt-BR` -
    * each a mapping of texts of any depth. `[[$key.path]]` anywhere in the template is that text

@@ -5,7 +5,7 @@ import { property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { HomeAssistant, fireEvent, LovelaceCardEditor, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringCardConfig, TemplateConfig, VariablesConfig, FormSchemaEntry } from './types';
-import deepReplace, { fillSource } from './deep-replace';
+import deepReplace, { BuildExtras, fillSource } from './deep-replace';
 import './preview-frame';
 import { structureNames } from './structure';
 import {
@@ -40,6 +40,8 @@ import {
   declarationSelector,
   groupDeclarations,
   declarationShown,
+  hasVisibilityConditions,
+  templateGroups,
   filledReader,
   resolveVariables,
   isCardDeclaration,
@@ -71,6 +73,7 @@ import {
   advancedCount,
   advancedData,
   advancedSchema,
+  hasOwnWatch,
   AdvancedData,
   applyAdvanced,
   rebuildPlaceholders,
@@ -82,6 +85,7 @@ import {
 } from './card-editor/advanced';
 import { EditorHidden, editorHidden, withoutFields } from './card-editor/hide';
 import {
+  DefaultPlaces,
   defaultText,
   filledDefault,
   isShownValue,
@@ -90,6 +94,7 @@ import {
   shownDefaults,
   withoutVariable,
 } from './card-editor/defaults';
+import { changedNames, leftBehind, nextNotes, stillBehind } from './card-editor/left-behind';
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { buildTime, previewLines, PreviewLine, previewModes, PreviewMode } from './card-editor/result-preview';
 import {
@@ -176,6 +181,9 @@ interface SchemaEntry {
   type?: string;
   title?: string;
   label?: string;
+  helper?: string;
+  /** An expandable that starts open (#473). */
+  expanded?: boolean;
   disabled?: boolean;
   schema?: SchemaEntry[];
 }
@@ -590,6 +598,15 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       .declared-field .reset {
         color: var(--secondary-text-color);
       }
+      /* #469: the note under a changed field takes a line of its own, below the field and its Reset. */
+      .declared-field {
+        flex-wrap: wrap;
+      }
+      .declared-field .left-behind {
+        order: 1;
+        flex-basis: 100%;
+        margin-top: 8px;
+      }
       ha-expansion-panel.declared-group {
         display: block;
         margin-top: 0;
@@ -653,10 +670,15 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   // The template the list was made for: a base it uses stays listed (#444).
   private _pickerCurrent?: string;
   private _pickerFor?: Record<string, TemplateConfig>;
-  // The variable groups opened, by title - drawn by the editor itself since #255, so it keeps them.
-  @state() private _openGroups = new Set<string>();
+  // The variable groups opened or closed by hand, by title - drawn by the editor itself since
+  // #255, so it keeps them. A group not toggled yet starts as its `groups:` entry says (#473).
+  @state() private _openGroups = new Map<string, boolean>();
   // A preset waiting for a yes, because it would change values set by hand (idea 44).
   @state() private _presetPending?: { index: number; names: string[] };
+  // #469: fields set by hand that an edit left behind, by the field that changed. Only for as long as the editor is open.
+  @state() private _leftBehind = new Map<string, string[]>();
+  // The card's variables before the edits not yet looked at, and after them.
+  private _pendingEdit?: { before: unknown; after: unknown };
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
@@ -745,6 +767,14 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       // Idea 20: this card was left to edit its template; its unsaved changes come back.
       this._resume = takeReturn(config);
     }
+    const before = this._config;
+    if (before && before.template === config.template) {
+      // Several edits before the next update count as one, from where the first started.
+      this._pendingEdit = { before: this._pendingEdit?.before ?? before.variables, after: config.variables };
+    } else if (before) {
+      this._pendingEdit = undefined;
+      this._leftBehind = new Map();
+    }
     this._config = config;
   }
 
@@ -801,6 +831,93 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         },
       ];
     }
+    this._noteLeftBehind();
+  }
+
+  /*
+   * #469: after an edit, the fields set by hand whose worked-out default moved with it. Read
+   * here rather than in setConfig because it needs the templates, and before render because
+   * it sets state.
+   */
+  private _noteLeftBehind(): void {
+    const edit = this._pendingEdit;
+    if (!edit || !this._templates) return;
+    this._pendingEdit = undefined;
+    const before = edit.before as VariablesConfig[] | VariablesConfig | undefined;
+    const after = edit.after as VariablesConfig[] | VariablesConfig | undefined;
+    const changed = changedNames(before, after);
+    if (!changed.length) return;
+    const template = this._templates[this._config?.template as string];
+    const declared = getDeclarations(template)
+      .filter((declaration) => !isCardDeclaration(declaration))
+      .map((declaration) => declaration.name);
+    const { places, extras, hass } = this._defaultReads(template);
+    const found = leftBehind(declared, before, after, template, hass, extras, places);
+    if (!found.length && !this._leftBehind.size) return;
+    this._leftBehind = nextNotes(this._leftBehind, changed, found, new Set(declared));
+  }
+
+  /** What a default is worked out with in this editor: where the card sits, the item templates, and the states it rebuilds on. */
+  private _defaultReads(template: TemplateConfig | undefined): {
+    places: DefaultPlaces;
+    extras: BuildExtras;
+    // The scoped hass a build reads, which is not quite the editor's own.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    hass: any;
+  } {
+    const ll = this._lovelace ?? getLovelaceConfig();
+    const place = this._editingPlace();
+    const section =
+      place.view === undefined || place.section === undefined
+        ? undefined
+        : (ll as { views?: { sections?: { decluttering_defaults?: VariablesConfig[] }[] }[] } | undefined)?.views?.[
+            place.view
+          ]?.sections?.[place.section]?.decluttering_defaults;
+    return {
+      places: { section, dashboard: collectDefaults(ll), library: libraryShares().defaults },
+      extras: { itemTemplates: itemTemplatesOf(ll), context: sourceContext(ll) },
+      // Read with the states the card rebuilds on, as the shown defaults are (#411).
+      hass: withStateScope(this.hass, this._rebuildOnFor(template)),
+    };
+  }
+
+  /** The note under a field an edit changed, naming the fields it left behind that still are (#469). */
+  private _leftBehindNote(name: string, template: TemplateConfig | undefined): TemplateResult {
+    const names = this._leftBehind.get(name);
+    if (!names?.length) return html``;
+    const behind = this._builds.get('left-behind', this._readsKey(template, name, names.join('\n')), () => {
+      const { places, extras, hass } = this._defaultReads(template);
+      return stillBehind(names, this._config?.variables, template, hass, extras, places);
+    });
+    if (!behind.length) return html``;
+    const labels = new Map(getDeclarations(template).map((declaration) => [declaration.name, declaration.label]));
+    const field = labels.get(name) ?? name;
+    const fields = behind.map((each) => labels.get(each) ?? each).join(', ');
+    return html`<ha-alert alert-type="info" class="left-behind" data-left-behind=${name}>
+      ${localize('editor.left_behind.note', { name: field, fields }, this.hass)}
+      <div class="actions">
+        <ha-button @click=${(): void => this._resetLeftBehind(name, behind)}>
+          ${localize('editor.left_behind.reset', undefined, this.hass)}
+        </ha-button>
+        <ha-button @click=${(): void => this._keepLeftBehind(name)}>
+          ${localize('editor.left_behind.keep', undefined, this.hass)}
+        </ha-button>
+      </div>
+    </ha-alert>`;
+  }
+
+  // Every named field reset in one change, so undo takes them back together.
+  private _resetLeftBehind(name: string, names: string[]): void {
+    if (!this._config) return;
+    this._keepLeftBehind(name);
+    const config = names.reduce((each, field) => resetVariable(each, field), this._config);
+    fireEvent(this, 'config-changed', { config });
+  }
+
+  private _keepLeftBehind(name: string): void {
+    const notes = new Map(this._leftBehind);
+    notes.delete(name);
+    this._leftBehind = notes;
   }
 
   protected render(): TemplateResult | void {
@@ -902,7 +1019,14 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
           </span>
         </span>
         <div class="advanced-body">
-          ${this._renderAdvancedForm(data, withoutFields(advancedSchema(this.hass, this._config, template), hidden.advancedFields), template)}
+          ${this._renderAdvancedForm(
+            data,
+            withoutFields(
+              advancedSchema(this.hass, this._config, template, hasOwnWatch(this._rebuildOnEach(template))),
+              hidden.advancedFields,
+            ),
+            template,
+          )}
           ${
             data.on_error_mode === 'card'
               ? staticHtml`<${CardSlot}
@@ -2358,9 +2482,9 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
 
   private _hiddenNamesNow(template: TemplateConfig | undefined, declarations: VariableDeclaration[]): Set<string> {
     const hidden = new Set<string>();
-    if (!declarations.some((declaration) => declaration.show_if !== undefined || declaration.hide_if !== undefined)) {
-      return hidden;
-    }
+    // A group's show_if and hide_if (#473) hide each of its fields, so a hidden group leaves no section.
+    const groups = templateGroups(template);
+    if (!hasVisibilityConditions(declarations, groups)) return hidden;
     const values = variableValues(resolveVariables(this._config?.variables, template));
     // A value written with placeholders is read as the card fills it (#426), with the states
     // it rebuilds on and the dashboard's item templates, as _failedChecks reads them.
@@ -2389,7 +2513,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       );
     });
     for (const declaration of declarations) {
-      if (!declarationShown(declaration, read)) hidden.add(declaration.name);
+      if (!declarationShown(declaration, read, groups)) hidden.add(declaration.name);
     }
     return hidden;
   }
@@ -2440,10 +2564,25 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     // Declarations sharing a `group:` fold into a collapsible section, so a template with
     // fifteen variables leads with its essentials. `name: ''` keeps the data flat - the
     // section is presentation, not a level in the config.
+    // What the template's `groups:` says of each (#473): whether it starts open, and a line
+    // under its title.
+    const groups = templateGroups(template);
     const grouped: unknown[] = [];
     for (const bucket of groupDeclarations(declarations.filter((declaration) => !isCardDeclaration(declaration)))) {
-      if (bucket.group === undefined) grouped.push(...bucket.declarations.map(field));
-      else grouped.push({ name: '', type: 'expandable', title: bucket.group, schema: bucket.declarations.map(field) });
+      if (bucket.group === undefined) {
+        grouped.push(...bucket.declarations.map(field));
+        continue;
+      }
+      const settings = groups[bucket.group];
+      const description = typeof settings?.description === 'string' ? settings.description : '';
+      grouped.push({
+        name: '',
+        type: 'expandable',
+        title: bucket.group,
+        ...(settings?.expanded === true ? { expanded: true } : {}),
+        ...(description ? { helper: description } : {}),
+        schema: bucket.declarations.map(field),
+      });
     }
 
     return [
@@ -2546,7 +2685,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
        * width, and the fields line up whether they can have a Reset or not.
        */
       return html`<div class="declared-field">
-        ${form([entry])}
+        ${form([entry])} ${this._leftBehindNote(name, template)}
         <span class="reset-slot"
           >${
             reset?.set
@@ -2572,7 +2711,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
               outlined
               class="declared-group"
               .header=${entry.title ?? ''}
-              .expanded=${this._openGroups.has(entry.title ?? '')}
+              .secondary=${entry.helper ?? ''}
+              .expanded=${this._openGroups.get(entry.title ?? '') ?? entry.expanded === true}
               @expanded-changed=${(ev: CustomEvent): void => this._groupToggled(entry.title ?? '', ev)}
             >
               <div class="declared-group-body">${repeat(entry.schema ?? [], key, field)}</div>
@@ -2584,9 +2724,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
 
   private _groupToggled(title: string, ev: CustomEvent): void {
     ev.stopPropagation();
-    const open = new Set(this._openGroups);
-    if (ev.detail?.expanded) open.add(title);
-    else open.delete(title);
+    const open = new Map(this._openGroups);
+    open.set(title, !!ev.detail?.expanded);
     this._openGroups = open;
   }
 
@@ -2609,18 +2748,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const resets = new Map<string, FieldReset>();
     const variables = this._config?.variables;
     if (!template) return resets;
-    const ll = this._lovelace ?? getLovelaceConfig();
-    const place = this._editingPlace();
-    const section =
-      place.view === undefined || place.section === undefined
-        ? undefined
-        : (ll as { views?: { sections?: { decluttering_defaults?: VariablesConfig[] }[] }[] } | undefined)?.views?.[
-            place.view
-          ]?.sections?.[place.section]?.decluttering_defaults;
-    const places = { section, dashboard: collectDefaults(ll), library: libraryShares().defaults };
-    const extras = { itemTemplates: itemTemplatesOf(ll), context: sourceContext(ll) };
-    // Read with the states the card rebuilds on, as the shown defaults are (#411).
-    const scoped = withStateScope(this.hass, this._rebuildOnFor(template));
+    const { places, extras, hass: scoped } = this._defaultReads(template);
     const own = variableValues(variables);
     for (const declaration of shown) {
       if (isCardDeclaration(declaration)) continue;

@@ -91,11 +91,34 @@ export function findAcross(content: unknown, variables: readonly unknown[], patt
       add(foundIn(entry, pattern));
       continue;
     }
-    for (const name in entry) {
-      if (!Object.prototype.hasOwnProperty.call(entry, name)) continue;
-      add(foundIn(name, pattern));
-      add(foundIn((entry as Record<string, unknown>)[name], pattern));
-    }
+    add(foundInEntry(entry as Record<string, unknown>, pattern));
+  }
+  return out;
+}
+
+/*
+ * What one variable entry - its names and their values - holds, kept per entry of one name
+ * (#471). Nested builds hand the same entries down list after list, so a card with hundreds of
+ * values read inside it searched the same names and texts hundreds of times. An entry of more
+ * than one name is what someone wrote, and is searched fresh each time.
+ */
+const FOUND_ENTRY = new WeakMap<RegExp, WeakMap<object, { name: string; value: unknown; found: string[] }>>();
+function foundInEntry(entry: Record<string, unknown>, pattern: RegExp): string[] {
+  const names = Object.keys(entry);
+  if (names.length === 1) {
+    let byEntry = FOUND_ENTRY.get(pattern);
+    if (!byEntry) FOUND_ENTRY.set(pattern, (byEntry = new WeakMap()));
+    const known = byEntry.get(entry);
+    const name = names[0];
+    if (known && known.name === name && known.value === entry[name]) return known.found;
+    const found = [...foundIn(name, pattern), ...foundIn(entry[name], pattern)];
+    byEntry.set(entry, { name, value: entry[name], found });
+    return found;
+  }
+  const out: string[] = [];
+  for (const name of names) {
+    for (const each of foundIn(name, pattern)) out.push(each);
+    for (const each of foundIn(entry[name], pattern)) out.push(each);
   }
   return out;
 }

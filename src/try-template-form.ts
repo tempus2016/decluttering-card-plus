@@ -11,8 +11,10 @@ import {
   isCardDeclaration,
   normaliseVariables,
   resolveVariables,
+  templateGroups,
   variableValues,
   VariableDeclaration,
+  VariableGroupSettings,
 } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -59,6 +61,9 @@ export interface StandInField {
   /** The conditions written, for saying why. */
   showIf?: string[];
   hideIf?: string[];
+  /** Its group's conditions from the template's `groups:` (#473), which it answers to as well. */
+  groupShowIf?: string[];
+  groupHideIf?: string[];
 }
 
 const TRUE_WORDS = new Set(['true', 'yes', 'on', '1']);
@@ -130,10 +135,11 @@ export function standInFields(
       extras,
     ),
   );
+  const groups = templateGroups(template);
   const fields: StandInField[] = [];
   for (const bucket of groupDeclarations(declarations)) {
     for (const declaration of bucket.declarations)
-      fields.push(field(declaration, bucket.group, own, defaults, read, hass));
+      fields.push(field(declaration, bucket.group, own, defaults, read, hass, groups));
   }
   return fields;
 }
@@ -145,7 +151,9 @@ function field(
   defaults: Map<string, unknown>,
   read: (name: string) => unknown,
   hass: any,
+  groups: Record<string, VariableGroupSettings>,
 ): StandInField {
+  const settings = group !== undefined ? groups[group] : undefined;
   const selector = hasOptionsFrom(declaration)
     ? optionsFromSelector(declaration, hass)
     : declarationSelector(declaration);
@@ -166,9 +174,11 @@ function field(
     set,
     ...(set ? { value: own[declaration.name] } : {}),
     ...(shown !== undefined ? { shown } : {}),
-    hidden: !declarationShown(declaration, read),
+    hidden: !declarationShown(declaration, read, groups),
     ...(list(declaration.show_if) ? { showIf: list(declaration.show_if) } : {}),
     ...(list(declaration.hide_if) ? { hideIf: list(declaration.hide_if) } : {}),
+    ...(list(settings?.show_if) ? { groupShowIf: list(settings?.show_if) } : {}),
+    ...(list(settings?.hide_if) ? { groupHideIf: list(settings?.hide_if) } : {}),
   };
 }
 

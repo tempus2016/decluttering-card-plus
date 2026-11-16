@@ -8,7 +8,7 @@ import { tryPlaceholderIn } from '../playground';
 import { exampleSets, exampleVariables } from '../examples';
 import { collectSharedDeclarations, collectTemplates } from '../templates';
 import { definedNames, lintTemplate } from '../lint';
-import { RESOLVERS, getDeclarations, normaliseVariables, templateDefaults, variableName } from '../variables';
+import { RESOLVERS, getDeclarations, normaliseVariables, templateDefaults, typesOf, variableName } from '../variables';
 import { localize } from '../localize';
 import { previewExamples } from '../shared';
 import { watchTarget } from './watch-target';
@@ -284,7 +284,7 @@ export class DeclutteringCodeHooks extends LitElement {
       normaliseVariables(templateDefaults(resolved));
     // What the lint says will not work, by the name it names.
     const bad = new Map<string, string>();
-    for (const finding of lintTemplate(config, definedNames(resolved))) {
+    for (const finding of lintTemplate(config, definedNames(resolved), { types: typesOf(resolved) })) {
       if (finding.level !== 'warning') continue;
       const name = finding.params.name ?? finding.params.placeholder ?? finding.params.step;
       if (name) {

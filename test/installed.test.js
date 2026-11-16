@@ -206,3 +206,25 @@ check(
   check('its arrival moves the key and calls the listener', [heard, installed.installedKey(hass)[2] - before], [1, 1]);
   console.warn = realWarn;
 })();
+
+// Only an icon set somebody was told is missing moves the key when it turns up (#471).
+{
+  const iconKey = () => installed.installedKey(hass)[1];
+  const start = iconKey();
+  check(
+    'asking about a set that is there leaves the key (#471)',
+    [installed.iconExists('mdi:dog'), iconKey()],
+    [true, start],
+  );
+  globalThis.customIcons = { 'other-card': { getIcon: () => undefined } };
+  check('a set nobody asked about registering leaves the key (#471)', iconKey(), start);
+  check(
+    'asking about a missing set says no (#471)',
+    [installed.iconExists('late-icons:cat'), iconKey()],
+    [false, start],
+  );
+  globalThis.customIcons = { 'other-card': {}, 'late-icons': {} };
+  check('the missing set turning up moves the key once (#471)', [iconKey() - start, iconKey() - start], [1, 1]);
+  check('and it is a yes from then on (#471)', installed.iconExists('late-icons:cat'), true);
+  delete globalThis.customIcons;
+}

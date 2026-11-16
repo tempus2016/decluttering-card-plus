@@ -76,7 +76,7 @@ export function groupDeclarations(
     { group: undefined, declarations: [] },
   ];
   for (const declaration of declarations) {
-    const group = typeof declaration.group === 'string' && declaration.group ? declaration.group : undefined;
+    const group = declarationGroup(declaration);
     let bucket = buckets.find((each) => each.group === group);
     if (!bucket) {
       bucket = { group, declarations: [] };
@@ -85,6 +85,45 @@ export function groupDeclarations(
     bucket.declarations.push(declaration);
   }
   return buckets.filter((each) => each.declarations.length > 0);
+}
+
+/** The `group:` a declaration is in, or undefined when it names none. */
+export function declarationGroup(declaration: VariableDeclaration): string | undefined {
+  return typeof declaration.group === 'string' && declaration.group ? declaration.group : undefined;
+}
+
+/**
+ * What a template's `groups:` says about one `group:` of its variables (#473): when the whole
+ * group is worth showing, whether its section starts open, and a line under its title.
+ */
+export interface VariableGroupSettings {
+  /** Shows every variable in the group only while one of these holds, as a variable's own show_if does. */
+  show_if?: string | string[];
+  /** Hides every variable in the group while any of these holds. */
+  hide_if?: string | string[];
+  /** Whether the group's section starts open in the card editor. */
+  expanded?: boolean;
+  /** A line shown under the group's title. */
+  description?: string;
+}
+
+/** The template key that holds what each group of variables shares (#473). */
+export const GROUPS_KEY = 'groups';
+
+/**
+ * A template's `groups:`, keyed by the name the variables' `group:` uses, with only the entries
+ * that are mappings. Anything else written there is left for template lint to point out.
+ */
+export function templateGroups(template: unknown): Record<string, VariableGroupSettings> {
+  // No prototype: a group named `__proto__` or `constructor` is an entry here, nothing more.
+  const out: Record<string, VariableGroupSettings> = Object.create(null);
+  const written = template && typeof template === 'object' ? (template as any)[GROUPS_KEY] : undefined;
+  if (!written || typeof written !== 'object' || Array.isArray(written)) return out;
+  for (const [name, settings] of Object.entries(written)) {
+    if (settings && typeof settings === 'object' && !Array.isArray(settings))
+      out[name] = settings as VariableGroupSettings;
+  }
+  return out;
 }
 
 /*
@@ -99,7 +138,10 @@ export function groupDeclarations(
 type VisibilityKey = 'show_if' | 'hide_if';
 
 /** The conditions under one of a declaration's visibility keys, as `if:` steps. A leading `if:` is allowed and not doubled. */
-export function visibilityConditions(declaration: VariableDeclaration, key: VisibilityKey): string[] {
+export function visibilityConditions(
+  declaration: Pick<VariableDeclaration, VisibilityKey>,
+  key: VisibilityKey,
+): string[] {
   const written = declaration[key];
   const list = Array.isArray(written) ? written : written === undefined || written === null ? [] : [written];
   return list
@@ -114,15 +156,41 @@ export function isWellFormedCondition(step: string): boolean {
   return new RegExp(`^${IF_STEP}$`).test(step);
 }
 
-/** Whether the card editor shows a declaration's field, given a way to read what each variable will be. */
-export function declarationShown(declaration: VariableDeclaration, read: (name: string) => unknown): boolean {
+/** Whether a declaration's or a group's show_if and hide_if say it shows, given a way to read the variables. */
+function conditionsShow(written: Pick<VariableDeclaration, VisibilityKey>, read: (name: string) => unknown): boolean {
   // One the editor cannot read is passed over, as if it were not written - template lint says
   // what is wrong with it - so a typo never hides a field for good.
   const holds = (step: string): boolean => conditionHolds(step, read);
-  const show = visibilityConditions(declaration, 'show_if').filter(isWellFormedCondition);
-  const hide = visibilityConditions(declaration, 'hide_if').filter(isWellFormedCondition);
+  const show = visibilityConditions(written, 'show_if').filter(isWellFormedCondition);
+  const hide = visibilityConditions(written, 'hide_if').filter(isWellFormedCondition);
   if (show.length && !show.some(holds)) return false;
   return !hide.some(holds);
+}
+
+/**
+ * Whether the card editor shows a declaration's field, given a way to read what each variable
+ * will be. With the template's `groups:` (#473), the field's group has its say first: a field
+ * shows only while both its group and the field itself say so.
+ */
+export function declarationShown(
+  declaration: VariableDeclaration,
+  read: (name: string) => unknown,
+  groups?: Record<string, VariableGroupSettings>,
+): boolean {
+  const group = declarationGroup(declaration);
+  const settings = group !== undefined && groups ? groups[group] : undefined;
+  if (settings && !conditionsShow(settings, read)) return false;
+  return conditionsShow(declaration, read);
+}
+
+/** Whether anything in these declarations or their groups says when it shows - nothing to read otherwise. */
+export function hasVisibilityConditions(
+  declarations: VariableDeclaration[],
+  groups: Record<string, VariableGroupSettings> = {},
+): boolean {
+  const written = (each: Pick<VariableDeclaration, VisibilityKey>): boolean =>
+    each.show_if !== undefined || each.hide_if !== undefined;
+  return declarations.some(written) || Object.values(groups).some(written);
 }
 
 /**
@@ -219,11 +287,14 @@ function typeSelector(declaration: VariableDeclaration): unknown {
     unknownTypesSaid.add(said);
     warn({
       kind: 'other',
-      message: localize('warn.unknown_type', {
-        name: declaration.name,
-        type: String(type),
-        types: VARIABLE_TYPES.join(', '),
-      }),
+      message:
+        localize('warn.unknown_type', {
+          name: declaration.name,
+          type: String(type),
+          types: VARIABLE_TYPES.join(', '),
+        }) +
+        // A name of somebody's own (#472) lands here when no decluttering_types or types: has it.
+        localize('warn.unknown_type_own'),
       variable: declaration.name,
     });
   }
@@ -2557,15 +2628,38 @@ export function ownVariables(variables: unknown): VariablesConfig[] {
   });
 }
 
+/*
+ * What one entry normalises to, kept per entry object (#471). A nested build's list is the
+ * outer build's list again with a few values of its own in front, so the same entries - and
+ * every dotted name under each mapping in them - were read over again for every copy, every
+ * fill and every value read. The entries handed out are never changed, only read and listed.
+ */
+const NORMALISED = new WeakMap<object, { value: unknown; out: VariablesConfig[] }>();
+
+function normaliseEntry(entry: Record<string, unknown>): VariablesConfig[] {
+  const names = Object.keys(entry);
+  // Only an entry of one name is kept: those are what lists are made of. A mapping of many
+  // names is what someone wrote, and is read fresh each time.
+  const single = names.length === 1;
+  const known = single ? NORMALISED.get(entry) : undefined;
+  if (known && known.value === entry[names[0]]) return known.out;
+  const out: VariablesConfig[] = [];
+  for (const [name, value] of Object.entries(entry)) {
+    out.push({ [name]: value });
+    if (isDottable(value)) for (const [suffix, inner] of dottedSuffixes(value)) out.push({ [name + suffix]: inner });
+  }
+  if (!single || !out.length) return out;
+  // An entry already one plain name is its own normal form, so a list read twice hands out the same objects.
+  if (out.length === 1) out[0] = entry as VariablesConfig;
+  NORMALISED.set(entry, { value: entry[names[0]], out });
+  return out;
+}
+
 export function normaliseVariables(variables: unknown): VariablesConfig[] {
   const entries: VariablesConfig[] = [];
   const add = (entry: unknown): void => {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return;
-    for (const [name, value] of Object.entries(entry)) {
-      entries.push({ [name]: value });
-      if (isDottable(value))
-        for (const [suffix, inner] of dottedSuffixes(value)) entries.push({ [name + suffix]: inner });
-    }
+    for (const each of normaliseEntry(entry as Record<string, unknown>)) entries.push(each);
   };
 
   if (Array.isArray(variables)) variables.forEach(add);
@@ -2640,14 +2734,226 @@ export function getDeclarations(template: TemplateConfig | undefined): VariableD
 
   const seen = new Set<string>();
   const declarations: VariableDeclaration[] = [];
+  // Worked out the first time a declaration names a type of its own, which most never do.
+  let types: Record<string, Record<string, unknown>> | undefined;
+  const typesHere = (): Record<string, Record<string, unknown>> => (types ??= typesOf(template));
   for (const entry of declared) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
     const name = entry.name;
     if (typeof name !== 'string' || !name.trim() || seen.has(name)) continue;
     seen.add(name);
-    declarations.push(withSingularDefault(entry));
+    declarations.push(withSingularDefault(withNamedType(entry, typesHere, sayUnknownFieldType)));
   }
   return declarations;
+}
+
+/*
+ * Named variable types (#472): a declaration shape written once and named, so a list of twenty
+ * colours offered by four variables is not written four times. They live under
+ * `decluttering_types:` on the dashboard (and the library dashboard) and under a template's own
+ * `types:`, which wins a name the two share. A declaration saying `type: colour_picker` takes
+ * the type's keys and then its own over them, top-level keys only. A type may say one of the
+ * built-in types (`type: number` with a range) and that then works as it always has; it may not
+ * name another type of its own, and it may not take a built-in's name - the built-in would win.
+ *
+ * Everything that reads declarations reads them through getDeclarations, so this is the one
+ * place they are put together. The dashboard's types ride on the template copy under a symbol,
+ * as the view's values do, so nothing written in YAML can reach them and an export never
+ * carries them by accident.
+ */
+export const TYPES_KEY = 'types';
+export const SHARED_TYPES = Symbol('decluttering shared types');
+
+// The keys a field of an object selector can carry: what Home Assistant reads, and `default:`.
+const FIELD_KEYS = ['label', 'required', 'selector', 'default'];
+
+const isPlainMapping = (value: unknown): value is Record<string, any> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+// What has already been said about a type, so a card rebuilding says each thing once a page.
+const typeProblemsSaid = new Set<string>();
+
+function sayOnce(key: string, params: Record<string, string>, variable?: string): void {
+  const said = `${key}\u0000${JSON.stringify(params)}`;
+  if (typeProblemsSaid.has(said)) return;
+  typeProblemsSaid.add(said);
+  warn({ kind: 'other', message: localize(key, params), variable });
+}
+
+/** Whether a name is one of the card's own types, which a type of somebody's own can never be. */
+export function isBuiltinType(name: unknown): boolean {
+  return typeof name === 'string' && VARIABLE_TYPES.includes(name);
+}
+
+/*
+ * The types a list of type mappings gives, later ones winning a name, with any a declaration
+ * could not use left out and said once: one under a built-in's name, and one that is not a
+ * mapping. A type naming another type of its own keeps its other keys and loses that one.
+ */
+export function usableTypes(...layers: unknown[]): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = Object.create(null);
+  for (const layer of layers) {
+    if (!isPlainMapping(layer)) continue;
+    for (const [name, written] of Object.entries(layer)) {
+      if (isBuiltinType(name)) {
+        sayOnce('warn.type_builtin_name', { type: name });
+        continue;
+      }
+      if (!isPlainMapping(written)) continue;
+      // A type's name is the key it is under; a `name:` inside it would rename the variable.
+      const rest: Record<string, unknown> = { ...written };
+      delete rest.name;
+      if (rest.type !== undefined && !isBuiltinType(rest.type)) {
+        sayOnce('warn.type_of_type', { type: name, named: String(rest.type), types: VARIABLE_TYPES.join(', ') });
+        delete rest.type;
+      }
+      out[name] = rest;
+    }
+  }
+  return out;
+}
+
+/** The types a template can name: the ones it was given from its dashboard, then its own `types:` over them. */
+export function typesOf(template: unknown): Record<string, Record<string, unknown>> {
+  if (!isPlainMapping(template)) return Object.create(null);
+  return usableTypes((template as any)[SHARED_TYPES], (template as any)[TYPES_KEY]);
+}
+
+/** Who to tell about a `type:` nobody defines: the variable, the field when it is one, and the name. */
+type UnknownType = (variable: string, field: string | undefined, type: string) => void;
+
+// A field naming a type nobody defines would lose it without a word, so it is said once.
+function sayUnknownFieldType(variable: string, field: string | undefined, type: string): void {
+  if (field === undefined) return;
+  sayOnce('warn.unknown_field_type', { name: variable, field, type, types: VARIABLE_TYPES.join(', ') }, variable);
+}
+
+/*
+ * A declaration with the type it names put underneath it. A name that is not a type is left
+ * as written: the editor already says so when it draws the field, and the lint says so too.
+ */
+export function withNamedType<T extends Record<string, any>>(
+  entry: T,
+  types: () => Record<string, Record<string, unknown>>,
+  unknown: UnknownType = () => undefined,
+): T {
+  let out: Record<string, any> = entry;
+  const type = entry.type;
+  if (typeof type === 'string' && !isBuiltinType(type)) {
+    const base = types()[type];
+    if (base) {
+      out = { ...base, ...entry };
+      // The declaration's own `type:` was the name, so the type's built-in one, if any, takes its place.
+      if (base.type === undefined) delete out.type;
+      else out.type = base.type;
+    } else {
+      unknown(String(entry.name), undefined, type);
+    }
+  }
+  return withTypedFields(out, String(entry.name), types, unknown, 0) as T;
+}
+
+/*
+ * The fields of an object selector may name a type too, the colour picker four fields share.
+ * A field that does takes the type's keys under its own, gets its selector from a built-in
+ * `type:` the way a declaration does, and keeps only the keys a field can carry - a type
+ * written for variables has a description and a group a field has nowhere to put. A field
+ * that names no type is left exactly as written.
+ */
+function withTypedFields(
+  declaration: Record<string, any>,
+  variable: string,
+  types: () => Record<string, Record<string, unknown>>,
+  unknown: UnknownType,
+  depth: number,
+): Record<string, any> {
+  const object = declaration.selector?.object;
+  // An object field can hold an object of its own; five deep is past anything anyone writes.
+  if (!isPlainMapping(object) || !isPlainMapping(object.fields) || depth > 5) return declaration;
+  let changed = false;
+  const fields: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(object.fields)) {
+    const resolved = isPlainMapping(field) ? typedField(key, field, variable, types, unknown, depth) : field;
+    if (resolved !== field) changed = true;
+    fields[key] = resolved;
+  }
+  if (!changed) return declaration;
+  return { ...declaration, selector: { ...declaration.selector, object: { ...object, fields } } };
+}
+
+function typedField(
+  key: string,
+  field: Record<string, any>,
+  variable: string,
+  types: () => Record<string, Record<string, unknown>>,
+  unknown: UnknownType,
+  depth: number,
+): Record<string, any> {
+  if (!('type' in field)) return withTypedFields(field, variable, types, unknown, depth + 1);
+  let merged: Record<string, any> = field;
+  const type = field.type;
+  if (typeof type === 'string' && !isBuiltinType(type)) {
+    const own: Record<string, any> = { ...field };
+    delete own.type;
+    const base = types()[type];
+    if (base) merged = { ...base, ...own };
+    else {
+      unknown(variable, key, type);
+      merged = own;
+    }
+  }
+  // Home Assistant wants a selector on every field, so one with nothing better is a text box.
+  const selector =
+    merged.selector ?? declarationSelector({ ...merged, name: `${variable}.${key}` } as VariableDeclaration);
+  const out: Record<string, any> = {};
+  for (const name of FIELD_KEYS) if (merged[name] !== undefined) out[name] = merged[name];
+  out.selector = selector;
+  return withTypedFields(out, variable, types, unknown, depth + 1);
+}
+
+/**
+ * Every `type:` a template's declarations and their object fields name that no type answers
+ * to, for the lint: the variable, the field when it is one, and the name written.
+ */
+export function unknownTypes(
+  template: TemplateConfig | undefined,
+  types: Record<string, Record<string, unknown>> = typesOf(template),
+): { variable: string; field?: string; type: string; index: number }[] {
+  const found: { variable: string; field?: string; type: string; index: number }[] = [];
+  declarationList(template?.variables).forEach((entry, index) => {
+    if (!isPlainMapping(entry) || typeof entry.name !== 'string') return;
+    withNamedType(
+      entry,
+      () => types,
+      (variable, field, type) => {
+        found.push(field === undefined ? { variable, type, index } : { variable, field, type, index });
+      },
+    );
+  });
+  return found;
+}
+
+/**
+ * The names of the types of its own a template's declarations use, each type's own fields
+ * followed too, so an object type built on a colour type brings the colour type with it.
+ */
+export function typesUsed(
+  template: TemplateConfig | undefined,
+  types: Record<string, Record<string, unknown>> = typesOf(template),
+): string[] {
+  const used: string[] = [];
+  const visit = (entry: unknown): void => {
+    if (!isPlainMapping(entry)) return;
+    const type = entry.type;
+    if (typeof type === 'string' && !isBuiltinType(type) && types[type] && !used.includes(type)) {
+      used.push(type);
+      visit(types[type]);
+    }
+    const fields = entry.selector?.object?.fields;
+    if (isPlainMapping(fields)) for (const field of Object.values(fields)) visit(field);
+  };
+  for (const entry of declarationList(template?.variables)) visit(entry);
+  return used;
 }
 
 /*
@@ -2759,6 +3065,44 @@ export function resolveVariables(
   }
   combined.push(...defaultList(template));
   return firstDefinitionWins(combined);
+}
+
+/*
+ * A value read inside a build - what an `if:` asks about, a transform's input, a mapping
+ * filled in to reach into - is built from the list that build already worked out, under a
+ * template with nothing of its own (#471). One card can read hundreds of them, and each read
+ * the whole list over again: every name, every dotted name under every mapping. The list and
+ * its values are worked out once per list instead. A list only ever grows while it is in use,
+ * so one that has grown since is worked out again.
+ */
+interface BareRead {
+  length: number;
+  list: VariablesConfig[];
+  values?: Record<string, any>;
+}
+const BARE_READS = new WeakMap<VariablesConfig[], BareRead>();
+
+/** Whether a template has nothing of its own: no `let:`, defaults, declarations or values laid on it. */
+export function isBareTemplate(template: TemplateConfig | undefined): boolean {
+  return !template || Reflect.ownKeys(template).length === 0;
+}
+
+/**
+ * What resolveVariables gives for this list under a bare template, and its values, worked out
+ * once. The list handed back is a copy, free to be added to. The values are shared: whoever
+ * changes them copies them first.
+ */
+export function bareRead(variables: VariablesConfig[]): { list: VariablesConfig[]; values: () => Record<string, any> } {
+  let memo = BARE_READS.get(variables);
+  if (!memo || memo.length !== variables.length) {
+    memo = { length: variables.length, list: resolveVariables(variables, undefined) };
+    BARE_READS.set(variables, memo);
+  }
+  const held = memo;
+  return {
+    list: held.list.slice(),
+    values: () => (held.values ??= variableValues(held.list)),
+  };
 }
 
 /**
@@ -2888,6 +3232,7 @@ function contentOf(template: TemplateConfig | undefined): unknown[] {
   return [
     ...CONTENT_KEYS.map((key) => (template as any)?.[key]).filter((part) => part !== undefined),
     ...checkReads(template),
+    ...visibilityReads(template),
     // A `[[$key]]` text with placeholders in it (#392) fills them in where it is looked up.
     ...((template as any)?.language !== undefined ? [(template as any).language] : []),
   ];
@@ -2914,17 +3259,39 @@ function checkReads(template: TemplateConfig | undefined): unknown[] {
   for (const check of list) {
     if (!check || typeof check !== 'object') continue;
     if (check.message !== undefined) reads.push(check.message);
-    const condition = check.condition;
-    if (typeof condition !== 'string') continue;
-    if (condition.includes('[[')) {
-      reads.push(condition);
-      continue;
-    }
-    const target = conditionTarget(isCondition(condition.trim()) ? condition.trim() : IF_PREFIX + condition.trim());
-    if (target && /^[A-Za-z0-9_.-]+$/.test(target)) reads.push(`[[${target}?]]`);
+    conditionReads(check.condition, reads);
   }
   const alert = (template as any)?.alert;
   if (alert !== undefined) reads.push(alert);
+  return reads;
+}
+
+// What one condition written the show_if way reads, added to `reads`.
+function conditionReads(condition: unknown, reads: unknown[]): void {
+  if (typeof condition !== 'string') return;
+  if (condition.includes('[[')) {
+    reads.push(condition);
+    return;
+  }
+  const target = conditionTarget(isCondition(condition.trim()) ? condition.trim() : IF_PREFIX + condition.trim());
+  if (target && /^[A-Za-z0-9_.-]+$/.test(target)) reads.push(`[[${target}?]]`);
+}
+
+/*
+ * What the `show_if` and `hide_if` of the template's variables and of its `groups:` (#473)
+ * read. A variable that only decides which other fields the editor shows is still one the
+ * template uses, so setting it is not a value given for nothing.
+ */
+function visibilityReads(template: TemplateConfig | undefined): unknown[] {
+  const reads: unknown[] = [];
+  const declared = (template as any)?.variables;
+  const owners: Pick<VariableDeclaration, VisibilityKey>[] = [
+    ...(Array.isArray(declared) ? declared.filter((each) => each && typeof each === 'object') : []),
+    ...Object.values(templateGroups(template)),
+  ];
+  for (const owner of owners)
+    for (const key of ['show_if', 'hide_if'] as const)
+      for (const condition of visibilityConditions(owner, key)) conditionReads(condition, reads);
   return reads;
 }
 

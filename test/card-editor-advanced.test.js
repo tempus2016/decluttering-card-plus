@@ -8,6 +8,7 @@ const {
   applyAdvanced,
   advancedCount,
   advancedSchema,
+  hasOwnWatch,
   onErrorCard,
   withOnErrorCard,
   rebuildPlaceholders,
@@ -407,4 +408,41 @@ check(
   'the default says what the template says',
   watchSchema(base, { card: {}, rebuild_on_watch: 'read' })[0].label.includes('read'),
   true,
+);
+
+// #474: an entry with its own watch: keeps it, and the dropdown says so.
+check('no entries, no own watch', hasOwnWatch([]), false);
+check('plain entity entries have no own watch', hasOwnWatch([{ entry: 'light.a' }, { entry: '[[x]]' }]), false);
+check('an entry without watch: has no own watch', hasOwnWatch([{ entry: { entity: '[[cam]]' } }]), false);
+check(
+  'an entry with watch: has its own',
+  hasOwnWatch([{ entry: 'light.a' }, { entry: { entity: '[[cam]]', watch: ['name'] } }]),
+  true,
+);
+const ownWatchField = (template) =>
+  advancedSchema(undefined, base, template, true).find((entry) => entry.name === 'rebuild_on_watch');
+check(
+  'with an own watch the default says those entries keep it',
+  ownWatchField().selector.select.options[0].label,
+  'Any change, except entries that say their own',
+);
+check(
+  'with an own watch the template default says so too',
+  ownWatchField({ card: {}, rebuild_on_watch: 'read' }).selector.select.options[0].label,
+  'As the template says: read, except entries that say their own',
+);
+check(
+  'with an own watch the helper says those entries keep it',
+  ownWatchField().helper.endsWith('An entry that says its own watch: keeps it, whatever is picked here'),
+  true,
+);
+check('without one the default stays as it was', watchSchema(base)[0].label, 'Any change (default)');
+check(
+  'the other options do not change',
+  ownWatchField()
+    .selector.select.options.slice(1)
+    .map((o) => o.label),
+  watchSchema(base)
+    .slice(1)
+    .map((o) => o.label),
 );

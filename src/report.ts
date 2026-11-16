@@ -2,6 +2,8 @@ import { localize } from './localize';
 import { BuildTrace, describeSection, headline, ItemTrace, itemTitle, itemValueRows, TraceReport } from './trace';
 import { toYaml } from './yaml';
 import { OutlineNode, outlineTags, reportOutline } from './report-outline';
+import { changesText, clockTime } from './rebuild';
+import type { PassedCheck } from './checks';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -437,9 +439,19 @@ function buildSection(
       items(item.items, level + 1, `${base}-i${i}`);
     }
   };
+  // The card as written, ahead of the template it calls (#474): its variables, its rebuild_on.
+  if (report.card !== undefined) lines.push(`### ${line(t('report.card'))}`, '', ...block(report.card), '');
   if (report.template) {
     lines.push(`### ${line(t('report.template', { template: report.template.name }))}`, '');
     lines.push(...block(report.template.config), '');
+  }
+  if (report.rebuilds?.length) {
+    lines.push(
+      `**${t('report.rebuilds')}**`,
+      '',
+      ...report.rebuilds.map((rebuild) => `- \`${clockTime(rebuild.at)}\` ${line(changesText(rebuild.changes, hass))}`),
+      '',
+    );
   }
   for (const [s, section] of sectionTables(report, redacting, hass).entries()) {
     if (section.label) lines.push(...anchor(`r${index}-s${s}`), `### ${line(section.label)}`, '');
@@ -500,6 +512,32 @@ export function failedChecks(
   return alerts;
 }
 
+/** The checks that passed (#474), from this card and every card inside it, each with the build it came from. */
+export function passedChecks(reports: TraceReport[]): (PassedCheck & { label: string })[] {
+  const passed: (PassedCheck & { label: string })[] = [];
+  for (const report of reports) {
+    for (const each of report.passed ?? []) passed.push({ ...each, label: report.label });
+  }
+  return passed;
+}
+
+/*
+ * A check that passed in one line: its name, its condition, and what each placeholder the
+ * condition read became - `No camera: [[camera|exists]] → true`. A value read through a
+ * secret-looking name is taken out when redacting, as it is in the variable tables.
+ */
+export function passedText(check: PassedCheck, redacting: boolean): string {
+  const shown = check.values.map(([placeholder, value]): [string, string] => [
+    placeholder,
+    redacting && SECRET_NAME.test(placeholderName(placeholder)) ? '<redacted>' : asText(value),
+  ]);
+  const read =
+    shown.length === 1 && shown[0][0] === check.condition
+      ? `${check.condition} → ${shown[0][1]}`
+      : `${check.condition}${shown.length ? ` (${shown.map(([p, v]) => `${p} → ${v}`).join(', ')})` : ''}`;
+  return check.name ? `${check.name}: ${read}` : read;
+}
+
 /** Where a failed check came from, in words. */
 export function checkWhere(alert: { name?: string; label: string }, hass?: any): string {
   return alert.name
@@ -556,6 +594,19 @@ export function formatReport(input: ReportInput, hass?: any): string {
       '',
       ...alerts.map((alert) => `- **${line(alert.level)}** ${line(alert.message)} (${line(checkWhere(alert, hass))})`),
       '',
+    );
+  }
+  // The checks that passed (#474), folded: they are there to rule something out, not to read first.
+  const passed = passedChecks(input.reports);
+  if (passed.length) {
+    body.push(
+      ...folded(
+        title(t('report.checks_passed')),
+        passed.map(
+          (check) =>
+            `- ${line(passedText(check, write.redacting))} (${line(checkWhere({ label: check.label }, hass))})`,
+        ),
+      ),
     );
   }
   // A card the template built that refused its config (#463): the dashboard only says why in edit mode.
