@@ -125,8 +125,9 @@ here.
   the last 20 deleted or replaced templates to restore. Variables are edited as rows, with
   help beside each field, and a template can show or hide its fields, or whole groups of them,
   depending on the others. A field's shape can be named once and reused as a type of your own
-  (`decluttering_types:`), and the card editor points out fields you set by hand that an edit
-  left behind.
+  (`decluttering_types:`), an object's fields fill in from their own defaults, a dropdown can
+  show a label for each value it stores, and the card editor points out fields you set by
+  hand that an edit left behind.
   The card editor shows each field's default, sets up a repeat as a form with its filters,
   order and a live count, and edits `template_by_domain` as a table. Templates are picked from
   a search box with descriptions and use counts, any field on the Card tab can be made a

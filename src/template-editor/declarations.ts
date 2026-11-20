@@ -3,7 +3,7 @@ import { property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { HomeAssistant, fireEvent } from 'custom-card-helpers';
 import { FormSchemaEntry } from '../types';
-import { VARIABLE_TYPES, VariableDeclaration, isBuiltinType } from '../variables';
+import { VARIABLE_TYPES, VariableDeclaration, hasLabelledAllowed, isBuiltinType } from '../variables';
 import {
   DeclRow,
   DeclShape,
@@ -130,7 +130,7 @@ function extraSchema(
             },
             { name: 'unit', label: localize('declarations.unit', undefined, hass), selector: { text: {} } },
           ]
-        : type === 'select'
+        : type === 'select' && !hasLabelledAllowed(row)
           ? [{ name: 'allowed', label: localize('declarations.allowed', undefined, hass), selector: { text: {} } }]
           : type === 'text'
             ? [
@@ -147,7 +147,7 @@ function extraSchema(
       : [{ name: 'pattern', label: localize('declarations.pattern', undefined, hass), selector: { text: {} } }];
   // Allowed values written without a type still need a field, or the rows could never change them.
   const allowed: FormSchemaEntry[] =
-    type !== 'select' && row.allowed !== undefined
+    type !== 'select' && row.allowed !== undefined && !hasLabelledAllowed(row)
       ? [{ name: 'allowed', label: localize('declarations.allowed', undefined, hass), selector: { text: {} } }]
       : [];
   // The description gets the whole width: in a grid column its label is cut off.
@@ -420,7 +420,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
       max: row.max,
       step: row.step,
       unit: row.unit,
-      allowed: asText(row.allowed),
+      allowed: hasLabelledAllowed(row) ? undefined : asText(row.allowed),
       multiline: row.multiline,
     };
     return html`<div class="more">
@@ -588,7 +588,10 @@ export class DeclutteringDeclarationsEditor extends LitElement {
     };
     row = withField(row, 'domain', listOrWord(data.domain));
     row = withField(row, 'device_class', listOrWord(data.device_class));
-    row = withField(row, 'allowed', typeof data.allowed === 'string' ? asList(data.allowed) : undefined);
+    // Labelled values have no field here, so they stay as written (#482).
+    if (!hasLabelledAllowed(row)) {
+      row = withField(row, 'allowed', typeof data.allowed === 'string' ? asList(data.allowed) : undefined);
+    }
     this._emit(
       variablesFrom(
         rows.map((each, i) => (i === index ? row : each)),

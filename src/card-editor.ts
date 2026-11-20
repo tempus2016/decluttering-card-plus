@@ -91,6 +91,7 @@ import {
   isShownValue,
   defaultTarget,
   hasResetSlot,
+  defaultLine,
   resetVariable,
   shownDefaults,
   withoutVariable,
@@ -192,7 +193,6 @@ interface SchemaEntry {
 interface FieldReset {
   text: string;
   source: string;
-  chain?: string;
   /** Whether the card sets the field, which is when its Reset shows. */
   set: boolean;
 }
@@ -602,6 +602,20 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       /* #469: the note under a changed field takes a line of its own, below the field and its Reset. */
       .declared-field {
         flex-wrap: wrap;
+      }
+      /* #483: a set field's default, apart from its description and below the field. */
+      .declared-field .default-line {
+        order: 1;
+        flex-basis: 100%;
+        padding: 0 12px;
+        font-size: 12px;
+        line-height: 16px;
+        color: var(--secondary-text-color);
+        overflow-wrap: anywhere;
+      }
+      .declared-field .default-value {
+        font-family: var(--ha-font-family-code, monospace);
+        color: var(--primary-text-color);
       }
       .declared-field .left-behind {
         order: 1;
@@ -2528,7 +2542,6 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     declarations: VariableDeclaration[],
     hidden: EditorHidden,
     template: TemplateConfig | undefined,
-    resets: Map<string, FieldReset> = new Map(),
   ): unknown[] {
     // With nothing described, the variables field is the only way to set any, so it stays.
     // The template field is the picker above the form (idea 21), so the schema starts after it.
@@ -2539,21 +2552,12 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const supplied = new Set(this._suppliedNames(template));
     const field = (declaration: VariableDeclaration): Record<string, unknown> => {
       const fromCopy = supplied.has(declaration.name);
-      // A field with a Reset says what it would go back to, and from where (#255).
-      const reset = fromCopy ? undefined : resets.get(declaration.name);
-      const helper = reset
-        ? [
-            declaration.description,
-            localize(`editor.default.${reset.source}`, { value: reset.text }, this.hass) +
-              (reset.chain ? ` ${localize('editor.default.chain', { chain: reset.chain }, this.hass)}` : ''),
-          ]
-            .filter(Boolean)
-            .join(' · ')
-        : declaration.description;
       return {
         name: VARIABLE_FIELD_PREFIX + declaration.name,
         label: declaration.label ?? declaration.name,
-        helper: fromCopy ? localize('editor.repeat.from_each_copy_helper', undefined, this.hass) : helper,
+        helper: fromCopy
+          ? localize('editor.repeat.from_each_copy_helper', undefined, this.hass)
+          : declaration.description,
         // Found options (#404), then a declared selector, then what its `type:` stands for,
         // then its allowed values.
         selector: this._selectorFor(declaration),
@@ -2663,7 +2667,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     error: Record<string, string | string[]>,
   ): TemplateResult {
     const resets = this._resetTargets(shown, template);
-    const schema = this._formSchema(shown, hidden, template, resets) as SchemaEntry[];
+    const schema = this._formSchema(shown, hidden, template) as SchemaEntry[];
     const form = (entries: unknown[]): TemplateResult =>
       html`<ha-form
         .hass=${this.hass}
@@ -2686,7 +2690,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
        * width. A field that never can has no place, so it gets the width back on a phone.
        */
       return html`<div class="declared-field">
-        ${form([entry])} ${this._leftBehindNote(name, template)}
+        ${form([entry])} ${this._defaultLine(name, defaultLine(reset, hidden.defaults))}
+        ${this._leftBehindNote(name, template)}
         ${
           hasResetSlot(reset, entry.disabled)
             ? html`<span class="reset-slot"
@@ -2724,6 +2729,18 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
             </ha-expansion-panel>`
           : field(entry),
       )}
+    </div>`;
+  }
+
+  /*
+   * #483: what a set field would go back to, on a line of its own under the field rather than
+   * run into its description, with the value picked out so it reads apart from the words.
+   */
+  private _defaultLine(name: string, line: { key: string; value: string } | undefined): TemplateResult {
+    if (!line) return html``;
+    const [before, after = ''] = localize(line.key, { value: '\u0000' }, this.hass).split('\u0000');
+    return html`<div class="default-line" data-default=${name}>
+      ${before}<span class="default-value">${line.value}</span>${after}
     </div>`;
   }
 
@@ -2767,7 +2784,6 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       resets.set(declaration.name, {
         text: defaultText(filled === undefined ? target.value : filled) || '""',
         source: target.source,
-        chain: computed && filled !== undefined ? defaultText(target.value) : undefined,
         set: declaration.name in own,
       });
     }

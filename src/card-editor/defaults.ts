@@ -213,6 +213,19 @@ export function hasResetSlot(reset: { set?: boolean } | undefined, disabled?: bo
   return !disabled && reset !== undefined;
 }
 
+/**
+ * #483: the line under a field saying what it would go back to. Only a field the card sets
+ * has one - an unset field already shows its default in the field itself - and a template
+ * can leave the lines out with `editor_hide: defaults`.
+ */
+export function defaultLine(
+  reset: { text: string; source: string; set?: boolean } | undefined,
+  hide?: boolean,
+): { key: string; value: string } | undefined {
+  if (!reset?.set || hide) return undefined;
+  return { key: `editor.default.${reset.source}`, value: reset.text };
+}
+
 /** A default as one line of text, the way it would be typed: a mapping or list as flow YAML. */
 export function defaultText(value: unknown): string {
   if (value === null || value === undefined) return '';

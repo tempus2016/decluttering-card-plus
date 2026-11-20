@@ -397,7 +397,7 @@
               }
             }
           ],
-          "description": "Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field."
+          "description": "Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced`, `defaults` or an Advanced field."
         },
         "rebuild_on": {
           "$ref": "#/definitions/RebuildOnValue",
@@ -719,7 +719,7 @@
         "allowed": {
           "type": "array",
           "items": {},
-          "description": "The values this variable can take. Warns; it never blocks a save."
+          "description": "The values this variable can take. Warns; it never blocks a save. An entry can be a `{label, value}` mapping, as a select selector's options are, to show words in the dropdown while the card is given the value (#482)."
         },
         "group": {
           "type": "string",
@@ -756,6 +756,24 @@
             }
           ],
           "description": "`type: entity`: the device class it must have, one or a list."
+        },
+        "integration": {
+          "type": "string",
+          "description": "`type: entity`: the integration it must come from (#482). Narrows the picker; not checked."
+        },
+        "supported_features": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          ],
+          "description": "`type: entity`: the feature flags it must support, one number or a list (#482). Narrows the picker; not checked."
         },
         "min": {
           "type": "number",
@@ -890,7 +908,7 @@
         "allowed": {
           "type": "array",
           "items": {},
-          "description": "The values this variable can take. Warns; it never blocks a save."
+          "description": "The values this variable can take. Warns; it never blocks a save. An entry can be a `{label, value}` mapping, as a select selector's options are, to show words in the dropdown while the card is given the value (#482)."
         },
         "group": {
           "type": "string",
@@ -927,6 +945,24 @@
             }
           ],
           "description": "`type: entity`: the device class it must have, one or a list."
+        },
+        "integration": {
+          "type": "string",
+          "description": "`type: entity`: the integration it must come from (#482). Narrows the picker; not checked."
+        },
+        "supported_features": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          ],
+          "description": "`type: entity`: the feature flags it must support, one number or a list (#482). Narrows the picker; not checked."
         },
         "min": {
           "type": "number",

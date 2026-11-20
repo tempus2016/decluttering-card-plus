@@ -60,9 +60,11 @@ const URL_KEYS = `${SECRET_KEY}|sig|key`;
 // a Slack incoming webhook. The segment after is the secret, whatever the host was.
 const TOKEN_PATHS = /(\/api\/webhooks?\/(?:\d+\/)?|\/bot\d+:|\/services\/)[A-Za-z0-9_~./-]+/g;
 // A scheme is short and starts a word; bounding it keeps one long word from being scanned once per letter.
-const SCHEME = '(?<![\\w.+-])[a-z][a-z0-9+.-]{0,31}://';
+// What may not come before it is in `notAfterLink`: none of these patterns use lookbehind,
+// which Safari before 16.4 (iOS 15) refuses at parse time, taking the whole card with it.
+const SCHEME = '[a-z][a-z0-9+.-]{0,31}://';
 // `//host` on its own, where it is not the tail of `://` or a doubled slash in a path.
-const BARE_SLASHES = '(?<![:\\w/>])//';
+const BARE_SLASHES = '//';
 // Hosts that are somebody's, with nothing in front of them: `host: nas.local`. A `.home` only
 // counts with a port, because `zone.home` is an entity.
 const HOME_DOMAINS = 'duckdns\\.org|tplinkdns\\.com|nabu\\.casa|local|lan';
@@ -83,8 +85,25 @@ function blankBlock(_: string, indent: string, dash: string | undefined, key: st
     .join('')}`;
 }
 
-const REDACTIONS: [RegExp, string | ((...groups: any[]) => string)][] = [
-  [new RegExp(`(${SCHEME}|${BARE_SLASHES})[^\\s@"'\\\\<>|]{1,256}@`, 'gi'), '$1<redacted-credentials>@'],
+/*
+ * A match is dropped, and looked for again one place further on, when the text before it
+ * ends in one of these. That is what a lookbehind at the start of the pattern did.
+ */
+type NotAfter = (before: string, match: string) => boolean;
+const after =
+  (chars: RegExp): NotAfter =>
+  (before) =>
+    chars.test(before.slice(-1));
+// A scheme starts a word; a bare `//` is not the tail of `://` or a doubled slash in a path.
+const notAfterLink: NotAfter = (before, match) => (match[0] === '/' ? /[:\w/>]/ : /[\w.+-]/).test(before.slice(-1));
+// The same, and no scheme ending in `media-source://`, whose host is always `media_source`.
+const notAfterLinkOrMedia: NotAfter = (before, match) =>
+  notAfterLink(before, match) || /^[a-z0-9+.-]*media-source:\/\//i.test(match);
+
+type Redaction = [RegExp, string | ((...groups: any[]) => string), NotAfter?];
+
+const REDACTIONS: Redaction[] = [
+  [new RegExp(`(${SCHEME}|${BARE_SLASHES})[^\\s@"'\\\\<>|]{1,256}@`, 'gi'), '$1<redacted-credentials>@', notAfterLink],
   [new RegExp(`([?&;](?:${URL_KEYS})=)[^&\\s"'\\\\|]+`, 'gi'), '$1<redacted>'],
   [new RegExp(`("${SECRET_KEY}"\\s*:\\s*)(?:"(?:[^"\\\\]|\\\\.)*"|[^,}\\]\\s]+)`, 'gi'), '$1"<redacted>"'],
   [
@@ -98,9 +117,9 @@ const REDACTIONS: [RegExp, string | ((...groups: any[]) => string)][] = [
   [/\b(Bearer\s+)[A-Za-z0-9._~+/=-]+/g, '$1<redacted>'],
   [/\b(Basic\s+)[A-Za-z0-9+/=_-]{8,}/g, '$1<redacted>'],
   // `password=x` or `token = x` inside a longer line, where the key is not the line's own.
-  [new RegExp(`(?<![\\w"'-])((?:${SECRET_KEY})\\s*[=]\\s*)[^\\s,;&"'|]+`, 'gi'), '$1<redacted>'],
+  [new RegExp(`((?:${SECRET_KEY})\\s*[=]\\s*)[^\\s,;&"'|]+`, 'gi'), '$1<redacted>', after(/[\w"'-]/)],
   [TOKEN_PATHS, '$1<redacted>'],
-  [/(?<![\w:])(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}(?![\w:])/gi, '<redacted-mac>'],
+  [/(?:[0-9a-f]{2}[:-]){5}[0-9a-f]{2}(?![\w:])/gi, '<redacted-mac>', after(/[\w:]/)],
   [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '<redacted-token>'],
   // Tokens that announce themselves: GitHub, OpenAI-style `sk-`, Slack.
   [
@@ -110,22 +129,25 @@ const REDACTIONS: [RegExp, string | ((...groups: any[]) => string)][] = [
   [/[A-Za-z0-9._%+-]{1,256}@[A-Za-z0-9.-]{1,256}\.[A-Za-z]{2,}/g, '<redacted-email>'],
   // Not after `Chrome/`: a four-part version reads exactly like an address.
   [
-    /(?<![\w.])(?<![A-Za-z]\/)(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?![\w.])/g,
+    /(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}(?![\w.])/g,
     '<redacted-ip>',
+    (before) => /[\w.]$|[A-Za-z]\/$/.test(before.slice(-2)),
   ],
-  [/(?<![\w:])(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}(?![\w:])/gi, '<redacted-ip>'],
-  [/(?<![\w:])(?:[0-9a-f]{1,4}:){1,6}(?::[0-9a-f]{1,4}){1,6}(?![\w:])/gi, '<redacted-ip>'],
-  // Any scheme but `media-source://`, whose host is always `media_source`.
+  [/(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}(?![\w:])/gi, '<redacted-ip>', after(/[\w:]/)],
+  [/(?:[0-9a-f]{1,4}:){1,6}(?::[0-9a-f]{1,4}){1,6}(?![\w:])/gi, '<redacted-ip>', after(/[\w:]/)],
+  // Any scheme but `media-source://`.
   [
     new RegExp(
-      `(${SCHEME}(?<!media-source://)(?:<redacted-credentials>@)?|${BARE_SLASHES}(?:<redacted-credentials>@)?)[^\\s/:"'\\\\<>|?#]+`,
+      `(${SCHEME}(?:<redacted-credentials>@)?|${BARE_SLASHES}(?:<redacted-credentials>@)?)[^\\s/:"'\\\\<>|?#]+`,
       'gi',
     ),
     '$1<redacted-host>',
+    notAfterLinkOrMedia,
   ],
   [
-    new RegExp(`(?<![\\w.-])(?:[a-z0-9-]+\\.)+(?:(?:${HOME_DOMAINS})(?![\\w.-])|home(?=:\\d))`, 'gi'),
+    new RegExp(`(?:[a-z0-9-]+\\.)+(?:(?:${HOME_DOMAINS})(?![\\w.-])|home(?=:\\d))`, 'gi'),
     '<redacted-host>',
+    after(/[\w.-]/),
   ],
 ];
 
@@ -152,7 +174,37 @@ export function redact(text: string, secrets: readonly string[] = []): string {
   if (out.length > LONGEST_RUN && out.split(/\s+/).some((word) => word.length > LONGEST_RUN)) {
     out = out.replace(LONG_RUN, (run) => `${run.slice(0, half)} … ${run.slice(-half)}`);
   }
-  return REDACTIONS.reduce((done, [pattern, replacement]) => done.replace(pattern, replacement as string), out);
+  return REDACTIONS.reduce(
+    (done, [pattern, replacement, notAfter]) =>
+      notAfter
+        ? replaceNotAfter(done, pattern, replacement as string, notAfter)
+        : done.replace(pattern, replacement as string),
+    out,
+  );
+}
+
+/*
+ * `text.replace(pattern, replacement)` for a global pattern, skipping each match whose text
+ * before it `notAfter` refuses and trying again one place on, as a lookbehind would.
+ */
+function replaceNotAfter(text: string, pattern: RegExp, replacement: string, notAfter: NotAfter): string {
+  pattern.lastIndex = 0;
+  let out = '';
+  let kept = 0;
+  let found: RegExpExecArray | null;
+  while ((found = pattern.exec(text))) {
+    const at = found.index;
+    const groups = found;
+    if (notAfter(text.slice(Math.max(0, at - 2), at), found[0])) {
+      pattern.lastIndex = at + 1;
+      continue;
+    }
+    out += text.slice(kept, at) + replacement.replace(/\$(\d)/g, (_, n: string) => groups[Number(n)] ?? '');
+    kept = at + found[0].length;
+    if (!found[0]) pattern.lastIndex++;
+  }
+  pattern.lastIndex = 0;
+  return out + text.slice(kept);
 }
 
 /*

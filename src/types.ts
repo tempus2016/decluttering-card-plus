@@ -122,7 +122,7 @@ export interface TemplateConfig {
   suggest_for?: unknown;
   /** Only for other templates to extend: left out of the card editor's template picker. Not inherited. */
   base?: boolean;
-  /** Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced` or an Advanced field. */
+  /** Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced`, `defaults` or an Advanced field. */
   editor_hide?: string | string[];
   /**
    * Entities a card using this template rebuilds on, as well as the card's own - and the only
