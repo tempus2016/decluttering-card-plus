@@ -26,7 +26,11 @@ export interface VariableDeclaration {
   required?: boolean;
   /** A regular expression the value must match. Warns; it never blocks a save. */
   pattern?: string;
-  /** The values this variable can take. Warns; it never blocks a save. */
+  /**
+   * The values this variable can take. Warns; it never blocks a save. An entry can be a
+   * `{label, value}` mapping, as a select selector's options are, to show words in the
+   * dropdown while the card is given the value (#482).
+   */
   allowed?: unknown[];
   /** Declarations sharing a group fold into one collapsible section of the editor. */
   group?: string;
@@ -36,6 +40,10 @@ export interface VariableDeclaration {
   domain?: string | string[];
   /** `type: entity`: the device class it must have, one or a list. */
   device_class?: string | string[];
+  /** `type: entity`: the integration it must come from (#482). Narrows the picker; not checked. */
+  integration?: string;
+  /** `type: entity`: the feature flags it must support, one number or a list (#482). Narrows the picker; not checked. */
+  supported_features?: number | number[];
   /** `type: number`: the range, the step between values, and the unit shown beside it. */
   min?: number;
   max?: number;
@@ -238,7 +246,37 @@ function entityFilter(declaration: VariableDeclaration): Record<string, unknown>
   const filter: Record<string, unknown> = {};
   if (declaration.domain !== undefined) filter.domain = declaration.domain;
   if (declaration.device_class !== undefined) filter.device_class = declaration.device_class;
+  // #482: the rest of what Home Assistant's entity filter takes.
+  if (declaration.integration !== undefined) filter.integration = declaration.integration;
+  if (declaration.supported_features !== undefined) filter.supported_features = declaration.supported_features;
   return Object.keys(filter).length ? filter : undefined;
+}
+
+/*
+ * #482: an `allowed:` entry is a value, or a `{label, value}` mapping the way a select
+ * selector's options are written. A mapping with no `value:` stands for nothing.
+ */
+const isLabelledEntry = (each: unknown): each is { label?: unknown; value?: unknown } =>
+  !!each && typeof each === 'object' && !Array.isArray(each);
+
+/** The values an `allowed:` list stands for, each with what the dropdown shows for it. */
+function allowedEntries(allowed: unknown[]): { value: unknown; label: string }[] {
+  const out: { value: unknown; label: string }[] = [];
+  for (const each of allowed) {
+    if (!isLabelledEntry(each)) {
+      out.push({ value: each, label: String(each) });
+      continue;
+    }
+    if (!('value' in each)) continue;
+    const label = each.label === undefined || each.label === null ? String(each.value) : String(each.label);
+    out.push({ value: each.value, label });
+  }
+  return out;
+}
+
+/** Whether a declaration's `allowed:` holds a `{label, value}` entry, which a comma-separated field cannot show. */
+export function hasLabelledAllowed(declaration: { allowed?: unknown }): boolean {
+  return Array.isArray(declaration.allowed) && declaration.allowed.some(isLabelledEntry);
 }
 
 /*
@@ -246,8 +284,10 @@ function entityFilter(declaration: VariableDeclaration): Record<string, unknown>
  * box that warns afterwards.
  */
 function allowedSelector(declaration: VariableDeclaration): unknown {
-  if (!Array.isArray(declaration.allowed) || !declaration.allowed.length) return undefined;
-  const options = declaration.allowed.map((each) => ({ value: String(each), label: String(each) }));
+  if (!Array.isArray(declaration.allowed)) return undefined;
+  const entries = allowedEntries(declaration.allowed);
+  if (!entries.length) return undefined;
+  const options = entries.map(({ value, label }) => ({ value: String(value), label }));
   return { select: { mode: 'dropdown', options } };
 }
 
@@ -431,7 +471,13 @@ const HA_MARKS = new RegExp(HA_MARK, 'g');
 /** The marker set around every bracket and brace that does not already have one. */
 export function markHaText(text: string): string {
   if (!/[[\]{}]/.test(text)) return text;
-  return text.replace(/([[\]{}])(?!\u2060)/g, `$1${HA_MARK}`).replace(/(?<!\u2060)([[\]{}])/g, `${HA_MARK}$1`);
+  // The second step checks the character before by hand: Safari before 16.4 (iOS 15) cannot
+  // parse a lookbehind, and one in this file stopped the whole card loading there.
+  return text
+    .replace(/([[\]{}])(?!\u2060)/g, `$1${HA_MARK}`)
+    .replace(/[[\]{}]/g, (bracket, at: number, all: string) =>
+      all[at - 1] === HA_MARK ? bracket : `${HA_MARK}${bracket}`,
+    );
 }
 
 /** Whether this text carries Home Assistant's marker, which only Home Assistant's text does. */
@@ -3060,13 +3106,97 @@ export function resolveVariables(
   // The view is closer to the card than the template is: a room page that says
   // `room: kitchen` means every card on it, whatever the template would have picked.
   combined.push(...normaliseVariables((template as any)?.[VIEW_VALUES]));
-  for (const declaration of getDeclarations(template)) {
+  const declarations = getDeclarations(template);
+  for (const declaration of declarations) {
     // A declaration that only names a variable says nothing about its value, and must not
-    // shadow a `default:` entry with undefined.
-    if ('default' in declaration) combined.push({ [declaration.name]: declaration.default });
+    // shadow a `default:` entry with undefined. A mapping default gets its dotted names too,
+    // as one in the `default:` list does, so `[[colours.on]]` reads it.
+    if ('default' in declaration) combined.push(...normaliseEntry({ [declaration.name]: declaration.default }));
   }
   combined.push(...defaultList(template));
-  return firstDefinitionWins(combined);
+  return withObjectFieldDefaults(firstDefinitionWins(combined), declarations);
+}
+
+/*
+ * #482: an object selector's fields can say `default:` - often through a named type - and a
+ * field the card leaves out is built with it, the way a variable's own default stands in. An
+ * object the card never sets is made from the defaults alone; a list of objects has each
+ * entry filled, and an unset list stays unset, having no entry to fill. A field the card
+ * sets, even to nothing, is kept. Top-level fields only.
+ */
+
+/** The defaults an object selector's fields declare, by field name, or undefined when none do. */
+export function fieldDefaults(declaration: VariableDeclaration): Record<string, unknown> | undefined {
+  const fields = declaration.selector?.object?.fields;
+  if (!isPlainMapping(fields)) return undefined;
+  let out: Record<string, unknown> | undefined;
+  for (const [key, field] of Object.entries(fields)) {
+    if (isPlainMapping(field) && 'default' in field && field.default !== undefined) {
+      (out ??= {})[key] = field.default;
+    }
+  }
+  return out;
+}
+
+/** A value with the field defaults filled in where it leaves them out, and whether any were. */
+export function filledObject(
+  value: unknown,
+  defaults: Record<string, unknown>,
+  multiple: boolean,
+): { value: unknown; filled: boolean } {
+  const fill = (entry: Record<string, unknown>): { value: unknown; filled: boolean } => {
+    const missing = Object.keys(defaults).filter((key) => !(key in entry));
+    if (!missing.length) return { value: entry, filled: false };
+    const out: Record<string, unknown> = { ...entry };
+    for (const key of missing) out[key] = defaults[key];
+    return { value: out, filled: true };
+  };
+  if (value === undefined || value === null || value === '') {
+    return multiple ? { value, filled: false } : { value: { ...defaults }, filled: true };
+  }
+  if (Array.isArray(value)) {
+    let filled = false;
+    const out = value.map((entry) => {
+      if (!isPlainMapping(entry)) return entry;
+      const one = fill(entry);
+      filled ||= one.filled;
+      return one.value;
+    });
+    return filled ? { value: out, filled } : { value, filled };
+  }
+  return isPlainMapping(value) ? fill(value) : { value, filled: false };
+}
+
+/** The declarations with field defaults, each with them and whether it takes a list. */
+export function objectDefaults(
+  declarations: VariableDeclaration[],
+): { name: string; defaults: Record<string, unknown>; multiple: boolean }[] {
+  const out: { name: string; defaults: Record<string, unknown>; multiple: boolean }[] = [];
+  for (const declaration of declarations) {
+    const defaults = fieldDefaults(declaration);
+    if (defaults) {
+      out.push({ name: declaration.name, defaults, multiple: declaration.selector?.object?.multiple === true });
+    }
+  }
+  return out;
+}
+
+function withObjectFieldDefaults(resolved: VariablesConfig[], declarations: VariableDeclaration[]): VariablesConfig[] {
+  const objects = objectDefaults(declarations);
+  if (!objects.length) return resolved;
+  for (const { name, defaults, multiple } of objects) {
+    const index = resolved.findIndex((entry) => firstKey(entry) === name);
+    const result = filledObject(index === -1 ? undefined : resolved[index][name], defaults, multiple);
+    if (!result.filled) continue;
+    // A new entry, never the card's own changed: the config is read, not written.
+    const [whole, ...dotted] = normaliseEntry({ [name]: result.value });
+    if (index === -1) resolved.push(whole);
+    else resolved[index] = whole;
+    // `[[my_var.size]]` reads a filled field as it reads a written one.
+    const have = new Set(resolved.map((entry) => firstKey(entry)));
+    for (const entry of dotted) if (!have.has(firstKey(entry) as string)) resolved.push(entry);
+  }
+  return resolved;
 }
 
 /*
@@ -3602,9 +3732,9 @@ export function validateDeclared(
     }
     if (Array.isArray(declaration.allowed)) {
       // Compared as text: a dropdown hands back strings, and `allowed: [1, 2]` still means 1 and 2.
-      if (!declaration.allowed.some((each) => String(each) === String(value))) {
-        bad.push({ name: declaration.name, expected: declaration.allowed.map((each) => String(each)).join(', ') });
-      }
+      // A labelled entry is checked by its value, never its label (#482).
+      const values = allowedEntries(declaration.allowed).map((each) => String(each.value));
+      if (!values.includes(String(value))) bad.push({ name: declaration.name, expected: values.join(', ') });
       continue;
     }
     if (typeof declaration.pattern === 'string' && declaration.pattern) {

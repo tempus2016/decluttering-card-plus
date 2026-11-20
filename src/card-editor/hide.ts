@@ -24,8 +24,8 @@ export const REPEAT_KEYS = [
   'empty',
 ];
 
-/** Every name `editor_hide:` understands: whole parts, then the Advanced fields one by one. */
-export const HIDEABLE = ['repeat', 'extras', 'fit', 'advanced', ...ADVANCED_KEYS];
+/** Every name `editor_hide:` understands: whole parts, the default lines (#483), then the Advanced fields one by one. */
+export const HIDEABLE = ['repeat', 'extras', 'fit', 'advanced', 'defaults', ...ADVANCED_KEYS];
 
 // The Advanced form's own field names, for the config keys that are edited under another name.
 const ADVANCED_FIELDS: Record<string, string[]> = {
@@ -64,6 +64,8 @@ export interface EditorHidden {
   extras: boolean;
   fit: boolean;
   advanced: boolean;
+  /** The line under a set field saying what its default is (#483). */
+  defaults: boolean;
   /** Advanced form fields to drop, by their field name. */
   advancedFields: string[];
 }
@@ -76,6 +78,7 @@ export function editorHidden(template: unknown, config: unknown, extras?: unknow
     extras: names.has('extras') && !extras?.length,
     fit: names.has('fit') && !isSet(config, 'fit'),
     advanced: names.has('advanced') && !advancedUsed,
+    defaults: names.has('defaults'),
     advancedFields: ([] as string[]).concat(
       ...ADVANCED_KEYS.filter((key) => names.has(key) && !isSet(config, key)).map(
         (key) => ADVANCED_FIELDS[key] ?? [key],

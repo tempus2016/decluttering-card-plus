@@ -257,9 +257,9 @@ describe('reset to default (#255)', () => {
     ],
     card: { type: 'markdown', content: '[[icon]] [[title]] [[colour]] [[detail]]' },
   };
-  const mount = (variables: unknown): any => {
+  const mount = (variables: unknown, more: Record<string, unknown> = {}): any => {
     const lovelace = stubLovelace({
-      decluttering_templates: { lamp: template },
+      decluttering_templates: { lamp: { ...template, ...more } },
       decluttering_defaults: [{ room: 'Den' }],
       views: [{ cards: [] }],
     });
@@ -281,13 +281,9 @@ describe('reset to default (#255)', () => {
     await settle(1);
     return config;
   };
-  const helperOf = (editor: any, name: string): string | undefined => {
-    for (const form of editor.shadowRoot?.querySelectorAll('.declared-field ha-form') ?? []) {
-      const entry = (form as any).schema?.[0];
-      if (entry?.name === `variable:${name}`) return entry.helper;
-    }
-    return undefined;
-  };
+  // The default line under a field (#483), as it reads.
+  const lineOf = (editor: any, name: string): string | undefined =>
+    editor.shadowRoot?.querySelector(`.default-line[data-default="${name}"]`)?.textContent.replace(/\s+/g, ' ').trim();
 
   it('only set fields with a default have a Reset, in groups too', async () => {
     const editor = mount([
@@ -304,17 +300,23 @@ describe('reset to default (#255)', () => {
       'room',
       'colour',
     ]);
-    expect(helperOf(editor, 'room'), 'a dashboard default says so').to.equal('Default from the dashboard: Den');
+    expect(lineOf(editor, 'room'), 'a dashboard default says so').to.equal('Default from the dashboard: Den');
     expect(
       editor.shadowRoot.querySelector('ha-expansion-panel.declared-group [data-variable="colour"]'),
       'the grouped Reset sits in its group',
     ).to.not.equal(null);
-    expect(helperOf(editor, 'icon'), 'says where the default is from').to.equal(
-      'Default from the template: mdi:lightbulb',
+    expect(lineOf(editor, 'icon'), "the template's own default is just the default").to.equal('Default: mdi:lightbulb');
+    expect(lineOf(editor, 'title'), 'a computed default is worked out, without how (#483)').to.equal(
+      'Default: Hall lights',
     );
-    expect(helperOf(editor, 'title'), 'a computed default is worked out').to.equal(
-      'Default from the template: Hall lights (worked out from [[room]] lights)',
-    );
+    expect(lineOf(editor, 'mode'), 'a field still at its default has no line (#483)').to.equal(undefined);
+    editor.remove();
+  });
+
+  it('editor_hide: defaults leaves the default lines out and keeps the Resets (#483)', async () => {
+    const editor = mount([{ icon: 'mdi:x' }], { editor_hide: 'defaults' });
+    await until(() => resets(editor).includes('icon'), 3000, 'the icon Reset');
+    expect(editor.shadowRoot.querySelector('.default-line'), 'no line').to.equal(null);
     editor.remove();
   });
 

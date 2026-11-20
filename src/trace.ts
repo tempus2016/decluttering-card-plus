@@ -1,7 +1,9 @@
 import { TemplateConfig, VariablesConfig } from './types';
 import { localize } from './localize';
 import {
+  filledObject,
   getDeclarations,
+  objectDefaults,
   INHERIT_FLAG,
   INHERITED_KEY,
   OWN_DEFAULTS,
@@ -345,6 +347,8 @@ export interface VariableRow {
   from: string;
   /** What it worked out to in the end, and how (#376). */
   worked?: Worked;
+  /** Some of its object's fields came from their defaults (#482). */
+  fieldDefaults?: boolean;
 }
 
 /*
@@ -386,6 +390,17 @@ export function variableRows(
   const own =
     t && OWN_DEFAULTS in t ? new Set(ownVariables(t[OWN_DEFAULTS]).map((entry) => Object.keys(entry)[0])) : undefined;
   add(ownVariables(templateDefaults(t)), (name) => (own && !own.has(name) ? 'dashboard' : 'default'));
+  // Objects with fields filled from their defaults, as the build fills them (#482).
+  for (const { name, defaults, multiple } of objectDefaults(getDeclarations(template))) {
+    const row = rows.find((each) => each.variable === name);
+    const result = filledObject(row?.value, defaults, multiple);
+    if (!result.filled) continue;
+    if (!row) rows.push({ variable: name, value: result.value, from: 'field_defaults' });
+    else {
+      row.value = result.value;
+      row.fieldDefaults = true;
+    }
+  }
   return rows;
 }
 
@@ -571,7 +586,9 @@ export function describeSection(
       return {
         [col('variable')]: row.variable,
         [col('value')]: cell(row.value),
-        [col('from')]: localize(`trace.from_${row.from}`, undefined, hass),
+        [col('from')]:
+          localize(`trace.from_${row.from}`, undefined, hass) +
+          (row.fieldDefaults ? ` + ${localize('trace.from_field_defaults', undefined, hass)}` : ''),
         [col('final')]: cell(worked.value),
         [col('how')]: steps(worked),
       };
