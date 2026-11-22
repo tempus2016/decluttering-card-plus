@@ -120,19 +120,20 @@ here.
   `card:` block laid over what its template builds. A template with a `function:` is a
   [step of your own][wiki-custom-steps]: `[[room|occupancy]]`.
 - [Visibility][wiki-visibility] and [styling][wiki-styling] inside a template.
-- [Visual editors][wiki-editors] that show what a card builds, where a template is used,
+- [Visual editors][wiki-editors] that show what a card builds (folded until you open it), where a template is used,
   rename a template or a variable everywhere, turn existing cards into a template, and keep
   the last 20 deleted or replaced templates to restore. Variables are edited as rows, with
   help beside each field, and a template can show or hide its fields, or whole groups of them,
   depending on the others. A field's shape can be named once and reused as a type of your own
-  (`decluttering_types:`), an object's fields fill in from their own defaults, a dropdown can
-  show a label for each value it stores, and the card editor points out fields you set by
-  hand that an edit left behind.
+  (`decluttering_types:`), an object's fields fill in from their own defaults, which can read the entry's other fields
+  (`[[__this__.name]]`), a dropdown can show a label for each value it stores or let you pick
+  several (`multiple: true`), and the card editor points out fields you set by hand that an
+  edit left behind.
   The card editor shows each field's default, sets up a repeat as a form with its filters,
   order and a live count, and edits `template_by_domain` as a table. Templates are picked from
   a search box with descriptions and use counts, any field on the Card tab can be made a
   variable from its own menu, and the code editor colours placeholders and completes them
-  after `[[`.
+  after `[[`. A misspelt template key such as `variblees:` is flagged, with a did-you-mean.
 - `checks:` a template runs against the values it is given, and `strict:` to decide, level by
   level, what an error or a warning does to the card. A card that cannot be built says why and
   offers the fix.
