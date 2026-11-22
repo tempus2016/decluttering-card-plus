@@ -130,8 +130,24 @@ function extraSchema(
             },
             { name: 'unit', label: localize('declarations.unit', undefined, hass), selector: { text: {} } },
           ]
-        : type === 'select' && !hasLabelledAllowed(row)
-          ? [{ name: 'allowed', label: localize('declarations.allowed', undefined, hass), selector: { text: {} } }]
+        : type === 'select'
+          ? [
+              ...(hasLabelledAllowed(row)
+                ? []
+                : [
+                    {
+                      name: 'allowed',
+                      label: localize('declarations.allowed', undefined, hass),
+                      selector: { text: {} },
+                    },
+                  ]),
+              // #491: a dropdown that takes several of the values.
+              {
+                name: 'multiple',
+                label: localize('declarations.multiple', undefined, hass),
+                selector: { boolean: {} },
+              },
+            ]
           : type === 'text'
             ? [
                 {
@@ -147,8 +163,13 @@ function extraSchema(
       : [{ name: 'pattern', label: localize('declarations.pattern', undefined, hass), selector: { text: {} } }];
   // Allowed values written without a type still need a field, or the rows could never change them.
   const allowed: FormSchemaEntry[] =
-    type !== 'select' && row.allowed !== undefined && !hasLabelledAllowed(row)
-      ? [{ name: 'allowed', label: localize('declarations.allowed', undefined, hass), selector: { text: {} } }]
+    type !== 'select' && row.allowed !== undefined
+      ? [
+          ...(hasLabelledAllowed(row)
+            ? []
+            : [{ name: 'allowed', label: localize('declarations.allowed', undefined, hass), selector: { text: {} } }]),
+          { name: 'multiple', label: localize('declarations.multiple', undefined, hass), selector: { boolean: {} } },
+        ]
       : [];
   // The description gets the whole width: in a grid column its label is cut off.
   return [
@@ -422,6 +443,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
       unit: row.unit,
       allowed: hasLabelledAllowed(row) ? undefined : asText(row.allowed),
       multiline: row.multiline,
+      multiple: row.multiple,
     };
     return html`<div class="more">
       <ha-form
@@ -581,6 +603,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
       row = withField(row, key, typeof data[key] === 'number' ? data[key] : undefined);
     }
     row = withField(row, 'multiline', data.multiline === true ? true : undefined);
+    row = withField(row, 'multiple', data.multiple === true ? true : undefined);
     // One domain stays a word, several become a list - the two spellings the card reads.
     const listOrWord = (value: unknown): unknown => {
       const list = typeof value === 'string' ? asList(value) : undefined;
@@ -590,7 +613,9 @@ export class DeclutteringDeclarationsEditor extends LitElement {
     row = withField(row, 'device_class', listOrWord(data.device_class));
     // Labelled values have no field here, so they stay as written (#482).
     if (!hasLabelledAllowed(row)) {
-      row = withField(row, 'allowed', typeof data.allowed === 'string' ? asList(data.allowed) : undefined);
+      // One made from a placeholder (#491) stays the text it is, not a list of one.
+      const allowed = typeof data.allowed === 'string' ? data.allowed.trim() : undefined;
+      row = withField(row, 'allowed', allowed?.includes('[[') ? allowed : allowed ? asList(allowed) : undefined);
     }
     this._emit(
       variablesFrom(

@@ -29,9 +29,10 @@ export interface VariableDeclaration {
   /**
    * The values this variable can take. Warns; it never blocks a save. An entry can be a
    * `{label, value}` mapping, as a select selector's options are, to show words in the
-   * dropdown while the card is given the value (#482).
+   * dropdown while the card is given the value (#482). In the card editor it can be one
+   * placeholder that makes the list, `[[menu_choices|with]]` (#491).
    */
-  allowed?: unknown[];
+  allowed?: unknown[] | string;
   /** Declarations sharing a group fold into one collapsible section of the editor. */
   group?: string;
   /** What kind of value it takes - see VARIABLE_TYPES - which picks its editor control. */
@@ -51,6 +52,8 @@ export interface VariableDeclaration {
   unit?: string;
   /** `type: text`: a box with room for more than one line. */
   multiline?: boolean;
+  /** With `allowed:`, a dropdown that takes several of the values, set as a list (#491). */
+  multiple?: boolean;
   /** Shows the field in the card editor only while one of these holds - `if:` conditions, written without the `if:`. */
   show_if?: string | string[];
   /** Hides the field in the card editor while any of these holds. */
@@ -288,7 +291,26 @@ function allowedSelector(declaration: VariableDeclaration): unknown {
   const entries = allowedEntries(declaration.allowed);
   if (!entries.length) return undefined;
   const options = entries.map(({ value, label }) => ({ value: String(value), label }));
-  return { select: { mode: 'dropdown', options } };
+  return { select: { mode: 'dropdown', options, ...(declaration.multiple === true ? { multiple: true } : {}) } };
+}
+
+/*
+ * #491: a written `select:` with no options of its own - there to say `multiple: true`, say -
+ * takes them from `allowed:`, keeping everything else it says. Anything else written is left
+ * as it is.
+ */
+function writtenSelector(declaration: VariableDeclaration): unknown {
+  const written = declaration.selector as Record<string, unknown> | undefined;
+  if (!written || typeof written !== 'object' || !('select' in written)) return written;
+  const select = written.select;
+  if (select !== null && (typeof select !== 'object' || Array.isArray(select))) return written;
+  if (select && Array.isArray((select as Record<string, unknown>).options)) return written;
+  const fromAllowed = allowedSelector(declaration) as { select: { options: unknown[] } } | undefined;
+  if (!fromAllowed) return written;
+  return {
+    ...written,
+    select: { ...((select as Record<string, unknown> | null) ?? {}), options: fromAllowed.select.options },
+  };
 }
 
 /** The selector a declaration's `type:` stands for, or undefined when it has none to offer. */
@@ -344,10 +366,11 @@ function typeSelector(declaration: VariableDeclaration): unknown {
 /**
  * The control a declared variable gets in the card editor. An explicit selector still wins
  * - the template author may want something else entirely - then what `type:` stands for,
- * then a dropdown of the `allowed:` values, then a text box.
+ * then a dropdown of the `allowed:` values, then a text box. A written `select:` with no
+ * options takes the `allowed:` values as its options (#491).
  */
 export function declarationSelector(declaration: VariableDeclaration): unknown {
-  return declaration.selector ?? typeSelector(declaration) ?? allowedSelector(declaration) ?? { text: {} };
+  return writtenSelector(declaration) ?? typeSelector(declaration) ?? allowedSelector(declaration) ?? { text: {} };
 }
 
 // The words `bool` reads, either way. A typed boolean holding anything else is a mistake.
@@ -3138,33 +3161,118 @@ export function fieldDefaults(declaration: VariableDeclaration): Record<string, 
   return out;
 }
 
+/*
+ * #485: a field default can read another field of its own entry, `[[__this__.name]]` - what
+ * the card set there, else that field's own default. Worked out per entry as it is filled, in
+ * the order the fields read each other; a field caught in a loop, or one nothing sets, is left
+ * as written, to read as an unset variable does. Everything else in the default is the
+ * build's. A whole-value reference is the field's value itself, type and all; inside text a
+ * plain one is the text. Steps after the reference need the value at the head of the
+ * placeholder: a string becomes a quoted literal (#398). One a quote cannot hold - a bar, a
+ * bracket, a `?` or a quote of its own - or a number, mapping or nothing at all goes in as a
+ * variable of its own, named for the entry, so a value never changes the placeholder around
+ * it: it is read exactly as the same field read by its own name would be.
+ */
+export const THIS_PREFIX = '__this__.';
+const THIS_REF = /\[\[__this__\.([^|[\]?.]+)((?:[^\][]|\[(?!\[))*)\]\]/g;
+
+interface FieldRead {
+  state: 'set' | 'unset' | 'loop';
+  value?: unknown;
+}
+
+function thisDefaults(
+  entry: Record<string, unknown>,
+  defaults: Record<string, unknown>,
+  missing: string[],
+  path: string,
+  extras: VariablesConfig[],
+): Record<string, unknown> {
+  const done = new Map<string, FieldRead>();
+  const reading = new Set<string>();
+  const read = (field: string): FieldRead => {
+    const known = done.get(field);
+    if (known) return known;
+    if (field in entry) return { state: 'set', value: entry[field] };
+    if (!(field in defaults)) return { state: 'unset' };
+    if (reading.has(field)) return { state: 'loop' };
+    reading.add(field);
+    let loop = false;
+    const fill = (text: string): unknown => {
+      const one = (name: string, tail: string): string | undefined => {
+        if (tail && !/^[|?]/.test(tail)) return undefined;
+        const got = read(name);
+        if (got.state === 'loop') loop = true;
+        if (got.state !== 'set') return undefined;
+        const value = got.value;
+        const steps = tail.replace(/\?$/, '');
+        const quotable = typeof value === 'string' && value !== '' && !/[|[\]?']/.test(value);
+        if (!steps && (typeof value === 'number' || typeof value === 'boolean' || quotable)) return String(value);
+        if (steps && quotable) return `[['${value}'${tail}]]`;
+        const own = `${THIS_PREFIX}${path}.${name}`;
+        if (!extras.some((each) => firstKey(each) === own)) extras.push({ [own]: value });
+        return `[[${own}${tail}]]`;
+      };
+      const single = /^\[\[__this__\.([^|[\]?.]+)(\??)\]\]$/.exec(text);
+      if (single) {
+        const got = read(single[1]);
+        if (got.state === 'loop') loop = true;
+        return got.state === 'set' ? got.value : text;
+      }
+      return text.replace(THIS_REF, (whole, name: string, tail: string) => one(name, tail) ?? whole);
+    };
+    const walk = (value: unknown): unknown => {
+      if (typeof value === 'string') return value.includes('[[__this__.') ? fill(value) : value;
+      if (Array.isArray(value)) return value.map(walk);
+      if (!isPlainMapping(value)) return value;
+      const out: Record<string, unknown> = {};
+      for (const [key, inner] of Object.entries(value)) out[key] = walk(inner);
+      return out;
+    };
+    const value = walk(defaults[field]);
+    reading.delete(field);
+    // A field that read one caught in a loop is left as written: nothing it reads settles.
+    const result: FieldRead = loop ? { state: 'loop', value: defaults[field] } : { state: 'set', value };
+    done.set(field, result);
+    return result;
+  };
+  const out: Record<string, unknown> = {};
+  for (const key of missing) out[key] = read(key).value;
+  return out;
+}
+
 /** A value with the field defaults filled in where it leaves them out, and whether any were. */
 export function filledObject(
   value: unknown,
   defaults: Record<string, unknown>,
   multiple: boolean,
-): { value: unknown; filled: boolean } {
-  const fill = (entry: Record<string, unknown>): { value: unknown; filled: boolean } => {
+  // The variable's name, and where to put what a `__this__` reference needs as a variable of its own (#485).
+  name = '',
+  extras: VariablesConfig[] = [],
+): { value: unknown; filled: boolean; extras: VariablesConfig[] } {
+  const reads = Object.values(defaults).some((each) => JSON.stringify(each)?.includes('[[__this__.'));
+  const fill = (entry: Record<string, unknown>, path: string): { value: unknown; filled: boolean } => {
     const missing = Object.keys(defaults).filter((key) => !(key in entry));
     if (!missing.length) return { value: entry, filled: false };
     const out: Record<string, unknown> = { ...entry };
-    for (const key of missing) out[key] = defaults[key];
+    const filled = reads ? thisDefaults(entry, defaults, missing, path, extras) : defaults;
+    for (const key of missing) out[key] = filled[key];
     return { value: out, filled: true };
   };
   if (value === undefined || value === null || value === '') {
-    return multiple ? { value, filled: false } : { value: { ...defaults }, filled: true };
+    return multiple ? { value, filled: false, extras } : { ...fill({}, name), extras };
   }
   if (Array.isArray(value)) {
     let filled = false;
-    const out = value.map((entry) => {
+    const out = value.map((entry, index) => {
       if (!isPlainMapping(entry)) return entry;
-      const one = fill(entry);
+      const one = fill(entry, `${name}.${index}`);
       filled ||= one.filled;
       return one.value;
     });
-    return filled ? { value: out, filled } : { value, filled };
+    return filled ? { value: out, filled, extras } : { value, filled, extras };
   }
-  return isPlainMapping(value) ? fill(value) : { value, filled: false };
+  return isPlainMapping(value) ? { ...fill(value, name), extras } : { value, filled: false, extras };
 }
 
 /** The declarations with field defaults, each with them and whether it takes a list. */
@@ -3186,7 +3294,7 @@ function withObjectFieldDefaults(resolved: VariablesConfig[], declarations: Vari
   if (!objects.length) return resolved;
   for (const { name, defaults, multiple } of objects) {
     const index = resolved.findIndex((entry) => firstKey(entry) === name);
-    const result = filledObject(index === -1 ? undefined : resolved[index][name], defaults, multiple);
+    const result = filledObject(index === -1 ? undefined : resolved[index][name], defaults, multiple, name);
     if (!result.filled) continue;
     // A new entry, never the card's own changed: the config is read, not written.
     const [whole, ...dotted] = normaliseEntry({ [name]: result.value });
@@ -3194,7 +3302,7 @@ function withObjectFieldDefaults(resolved: VariablesConfig[], declarations: Vari
     else resolved[index] = whole;
     // `[[my_var.size]]` reads a filled field as it reads a written one.
     const have = new Set(resolved.map((entry) => firstKey(entry)));
-    for (const entry of dotted) if (!have.has(firstKey(entry) as string)) resolved.push(entry);
+    for (const entry of [...dotted, ...result.extras]) if (!have.has(firstKey(entry) as string)) resolved.push(entry);
   }
   return resolved;
 }
@@ -3712,29 +3820,60 @@ export function validateDeclared(
   variables: VariablesConfig[] | VariablesConfig | undefined,
   template: TemplateConfig | undefined,
   hass?: any,
-): { name: string; expected: string }[] {
+  /*
+   * #490: a value holding a placeholder - `default: '[[default_camera_view]]'` - worked out
+   * the way the card would, so it is judged by what it becomes. Undefined when it cannot be
+   * worked out yet; without this, such a value is not judged at all.
+   */
+  fill?: (value: unknown, name: string) => unknown,
+  /*
+   * #491: the declaration as the editor offers it, with an `allowed:` made from a
+   * placeholder filled in. Without it, such an `allowed:` checks nothing.
+   */
+  filled?: (declaration: VariableDeclaration) => VariableDeclaration,
+): { name: string; expected: string; value: string }[] {
   const values = variableValues(resolveVariables(variables, template));
-  const bad: { name: string; expected: string }[] = [];
-  for (const declaration of getDeclarations(template)) {
-    const value = values[declaration.name];
+  const bad: { name: string; expected: string; value: string }[] = [];
+  for (const written of getDeclarations(template)) {
+    const declaration = filled ? filled(written) : written;
+    let value = values[declaration.name];
     if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value) && !value.length) continue;
     /*
-     * A declared type is checked first, and a value that fails it is reported once rather
-     * than again against allowed: or pattern:. A value still holding a placeholder is
-     * worked out later - `[[room]]_light` is an entity id only once room is in - so it is
-     * not judged here.
+     * A value still holding a placeholder is worked out first, or not judged at all when it
+     * cannot be yet - `[[room]]_light` is an entity id only once room is in. Neither the type
+     * nor allowed: nor pattern: is checked against the brackets as written (#490).
      */
-    const placeholder = typeof value === 'string' && PLACEHOLDER.test(value);
-    const mismatch = placeholder ? undefined : typeMismatch(declaration, value, hass);
+    const json = JSON.stringify(value);
+    if (typeof json === 'string' && PLACEHOLDER.test(json)) {
+      value = fill ? fill(value, declaration.name) : undefined;
+      const worked = JSON.stringify(value);
+      if (
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (typeof worked === 'string' && PLACEHOLDER.test(worked))
+      ) {
+        continue;
+      }
+    }
+    const shown = shownValue(value);
+    // A declared type is checked first, and a value that fails it is reported once rather
+    // than again against allowed: or pattern:.
+    const mismatch = typeMismatch(declaration, value, hass);
     if (mismatch !== undefined) {
-      bad.push({ name: declaration.name, expected: mismatch });
+      bad.push({ name: declaration.name, expected: mismatch, value: shown });
       continue;
     }
     if (Array.isArray(declaration.allowed)) {
       // Compared as text: a dropdown hands back strings, and `allowed: [1, 2]` still means 1 and 2.
       // A labelled entry is checked by its value, never its label (#482).
       const values = allowedEntries(declaration.allowed).map((each) => String(each.value));
-      if (!values.includes(String(value))) bad.push({ name: declaration.name, expected: values.join(', ') });
+      // A dropdown that takes several hands back a list, each entry one of the values (#491).
+      const given = Array.isArray(value) ? value : [value];
+      if (!given.every((each) => values.includes(String(each)))) {
+        bad.push({ name: declaration.name, expected: values.join(', '), value: shown });
+      }
       continue;
     }
     if (typeof declaration.pattern === 'string' && declaration.pattern) {
@@ -3749,10 +3888,24 @@ export function validateDeclared(
       } catch {
         continue;
       }
-      if (!expression.test(text)) bad.push({ name: declaration.name, expected: declaration.pattern });
+      if (!expression.test(text)) bad.push({ name: declaration.name, expected: declaration.pattern, value: shown });
     }
   }
   return bad;
+}
+
+/*
+ * A value as a warning shows it (#490): text in quotes, so a stray space shows, and the
+ * characters that print as nothing written out as \u codes, so " live" and "live" with a
+ * zero-width space in it do not read the same as "live". Cut short past a line's worth.
+ */
+const UNSEEN =
+  /[\u0000-\u001f\u007f-\u00a0\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180e\u2000-\u200f\u2028-\u202f\u205f-\u206f\u3000\u3164\ufeff\uffa0]/g;
+export function shownValue(value: unknown): string {
+  const text = typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value));
+  const cut = text.length > 80 ? `${text.slice(0, 80)}\u2026` : text;
+  const seen = cut.replace(UNSEEN, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+  return `"${seen}"`;
 }
 
 // Longer than any entity id, colour or name a pattern is written to check.
@@ -3860,7 +4013,12 @@ export function diagnoseInstance(
   const answered = answeredNames(template, values, used);
   // A chain with a step nobody knows (`name|uper`) is told apart as an unknown step, not an unset variable.
   const missing = used.filter(
-    (name) => !name.includes('|') && !(name in values) && !answered.has(name) && !isAlertsName(name),
+    (name) =>
+      !name.includes('|') &&
+      !(name in values) &&
+      !answered.has(name) &&
+      !isAlertsName(name) &&
+      !workedOutAtBuild(name, values),
   );
   // Which of the missing ones the template says it cannot do without, so an editor can
   // say so more loudly than it says the rest.
@@ -3870,6 +4028,23 @@ export function diagnoseInstance(
       .map((declaration) => declaration.name),
   );
   return { missing, unused, required: missing.filter((name) => insisted.has(name)) };
+}
+
+/*
+ * A dotted name only a build can answer, so not one to call unset (#489): a key of a variable
+ * whose value is a placeholder - `m3: '[[m1|merge:m2]]'`, read as `[[m3.goat]]` - is there
+ * only once that is filled in (#458), and a key that is itself a placeholder -
+ * `[[m1.[[pet]]]]`, read here as `m1._` - is known only once the inner one is in.
+ */
+function workedOutAtBuild(name: string, values: Record<string, unknown>): boolean {
+  const parts = name.split('.');
+  if (parts.length < 2) return false;
+  const head = values[parts[0]];
+  if (typeof head === 'string' && head.includes('[[')) return true;
+  for (let at = 1; at < parts.length; at++) {
+    if (parts[at] === '_' && parts.slice(0, at).join('.') in values) return true;
+  }
+  return false;
 }
 
 /** What is wrong with the template itself, as its own editor sees it. */

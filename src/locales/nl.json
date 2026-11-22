@@ -78,6 +78,7 @@
   "editor.unused_one": "Deze variabele is hier ingesteld, maar wordt door het sjabloon nooit gebruikt: {names}.",
   "editor.unused_many": "Deze variabelen zijn hier ingesteld, maar worden door het sjabloon nooit gebruikt: {names}.",
   "editor.invalid_value": "De waarde van {name} is er geen die het sjabloon accepteert. Het verwacht: {expected}.",
+  "editor.invalid_value_now": "Nu is het: {value}.",
   "editor.card_variable_clear": "Een andere kaart kiezen",
   "editor.eject": "Deze kaart vervangen door wat ze bouwt",
   "editor.eject_confirm": "Druk nogmaals om te vervangen - het sjabloon geldt dan niet meer",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Kaarten die \"{template}\" gebruiken zonder waarde voor {names}: {count}.",
 
   "tools.health_unused": "Sjablonen die niets op dit dashboard gebruikt: {names}.",
+
+  "tools.health_unknown_key": "Sjabloon {template} heeft {key}:, dat geen enkel sjabloon leest, dus het wordt genegeerd.",
 
   "tools.rename_header": "Hernoemen",
   "tools.rename_hint": "Wijzigt de naam hier en in elke kaart op dit dashboard die hem gebruikt. Kaarten op andere dashboards blijven onaangeraakt, ook die de sjablonen van dit dashboard lenen.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} heeft geen tekst voor {keys}, die andere talen wel vertalen, en toont daar dus de tekst van een andere taal.",
   "lint.language_not_mapping": "language: moet een mapping van taalcodes zijn, elk met een mapping van teksten.",
   "lint.language_entry_not_mapping": "language: {language} moet een mapping van teksten zijn.",
-  "lint.editor_hide_unknown": "\"{name}\" is geen onderdeel van de kaarteditor dat verborgen kan worden, dus er wordt niets verborgen. Mogelijk zijn repeat, extras, fit, advanced, defaults of een van de geavanceerde instellingen bij naam.",
+  "lint.editor_hide_unknown": "\"{name}\" is geen onderdeel van de kaarteditor dat verborgen kan worden, dus er wordt niets verborgen. Mogelijk zijn repeat, extras, fit, advanced, defaults, preview of een van de geavanceerde instellingen bij naam.",
   "lint.strict_unknown": "\"{key}: {value}\" in strict: is onbekend, doet dus niets en dat niveau komt van de kaart, haar sectie, haar weergave of het dashboard. Toegestaan is {allowed}.",
   "lint.where": " (bij {path})",
   "tools.health_unread": "Kaarten met \"{template}\" op {view} die \"{name}\" doorgeven, wat het sjabloon nooit leest: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Eenheid",
   "declarations.allowed": "Toegestane waarden, gescheiden door komma's",
   "declarations.multiline": "Ruimte voor meer dan één regel",
+  "declarations.multiple": "Meer dan één kiezen",
   "declarations.pattern": "Patroon waaraan de waarde moet voldoen",
   "declarations.selector": "Selector (geavanceerd)",
   "declarations.add": "Variabele toevoegen",

@@ -78,6 +78,7 @@
   "editor.unused_one": "Variabel ini diatur di sini tetapi tidak pernah dipakai templat: {names}.",
   "editor.unused_many": "Variabel-variabel ini diatur di sini tetapi tidak pernah dipakai templat: {names}.",
   "editor.invalid_value": "Nilai {name} tidak diterima templat. Yang diharapkan: {expected}.",
+  "editor.invalid_value_now": "Sekarang: {value}.",
   "editor.card_variable_clear": "Pilih kartu lain",
   "editor.eject": "Ganti kartu ini dengan hasil buatannya",
   "editor.eject_confirm": "Tekan lagi untuk mengganti - templat tidak akan berlaku lagi",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Kartu yang memakai \"{template}\" tanpa nilai untuk {names}: {count}.",
 
   "tools.health_unused": "Templat yang tidak dipakai apa pun di dasbor ini: {names}.",
+
+  "tools.health_unknown_key": "Template {template} memiliki {key}:, yang tidak dibaca oleh template mana pun, jadi diabaikan.",
 
   "tools.rename_header": "Ganti nama",
   "tools.rename_hint": "Mengubah nama di sini dan di setiap kartu di dasbor ini yang memakainya. Kartu di dasbor lain tidak diubah, termasuk yang meminjam templat dasbor ini.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} tidak punya teks untuk {keys}, yang diterjemahkan bahasa lain, jadi teks bahasa lain ditampilkan di sana.",
   "lint.language_not_mapping": "language: seharusnya pemetaan kode bahasa, masing-masing berisi pemetaan teks.",
   "lint.language_entry_not_mapping": "language: {language} seharusnya pemetaan teks.",
-  "lint.editor_hide_unknown": "\"{name}\" bukan bagian editor kartu yang dapat disembunyikan, jadi tidak ada yang disembunyikan. Yang diterima: repeat, extras, fit, advanced, defaults, atau salah satu pengaturan Lanjutan berdasarkan nama.",
+  "lint.editor_hide_unknown": "\"{name}\" bukan bagian editor kartu yang dapat disembunyikan, jadi tidak ada yang disembunyikan. Yang diterima: repeat, extras, fit, advanced, defaults, preview, atau salah satu pengaturan Lanjutan berdasarkan nama.",
   "lint.strict_unknown": "\"{key}: {value}\" di strict: tidak dikenal, jadi tidak berpengaruh dan tingkat itu diambil dari kartu, bagiannya, tampilannya, atau dasbor. Yang diterima: {allowed}.",
   "lint.where": " (di {path})",
   "tools.health_unread": "Kartu yang memakai \"{template}\" di {view} yang mengirim \"{name}\", yang tidak pernah dibaca templat: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Satuan",
   "declarations.allowed": "Nilai yang diizinkan, dipisahkan koma",
   "declarations.multiline": "Ruang untuk lebih dari satu baris",
+  "declarations.multiple": "Pilih lebih dari satu",
   "declarations.pattern": "Pola yang harus cocok dengan nilai",
   "declarations.selector": "Selektor (lanjutan)",
   "declarations.add": "Tambah variabel",

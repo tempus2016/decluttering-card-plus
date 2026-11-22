@@ -78,6 +78,7 @@
   "editor.unused_one": "Эта переменная задана здесь, но шаблон её не использует: {names}.",
   "editor.unused_many": "Эти переменные заданы здесь, но шаблон их не использует: {names}.",
   "editor.invalid_value": "Значение {name} шаблон не принимает. Ожидается: {expected}.",
+  "editor.invalid_value_now": "Сейчас: {value}.",
   "editor.card_variable_clear": "Выбрать другую карточку",
   "editor.eject": "Заменить карточку тем, что она строит",
   "editor.eject_confirm": "Нажмите ещё раз, чтобы заменить - шаблон больше не будет применяться",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Карточки с \"{template}\" без значения для {names}: {count}.",
 
   "tools.health_unused": "Шаблоны, которые на этой панели ничто не использует: {names}.",
+
+  "tools.health_unknown_key": "В шаблоне {template} есть {key}:, который не читает ни один шаблон, поэтому он игнорируется.",
 
   "tools.rename_header": "Переименовать",
   "tools.rename_hint": "Меняет имя здесь и во всех карточках этой панели, которые его используют. Карточки на других панелях не затрагиваются, даже если берут шаблоны с этой панели.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "В {language} нет текста для {keys}, хотя в других языках он переведён, поэтому там показывается текст на другом языке.",
   "lint.language_not_mapping": "language: должен быть словарём кодов языков, каждый из которых содержит словарь текстов.",
   "lint.language_entry_not_mapping": "language: {language} должен быть словарём текстов.",
-  "lint.editor_hide_unknown": "\"{name}\" - не та часть редактора карточки, которую можно скрыть, поэтому ничего не скрыто. Допустимо repeat, extras, fit, advanced, defaults или имя одного из параметров раздела «Дополнительно».",
+  "lint.editor_hide_unknown": "\"{name}\" - не та часть редактора карточки, которую можно скрыть, поэтому ничего не скрыто. Допустимо repeat, extras, fit, advanced, defaults, preview или имя одного из параметров раздела «Дополнительно».",
   "lint.strict_unknown": "\"{key}: {value}\" в strict: неизвестно, поэтому ничего не делает, и этот уровень берётся из карточки, её раздела, вкладки или панели. Допустимо: {allowed}.",
   "lint.where": " (в {path})",
   "tools.health_unread": "Карточки с \"{template}\" на {view}, передающие \"{name}\", который шаблон никогда не читает: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Единица измерения",
   "declarations.allowed": "Допустимые значения через запятую",
   "declarations.multiline": "Несколько строк",
+  "declarations.multiple": "Несколько значений",
   "declarations.pattern": "Шаблон, которому должно соответствовать значение",
   "declarations.selector": "Селектор (дополнительно)",
   "declarations.add": "Добавить переменную",

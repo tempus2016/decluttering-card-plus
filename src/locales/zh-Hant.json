@@ -78,6 +78,7 @@
   "editor.unused_one": "此變數已在此設定，但模板從未使用：{names}。",
   "editor.unused_many": "這些變數已在此設定，但模板從未使用：{names}。",
   "editor.invalid_value": "{name} 的值不是模板接受的值。預期為：{expected}。",
+  "editor.invalid_value_now": "目前的值：{value}。",
   "editor.card_variable_clear": "選擇其他面板",
   "editor.eject": "以建構結果取代此面板",
   "editor.eject_confirm": "再按一次以取代，模板將不再套用",
@@ -218,6 +219,8 @@
   "tools.health_unset": "使用「{template}」但 {names} 沒有值的面板：{count} 個。",
 
   "tools.health_unused": "此儀表板上未被使用的模板：{names}。",
+
+  "tools.health_unknown_key": "範本 {template} 含有 {key}:，沒有範本會讀取它，因此會被忽略。",
 
   "tools.rename_header": "重新命名",
   "tools.rename_hint": "變更此處及此儀表板上所有使用它的面板中的名稱。其他儀表板上的面板不受影響，即使是借用此儀表板模板的面板。",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} 沒有 {keys} 的文字，而其他語言有翻譯，因此該處會顯示其他語言的文字。",
   "lint.language_not_mapping": "language: 應為以語言代碼為鍵的對應，每個語言各含一個文字對應。",
   "lint.language_entry_not_mapping": "language: {language} 應為文字對應。",
-  "lint.editor_hide_unknown": "「{name}」不是面板編輯器中可隱藏的部分，因此不會隱藏任何內容。可用的值為 repeat、extras、fit、advanced、defaults，或進階設定中的某項名稱。",
+  "lint.editor_hide_unknown": "「{name}」不是面板編輯器中可隱藏的部分，因此不會隱藏任何內容。可用的值為 repeat、extras、fit、advanced、defaults、preview，或進階設定中的某項名稱。",
   "lint.strict_unknown": "strict: 中的「{key}: {value}」無法辨識，因此不起作用，該層級改由面板、其區塊、視圖或儀表板決定。可用的值為 {allowed}。",
   "lint.where": "（位於 {path}）",
   "tools.health_unread": "{view} 上使用「{template}」並傳入「{name}」的面板，但模板從未讀取它：{count} 個。",
@@ -771,6 +774,7 @@
   "declarations.unit": "單位",
   "declarations.allowed": "允許的值，以逗號分隔",
   "declarations.multiline": "允許多行",
+  "declarations.multiple": "允許多選",
   "declarations.pattern": "值必須符合的模式",
   "declarations.selector": "選擇器（進階）",
   "declarations.add": "新增變數",

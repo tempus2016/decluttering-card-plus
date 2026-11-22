@@ -78,6 +78,7 @@
   "editor.unused_one": "Denne variabel er angivet her, men bruges aldrig af skabelonen: {names}.",
   "editor.unused_many": "Disse variabler er angivet her, men bruges aldrig af skabelonen: {names}.",
   "editor.invalid_value": "Værdien af {name} accepteres ikke af skabelonen. Den forventer: {expected}.",
+  "editor.invalid_value_now": "Den er nu: {value}.",
   "editor.card_variable_clear": "Vælg et andet kort",
   "editor.eject": "Erstat dette kort med det, det bygger",
   "editor.eject_confirm": "Tryk igen for at erstatte det - skabelonen gælder så ikke længere",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Kort, der bruger \"{template}\" uden værdi for {names}: {count}.",
 
   "tools.health_unused": "Skabeloner, som intet på dette betjeningspanel bruger: {names}.",
+
+  "tools.health_unknown_key": "Skabelonen {template} har {key}:, som ingen skabelon læser, så den ignoreres.",
 
   "tools.rename_header": "Omdøb",
   "tools.rename_hint": "Ændrer navnet her og i alle kort på dette betjeningspanel, der bruger det. Kort på andre betjeningspaneler røres ikke, heller ikke dem, der låner dette betjeningspanels skabeloner.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} har ingen tekst til {keys}, som andre sprog oversætter, så der vises et andet sprogs tekst.",
   "lint.language_not_mapping": "language: skal være en mapping af sprogkoder, der hver indeholder en mapping af tekster.",
   "lint.language_entry_not_mapping": "language: {language} skal være en mapping af tekster.",
-  "lint.editor_hide_unknown": "\"{name}\" er ikke en del af korteditoren, der kan skjules, så intet skjules for den. Den tager repeat, extras, fit, advanced, defaults eller en af de avancerede indstillinger ved navn.",
+  "lint.editor_hide_unknown": "\"{name}\" er ikke en del af korteditoren, der kan skjules, så intet skjules for den. Den tager repeat, extras, fit, advanced, defaults, preview eller en af de avancerede indstillinger ved navn.",
   "lint.strict_unknown": "\"{key}: {value}\" i strict: er ikke noget, den kender, så den gør intet, og det niveau kommer i stedet fra kortet, dets sektion, dets visning eller betjeningspanelet. Den tager {allowed}.",
   "lint.where": " (ved {path})",
   "tools.health_unread": "Kort, der bruger \"{template}\" på {view} og sender \"{name}\", som skabelonen aldrig læser: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Enhed",
   "declarations.allowed": "Tilladte værdier, adskilt af kommaer",
   "declarations.multiline": "Plads til mere end én linje",
+  "declarations.multiple": "Vælg mere end én",
   "declarations.pattern": "Mønster, værdien skal matche",
   "declarations.selector": "Selector (avanceret)",
   "declarations.add": "Tilføj en variabel",

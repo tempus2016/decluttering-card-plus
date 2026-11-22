@@ -1238,6 +1238,12 @@ function noteLeftStanding(
  */
 const FILL_VALUE = /^\[\[([A-Za-z0-9_-]+)\|with:(.*)\]\]$/;
 const DOTTED_ASK = /(?:\[\[!?|\|(?:if:!?|or:))([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)/g;
+/*
+ * The same, and a name whose key is itself a placeholder - `[[m3.[[pet]]]]` (#489) - which
+ * reads as `m3.[[`: which key is wanted is only known once the inner one is in, so every key
+ * of the mapping is given.
+ */
+const DOTTED_OR_PLACEHOLDER_ASK = /(?:\[\[!?|\|(?:if:!?|or:))([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+|\[\[)/g;
 
 function exposeFillValues(
   variableArray: VariablesConfig[],
@@ -1280,6 +1286,16 @@ function exposeFillValues(
 }
 
 /*
+ * The variables being filled in for their dotted names right now, by name and value (#493).
+ * Filling one in builds it again, and that build asks the same dotted names of the same list,
+ * so without this it filled the same variable in again inside itself, one level deeper each
+ * time, until the depth limit - doubling at every level when other values on the way needed
+ * filling too, which held a camera card's build for 15 seconds. A build is synchronous, so a
+ * set for the whole module is enough; each entry goes as soon as its own fill is done.
+ */
+const SETTLING = new Set<string>();
+
+/*
  * A variable whose value is a placeholder - `alert: '[[mdi|merge:fr]]'`, or just `'[[mdi]]'` -
  * is a mapping only once it is filled in, so the dotted names a written-out mapping gives
  * were never there for it (#458). Each one something here asks for is worked out by filling
@@ -1299,7 +1315,7 @@ function exposeSettledMappings(
   const candidates = placeholderNames(values, shared);
   if (!candidates.size) return values;
   let own = !shared;
-  const asked = new Set(findAcross(content, variableArray, DOTTED_ASK));
+  const asked = new Set(findAcross(content, variableArray, DOTTED_OR_PLACEHOLDER_ASK));
   const settled = new Set<string>();
   for (const dotted of asked) {
     if (Object.prototype.hasOwnProperty.call(values, dotted)) continue;
@@ -1310,7 +1326,17 @@ function exposeSettledMappings(
     if (typeof raw !== 'string' || !PLACEHOLDER.test(raw)) continue;
     const fill = FILL_VALUE.exec(raw);
     if (fill && Object.prototype.hasOwnProperty.call(itemTemplates, fill[1])) continue;
-    const entries = dottedEntries(name, settleText(raw));
+    // Already being filled in further out: what that fill finds is what this one would.
+    const settling = `${name}\u0000${raw}`;
+    if (SETTLING.has(settling)) continue;
+    SETTLING.add(settling);
+    let filled: unknown;
+    try {
+      filled = settleText(raw);
+    } finally {
+      SETTLING.delete(settling);
+    }
+    const entries = dottedEntries(name, filled);
     for (const entry of entries) {
       const key = Object.keys(entry)[0];
       if (Object.prototype.hasOwnProperty.call(values, key)) continue;

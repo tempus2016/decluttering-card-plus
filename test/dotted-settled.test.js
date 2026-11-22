@@ -57,4 +57,46 @@ check(
 said.length = 0;
 run({ v: '[[alert.cat]]' }, icons);
 check('no unset warning for a reachable dotted name (#458)', said.length, 0);
+
+// #489: the key is a placeholder, so which one is wanted is known only once it is in.
+const pets = [
+  { m1: { cat: 'meow', dog: 'bark' } },
+  { m2: { cat: 'purr', pig: 'oink' } },
+  { m3: '[[m1|merge:m2]]' },
+  { pet: 'cat' },
+];
+check('a placeholder key reaches into a merged mapping (#489)', run({ v: '[[m3.[[pet]]]]' }, pets), { v: 'purr' });
+check(
+  'a placeholder key reaches a key only the first mapping had (#489)',
+  run({ v: '[[m3.[[pet]]]]' }, [...pets.slice(0, 3), { pet: 'dog' }]),
+  { v: 'bark' },
+);
+check(
+  'a placeholder key that names nothing still reads as unset (#489)',
+  run({ v: '[[m3.[[pet]]|default:none]]' }, [...pets.slice(0, 3), { pet: 'zebra' }]),
+  { v: 'none' },
+);
+check('steps after a placeholder key still apply (#489)', run({ v: '[[m3.[[pet]]|upper]]' }, pets), { v: 'PURR' });
+check('a placeholder key works inside if: too (#489)', run({ v: '[[pet|if:m3.[[pet]]]]' }, pets), { v: 'cat' });
+check(
+  'a placeholder key in a variable value reaches it as well (#489)',
+  run({ v: '[[sound]]' }, [...pets, { sound: '[[m3.[[pet]]]]' }]),
+  { v: 'purr' },
+);
+said.length = 0;
+run({ v: '[[m3.[[pet]]]]' }, pets);
+check('no unset warning for a placeholder key that is there (#489)', said.length, 0);
 console.warn = realWarn;
+
+// #489: the editor and the health card do not call names only a build can answer unset.
+{
+  const { diagnoseInstance } = require('../.test-build/variables.js');
+  const template = {
+    default: pets,
+    card: { type: 'markdown', content: '[[m3.[[pet]]]] [[m1.[[pet]]]] [[m3.goat]] [[nope.x]] [[gone]]' },
+  };
+  check('only the truly unset names are missing (#489)', diagnoseInstance([], template).missing.sort(), [
+    'gone',
+    'nope.x',
+  ]);
+}

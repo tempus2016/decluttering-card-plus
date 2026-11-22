@@ -393,7 +393,7 @@ export function variableRows(
   // Objects with fields filled from their defaults, as the build fills them (#482).
   for (const { name, defaults, multiple } of objectDefaults(getDeclarations(template))) {
     const row = rows.find((each) => each.variable === name);
-    const result = filledObject(row?.value, defaults, multiple);
+    const result = filledObject(row?.value, defaults, multiple, name);
     if (!result.filled) continue;
     if (!row) rows.push({ variable: name, value: result.value, from: 'field_defaults' });
     else {

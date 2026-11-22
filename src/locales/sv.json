@@ -78,6 +78,7 @@
   "editor.unused_one": "Den här variabeln anges här men används aldrig av mallen: {names}.",
   "editor.unused_many": "De här variablerna anges här men används aldrig av mallen: {names}.",
   "editor.invalid_value": "Värdet för {name} är inte ett som mallen godtar. Den förväntar sig: {expected}.",
+  "editor.invalid_value_now": "Nu är det: {value}.",
   "editor.card_variable_clear": "Välj ett annat kort",
   "editor.eject": "Ersätt det här kortet med det som det bygger",
   "editor.eject_confirm": "Tryck igen för att ersätta det - mallen gäller då inte längre",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Kort som använder \"{template}\" utan värde för {names}: {count}.",
 
   "tools.health_unused": "Mallar som inget på den här kontrollpanelen använder: {names}.",
+
+  "tools.health_unknown_key": "Mallen {template} har {key}:, som ingen mall läser, så den ignoreras.",
 
   "tools.rename_header": "Byt namn",
   "tools.rename_hint": "Ändrar namnet här och i varje kort på den här kontrollpanelen som använder det. Kort på andra kontrollpaneler påverkas inte, inte ens de som lånar den här kontrollpanelens mallar.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} har ingen text för {keys}, som andra språk översätter, så där visas ett annat språks text.",
   "lint.language_not_mapping": "language: ska vara en mappning av språkkoder, var och en med en mappning av texter.",
   "lint.language_entry_not_mapping": "language: {language} ska vara en mappning av texter.",
-  "lint.editor_hide_unknown": "\"{name}\" är inte en del av kortredigeraren som kan döljas, så inget döljs för den. Den tar repeat, extras, fit, advanced, defaults, eller någon av inställningarna under Avancerat med namn.",
+  "lint.editor_hide_unknown": "\"{name}\" är inte en del av kortredigeraren som kan döljas, så inget döljs för den. Den tar repeat, extras, fit, advanced, defaults, preview, eller någon av inställningarna under Avancerat med namn.",
   "lint.strict_unknown": "\"{key}: {value}\" i strict: är inget den känner till, så det gör ingenting och den nivån kommer i stället från kortet, dess sektion, dess vy eller kontrollpanelen. Den tar {allowed}.",
   "lint.where": " (vid {path})",
   "tools.health_unread": "Kort som använder \"{template}\" på {view} och skickar \"{name}\", som mallen aldrig läser: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Enhet",
   "declarations.allowed": "Tillåtna värden, separerade med kommatecken",
   "declarations.multiline": "Plats för mer än en rad",
+  "declarations.multiple": "Välj fler än en",
   "declarations.pattern": "Mönster som värdet måste matcha",
   "declarations.selector": "Väljare (avancerat)",
   "declarations.add": "Lägg till en variabel",

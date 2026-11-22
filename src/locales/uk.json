@@ -78,6 +78,7 @@
   "editor.unused_one": "Ця змінна задана тут, але шаблон її не використовує: {names}.",
   "editor.unused_many": "Ці змінні задані тут, але шаблон їх не використовує: {names}.",
   "editor.invalid_value": "Шаблон не приймає таке значення {name}. Очікується: {expected}.",
+  "editor.invalid_value_now": "Зараз: {value}.",
   "editor.card_variable_clear": "Вибрати іншу картку",
   "editor.eject": "Замінити цю картку тим, що вона будує",
   "editor.eject_confirm": "Натисніть ще раз, щоб замінити - шаблон більше не застосовуватиметься",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Карток із \"{template}\" без значення для {names}: {count}.",
 
   "tools.health_unused": "Шаблони, які на цій панелі ніщо не використовує: {names}.",
+
+  "tools.health_unknown_key": "У шаблоні {template} є {key}:, який не читає жоден шаблон, тому його ігнорують.",
 
   "tools.rename_header": "Перейменування",
   "tools.rename_hint": "Змінює назву тут і в кожній картці цієї панелі, що її використовує. Картки на інших панелях не змінюються, навіть ті, що позичають шаблони цієї панелі.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} не має тексту для {keys}, які перекладено іншими мовами, тож там показується текст іншою мовою.",
   "lint.language_not_mapping": "language: має бути словником кодів мов, кожен з яких містить словник текстів.",
   "lint.language_entry_not_mapping": "language: {language} має бути словником текстів.",
-  "lint.editor_hide_unknown": "\"{name}\" - не та частина редактора картки, яку можна приховати, тож для нього нічого не приховано. Допустимі: repeat, extras, fit, advanced, defaults або назва одного з розширених налаштувань.",
+  "lint.editor_hide_unknown": "\"{name}\" - не та частина редактора картки, яку можна приховати, тож для нього нічого не приховано. Допустимі: repeat, extras, fit, advanced, defaults, preview або назва одного з розширених налаштувань.",
   "lint.strict_unknown": "\"{key}: {value}\" у strict: невідоме, тож нічого не робить, і цей рівень береться з картки, її розділу, вкладки або панелі. Допустимі: {allowed}.",
   "lint.where": " (у {path})",
   "tools.health_unread": "Карток із \"{template}\" у {view}, що передають \"{name}\", який шаблон ніколи не читає: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Одиниця",
   "declarations.allowed": "Допустимі значення через кому",
   "declarations.multiline": "Кілька рядків",
+  "declarations.multiple": "Кілька значень",
   "declarations.pattern": "Шаблон, якому має відповідати значення",
   "declarations.selector": "Селектор (розширено)",
   "declarations.add": "Додати змінну",

@@ -78,6 +78,7 @@
   "editor.unused_one": "Esta variable está definida aquí pero la plantilla nunca la usa: {names}.",
   "editor.unused_many": "Estas variables están definidas aquí pero la plantilla nunca las usa: {names}.",
   "editor.invalid_value": "El valor de {name} no es uno que la plantilla acepte. Espera: {expected}.",
+  "editor.invalid_value_now": "Ahora es: {value}.",
   "editor.card_variable_clear": "Elegir otra tarjeta",
   "editor.eject": "Sustituir esta tarjeta por lo que construye",
   "editor.eject_confirm": "Pulsa otra vez para sustituirla; la plantilla dejará de aplicarse",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Tarjetas que usan \"{template}\" sin valor para {names}: {count}.",
 
   "tools.health_unused": "Plantillas que nada en este panel usa: {names}.",
+
+  "tools.health_unknown_key": "La plantilla {template} tiene {key}:, que ninguna plantilla lee, así que se ignora.",
 
   "tools.rename_header": "Renombrar",
   "tools.rename_hint": "Cambia el nombre aquí y en cada tarjeta de este panel que lo usa. Las tarjetas de otros paneles no se tocan, ni siquiera las que toman prestadas las plantillas de este.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} no tiene texto para {keys}, que otros idiomas traducen, así que ahí muestra el texto de otro idioma.",
   "lint.language_not_mapping": "language: debe ser un mapa de códigos de idioma, cada uno con un mapa de textos.",
   "lint.language_entry_not_mapping": "language: {language} debe ser un mapa de textos.",
-  "lint.editor_hide_unknown": "\"{name}\" no es una parte del editor de la tarjeta que se pueda ocultar, así que no se oculta nada. Admite repeat, extras, fit, advanced, defaults o uno de los ajustes avanzados por su nombre.",
+  "lint.editor_hide_unknown": "\"{name}\" no es una parte del editor de la tarjeta que se pueda ocultar, así que no se oculta nada. Admite repeat, extras, fit, advanced, defaults, preview o uno de los ajustes avanzados por su nombre.",
   "lint.strict_unknown": "\"{key}: {value}\" en strict: no es algo que conozca, así que no hace nada y ese nivel lo da la tarjeta, su sección, su vista o el panel. Admite {allowed}.",
   "lint.where": " (en {path})",
   "tools.health_unread": "Tarjetas que usan \"{template}\" en {view} y pasan \"{name}\", que la plantilla nunca lee: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Unidad",
   "declarations.allowed": "Valores permitidos, separados por comas",
   "declarations.multiline": "Espacio para más de una línea",
+  "declarations.multiple": "Elegir más de uno",
   "declarations.pattern": "Patrón que debe cumplir el valor",
   "declarations.selector": "Selector (avanzado)",
   "declarations.add": "Añadir una variable",

@@ -143,6 +143,8 @@ describe('eject and section strategies (#400)', () => {
     editor.hass = stubHass({ 'light.living_room': 'on' });
     editor.lovelace = lovelace.config;
     editor.setConfig({ type: 'custom:decluttering-card-plus', template: 'room_group' });
+    // The "What it builds" panel starts folded (#488); eject is inside it.
+    editor._resultOpen = true;
     if (host) {
       const root = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
       root.appendChild(editor);
@@ -393,6 +395,7 @@ describe('editor builds kept (#430)', () => {
       template: 'cam',
       variables: [{ camera: 'camera.front' }],
     });
+    editor._resultOpen = true;
     document.body.appendChild(editor);
     await until(() => yaml(editor).includes('stream Front_Door'), 3000, 'the Result');
     expect(shownStream(editor), 'the attr: default is shown').to.equal('Front_Door');
@@ -430,5 +433,95 @@ describe('editor builds kept (#430)', () => {
     setPreviewPaused(false);
     await until(() => yaml(editor).includes('stream typed'), 3000, 'the Result once resumed');
     editor.remove();
+  });
+});
+
+/*
+ * #488: the "What it builds" panel starts folded to its header row, `editor_hide: preview`
+ * leaves it out, and a held preview is said at the top of the editor either way.
+ */
+describe('the What it builds panel (#488)', () => {
+  const mount = (template: Record<string, unknown>, variables?: unknown[]): any => {
+    const lovelace = stubLovelace({ decluttering_templates: { t: template }, views: [{ cards: [] }] });
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = stubHass({});
+    editor.lovelace = lovelace.config;
+    editor.setConfig({ type: 'custom:decluttering-card-plus', template: 't', ...(variables ? { variables } : {}) });
+    document.body.appendChild(editor);
+    return editor;
+  };
+  const shadow = (editor: any, selector: string): any => editor.shadowRoot?.querySelector(selector);
+  const held = (editor: any): string => shadow(editor, 'ha-alert.preview-held')?.textContent.trim() ?? '';
+  const heldButtons = (editor: any): any[] => [
+    ...(shadow(editor, 'ha-alert.preview-held')?.querySelectorAll('ha-button') ?? []),
+  ];
+  const plain = { card: { type: 'markdown', content: 'hi [[who]]' }, default: [{ who: 'there' }] };
+
+  it('starts folded to its header, and opens and folds again by hand', async () => {
+    const editor = mount(plain);
+    try {
+      await until(() => !!shadow(editor, 'ha-expansion-panel.preview'), 3000, 'the panel');
+      const panel = shadow(editor, 'ha-expansion-panel.preview');
+      expect(panel.expanded, 'folded').to.equal(false);
+      expect(panel.textContent, 'the header is there').to.include('What it builds');
+      expect(shadow(editor, 'pre.yaml'), 'nothing inside is made').to.equal(null);
+      expect(shadow(editor, '.preview-actions'), 'nor its buttons').to.equal(null);
+      expect(held(editor), 'nothing held, no banner').to.equal('');
+      panel.dispatchEvent(new CustomEvent('expanded-changed', { detail: { expanded: true } }));
+      await until(() => !!shadow(editor, 'pre.yaml'), 2000, 'the YAML once opened');
+      expect(shadow(editor, 'pre.yaml').textContent).to.include('hi there');
+      expect(shadow(editor, 'ha-expansion-panel.preview').expanded, 'open').to.equal(true);
+      expect(shadow(editor, '.preview-actions').textContent, 'Pause and Copy with it').to.include('Copy');
+      shadow(editor, 'ha-expansion-panel.preview').dispatchEvent(
+        new CustomEvent('expanded-changed', { detail: { expanded: false } }),
+      );
+      await until(() => !shadow(editor, 'pre.yaml'), 2000, 'folded again');
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('editor_hide: preview leaves the panel out', async () => {
+    const editor = mount({ ...plain, editor_hide: 'preview' });
+    try {
+      await settle(6);
+      expect(shadow(editor, 'ha-expansion-panel.preview'), 'no panel').to.equal(null);
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('a paused preview is said at the top, folded or left out, and Resume there resumes it', async () => {
+    for (const template of [plain, { ...plain, editor_hide: ['preview'] }]) {
+      const editor = mount(template);
+      try {
+        await settle(4);
+        expect(held(editor), 'no banner before the pause').to.equal('');
+        setPreviewPaused(true);
+        await until(() => held(editor).includes('paused'), 2000, 'the paused banner');
+        const first = editor.shadowRoot.querySelector('ha-alert, ha-expansion-panel, .description');
+        expect(first?.classList.contains('preview-held'), 'at the top of the form').to.equal(true);
+        const labels = heldButtons(editor).map((each) => each.textContent.trim());
+        expect(labels).to.deep.equal(['Resume preview', 'Render now']);
+        heldButtons(editor)[0].click();
+        await until(() => held(editor) === '', 2000, 'the banner gone once resumed');
+      } finally {
+        setPreviewPaused(false);
+        editor.remove();
+      }
+    }
+  });
+
+  it('a required variable left unset holds the preview, and the banner offers Render now', async () => {
+    const editor = mount({
+      variables: [{ name: 'who', required: true, selector: { text: {} } }],
+      card: { type: 'markdown', content: 'hi [[who]]' },
+    });
+    try {
+      await until(() => held(editor).includes('[[who]]'), 3000, 'the required banner');
+      expect(heldButtons(editor).map((each) => each.textContent.trim())).to.deep.equal(['Render now']);
+    } finally {
+      editor.remove();
+    }
   });
 });

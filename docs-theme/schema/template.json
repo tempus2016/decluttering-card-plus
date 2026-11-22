@@ -95,7 +95,7 @@
               }
             }
           ],
-          "description": "Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced`, `defaults` or an Advanced field."
+          "description": "Parts of the card editor this template has no use for - `repeat`, `extras`, `fit`, `advanced`, `defaults`, `preview` or an Advanced field."
         },
         "rebuild_on": {
           "$ref": "#/definitions/RebuildOnValue",
@@ -337,7 +337,8 @@
           },
           "description": "What changed in each version, keyed by version - the health panel reads a variable's story from these."
         }
-      }
+      },
+      "additionalProperties": false
     },
     "TemplateCheck": {
       "type": "object",
@@ -496,9 +497,16 @@
           "description": "A regular expression the value must match. Warns; it never blocks a save."
         },
         "allowed": {
-          "type": "array",
-          "items": {},
-          "description": "The values this variable can take. Warns; it never blocks a save. An entry can be a `{label, value}` mapping, as a select selector's options are, to show words in the dropdown while the card is given the value (#482)."
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {}
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "The values this variable can take. Warns; it never blocks a save. An entry can be a `{label, value}` mapping, as a select selector's options are, to show words in the dropdown while the card is given the value (#482). In the card editor it can be one placeholder that makes the list, `[[menu_choices|with]]` (#491)."
         },
         "group": {
           "type": "string",
@@ -570,6 +578,10 @@
         "multiline": {
           "type": "boolean",
           "description": "`type: text`: a box with room for more than one line."
+        },
+        "multiple": {
+          "type": "boolean",
+          "description": "With `allowed:`, a dropdown that takes several of the values, set as a list (#491)."
         },
         "show_if": {
           "anyOf": [
@@ -688,9 +700,16 @@
           "description": "A regular expression the value must match. Warns; it never blocks a save."
         },
         "allowed": {
-          "type": "array",
-          "items": {},
-          "description": "The values this variable can take. Warns; it never blocks a save. An entry can be a `{label, value}` mapping, as a select selector's options are, to show words in the dropdown while the card is given the value (#482)."
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {}
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "The values this variable can take. Warns; it never blocks a save. An entry can be a `{label, value}` mapping, as a select selector's options are, to show words in the dropdown while the card is given the value (#482). In the card editor it can be one placeholder that makes the list, `[[menu_choices|with]]` (#491)."
         },
         "group": {
           "type": "string",
@@ -762,6 +781,10 @@
         "multiline": {
           "type": "boolean",
           "description": "`type: text`: a box with room for more than one line."
+        },
+        "multiple": {
+          "type": "boolean",
+          "description": "With `allowed:`, a dropdown that takes several of the values, set as a list (#491)."
         },
         "show_if": {
           "anyOf": [

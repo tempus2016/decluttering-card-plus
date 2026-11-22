@@ -78,6 +78,7 @@
   "editor.unused_one": "یہ متغیر یہاں سیٹ ہے لیکن ٹیمپلیٹ اسے کبھی استعمال نہیں کرتا: {names}۔",
   "editor.unused_many": "یہ متغیرات یہاں سیٹ ہیں لیکن ٹیمپلیٹ انہیں کبھی استعمال نہیں کرتا: {names}۔",
   "editor.invalid_value": "{name} کی قدر ٹیمپلیٹ کو قبول نہیں۔ متوقع: {expected}۔",
+  "editor.invalid_value_now": "ابھی قدر: {value}۔",
   "editor.card_variable_clear": "دوسرا کارڈ منتخب کریں",
   "editor.eject": "اس کارڈ کو اس کے بنائے ہوئے نتیجے سے بدلیں",
   "editor.eject_confirm": "بدلنے کے لیے دوبارہ دبائیں - اس کے بعد ٹیمپلیٹ لاگو نہیں ہوگا",
@@ -218,6 +219,8 @@
   "tools.health_unset": "\"{template}\" استعمال کرنے والے کارڈ جن میں {names} کی قدر نہیں: {count}۔",
 
   "tools.health_unused": "ٹیمپلیٹس جو اس ڈیش بورڈ پر کوئی استعمال نہیں کرتا: {names}۔",
+
+  "tools.health_unknown_key": "ٹیمپلیٹ {template} میں {key}: ہے، جسے کوئی ٹیمپلیٹ نہیں پڑھتا، اس لیے اسے نظر انداز کیا جاتا ہے۔",
 
   "tools.rename_header": "نام بدلیں",
   "tools.rename_hint": "یہاں اور اس ڈیش بورڈ کے ہر اس کارڈ میں نام بدلتا ہے جو اسے استعمال کرتا ہے۔ دوسرے ڈیش بورڈز کے کارڈ نہیں بدلتے، چاہے وہ اس ڈیش بورڈ کے ٹیمپلیٹس لیتے ہوں۔",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} میں {keys} کا متن نہیں، جس کا دوسری زبانیں ترجمہ کرتی ہیں، اس لیے وہاں دوسری زبان کا متن دکھتا ہے۔",
   "lint.language_not_mapping": "language: زبان کے کوڈز کی میپنگ ہونی چاہیے، ہر ایک میں متون کی میپنگ ہو۔",
   "lint.language_entry_not_mapping": "language: {language} متون کی میپنگ ہونی چاہیے۔",
-  "lint.editor_hide_unknown": "\"{name}\" کارڈ ایڈیٹر کا ایسا حصہ نہیں جو چھپایا جا سکے، اس لیے اس کے لیے کچھ نہیں چھپتا۔ یہ repeat، extras، fit، advanced، defaults، یا Advanced ترتیبات میں سے کسی کا نام لیتا ہے۔",
+  "lint.editor_hide_unknown": "\"{name}\" کارڈ ایڈیٹر کا ایسا حصہ نہیں جو چھپایا جا سکے، اس لیے اس کے لیے کچھ نہیں چھپتا۔ یہ repeat، extras، fit، advanced، defaults، preview، یا Advanced ترتیبات میں سے کسی کا نام لیتا ہے۔",
   "lint.strict_unknown": "strict: میں \"{key}: {value}\" کوئی معلوم چیز نہیں، اس لیے یہ کچھ نہیں کرتا اور وہ سطح کارڈ، اس کے سیکشن، اس کے ویو یا ڈیش بورڈ سے آتی ہے۔ یہ {allowed} لیتا ہے۔",
   "lint.where": " ({path} پر)",
   "tools.health_unread": "{view} پر \"{template}\" استعمال کرنے والے کارڈ جو \"{name}\" بھیجتے ہیں، جسے ٹیمپلیٹ کبھی نہیں پڑھتا: {count}۔",
@@ -771,6 +774,7 @@
   "declarations.unit": "اکائی",
   "declarations.allowed": "اجازت شدہ اقدار، کوما سے الگ",
   "declarations.multiline": "ایک سے زیادہ لائن کی جگہ",
+  "declarations.multiple": "ایک سے زیادہ چنیں",
   "declarations.pattern": "پیٹرن جس سے قدر کی مطابقت لازمی ہو",
   "declarations.selector": "سلیکٹر (اعلیٰ درجے کا)",
   "declarations.add": "متغیر شامل کریں",

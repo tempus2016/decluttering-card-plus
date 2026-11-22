@@ -254,6 +254,12 @@ function patchTemplateDefinition(schema, definitionName, { visibility }) {
       description: definition.properties.visibility.description,
       ...visibilitySchema(schema.definitions),
     };
+    /*
+     * A template's own keys are all the card reads (#494): anything else is a slip, `variblees:`
+     * for `variables:`, and the card would quietly ignore it. The template card is left open,
+     * because Home Assistant and other cards add keys of their own to a card.
+     */
+    definition.additionalProperties = false;
   }
 }
 

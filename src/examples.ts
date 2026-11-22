@@ -133,7 +133,9 @@ function problemsOf(
     problems.push(localize('examples.unset', { which: unresolved.map((each) => `[[${each}]]`).join(', ') }, hass));
   }
   for (const each of validateDeclared(variables, template, hass)) {
-    problems.push(localize('editor.invalid_value', { name: each.name, expected: each.expected }, hass));
+    problems.push(
+      `${localize('editor.invalid_value', { name: each.name, expected: each.expected }, hass)} ${localize('editor.invalid_value_now', { value: each.value }, hass)}`,
+    );
   }
 
   const said = new Set<string>();

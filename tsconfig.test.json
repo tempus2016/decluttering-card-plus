@@ -27,6 +27,7 @@
     "src/skeleton.ts",
     "src/health-card-pure.ts",
     "src/templates.ts",
+    "src/template-keys.ts",
     "src/share.ts",
     "src/variables.ts",
     "src/translations.ts",

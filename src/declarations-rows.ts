@@ -29,6 +29,7 @@ export const ROW_KEYS = [
   'step',
   'unit',
   'multiline',
+  'multiple',
   'selector',
 ] as const;
 

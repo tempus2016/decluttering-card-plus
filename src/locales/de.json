@@ -78,6 +78,7 @@
   "editor.unused_one": "Diese Variable ist hier gesetzt, wird von der Vorlage aber nie verwendet: {names}.",
   "editor.unused_many": "Diese Variablen sind hier gesetzt, werden von der Vorlage aber nie verwendet: {names}.",
   "editor.invalid_value": "Der Wert von {name} ist keiner, den die Vorlage akzeptiert. Sie erwartet: {expected}.",
+  "editor.invalid_value_now": "Er ist jetzt: {value}.",
   "editor.card_variable_clear": "Eine andere Karte wählen",
   "editor.eject": "Diese Karte durch das ersetzen, was sie baut",
   "editor.eject_confirm": "Zum Ersetzen erneut drücken - die Vorlage gilt dann nicht mehr",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Karten, die \"{template}\" ohne Wert für {names} verwenden: {count}.",
 
   "tools.health_unused": "Vorlagen, die nichts auf diesem Dashboard verwendet: {names}.",
+
+  "tools.health_unknown_key": "Die Vorlage {template} hat {key}:, das keine Vorlage liest, daher wird es ignoriert.",
 
   "tools.rename_header": "Umbenennen",
   "tools.rename_hint": "Ändert den Namen hier und in jeder Karte auf diesem Dashboard, die ihn verwendet. Karten auf anderen Dashboards bleiben unberührt, auch solche, die sich die Vorlagen dieses Dashboards leihen.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} hat keinen Text für {keys}, die andere Sprachen übersetzen, und zeigt dort den Text einer anderen Sprache.",
   "lint.language_not_mapping": "language: sollte eine Zuordnung von Sprachcodes sein, jeder mit einer Zuordnung von Texten.",
   "lint.language_entry_not_mapping": "language: {language} sollte eine Zuordnung von Texten sein.",
-  "lint.editor_hide_unknown": "\"{name}\" ist kein Teil des Karten-Editors, der sich ausblenden lässt, daher wird dafür nichts ausgeblendet. Möglich sind repeat, extras, fit, advanced, defaults oder eine der erweiterten Einstellungen beim Namen.",
+  "lint.editor_hide_unknown": "\"{name}\" ist kein Teil des Karten-Editors, der sich ausblenden lässt, daher wird dafür nichts ausgeblendet. Möglich sind repeat, extras, fit, advanced, defaults, preview oder eine der erweiterten Einstellungen beim Namen.",
   "lint.strict_unknown": "\"{key}: {value}\" in strict: ist unbekannt, bewirkt also nichts, und diese Stufe kommt stattdessen von der Karte, ihrem Abschnitt, ihrer Ansicht oder dem Dashboard. Erlaubt ist {allowed}.",
   "lint.where": " (bei {path})",
   "tools.health_unread": "Karten mit \"{template}\" auf {view}, die \"{name}\" übergeben, was die Vorlage nie liest: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Einheit",
   "declarations.allowed": "Erlaubte Werte, durch Kommas getrennt",
   "declarations.multiline": "Platz für mehrere Zeilen",
+  "declarations.multiple": "Mehrere auswählbar",
   "declarations.pattern": "Muster, dem der Wert entsprechen muss",
   "declarations.selector": "Selektor (erweitert)",
   "declarations.add": "Variable hinzufügen",

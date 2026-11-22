@@ -78,6 +78,7 @@
   "editor.unused_one": "Ta zmienna jest tu ustawiona, ale szablon jej nie używa: {names}.",
   "editor.unused_many": "Te zmienne są tu ustawione, ale szablon ich nie używa: {names}.",
   "editor.invalid_value": "Wartość {name} nie jest akceptowana przez szablon. Oczekiwano: {expected}.",
+  "editor.invalid_value_now": "Teraz jest: {value}.",
   "editor.card_variable_clear": "Wybierz inną kartę",
   "editor.eject": "Zastąp tę kartę tym, co buduje",
   "editor.eject_confirm": "Naciśnij ponownie, aby zastąpić - szablon przestanie obowiązywać",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Karty używające \"{template}\" bez wartości dla {names}: {count}.",
 
   "tools.health_unused": "Szablony nieużywane przez nic na tym dashboardzie: {names}.",
+
+  "tools.health_unknown_key": "Szablon {template} ma {key}:, którego żaden szablon nie czyta, więc jest pomijany.",
 
   "tools.rename_header": "Zmień nazwę",
   "tools.rename_hint": "Zmienia nazwę tutaj i w każdej karcie tego dashboardu, która jej używa. Karty na innych dashboardach pozostają nietknięte, nawet te, które zapożyczają szablony z tego dashboardu.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} nie ma tekstu dla {keys}, które inne języki tłumaczą, więc pokazuje tam tekst z innego języka.",
   "lint.language_not_mapping": "language: powinno być mapowaniem kodów języków, z których każdy zawiera mapowanie tekstów.",
   "lint.language_entry_not_mapping": "language: {language} powinno być mapowaniem tekstów.",
-  "lint.editor_hide_unknown": "\"{name}\" nie jest częścią edytora karty, którą można ukryć, więc nic nie zostaje ukryte. Przyjmuje repeat, extras, fit, advanced, defaults lub nazwę jednego z ustawień zaawansowanych.",
+  "lint.editor_hide_unknown": "\"{name}\" nie jest częścią edytora karty, którą można ukryć, więc nic nie zostaje ukryte. Przyjmuje repeat, extras, fit, advanced, defaults, preview lub nazwę jednego z ustawień zaawansowanych.",
   "lint.strict_unknown": "\"{key}: {value}\" w strict: nie jest znane, więc nic nie robi, a ten poziom pochodzi z karty, jej sekcji, widoku lub dashboardu. Przyjmuje {allowed}.",
   "lint.where": " (w {path})",
   "tools.health_unread": "Karty używające \"{template}\" w {view}, które przekazują \"{name}\", którego szablon nigdy nie odczytuje: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Jednostka",
   "declarations.allowed": "Dozwolone wartości, oddzielone przecinkami",
   "declarations.multiline": "Miejsce na więcej niż jeden wiersz",
+  "declarations.multiple": "Wybór więcej niż jednej",
   "declarations.pattern": "Wzorzec, do którego musi pasować wartość",
   "declarations.selector": "Selektor (zaawansowane)",
   "declarations.add": "Dodaj zmienną",

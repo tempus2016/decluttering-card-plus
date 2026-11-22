@@ -78,6 +78,7 @@
   "editor.unused_one": "Questa variabile è impostata qui ma il modello non la usa mai: {names}.",
   "editor.unused_many": "Queste variabili sono impostate qui ma il modello non le usa mai: {names}.",
   "editor.invalid_value": "Il valore di {name} non è accettato dal modello. Si aspetta: {expected}.",
+  "editor.invalid_value_now": "Ora è: {value}.",
   "editor.card_variable_clear": "Scegli un'altra scheda",
   "editor.eject": "Sostituisci questa scheda con ciò che costruisce",
   "editor.eject_confirm": "Premi di nuovo per sostituirla: il modello non verrà più applicato",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Schede che usano \"{template}\" senza valore per {names}: {count}.",
 
   "tools.health_unused": "Modelli non usati da nulla in questa plancia: {names}.",
+
+  "tools.health_unknown_key": "Il modello {template} ha {key}:, che nessun modello legge, quindi viene ignorato.",
 
   "tools.rename_header": "Rinomina",
   "tools.rename_hint": "Cambia il nome qui e in ogni scheda di questa plancia che lo usa. Le schede di altre plance non vengono toccate, nemmeno quelle che prendono in prestito i modelli di questa plancia.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} non ha testo per {keys}, che altre lingue traducono, quindi lì mostra il testo di un'altra lingua.",
   "lint.language_not_mapping": "language: dovrebbe essere una mappatura di codici lingua, ciascuno con una mappatura di testi.",
   "lint.language_entry_not_mapping": "language: {language} dovrebbe essere una mappatura di testi.",
-  "lint.editor_hide_unknown": "\"{name}\" non è una parte dell'editor della scheda che si può nascondere, quindi non viene nascosto nulla. Accetta repeat, extras, fit, advanced, defaults, o una delle impostazioni Avanzate per nome.",
+  "lint.editor_hide_unknown": "\"{name}\" non è una parte dell'editor della scheda che si può nascondere, quindi non viene nascosto nulla. Accetta repeat, extras, fit, advanced, defaults, preview, o una delle impostazioni Avanzate per nome.",
   "lint.strict_unknown": "\"{key}: {value}\" in strict: non è qualcosa che conosce, quindi non fa nulla e quel livello viene invece dalla scheda, dalla sua sezione, dalla sua vista o dalla plancia. Accetta {allowed}.",
   "lint.where": " (in {path})",
   "tools.health_unread": "Schede che usano \"{template}\" in {view} e passano \"{name}\", che il modello non legge mai: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Unità",
   "declarations.allowed": "Valori ammessi, separati da virgole",
   "declarations.multiline": "Spazio per più di una riga",
+  "declarations.multiple": "Sceglierne più di uno",
   "declarations.pattern": "Schema che il valore deve rispettare",
   "declarations.selector": "Selettore (avanzato)",
   "declarations.add": "Aggiungi una variabile",

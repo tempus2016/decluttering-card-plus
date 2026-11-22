@@ -78,6 +78,7 @@
   "editor.unused_one": "此变量在这里设置了，但模板从未使用：{names}。",
   "editor.unused_many": "这些变量在这里设置了，但模板从未使用：{names}。",
   "editor.invalid_value": "{name} 的值不被模板接受。应为：{expected}。",
+  "editor.invalid_value_now": "当前值：{value}。",
   "editor.card_variable_clear": "选择其他卡片",
   "editor.eject": "用构建结果替换此卡片",
   "editor.eject_confirm": "再按一次以替换——模板将不再生效",
@@ -218,6 +219,8 @@
   "tools.health_unset": "使用“{template}”但 {names} 没有值的卡片：{count}。",
 
   "tools.health_unused": "此仪表盘上未被使用的模板：{names}。",
+
+  "tools.health_unknown_key": "模板 {template} 含有 {key}:，没有模板会读取它，因此会被忽略。",
 
   "tools.rename_header": "重命名",
   "tools.rename_hint": "修改此处的名称，以及此仪表盘上所有使用它的卡片。其他仪表盘上的卡片不受影响，即使它们借用了此仪表盘的模板。",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} 没有 {keys} 的文本，而其他语言有翻译，因此那里会显示其他语言的文本。",
   "lint.language_not_mapping": "language: 应为语言代码的映射，每个语言代码下是文本的映射。",
   "lint.language_entry_not_mapping": "language: {language} 应为文本的映射。",
-  "lint.editor_hide_unknown": "“{name}”不是卡片编辑器中可隐藏的部分，因此不会隐藏任何内容。可用值为 repeat、extras、fit、advanced、defaults，或高级设置中某项的名称。",
+  "lint.editor_hide_unknown": "“{name}”不是卡片编辑器中可隐藏的部分，因此不会隐藏任何内容。可用值为 repeat、extras、fit、advanced、defaults、preview，或高级设置中某项的名称。",
   "lint.strict_unknown": "strict: 中的“{key}: {value}”无法识别，因此不起作用，该级别改由卡片、其部分、其视图或仪表盘决定。可用值为 {allowed}。",
   "lint.where": "（位于 {path}）",
   "tools.health_unread": "{view} 中使用“{template}”并传入“{name}”的卡片（模板从未读取它）：{count}。",
@@ -771,6 +774,7 @@
   "declarations.unit": "单位",
   "declarations.allowed": "允许的值，用逗号分隔",
   "declarations.multiline": "允许多行",
+  "declarations.multiple": "允许多选",
   "declarations.pattern": "值必须匹配的模式",
   "declarations.selector": "选择器（高级）",
   "declarations.add": "添加变量",

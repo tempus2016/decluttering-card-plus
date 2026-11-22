@@ -78,6 +78,7 @@
   "editor.unused_one": "この変数はここで設定されていますが、テンプレートでは使われていません: {names}。",
   "editor.unused_many": "これらの変数はここで設定されていますが、テンプレートでは使われていません: {names}。",
   "editor.invalid_value": "{name} の値はテンプレートで使用できません。使用できる値: {expected}。",
+  "editor.invalid_value_now": "現在の値: {value}。",
   "editor.card_variable_clear": "別のカードを選ぶ",
   "editor.eject": "このカードをビルド結果に置き換える",
   "editor.eject_confirm": "もう一度押すと置き換えます。テンプレートは適用されなくなります",
@@ -218,6 +219,8 @@
   "tools.health_unset": "「{template}」を使い、{names} に値がないカード: {count}。",
 
   "tools.health_unused": "このダッシュボードで使われていないテンプレート: {names}。",
+
+  "tools.health_unknown_key": "テンプレート {template} に {key}: がありますが、どのテンプレートも読まないため無視されます。",
 
   "tools.rename_header": "名前を変更",
   "tools.rename_hint": "ここでの名前と、このダッシュボードでそれを使うすべてのカードを変更します。他のダッシュボードのカードは、このダッシュボードのテンプレートを借りているものも含めて変更しません。",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} には {keys} のテキストがありません (他の言語には翻訳あり)。そのため、そこでは他の言語のテキストが表示されます。",
   "lint.language_not_mapping": "language: は言語コードのマッピングで、それぞれにテキストのマッピングを持つ必要があります。",
   "lint.language_entry_not_mapping": "language: {language} はテキストのマッピングである必要があります。",
-  "lint.editor_hide_unknown": "「{name}」はカードエディターで非表示にできる部分ではないため、何も非表示になりません。指定できるのは repeat、extras、fit、advanced、defaults、または詳細設定の項目名です。",
+  "lint.editor_hide_unknown": "「{name}」はカードエディターで非表示にできる部分ではないため、何も非表示になりません。指定できるのは repeat、extras、fit、advanced、defaults、preview、または詳細設定の項目名です。",
   "lint.strict_unknown": "strict: の「{key}: {value}」は認識されないため何もせず、そのレベルはカード、セクション、ビュー、ダッシュボードから決まります。指定できる値: {allowed}。",
   "lint.where": " ({path})",
   "tools.health_unread": "{view} で「{template}」を使い、テンプレートが読み取らない「{name}」を渡しているカード: {count}。",
@@ -771,6 +774,7 @@
   "declarations.unit": "単位",
   "declarations.allowed": "使用できる値 (カンマ区切り)",
   "declarations.multiline": "複数行入力",
+  "declarations.multiple": "複数選択",
   "declarations.pattern": "値が一致すべきパターン",
   "declarations.selector": "セレクター (詳細)",
   "declarations.add": "変数を追加",

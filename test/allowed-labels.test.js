@@ -53,7 +53,7 @@ check('plain values are unchanged', declarationSelector({ name: 'x', allowed: ['
 const template = { variables: [{ name: 'mode', allowed: labelled }], card: { type: 'markdown' } };
 check('a value in the list passes', validateDeclared([{ mode: 'dynamic' }], template), []);
 check('a label is not a value', validateDeclared([{ mode: 'Match Media' }], template), [
-  { name: 'mode', expected: 'static, dynamic, unconstrained' },
+  { name: 'mode', expected: 'static, dynamic, unconstrained', value: '"Match Media"' },
 ]);
 check(
   'numbers and true or false still compare as text',
@@ -81,3 +81,51 @@ check(
 check('labelled entries are spotted', hasLabelledAllowed({ allowed: ['a', { label: 'B', value: 'b' }] }), true);
 check('plain entries are not', hasLabelledAllowed({ allowed: ['a', 1, true] }), false);
 check('no allowed is not', hasLabelledAllowed({}), false);
+
+/* #490: a value holding a placeholder is judged by what it becomes, never by its brackets. */
+const camera = {
+  default: [{ default_camera_view: 'live' }],
+  variables: [
+    {
+      name: 'default_view',
+      default: '[[default_camera_view]]',
+      allowed: [
+        { label: 'Image (updated)', value: 'image' },
+        { label: 'Live Camera', value: 'live' },
+      ],
+    },
+    { name: 'shape', default: '[[default_camera_view]]', pattern: '^(live|image)$' },
+  ],
+  card: { type: 'picture-entity', camera_view: '[[default_view]]' },
+};
+const fillWith = (values) => (value) => {
+  const text = String(value);
+  const match = /^\[\[(\w+)\]\]$/.exec(text);
+  return match && match[1] in values ? values[match[1]] : undefined;
+};
+check('a placeholder default is not judged by its brackets (#490)', validateDeclared(undefined, camera), []);
+check(
+  'a placeholder default that fills to an allowed value passes (#490)',
+  validateDeclared(undefined, camera, undefined, fillWith({ default_camera_view: 'live' })),
+  [],
+);
+check(
+  'a placeholder default that fills to something else is reported with what it became (#490)',
+  validateDeclared(undefined, camera, undefined, fillWith({ default_camera_view: 'video' })),
+  [
+    { name: 'default_view', expected: 'image, live', value: '"video"' },
+    { name: 'shape', expected: '^(live|image)$', value: '"video"' },
+  ],
+);
+check(
+  'a placeholder that cannot be worked out yet is left alone (#490)',
+  validateDeclared(undefined, camera, undefined, () => undefined),
+  [],
+);
+
+const { shownValue } = require('../.test-build/variables');
+check('a value is shown in quotes, so a space shows (#490)', shownValue(' live'), '" live"');
+check('a character that prints as nothing is written out (#490)', shownValue('li​ve'), '"li\\u200bve"');
+check('a non-breaking space is written out (#490)', shownValue('live '), '"live\\u00a0"');
+check('a number is shown as itself (#490)', shownValue(30), '"30"');
+check('a long value is cut short (#490)', shownValue('x'.repeat(100)).length, 83);

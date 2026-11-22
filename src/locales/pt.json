@@ -78,6 +78,7 @@
   "editor.unused_one": "Esta variável está definida aqui mas o modelo nunca a usa: {names}.",
   "editor.unused_many": "Estas variáveis estão definidas aqui mas o modelo nunca as usa: {names}.",
   "editor.invalid_value": "O valor de {name} não é um que o modelo aceite. Espera: {expected}.",
+  "editor.invalid_value_now": "Agora é: {value}.",
   "editor.card_variable_clear": "Escolher outro cartão",
   "editor.eject": "Substituir este cartão pelo que ele constrói",
   "editor.eject_confirm": "Prima novamente para substituir - o modelo deixa de se aplicar",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Cartões que usam \"{template}\" sem valor para {names}: {count}.",
 
   "tools.health_unused": "Modelos que nada neste painel usa: {names}.",
+
+  "tools.health_unknown_key": "O modelo {template} tem {key}:, que nenhum modelo lê, por isso é ignorado.",
 
   "tools.rename_header": "Mudar o nome",
   "tools.rename_hint": "Muda o nome aqui e em todos os cartões deste painel que o usam. Cartões noutros painéis não são tocados, mesmo os que pedem emprestados os modelos deste painel.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} não tem texto para {keys}, que outros idiomas traduzem, por isso mostra aí o texto de outro idioma.",
   "lint.language_not_mapping": "language: deve ser um mapa de códigos de idioma, cada um com um mapa de textos.",
   "lint.language_entry_not_mapping": "language: {language} deve ser um mapa de textos.",
-  "lint.editor_hide_unknown": "\"{name}\" não é uma parte do editor do cartão que possa ser ocultada, por isso nada é ocultado. Aceita repeat, extras, fit, advanced, defaults ou uma das definições avançadas pelo nome.",
+  "lint.editor_hide_unknown": "\"{name}\" não é uma parte do editor do cartão que possa ser ocultada, por isso nada é ocultado. Aceita repeat, extras, fit, advanced, defaults, preview ou uma das definições avançadas pelo nome.",
   "lint.strict_unknown": "\"{key}: {value}\" em strict: não é conhecido, por isso não faz nada e esse nível vem do cartão, da sua secção, da sua vista ou do painel. Aceita {allowed}.",
   "lint.where": " (em {path})",
   "tools.health_unread": "Cartões que usam \"{template}\" em {view} e passam \"{name}\", que o modelo nunca lê: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Unidade",
   "declarations.allowed": "Valores permitidos, separados por vírgulas",
   "declarations.multiline": "Espaço para mais de uma linha",
+  "declarations.multiple": "Escolher mais de um",
   "declarations.pattern": "Padrão que o valor deve seguir",
   "declarations.selector": "Seletor (avançado)",
   "declarations.add": "Adicionar uma variável",
