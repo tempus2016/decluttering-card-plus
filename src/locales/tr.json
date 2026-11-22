@@ -78,6 +78,7 @@
   "editor.unused_one": "Bu değişken burada ayarlı ama şablon tarafından hiç kullanılmıyor: {names}.",
   "editor.unused_many": "Bu değişkenler burada ayarlı ama şablon tarafından hiç kullanılmıyor: {names}.",
   "editor.invalid_value": "{name} değeri şablonun kabul ettiği bir değer değil. Beklenen: {expected}.",
+  "editor.invalid_value_now": "Şu anki değer: {value}.",
   "editor.card_variable_clear": "Farklı bir kart seçin",
   "editor.eject": "Bu kartı oluşturduğu şeyle değiştir",
   "editor.eject_confirm": "Değiştirmek için tekrar basın - şablon artık uygulanmayacak",
@@ -218,6 +219,8 @@
   "tools.health_unset": "\"{template}\" şablonunu {names} için değer vermeden kullanan kartlar: {count}.",
 
   "tools.health_unused": "Bu kontrol panelinde hiçbir şeyin kullanmadığı şablonlar: {names}.",
+
+  "tools.health_unknown_key": "{template} şablonunda {key}: var; hiçbir şablon bunu okumadığı için yok sayılır.",
 
   "tools.rename_header": "Yeniden adlandır",
   "tools.rename_hint": "Adı burada ve bu kontrol panelinde onu kullanan her kartta değiştirir. Diğer kontrol panellerindeki kartlara, bu kontrol panelinin şablonlarını ödünç alanlara bile, dokunulmaz.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} dilinde diğer dillerin çevirdiği şu anahtarlar için metin yok: {keys}. Bu yüzden orada başka bir dilin metni görünür.",
   "lint.language_not_mapping": "language: dil kodlarından oluşan bir eşleme olmalı; her biri metinlerden oluşan bir eşleme içermeli.",
   "lint.language_entry_not_mapping": "language: {language} metinlerden oluşan bir eşleme olmalı.",
-  "lint.editor_hide_unknown": "\"{name}\" kart düzenleyicisinin gizlenebilen bir parçası değil, bu yüzden onun için hiçbir şey gizlenmiyor. Şunları alır: repeat, extras, fit, advanced, defaults veya adıyla Gelişmiş ayarlardan biri.",
+  "lint.editor_hide_unknown": "\"{name}\" kart düzenleyicisinin gizlenebilen bir parçası değil, bu yüzden onun için hiçbir şey gizlenmiyor. Şunları alır: repeat, extras, fit, advanced, defaults, preview veya adıyla Gelişmiş ayarlardan biri.",
   "lint.strict_unknown": "strict: içindeki \"{key}: {value}\" bilinen bir şey değil, bu yüzden hiçbir şey yapmaz ve o düzey bunun yerine karttan, bölümünden, görünümünden veya kontrol panelinden gelir. Alabileceği değerler: {allowed}.",
   "lint.where": " (konum: {path})",
   "tools.health_unread": "{view} içinde \"{template}\" şablonunu kullanan ve şablonun hiç okumadığı \"{name}\" değerini geçiren kartlar: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Birim",
   "declarations.allowed": "İzin verilen değerler, virgülle ayrılmış",
   "declarations.multiline": "Birden fazla satır için yer",
+  "declarations.multiple": "Birden fazla seçim",
   "declarations.pattern": "Değerin eşleşmesi gereken desen",
   "declarations.selector": "Seçici (gelişmiş)",
   "declarations.add": "Değişken ekle",

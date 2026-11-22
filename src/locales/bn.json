@@ -78,6 +78,7 @@
   "editor.unused_one": "এই ভেরিয়েবল এখানে সেট করা কিন্তু টেমপ্লেট কখনো ব্যবহার করে না: {names}।",
   "editor.unused_many": "এই ভেরিয়েবলগুলো এখানে সেট করা কিন্তু টেমপ্লেট কখনো ব্যবহার করে না: {names}।",
   "editor.invalid_value": "{name}-এর মান টেমপ্লেট গ্রহণ করে না। প্রত্যাশিত: {expected}।",
+  "editor.invalid_value_now": "এখন মান: {value}।",
   "editor.card_variable_clear": "অন্য একটি কার্ড বেছে নিন",
   "editor.eject": "এই কার্ডকে এটি যা তৈরি করে তা দিয়ে প্রতিস্থাপন করুন",
   "editor.eject_confirm": "প্রতিস্থাপন করতে আবার চাপুন - টেমপ্লেট আর প্রযোজ্য হবে না",
@@ -218,6 +219,8 @@
   "tools.health_unset": "যে কার্ডগুলো \"{template}\" ব্যবহার করে কিন্তু {names}-এর মান নেই: {count}।",
 
   "tools.health_unused": "এই ড্যাশবোর্ডে কিছুই ব্যবহার করে না এমন টেমপ্লেট: {names}।",
+
+  "tools.health_unknown_key": "টেমপ্লেট {template}-এ {key}: আছে, যা কোনো টেমপ্লেট পড়ে না, তাই এটি উপেক্ষা করা হয়।",
 
   "tools.rename_header": "নাম বদলান",
   "tools.rename_hint": "এখানে এবং এই ড্যাশবোর্ডে এটি ব্যবহারকারী প্রতিটি কার্ডে নাম বদলায়। অন্য ড্যাশবোর্ডের কার্ড স্পর্শ করা হয় না, এমনকি যেগুলো এই ড্যাশবোর্ডের টেমপ্লেট ধার করে সেগুলোও না।",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language}-এ {keys}-এর কোনো লেখা নেই, যা অন্য ভাষাগুলো অনুবাদ করে, তাই সেখানে অন্য ভাষার লেখা দেখায়।",
   "lint.language_not_mapping": "language: ভাষা কোডের একটি ম্যাপিং হওয়া উচিত, যার প্রতিটি লেখার একটি ম্যাপিং ধারণ করে।",
   "lint.language_entry_not_mapping": "language: {language} লেখার একটি ম্যাপিং হওয়া উচিত।",
-  "lint.editor_hide_unknown": "\"{name}\" কার্ড এডিটরের এমন কোনো অংশ নয় যা লুকানো যায়, তাই এর জন্য কিছুই লুকানো হয় না। এটি repeat, extras, fit, advanced, defaults, অথবা নাম ধরে উন্নত সেটিংসের একটি নেয়।",
+  "lint.editor_hide_unknown": "\"{name}\" কার্ড এডিটরের এমন কোনো অংশ নয় যা লুকানো যায়, তাই এর জন্য কিছুই লুকানো হয় না। এটি repeat, extras, fit, advanced, defaults, preview, অথবা নাম ধরে উন্নত সেটিংসের একটি নেয়।",
   "lint.strict_unknown": "strict:-এ \"{key}: {value}\" এর চেনা কিছু নয়, তাই এটি কিছুই করে না এবং সেই স্তর এর বদলে কার্ড, তার সেকশন, তার ভিউ বা ড্যাশবোর্ড থেকে আসে। এটি নেয় {allowed}।",
   "lint.where": " ({path}-এ)",
   "tools.health_unread": "{view}-এ \"{template}\" ব্যবহারকারী যে কার্ডগুলো \"{name}\" পাঠায়, যা টেমপ্লেট কখনো পড়ে না: {count}।",
@@ -771,6 +774,7 @@
   "declarations.unit": "একক",
   "declarations.allowed": "অনুমোদিত মান, কমা দিয়ে আলাদা",
   "declarations.multiline": "একাধিক লাইনের জায়গা",
+  "declarations.multiple": "একাধিক মান বাছাই",
   "declarations.pattern": "মানকে যে প্যাটার্নের সাথে মিলতে হবে",
   "declarations.selector": "সিলেক্টর (উন্নত)",
   "declarations.add": "একটি ভেরিয়েবল যোগ করুন",

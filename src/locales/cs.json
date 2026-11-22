@@ -78,6 +78,7 @@
   "editor.unused_one": "Tato proměnná je zde nastavena, ale šablona ji nikdy nepoužívá: {names}.",
   "editor.unused_many": "Tyto proměnné jsou zde nastaveny, ale šablona je nikdy nepoužívá: {names}.",
   "editor.invalid_value": "Hodnotu {name} šablona nepřijímá. Očekává: {expected}.",
+  "editor.invalid_value_now": "Teď je: {value}.",
   "editor.card_variable_clear": "Zvolit jinou kartu",
   "editor.eject": "Nahradit tuto kartu tím, co sestavuje",
   "editor.eject_confirm": "Stiskněte znovu pro nahrazení – šablona se už nebude uplatňovat",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Karty používající „{template}“ bez hodnoty pro {names}: {count}.",
 
   "tools.health_unused": "Šablony, které nic na tomto ovládacím panelu nepoužívá: {names}.",
+
+  "tools.health_unknown_key": "Šablona {template} má {key}:, které žádná šablona nečte, takže se ignoruje.",
 
   "tools.rename_header": "Přejmenovat",
   "tools.rename_hint": "Změní název zde i v každé kartě tohoto ovládacího panelu, která ho používá. Karty na jiných ovládacích panelech se nemění, ani ty, které si šablony tohoto panelu vypůjčují.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} nemá text pro {keys}, které jiné jazyky překládají, takže se tam zobrazí text jiného jazyka.",
   "lint.language_not_mapping": "language: má být mapování kódů jazyků, z nichž každý obsahuje mapování textů.",
   "lint.language_entry_not_mapping": "language: {language} má být mapování textů.",
-  "lint.editor_hide_unknown": "„{name}“ není část editoru karty, kterou lze skrýt, takže se pro ni nic neskryje. Přijímá repeat, extras, fit, advanced, defaults nebo název jednoho z pokročilých nastavení.",
+  "lint.editor_hide_unknown": "„{name}“ není část editoru karty, kterou lze skrýt, takže se pro ni nic neskryje. Přijímá repeat, extras, fit, advanced, defaults, preview nebo název jednoho z pokročilých nastavení.",
   "lint.strict_unknown": "„{key}: {value}“ ve strict: není nic, co zná, takže nic nedělá a tato úroveň se místo toho bere z karty, její sekce, jejího pohledu nebo ovládacího panelu. Přijímá {allowed}.",
   "lint.where": " (na {path})",
   "tools.health_unread": "Karty používající „{template}“ v {view}, které předávají „{name}“, jež šablona nikdy nečte: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Jednotka",
   "declarations.allowed": "Povolené hodnoty oddělené čárkami",
   "declarations.multiline": "Prostor pro více řádků",
+  "declarations.multiple": "Výběr více hodnot",
   "declarations.pattern": "Vzor, kterému musí hodnota odpovídat",
   "declarations.selector": "Selektor (pokročilé)",
   "declarations.add": "Přidat proměnnou",

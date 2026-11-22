@@ -6,7 +6,15 @@ const { check } = require('./check');
 const { hiddenNames, unknownHidden, editorHidden, withoutFields } = require('../.test-build/card-editor/hide');
 
 const base = { type: 'custom:decluttering-card-plus', template: 'camera' };
-const nothing = { repeat: false, extras: false, fit: false, advanced: false, defaults: false, advancedFields: [] };
+const nothing = {
+  repeat: false,
+  extras: false,
+  fit: false,
+  advanced: false,
+  defaults: false,
+  preview: false,
+  advancedFields: [],
+};
 
 check('no editor_hide hides nothing', editorHidden({ card: {} }, base), nothing);
 check('no template hides nothing', editorHidden(undefined, base), nothing);
@@ -20,7 +28,7 @@ check(
 check(
   'every part named is hidden on a card that uses none of them',
   editorHidden({ editor_hide: ['repeat', 'extras', 'fit', 'advanced'] }, base),
-  { repeat: true, extras: true, fit: true, advanced: true, defaults: false, advancedFields: [] },
+  { repeat: true, extras: true, fit: true, advanced: true, defaults: false, preview: false, advancedFields: [] },
 );
 
 // A part the card uses is kept, or what is written there could never be seen or taken out.
@@ -82,3 +90,16 @@ check(
 // #483: the default line under a set field can be left out too.
 check('defaults hides the default lines', editorHidden({ editor_hide: 'defaults' }, base).defaults, true);
 check('defaults is a name the editor knows', unknownHidden({ editor_hide: 'defaults' }), []);
+
+// #488: the "What it builds" panel can be left out. Nothing is written from it, so it goes
+// whatever the card holds.
+check('editor_hide: preview leaves the panel out', editorHidden({ editor_hide: 'preview' }, base).preview, true);
+check(
+  'preview goes even on a card that sets everything else',
+  editorHidden({ editor_hide: ['preview'] }, { ...base, for_each: ['a'], fit: 'contents', strict: true }).preview,
+  true,
+);
+check('preview is a known name, so lint says nothing', unknownHidden({ editor_hide: ['Preview'] }), []);
+check('a near miss is pointed at preview', unknownHidden({ editor_hide: 'preveiw' }), [
+  { name: 'preveiw', closest: 'preview' },
+]);

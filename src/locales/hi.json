@@ -78,6 +78,7 @@
   "editor.unused_one": "यह वेरिएबल यहाँ सेट है पर टेम्पलेट इसे कभी इस्तेमाल नहीं करता: {names}।",
   "editor.unused_many": "ये वेरिएबल यहाँ सेट हैं पर टेम्पलेट इन्हें कभी इस्तेमाल नहीं करता: {names}।",
   "editor.invalid_value": "{name} का मान टेम्पलेट स्वीकार नहीं करता। अपेक्षित: {expected}।",
+  "editor.invalid_value_now": "अभी मान: {value}।",
   "editor.card_variable_clear": "दूसरा कार्ड चुनें",
   "editor.eject": "इस कार्ड को उससे बदलें जो यह बनाता है",
   "editor.eject_confirm": "बदलने के लिए फिर दबाएँ - टेम्पलेट फिर लागू नहीं होगा",
@@ -218,6 +219,8 @@
   "tools.health_unset": "\"{template}\" इस्तेमाल करने वाले कार्ड जिनमें {names} का मान नहीं: {count}।",
 
   "tools.health_unused": "टेम्पलेट जिन्हें इस डैशबोर्ड पर कुछ भी इस्तेमाल नहीं करता: {names}।",
+
+  "tools.health_unknown_key": "टेम्पलेट {template} में {key}: है, जिसे कोई टेम्पलेट नहीं पढ़ता, इसलिए इसे अनदेखा किया जाता है।",
 
   "tools.rename_header": "नाम बदलें",
   "tools.rename_hint": "नाम यहाँ और इस डैशबोर्ड के हर उस कार्ड में बदलता है जो इसे इस्तेमाल करता है। दूसरे डैशबोर्ड के कार्ड नहीं छुए जाते, वे भी नहीं जो इस डैशबोर्ड के टेम्पलेट उधार लेते हैं।",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} में {keys} का टेक्स्ट नहीं है, जिनका दूसरी भाषाएँ अनुवाद करती हैं, इसलिए वहाँ दूसरी भाषा का टेक्स्ट दिखता है।",
   "lint.language_not_mapping": "language: भाषा कोड की mapping होनी चाहिए, हर एक में टेक्स्ट की mapping हो।",
   "lint.language_entry_not_mapping": "language: {language} टेक्स्ट की mapping होनी चाहिए।",
-  "lint.editor_hide_unknown": "\"{name}\" कार्ड एडिटर का ऐसा हिस्सा नहीं है जिसे छिपाया जा सके, इसलिए इसके लिए कुछ नहीं छिपता। यह repeat, extras, fit, advanced, defaults, या नाम से कोई उन्नत सेटिंग लेता है।",
+  "lint.editor_hide_unknown": "\"{name}\" कार्ड एडिटर का ऐसा हिस्सा नहीं है जिसे छिपाया जा सके, इसलिए इसके लिए कुछ नहीं छिपता। यह repeat, extras, fit, advanced, defaults, preview, या नाम से कोई उन्नत सेटिंग लेता है।",
   "lint.strict_unknown": "strict: में \"{key}: {value}\" ऐसा कुछ नहीं है जिसे यह जानता हो, इसलिए यह कुछ नहीं करता और वह स्तर कार्ड, उसके सेक्शन, उसके व्यू या डैशबोर्ड से आता है। यह {allowed} लेता है।",
   "lint.where": " ({path} पर)",
   "tools.health_unread": "{view} पर \"{template}\" इस्तेमाल करने वाले कार्ड जो \"{name}\" देते हैं, जिसे टेम्पलेट कभी नहीं पढ़ता: {count}।",
@@ -771,6 +774,7 @@
   "declarations.unit": "इकाई",
   "declarations.allowed": "अनुमत मान, कॉमा से अलग",
   "declarations.multiline": "एक से ज़्यादा लाइन की जगह",
+  "declarations.multiple": "एक से ज़्यादा चुनें",
   "declarations.pattern": "पैटर्न जिससे मान मेल खाना चाहिए",
   "declarations.selector": "Selector (उन्नत)",
   "declarations.add": "वेरिएबल जोड़ें",

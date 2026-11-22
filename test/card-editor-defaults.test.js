@@ -296,3 +296,16 @@ check('a cleared field is not the shown value', isShownValue(undefined, 'red'), 
   check('text: a mapping as one line', defaultText({ a: 1, b: 'x' }), '{a: 1, b: x}');
   check('text: a list as one line', defaultText(['a', { b: 2 }]), '[a, {b: 2}]');
 }
+
+/* #487: a field typed back to its default reads as left alone - no Reset, no Default: line. */
+{
+  const { matchesDefault } = require('../.test-build/card-editor/defaults');
+  check('the default written in again matches it (#487)', matchesDefault('live', 'live'), true);
+  check('a different value does not (#487)', matchesDefault('image', 'live'), false);
+  check('a text field handing back a number as text matches (#487)', matchesDefault('30', 30), true);
+  check('true written as text matches (#487)', matchesDefault('true', true), true);
+  check('a mapping with the same keys matches (#487)', matchesDefault({ a: 1 }, { a: 1 }), true);
+  check('a mapping is not its JSON text (#487)', matchesDefault('{"a":1}', { a: 1 }), false);
+  check('empty is not a default of 0 (#487)', matchesDefault('', 0), false);
+  check('a stray space is a different value (#487)', matchesDefault('live ', 'live'), false);
+}

@@ -301,6 +301,7 @@ describe('the two Render now buttons (#407)', () => {
     editor.lovelace = lovelace.config;
     editor.setConfig(config);
     editor._previewMode = 'rendered';
+    editor._resultOpen = true;
     try {
       dialog.appendChild(editor);
       await settle(6);

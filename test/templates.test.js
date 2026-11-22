@@ -2068,7 +2068,7 @@ collectAllTemplates(hass, borrower).then((all) => {
       decluttering_templates: { tile: { card: { entity: '[[entity]]' } } },
       views: [{ cards: [{ type: 'custom:decluttering-card-plus', template: 'tile', variables: [{ entity: 'x' }] }] }],
     }),
-    { missingTemplates: [], unsetVariables: [], unusedTemplates: [] },
+    { missingTemplates: [], unsetVariables: [], unusedTemplates: [], unknownKeys: [] },
   );
 
   /* ---------------------------------------------------------- declutter this card */

@@ -78,6 +78,7 @@
   "editor.unused_one": "هذا المتغير مضبوط هنا لكن القالب لا يستخدمه أبداً: {names}.",
   "editor.unused_many": "هذه المتغيرات مضبوطة هنا لكن القالب لا يستخدمها أبداً: {names}.",
   "editor.invalid_value": "قيمة {name} ليست مما يقبله القالب. المتوقع: {expected}.",
+  "editor.invalid_value_now": "القيمة الآن: {value}.",
   "editor.card_variable_clear": "اختر بطاقة أخرى",
   "editor.eject": "استبدل هذه البطاقة بما تبنيه",
   "editor.eject_confirm": "اضغط مرة أخرى للاستبدال - لن يُطبَّق القالب بعد ذلك",
@@ -218,6 +219,8 @@
   "tools.health_unset": "بطاقات تستخدم \"{template}\" دون قيمة لـ {names}: {count}.",
 
   "tools.health_unused": "قوالب لا يستخدمها شيء على لوحة التحكم هذه: {names}.",
+
+  "tools.health_unknown_key": "يحتوي القالب {template} على {key}:، ولا يقرؤه أي قالب، لذا يتم تجاهله.",
 
   "tools.rename_header": "إعادة التسمية",
   "tools.rename_hint": "يغيّر الاسم هنا وفي كل بطاقة على لوحة التحكم هذه تستخدمه. البطاقات على لوحات التحكم الأخرى لا تُمسّ، حتى التي تستعير قوالب هذه اللوحة.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} ليس فيها نص لـ {keys}، مع أن لغات أخرى تترجمها، لذا يظهر هناك نص لغة أخرى.",
   "lint.language_not_mapping": "يجب أن تكون language: تعييناً لرموز اللغات، يحمل كل منها تعييناً للنصوص.",
   "lint.language_entry_not_mapping": "يجب أن تكون language: {language} تعييناً للنصوص.",
-  "lint.editor_hide_unknown": "\"{name}\" ليس جزءاً من محرر البطاقة يمكن إخفاؤه، لذا لا يُخفى شيء بسببه. يقبل repeat أو extras أو fit أو advanced أو defaults أو أحد الإعدادات المتقدمة باسمه.",
+  "lint.editor_hide_unknown": "\"{name}\" ليس جزءاً من محرر البطاقة يمكن إخفاؤه، لذا لا يُخفى شيء بسببه. يقبل repeat أو extras أو fit أو advanced أو defaults أو preview أو أحد الإعدادات المتقدمة باسمه.",
   "lint.strict_unknown": "\"{key}: {value}\" في strict: ليس شيئاً يعرفه، لذا لا يفعل شيئاً ويأتي ذلك المستوى من البطاقة أو قسمها أو عرضها أو لوحة التحكم بدلاً من ذلك. يقبل {allowed}.",
   "lint.where": " (عند {path})",
   "tools.health_unread": "بطاقات تستخدم \"{template}\" في {view} وتمرّر \"{name}\" الذي لا يقرؤه القالب أبداً: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "الوحدة",
   "declarations.allowed": "القيم المسموح بها، مفصولة بفواصل",
   "declarations.multiline": "مساحة لأكثر من سطر",
+  "declarations.multiple": "اختيار أكثر من قيمة",
   "declarations.pattern": "النمط الذي يجب أن تطابقه القيمة",
   "declarations.selector": "المحدِّد (متقدم)",
   "declarations.add": "إضافة متغير",

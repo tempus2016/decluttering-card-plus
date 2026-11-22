@@ -1,7 +1,7 @@
 import { DeclutteringCardConfig, TemplateConfig, VariablesConfig } from '../types';
 import deepReplace, { BuildExtras } from '../deep-replace';
 import { variableRows } from '../trace';
-import { normaliseVariables, PLACEHOLDER, resolveVariables, variableValues } from '../variables';
+import { normaliseVariables, PLACEHOLDER, resolveVariables, VariableDeclaration, variableValues } from '../variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -79,6 +79,41 @@ export function filledDefault(
   const text = JSON.stringify(result);
   if (typeof text === 'string' && PLACEHOLDER.test(text)) return undefined;
   return result;
+}
+
+/**
+ * #487: whether a value the card sets is only its default written in again, so it has no
+ * Reset and no Default: line - typed back by hand, it reads as the field left alone. The
+ * value stays in the card, pinned there if the default changes later. Text and numbers
+ * compare as text: a text field hands back "30" for a default of 30.
+ */
+export function matchesDefault(value: unknown, fallback: unknown): boolean {
+  if (isShownValue(value, fallback)) return true;
+  const plain = (each: unknown): boolean => ['string', 'number', 'boolean'].includes(typeof each);
+  return plain(value) && plain(fallback) && String(value) === String(fallback);
+}
+
+/*
+ * #491: an `allowed:` made from a placeholder - `allowed: '[[menu_choices|with]]'` - filled in
+ * the way a default is, so the dropdown offers what the item template makes. One value comes
+ * back as a list of one. One that cannot be filled in yet offers nothing rather than brackets.
+ * A written list is handed back untouched.
+ */
+export function filledAllowed(
+  declaration: VariableDeclaration,
+  variables: VariablesConfig[] | VariablesConfig | undefined,
+  template: TemplateConfig,
+  hass?: any,
+  extras?: BuildExtras,
+): VariableDeclaration {
+  const written: unknown = declaration.allowed;
+  if (written === undefined) return declaration;
+  const json = JSON.stringify(written);
+  if (typeof json !== 'string' || !PLACEHOLDER.test(json)) return declaration;
+  const value = filledDefault(written, variables, template, hass, extras);
+  const allowed =
+    value === undefined || value === null || value === '' ? undefined : Array.isArray(value) ? value : [value];
+  return { ...declaration, allowed };
 }
 
 /** Whether what came back from the form is still the default it was shown, untouched. */

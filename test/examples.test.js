@@ -108,10 +108,10 @@ const problems = (template, example) =>
   failed.find((each) => each.template === template && each.example === example)?.problems ?? [];
 
 check('a value the declared type will not take', problems('tile', 2), [
-  'The value of entity is not one the template accepts. It expects: an entity in light.',
+  'The value of entity is not one the template accepts. It expects: an entity in light. It is now: "switch.kettle".',
 ]);
 check('a value outside allowed:', problems('tile', 3), [
-  'The value of size is not one the template accepts. It expects: small, big.',
+  'The value of size is not one the template accepts. It expects: small, big. It is now: "huge".',
 ]);
 check('a variable left unset, which a strict card would refuse', problems('tile', 4), [
   'Leaves [[entity]] unset, so it shows as written and a strict card refuses it.',

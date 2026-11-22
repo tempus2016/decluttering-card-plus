@@ -313,6 +313,47 @@ check(
   false,
 );
 
+// A template's keys are closed (#494); a card's are not, since Home Assistant adds its own.
+check(
+  "the card's list of template keys is the schema's",
+  [...require('../.test-build/template-keys').TEMPLATE_KEYS].sort(),
+  Object.keys(built['template.json'].definitions.TemplateConfig.properties).sort(),
+);
+check('a misspelt template key fails', valid('template.json', { variblees: 'blah', card: {} }), false);
+check(
+  'and the dashboard schema catches it under decluttering_templates',
+  valid('dashboard.json', { decluttering_templates: { foobar: { variblees: 'blah', card: {} } } }),
+  false,
+);
+check(
+  'every key the template type declares still passes',
+  (() => {
+    const properties = built['template.json'].definitions.TemplateConfig.properties;
+    return Object.keys(properties).filter((key) => {
+      const one = { [key]: null };
+      if (ajv.validate(`${SITE}template.json`, one)) return false;
+      return ajv.errors.some((error) => error.keyword === 'additionalProperties');
+    });
+  })(),
+  [],
+);
+check(
+  'a template card still takes keys of its own',
+  valid('card.json', {
+    type: 'custom:decluttering-template-plus',
+    template: 't',
+    card: {},
+    view_layout: { position: 'main' },
+    card_mod: { style: 'ha-card {}' },
+  }),
+  true,
+);
+check(
+  'a card still takes keys of its own',
+  valid('card.json', { type: CARD, template: 't', view_layout: { position: 'main' } }),
+  true,
+);
+
 test('the committed schemas match a fresh build', () => {
   for (const name of ['template.json', 'card.json', 'dashboard.json']) {
     const file = path.join(__dirname, '..', 'docs-theme', 'schema', name);

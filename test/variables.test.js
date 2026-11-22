@@ -698,13 +698,13 @@ const VALIDATED = {
 };
 
 check('a value that fails its declared pattern is reported', validateDeclared([{ entity: 'switch.fan' }], VALIDATED), [
-  { name: 'entity', expected: '^light\\.' },
+  { name: 'entity', expected: '^light\\.', value: '"switch.fan"' },
 ]);
 
 check('a value that matches its pattern is fine', validateDeclared([{ entity: 'light.hall' }], VALIDATED), []);
 
 check('a value outside the allowed list is reported with the list', validateDeclared([{ size: 'medium' }], VALIDATED), [
-  { name: 'size', expected: 'small, large, 0, false' },
+  { name: 'size', expected: 'small, large, 0, false', value: '"medium"' },
 ]);
 
 check(
@@ -1192,7 +1192,9 @@ check(
   [],
 );
 
-check('a plain pattern is still checked', validateDeclared([{ c: 'A' }], RISKY), [{ name: 'c', expected: '^[a-z]+$' }]);
+check('a plain pattern is still checked', validateDeclared([{ c: 'A' }], RISKY), [
+  { name: 'c', expected: '^[a-z]+$', value: '"A"' },
+]);
 
 check(
   'a value longer than anything a pattern is for is left unchecked',

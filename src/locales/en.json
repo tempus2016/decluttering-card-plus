@@ -78,6 +78,7 @@
   "editor.unused_one": "This variable is set here but never used by the template: {names}.",
   "editor.unused_many": "These variables are set here but never used by the template: {names}.",
   "editor.invalid_value": "The value of {name} is not one the template accepts. It expects: {expected}.",
+  "editor.invalid_value_now": "It is now: {value}.",
   "editor.card_variable_clear": "Choose a different card",
   "editor.eject": "Replace this card with what it builds",
   "editor.eject_confirm": "Press again to replace it - the template will no longer apply",
@@ -218,6 +219,8 @@
   "tools.health_unset": "Cards using \"{template}\" with no value for {names}: {count}.",
 
   "tools.health_unused": "Templates nothing on this dashboard uses: {names}.",
+
+  "tools.health_unknown_key": "Template {template} has {key}:, which no template reads, so it is ignored.",
 
   "tools.rename_header": "Rename",
   "tools.rename_hint": "Changes the name here and in every card on this dashboard that uses it. Cards on other dashboards are not touched, even ones that borrow this dashboard's templates.",
@@ -521,7 +524,7 @@
   "lint.translation_missing_in": "{language} has no text for {keys}, which other languages translate, so it shows another language's text there.",
   "lint.language_not_mapping": "language: should be a mapping of language codes, each holding a mapping of texts.",
   "lint.language_entry_not_mapping": "language: {language} should be a mapping of texts.",
-  "lint.editor_hide_unknown": "\"{name}\" is not a part of the card editor that can be hidden, so nothing is hidden for it. It takes repeat, extras, fit, advanced, defaults, or one of the Advanced settings by name.",
+  "lint.editor_hide_unknown": "\"{name}\" is not a part of the card editor that can be hidden, so nothing is hidden for it. It takes repeat, extras, fit, advanced, defaults, preview, or one of the Advanced settings by name.",
   "lint.strict_unknown": "\"{key}: {value}\" in strict: is not something it knows, so it does nothing and that level comes from the card, its section, its view or the dashboard instead. It takes {allowed}.",
   "lint.where": " (at {path})",
   "tools.health_unread": "Cards using \"{template}\" on {view} that pass \"{name}\", which the template never reads: {count}.",
@@ -771,6 +774,7 @@
   "declarations.unit": "Unit",
   "declarations.allowed": "Allowed values, separated by commas",
   "declarations.multiline": "Room for more than one line",
+  "declarations.multiple": "Pick more than one",
   "declarations.pattern": "Pattern the value must match",
   "declarations.selector": "Selector (advanced)",
   "declarations.add": "Add a variable",

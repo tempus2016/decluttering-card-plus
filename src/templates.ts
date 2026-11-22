@@ -1,4 +1,5 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
+import { unknownTemplateKeys, UnknownTemplateKey } from './template-keys';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
 import {
   LetLayer,
@@ -112,6 +113,7 @@ export function checkDashboard(
   missingTemplates: { template: string; count: number; closest?: string }[];
   unsetVariables: { template: string; names: string[]; count: number }[];
   unusedTemplates: string[];
+  unknownKeys: UnknownTemplateKey[];
 } {
   const templates = collectTemplates(ll);
   // A view's or a section's decluttering_defaults and decluttering_let give names values
@@ -213,6 +215,8 @@ export function checkDashboard(
       // One named after a built-in step never is (#307): the built-in runs instead.
       .filter((name) => !(isFunctionTemplate(templates[name]) && !isBuiltinStepName(name) && stepsUsed().has(name)))
       .sort(),
+    // A key no template reads is passed over without a word, so a misspelt one looks like it works (#494).
+    unknownKeys: unknownTemplateKeys(ll),
   };
 }
 

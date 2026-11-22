@@ -218,6 +218,7 @@ export class DeclutteringHealthPanel extends LitElement {
       !report.missingTemplates.length &&
       !report.unsetVariables.length &&
       !report.unusedTemplates.length &&
+      !report.unknownKeys.length &&
       !loops.length &&
       !retired.length &&
       !failedExamples.length &&
@@ -334,6 +335,14 @@ export class DeclutteringHealthPanel extends LitElement {
                               ${localize('tools.health_rename_to', { name: each.since.replacement }, this.hass)}
                             </ha-button>`
                           : ''
+                      }
+                    </ha-alert>`,
+                )}
+                ${report.unknownKeys.map(
+                  (each) =>
+                    html`<ha-alert alert-type="warning">
+                      ${localize('tools.health_unknown_key', { template: each.template, key: each.key }, this.hass)}${
+                        each.closest ? localize('error.did_you_mean', { closest: each.closest }, this.hass) : ''
                       }
                     </ha-alert>`,
                 )}

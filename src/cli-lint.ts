@@ -156,7 +156,9 @@ export function lintDashboard(
     }
   }
 
-  const health = partial ? { missingTemplates: [], unsetVariables: [], unusedTemplates: [] } : checkDashboard(config);
+  const health = partial
+    ? { missingTemplates: [], unsetVariables: [], unusedTemplates: [], unknownKeys: [] }
+    : checkDashboard(config);
   for (const missing of health.missingTemplates) {
     findings.push({
       file,
@@ -194,6 +196,18 @@ export function lintDashboard(
     });
   }
 
+  for (const unknown of health.unknownKeys) {
+    findings.push({
+      file,
+      level: 'warning',
+      line: at(unknown.template),
+      path: `${unknown.template}.${unknown.key}`,
+      message:
+        say('tools.health_unknown_key', { template: unknown.template, key: unknown.key }) +
+        (unknown.closest ? say('error.did_you_mean', { closest: unknown.closest }) : ''),
+      template: unknown.template,
+    });
+  }
   for (const unread of partial ? [] : checkUnreadVariables(config, templates)) {
     const extra =
       unread.where === 'for_each'

@@ -1,4 +1,5 @@
 import { withSlotVariables } from './slots';
+import { unknownTemplateKeys } from './template-keys';
 import { LitElement, html, TemplateResult, css, CSSResult } from 'lit';
 import { html as staticHtml, unsafeStatic } from 'lit/static-html.js';
 import { property, state } from 'lit/decorators.js';
@@ -87,7 +88,9 @@ import { EditorHidden, editorHidden, withoutFields } from './card-editor/hide';
 import {
   DefaultPlaces,
   defaultText,
+  filledAllowed,
   filledDefault,
+  matchesDefault,
   isShownValue,
   defaultTarget,
   hasResetSlot,
@@ -399,22 +402,22 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         padding-inline-start: 16px;
         overflow-wrap: anywhere;
       }
-      .preview {
-        border: 1px solid var(--divider-color);
-        border-radius: 12px;
-        padding: 12px 16px;
+      ha-expansion-panel.preview {
+        display: block;
         margin: 0 0 16px;
-        background: var(--card-background-color);
       }
-      .preview-head {
-        display: flex;
-        align-items: center;
-        gap: 12px;
+      .preview-body {
+        padding: 8px 8px 0;
+      }
+      .preview-body > .segmented {
         margin: 0 0 10px;
       }
       .preview-title {
-        flex: 1;
         font-weight: 500;
+      }
+      ha-alert.preview-held {
+        display: block;
+        margin: 0 0 16px;
       }
       .segmented {
         display: inline-flex;
@@ -667,6 +670,13 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   private _resultTimer?: ReturnType<typeof setTimeout>;
   private _resultDue = false;
   @state() private _copied = false;
+  /*
+   * #488: whether the "What it builds" panel is open. It starts folded - most cards never need
+   * the YAML - and stays as it was left for as long as the editor is open.
+   */
+  @state() private _resultOpen = false;
+  // The required variables the Result's last build left unset, for the held banner at the top (#488).
+  private _resultNeeded: string[] = [];
   private _lastYaml?: string;
   private _markedLines: PreviewLine[] = [];
   @state() private _cannotOpen = false;
@@ -760,7 +770,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
    * A declaration's control, with `options_from:` looked up the first time it is drawn while
    * hass is here and kept for as long as the editor is open (#404).
    */
-  private _selectorFor(declaration: VariableDeclaration): unknown {
+  private _selectorFor(declaration: VariableDeclaration, template: TemplateConfig | undefined): unknown {
+    declaration = this._filledAllowed(declaration, template);
     if (!hasOptionsFrom(declaration)) return declarationSelector(declaration);
     const key = JSON.stringify([
       declaration.options_from,
@@ -773,6 +784,32 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     const selector = optionsFromSelector(declaration, this.hass);
     if (this.hass) this._optionsFrom.set(key, selector);
     return selector;
+  }
+
+  // #491: each `allowed:` made from a placeholder, filled in, by variable name - with what it was filled from.
+  private _allowedFills = new Map<string, { key: string; declaration: VariableDeclaration }>();
+
+  /*
+   * A declaration with an `allowed:` made from a placeholder filled in, the way a default is
+   * (#491). Worked out again only when the card's variables or the `allowed:` change, not on
+   * every state change.
+   */
+  private _filledAllowed(declaration: VariableDeclaration, template: TemplateConfig | undefined): VariableDeclaration {
+    const written: unknown = declaration.allowed;
+    if (!template || written === undefined || Array.isArray(written)) return declaration;
+    const key = JSON.stringify([this._config?.template, written, this._config?.variables]);
+    const cached = this._allowedFills.get(declaration.name);
+    if (cached && cached.key === key) return cached.declaration;
+    const { extras, hass } = this._defaultReads(template);
+    const filled = filledAllowed(
+      declaration,
+      withoutVariable(this._config?.variables, declaration.name),
+      template,
+      hass,
+      extras,
+    );
+    if (this.hass) this._allowedFills.set(declaration.name, { key, declaration: filled });
+    return filled;
   }
 
   public setConfig(config: DeclutteringCardConfig): void {
@@ -970,8 +1007,10 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     }
 
     const retired = deprecationOf(template);
+    // Drawn first, as the banner at the top needs to know what its build left unset (#488).
+    const result = this._renderResult(template, hidden.preview);
     return html`
-      ${template?.description ? html`<p class="description">${template.description}</p>` : html``}
+      ${this._renderHeld()} ${template?.description ? html`<p class="description">${template.description}</p>` : html``}
       ${
         /*
          * The form has no way to edit a mapping of domains to templates, but it does not
@@ -991,8 +1030,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
               }
             </ha-alert>`
       }
-      ${this._renderResume()} ${this._renderTemplatePicker(error.template)} ${this._renderResult(template)}
-      ${this._renderSource(template)} ${this._renderPresets(template)} ${this._renderDiagnostics(template, readable)}
+      ${this._renderResume()} ${this._renderTemplatePicker(error.template)} ${result} ${this._renderSource(template)}
+      ${this._renderPresets(template)} ${this._renderDiagnostics(template, readable)}
       ${this._renderVariablesForm(data, shown, hidden, template, error)} ${this._renderCardVariables(shown)}
       ${this._renderRepeat(repeatable && !hidden.repeat, template)}
       ${this._renderLayout(data, repeatable && !hidden.repeat, hidden)} ${this._renderEmptySlot(repeatable)}
@@ -1528,7 +1567,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     }
   }
 
-  private _renderResult(named: TemplateConfig | undefined): TemplateResult {
+  private _renderResult(named: TemplateConfig | undefined, leftOut = false): TemplateResult {
+    this._resultNeeded = [];
     if (!this._config) return html``;
     // for_each renders the same template once per item, so one copy stands for all of
     // them - showing every copy would bury the thing you opened this to look at.
@@ -1636,31 +1676,48 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       typeof resolved === 'object' &&
       !inSectionStrategyEditor(this);
     const needed = items?.length || held ? [] : requiredUnset(getDeclarations(template), unresolved);
+    this._resultNeeded = needed;
+    // `editor_hide: preview` (#488): still built, so a held preview is still said at the top.
+    if (leftOut) return html``;
+    const copiesLine = html`<span class="preview-title" slot="header"
+      >${localize('editor.preview.header', undefined, this.hass)}${copies}</span
+    >`;
+    /*
+     * #488: folded, only the header row is drawn - nothing inside is made, so a Rendered view
+     * builds no card while it cannot be seen.
+     */
+    const panel = (body: TemplateResult): TemplateResult =>
+      html`<ha-expansion-panel
+        outlined
+        class="preview"
+        .expanded=${this._resultOpen}
+        @expanded-will-change=${this._resultToggled}
+        @expanded-changed=${this._resultToggled}
+        >${copiesLine}${body}</ha-expansion-panel
+      >`;
+    if (!this._resultOpen) return panel(html``);
 
-    return html`
-      <div class="preview">
-        <div class="preview-head">
-          <span class="preview-title">${localize('editor.preview.header', undefined, this.hass)}${copies}</span>
-          ${
-            modes.length > 1
-              ? html`<div class="segmented" role="group">
-                  ${modes.map(
-                    (each) =>
-                      html`<button
-                        type="button"
-                        class=${each === mode ? 'on' : ''}
-                        aria-pressed=${each === mode ? 'true' : 'false'}
-                        @click=${(): void => {
-                          this._previewMode = each;
-                        }}
-                      >
-                        ${localize(`editor.preview.${each}`, undefined, this.hass)}
-                      </button>`,
-                  )}
-                </div>`
-              : html``
-          }
-        </div>
+    return panel(html`
+      <div class="preview-body">
+        ${
+          modes.length > 1
+            ? html`<div class="segmented" role="group">
+                ${modes.map(
+                  (each) =>
+                    html`<button
+                      type="button"
+                      class=${each === mode ? 'on' : ''}
+                      aria-pressed=${each === mode ? 'true' : 'false'}
+                      @click=${(): void => {
+                        this._previewMode = each;
+                      }}
+                    >
+                      ${localize(`editor.preview.${each}`, undefined, this.hass)}
+                    </button>`,
+                )}
+              </div>`
+            : html``
+        }
         ${
           mode === 'rendered'
             ? html`<div class="rendered">
@@ -1748,8 +1805,54 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
           }
         </div>
       </div>
-    `;
+    `);
   }
+
+  // #488: the panel opened or folded by hand. Opened before it measures itself, so it opens to the full height.
+  private _resultToggled = (ev: CustomEvent): void => {
+    ev.stopPropagation();
+    this._resultOpen = !!ev.detail?.expanded;
+  };
+
+  /*
+   * #488: a held preview said at the top of the editor, whether the panel is folded, open or
+   * left out - with the panel's own Resume and Render now. Nothing while nothing is held.
+   */
+  private _renderHeld(): TemplateResult {
+    const paused = previewPauseOn();
+    const needed = this._resultNeeded;
+    if (!paused && !needed.length) return html``;
+    return html`<ha-alert
+      class="preview-held"
+      alert-type=${paused && previewSlowPause() !== undefined ? 'error' : 'info'}
+    >
+      ${
+        paused
+          ? this._pausedText()
+          : localize(
+              needed.length === 1 ? 'card.preview_required_one' : 'card.preview_required_many',
+              { which: needed.map((name) => `[[${name}]]`).join(', ') },
+              this.hass,
+            )
+      }
+      <div class="actions">
+        ${
+          paused
+            ? html`<ha-button
+                title=${localize('editor.preview.pause_helper', undefined, this.hass)}
+                @click=${(): void => setPreviewPaused(false)}
+              >
+                ${localize('editor.preview.resume', undefined, this.hass)}
+              </ha-button>`
+            : html``
+        }
+        <ha-button @click=${(): void => renderPreviewNow()}>
+          ${localize('card.preview_render_now', undefined, this.hass)}
+        </ha-button>
+      </div>
+    </ha-alert>`;
+  }
+
   private _copyYaml(yaml: string): void {
     void copyText(yaml).then((ok) => {
       this._copied = ok;
@@ -2560,7 +2663,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
           : declaration.description,
         // Found options (#404), then a declared selector, then what its `type:` stands for,
         // then its allowed values.
-        selector: this._selectorFor(declaration),
+        selector: this._selectorFor(declaration, template),
         required: declaration.required === true && !fromCopy,
         disabled: fromCopy,
       };
@@ -2781,10 +2884,12 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       const filled = computed
         ? filledDefault(target.value, withoutVariable(variables, declaration.name), template, scoped, extras)
         : target.value;
+      const fallback = filled === undefined ? target.value : filled;
       resets.set(declaration.name, {
-        text: defaultText(filled === undefined ? target.value : filled) || '""',
+        text: defaultText(fallback) || '""',
         source: target.source,
-        set: declaration.name in own,
+        // Set to its own default is no different to look at than left alone (#487).
+        set: declaration.name in own && !matchesDefault(own[declaration.name], fallback),
       });
     }
     return resets;
@@ -2897,7 +3002,18 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       [this._config?.for_each_from, this._config?.on_error],
       itemTemplatesReached(template, itemTemplatesOf(this._lovelace ?? getLovelaceConfig())),
     );
-    const invalid = validateDeclared(this._config?.variables, template, this.hass);
+    const reads = this._defaultReads(template);
+    // A value holding a placeholder is judged by what it becomes, as the field shows it (#490).
+    const invalid = validateDeclared(
+      this._config?.variables,
+      template,
+      this.hass,
+      (value, name) =>
+        template
+          ? filledDefault(value, withoutVariable(this._config?.variables, name), template, reads.hass, reads.extras)
+          : undefined,
+      (declaration) => this._filledAllowed(declaration, template),
+    );
     // A template can say which of its variables it cannot do without. Those are still not
     // errors that block a save - the template may be edited next - but they are the ones
     // worth reading first, so they are separated out and coloured accordingly.
@@ -2931,6 +3047,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const kind = getThingType(template);
     const misplaced = misplacedOverrides(this._config, kind);
     const failed = this._failedChecks(template);
+    // A key the chosen template has that no template reads, such as variblees: (#494).
+    const unknownKeys = unknownTemplateKeys(this._lovelace).filter((each) => each.template === this._config?.template);
     return html`
       ${failed.map(
         (alert) =>
@@ -3000,10 +3118,19 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
             </ha-alert>`
           : html``
       }
+      ${unknownKeys.map(
+        (each) =>
+          html`<ha-alert alert-type="warning">
+            ${localize('tools.health_unknown_key', { template: each.template, key: each.key }, this.hass)}${
+              each.closest ? localize('error.did_you_mean', { closest: each.closest }, this.hass) : ''
+            }
+          </ha-alert>`,
+      )}
       ${invalid.map(
         (each) =>
           html`<ha-alert alert-type="warning">
             ${localize('editor.invalid_value', { name: each.name, expected: each.expected }, this.hass)}
+            ${localize('editor.invalid_value_now', { value: each.value }, this.hass)}
           </ha-alert>`,
       )}
       ${
