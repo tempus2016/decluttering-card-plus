@@ -64,7 +64,7 @@
     "typescript-eslint": "^8.72.2"
   },
   "dependencies": {
-    "custom-card-helpers": "^2.0.0",
+    "custom-card-helpers": "^2.2.1",
     "home-assistant-js-websocket": "^9.8.1",
     "js-yaml": "^5.5.0",
     "lit": "^3.3.3"
