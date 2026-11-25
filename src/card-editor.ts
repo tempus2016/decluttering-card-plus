@@ -125,8 +125,11 @@ import {
   ByDomainRow,
   byDomainRows,
   cardTemplateOptions,
+  hasByDomain,
   isReadableByDomain,
   remainingDomains,
+  startByDomain,
+  stopByDomain,
 } from './card-editor/by-domain';
 import {
   applyRepeat,
@@ -145,16 +148,44 @@ import {
   withRepeatMode,
 } from './card-editor/repeat-builder';
 import { knownDomains } from './card-editor/repeat-builder';
-import { countText, filterPickerItems, groupHeading, PickerItem, pickerItems } from './card-editor/template-picker';
+import {
+  countText,
+  filterPickerItems,
+  groupHeading,
+  isBaseTemplate,
+  PickerItem,
+  pickerItems,
+} from './card-editor/template-picker';
 import { ComboItem, pickerList } from './card-editor/generic-picker';
 import { isDefinedHere } from './template-editor/common';
 import { applyPreset, presetConflicts, presetMatching, presetOptions } from './card-editor/presets';
 import { holdUndo } from './undo';
+import {
+  choosingTemplate,
+  isBareStub,
+  keepingTemplates,
+  newTemplateCard,
+  withLibraryInstalled,
+} from './card-editor/first-run';
+import { LIBRARY, libraryEntry, libraryNeeds } from './library';
+import { GalleryEntry, galleryEntries } from './gallery';
+import type { GalleryStatus } from './gallery-dialog';
+import { missingCustomCards } from './share';
+import { VERSION } from './version';
+import {
+  namesToFill,
+  repeatsNow,
+  requiredProgress,
+  StatusCounts,
+  statusLevel,
+  statusParts,
+} from './card-editor/status';
 import { Alert, checksOf, runChecks } from './checks';
 import {
   currentViewIndex,
   dialogPlace,
   editDialogOf,
+  GALLERY_TAG,
   inSectionStrategyEditor,
   getThingType,
   isVariablesShape,
@@ -167,9 +198,28 @@ import {
   thingContent,
 } from './shared';
 
+// One thing the diagnostics say, and whether it is the required variables left unset.
+interface DiagnosisAlert {
+  level: 'error' | 'warning' | 'info';
+  body: TemplateResult;
+  fill: boolean;
+}
+
+interface Diagnosis {
+  alerts: DiagnosisAlert[];
+  // The required variables with no value, which the counter and the status line count.
+  needed: string[];
+}
+
 // Declared variables get their own form field, and the prefix keeps a variable called
 // "template" from colliding with the field that chooses the template.
 const VARIABLE_FIELD_PREFIX = 'variable:';
+
+// mdi:alert-circle-outline and mdi:information-outline, on the status line under the preview.
+const ALERT_PATH =
+  'M11,15H13V17H11V15M11,7H13V13H11V7M12,2C6.47,2 2,6.5 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z';
+const INFO_PATH =
+  'M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z';
 
 // mdi:close, on a rebuild_on placeholder's remove button (#411).
 const REMOVE_PATH =
@@ -523,6 +573,16 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       .item-row .spacer {
         flex: 1;
       }
+      .by-domain-switch {
+        display: block;
+        margin: 12px 0 4px;
+      }
+      .by-domain-off .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
       .by-domain h3 {
         font-size: 16px;
         font-weight: 500;
@@ -548,6 +608,141 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       .picker {
         display: block;
         margin: 0 0 16px;
+      }
+      .first-run {
+        display: grid;
+        gap: 12px;
+        margin: 0 0 16px;
+      }
+      .first-run-empty {
+        border: 1px dashed var(--divider-color);
+        border-radius: 12px;
+        padding: 20px 16px;
+        text-align: center;
+      }
+      .first-run-empty ha-icon {
+        --mdc-icon-size: 32px;
+        color: var(--secondary-text-color);
+      }
+      .first-run-empty h3 {
+        margin: 8px 0 4px;
+        font-size: 16px;
+        font-weight: 500;
+      }
+      .first-run-empty .actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .starters {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 8px;
+        padding: 0 12px 12px;
+      }
+      .starter {
+        display: grid;
+        gap: 2px;
+        text-align: start;
+        font: inherit;
+        color: var(--primary-text-color);
+        background: var(--card-background-color);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+      .starter:hover,
+      .starter:focus-visible {
+        border-color: var(--primary-color);
+      }
+      .starter:disabled {
+        opacity: 0.6;
+        cursor: progress;
+      }
+      .starter-name {
+        font-family: var(--ha-font-family-code, monospace);
+        font-weight: 500;
+      }
+      .starter-about,
+      .starter small {
+        color: var(--secondary-text-color);
+      }
+      .variables {
+        display: block;
+        margin: 0 0 16px;
+      }
+      /* A required field with no value, under it like the default line, in the error colour. */
+      .declared-field .required-line {
+        order: 1;
+        flex-basis: 100%;
+        padding: 0 12px;
+        font-size: 12px;
+        line-height: 16px;
+        color: var(--error-color);
+      }
+      .variables-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .variables-head h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+      }
+      .variables-head .counter {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        font-variant-numeric: tabular-nums;
+      }
+      .progress {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--divider-color);
+        margin: 6px 0 12px;
+        overflow: hidden;
+      }
+      .progress i {
+        display: block;
+        height: 100%;
+        background: var(--primary-color);
+        transition: width 0.2s ease;
+      }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 8px 0 16px;
+        padding: 4px 4px 4px 12px;
+        border-radius: 8px;
+        background: rgba(var(--rgb-warning-color, 255, 166, 0), 0.12);
+      }
+      .status.error {
+        background: rgba(var(--rgb-error-color, 219, 68, 55), 0.12);
+      }
+      .status.info {
+        background: rgba(var(--rgb-info-color, 3, 155, 229), 0.12);
+      }
+      .status ha-svg-icon {
+        flex: none;
+        color: var(--warning-color);
+      }
+      .status.error ha-svg-icon {
+        color: var(--error-color);
+      }
+      .status.info ha-svg-icon {
+        color: var(--info-color);
+      }
+      .status-text {
+        flex: 1;
+        min-width: 0;
+      }
+      .status-detail {
+        margin: -8px 0 16px;
       }
       .pick-row {
         padding: 4px 0;
@@ -675,6 +870,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
    * the YAML - and stays as it was left for as long as the editor is open.
    */
   @state() private _resultOpen = false;
+  // Whether the status line under the preview is opened to show everything it stands for.
+  @state() private _statusOpen = false;
   // The required variables the Result's last build left unset, for the held banner at the top (#488).
   private _resultNeeded: string[] = [];
   private _lastYaml?: string;
@@ -685,11 +882,18 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _matchesOpen = false;
   // Idea 16: rows added but not complete yet, which the mapping cannot hold (round 1, B3).
   @state() private _byDomainDraft?: ByDomainRow[];
+  // The by-domain switch turned off, waiting for a yes before the mapping is dropped.
+  @state() private _byDomainOffPending = false;
   // Which hand-written items are open for editing, by position.
   @state() private _openItems = new Set<number>();
   private _dragging?: number;
   // Idea 21: the template combo box's rows, as filtered by what was typed.
   @state() private _pickerFilter = '';
+  // The first run: the template gallery, and a starter template being put on the dashboard.
+  @state() private _galleryOpen = false;
+  @state() private _gallerySelected?: string;
+  @state() private _installing = false;
+  @state() private _installError?: string;
   private _pickerItems: PickerItem[] = [];
 
   // The template the list was made for: a base it uses stays listed (#444).
@@ -999,26 +1203,36 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     // Templates borrowed from another dashboard are still on their way, so do not accuse
     // the user of a bad name until they have arrived.
     // A card choosing by domain may have no template: of its own at all.
-    if (!template && !this._loadingTemplates && !(byDomain && !this._config.template)) {
+    // A card that names no template yet is choosing one, not naming one that is not there.
+    const choosing = choosingTemplate(this._config);
+    if (!template && !this._loadingTemplates && !(byDomain && !this._config.template) && !choosing) {
       error.template = localize('editor.no_such_template', undefined, this.hass);
     }
     if (!readable) {
       error.variables = localize('error.variables_shape', undefined, this.hass);
     }
 
+    // The picker's stub as it came: choosing a template is all there is to do yet.
+    if (choosing && isBareStub(this._config)) {
+      return html`${this._renderResume()} ${this._renderTemplatePicker(undefined)} ${this._renderFirstRun()}`;
+    }
+
     const retired = deprecationOf(template);
-    // Drawn first, as the banner at the top needs to know what its build left unset (#488).
+    // Drawn first, as the status line needs to know what its build left unset (#488).
     const result = this._renderResult(template, hidden.preview);
+    const diagnosis = this._diagnose(template, readable);
+    /*
+     * The order (UX pass): choose the template, fill its variables, see what it builds with
+     * one line for everything the diagnostics say, and the rest folded into Advanced. A card
+     * that repeats keeps its Repeat out in the open, since the repeat is what that card is.
+     */
+    const repeatOut = repeatsNow(this._config as Record<string, unknown>);
+    const repeatBlock = html`${this._renderRepeat(repeatable && !hidden.repeat, template)}
+    ${this._renderLayout(data, repeatable && !hidden.repeat, hidden)} ${this._renderEmptySlot(repeatable)}`;
     return html`
-      ${this._renderHeld()} ${template?.description ? html`<p class="description">${template.description}</p>` : html``}
-      ${
-        /*
-         * The form has no way to edit a mapping of domains to templates, but it does not
-         * need one to leave it alone: every save carries the rest of the config through,
-         * and the mapping is changed in the code editor.
-         */
-        byDomain ? this._renderByDomain(byDomain) : html``
-      }
+      ${this._renderHeld()} ${this._renderResume()} ${this._renderTemplatePicker(error.template)}
+      ${choosing ? this._renderFirstRun() : html``} ${this._renderSource(template)}
+      ${template?.description ? html`<p class="description">${template.description}</p>` : html``}
       ${
         retired === undefined
           ? html``
@@ -1030,13 +1244,125 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
               }
             </ha-alert>`
       }
-      ${this._renderResume()} ${this._renderTemplatePicker(error.template)} ${result} ${this._renderSource(template)}
-      ${this._renderPresets(template)} ${this._renderDiagnostics(template, readable)}
-      ${this._renderVariablesForm(data, shown, hidden, template, error)} ${this._renderCardVariables(shown)}
-      ${this._renderRepeat(repeatable && !hidden.repeat, template)}
-      ${this._renderLayout(data, repeatable && !hidden.repeat, hidden)} ${this._renderEmptySlot(repeatable)}
-      ${this._renderAdvanced(hidden)} ${this._renderSectionPerCopy()}
-      <decluttering-card-plus-health .hass=${this.hass} .lovelace=${this._lovelace}></decluttering-card-plus-health>
+      ${
+        /*
+         * The form has no way to edit a mapping of domains to templates, but it does not
+         * need one to leave it alone: every save carries the rest of the config through,
+         * and the mapping is changed in the code editor.
+         */
+        byDomain && (hidden.repeat || !repeatable) ? this._renderByDomain(byDomain) : html``
+      }
+      ${this._renderVariables(data, shown, hidden, template, error, diagnosis)} ${repeatOut ? repeatBlock : html``}
+      ${result} ${this._renderStatus(diagnosis)}
+      ${this._renderAdvanced(
+        hidden,
+        html`${this._renderPresets(template)} ${repeatOut ? html`` : repeatBlock}`,
+        html`${this._renderSectionPerCopy()}
+          <decluttering-card-plus-health
+            .hass=${this.hass}
+            .lovelace=${this._lovelace}
+          ></decluttering-card-plus-health>`,
+      )}
+    `;
+  }
+
+  /*
+   * The variables, straight after the picker: a heading with how many of the required ones
+   * are set and a bar that fills as they are, then the form. An empty required field says
+   * which template wants it.
+   */
+  private _renderVariables(
+    data: Record<string, unknown>,
+    shown: VariableDeclaration[],
+    hidden: EditorHidden,
+    template: TemplateConfig | undefined,
+    error: Record<string, string | string[]>,
+    diagnosis: Diagnosis,
+  ): TemplateResult {
+    const declarations = template ? getDeclarations(template) : [];
+    const progress = requiredProgress(
+      declarations,
+      this._hiddenNames(template, declarations),
+      namesToFill(diagnosis.needed, this._resultNeeded),
+    );
+    return html`
+      <section class="variables" aria-labelledby="variables-heading">
+        ${
+          shown.length
+            ? html`<div class="variables-head">
+                  <h3 id="variables-heading">${localize('editor.variables_label', undefined, this.hass)}</h3>
+                  ${
+                    progress.total
+                      ? html`<span class="counter">
+                          ${localize('editor.variables.required_set', progress, this.hass)}
+                        </span>`
+                      : html``
+                  }
+                </div>
+                ${
+                  progress.total
+                    ? html`<div
+                        class="progress"
+                        role="progressbar"
+                        aria-labelledby="variables-heading"
+                        aria-valuemin="0"
+                        aria-valuemax=${progress.total}
+                        aria-valuenow=${progress.set}
+                      >
+                        <i style=${`width: ${(100 * progress.set) / progress.total}%`}></i>
+                      </div>`
+                    : html``
+                }`
+            : html``
+        }
+        ${this._renderVariablesForm(data, shown, hidden, template, error, diagnosis.needed)}
+        ${this._renderCardVariables(shown)}
+      </section>
+    `;
+  }
+
+  /*
+   * Everything the diagnostics say, and the preview held for a required variable, as one
+   * line under the preview: what there is, and Show to read it in full.
+   */
+  private _renderStatus(diagnosis: Diagnosis): TemplateResult {
+    const paused = previewPauseOn();
+    const toFill = namesToFill(diagnosis.needed, paused ? [] : this._resultNeeded);
+    const counts: StatusCounts = {
+      toFill: toFill.length,
+      errors: diagnosis.alerts.filter((each) => each.level === 'error' && !each.fill).length,
+      warnings: diagnosis.alerts.filter((each) => each.level === 'warning').length,
+      notes: diagnosis.alerts.filter((each) => each.level === 'info').length,
+    };
+    const parts = statusParts(counts);
+    if (!parts.length) return html``;
+    const level = statusLevel(counts);
+    const open = this._statusOpen;
+    return html`
+      <div class="status ${level}" role="status">
+        <ha-svg-icon .path=${level === 'info' ? INFO_PATH : ALERT_PATH}></ha-svg-icon>
+        <span class="status-text">
+          ${parts.map((part) => localize(part.key, { count: part.count }, this.hass)).join(' · ')}
+        </span>
+        <ha-button
+          appearance="plain"
+          class="status-toggle"
+          aria-expanded=${open ? 'true' : 'false'}
+          @click=${(): void => {
+            this._statusOpen = !open;
+          }}
+        >
+          ${localize(open ? 'editor.status.hide' : 'editor.status.show', undefined, this.hass)}
+        </ha-button>
+      </div>
+      ${
+        open
+          ? html`<div class="status-detail">
+              ${!paused && this._resultNeeded.length ? this._renderHeldAlert(false) : html``}
+              ${diagnosis.alerts.map((each) => html`<ha-alert alert-type=${each.level}>${each.body}</ha-alert>`)}
+            </div>`
+          : html``
+      }
     `;
   }
 
@@ -1045,8 +1371,10 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
    * default, so a card that uses none of them looks exactly as it did; the summary says how
    * many are set so a card with a style or a fallback shows it without opening.
    */
-  private _renderAdvanced(hidden: EditorHidden): TemplateResult {
-    if (!this._config || hidden.advanced) return html``;
+  private _renderAdvanced(hidden: EditorHidden, before: TemplateResult, after: TemplateResult): TemplateResult {
+    if (!this._config) return html``;
+    // `editor_hide: advanced` takes the panel's own settings away; what moved into it stays, out in the open.
+    if (hidden.advanced) return html`${before} ${after}`;
     const template = this._templates?.[this._config.template as string];
     const count = advancedCount(this._config, template);
     const written = advancedData(this._config);
@@ -1073,6 +1401,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
           </span>
         </span>
         <div class="advanced-body">
+          ${before}
           ${this._renderAdvancedForm(
             data,
             withoutFields(
@@ -1093,6 +1422,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
                 ></${CardSlot}>`
               : html``
           }
+          ${after}
         </div>
       </ha-expansion-panel>
     `;
@@ -1818,8 +2148,15 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
    * #488: a held preview said at the top of the editor, whether the panel is folded, open or
    * left out - with the panel's own Resume and Render now. Nothing while nothing is held.
    */
+  /*
+   * At the top only while paused: a preview held for a required variable is said by the
+   * status line under the preview instead, and in full when it is opened (UX pass).
+   */
   private _renderHeld(): TemplateResult {
-    const paused = previewPauseOn();
+    return previewPauseOn() ? this._renderHeldAlert(true) : html``;
+  }
+
+  private _renderHeldAlert(paused: boolean): TemplateResult {
     const needed = this._resultNeeded;
     if (!paused && !needed.length) return html``;
     return html`<ha-alert
@@ -2076,6 +2413,209 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
         @value-changed=${this._templatePicked}
       ></ha-combo-box>
     `;
+  }
+
+  /* ------------------------------------------------------------ the first run */
+
+  // The templates this card could pick: base templates are only ever extended, never picked.
+  private _pickable(): string[] {
+    return Object.keys(this._templates ?? {}).filter((name) => !isBaseTemplate((this._templates ?? {})[name]));
+  }
+
+  /*
+   * A card with no template yet, on a dashboard with none to pick: what a template is, a way
+   * to start from the starter library, and a way to write one. With templates to pick, the
+   * picker above is the whole of it.
+   */
+  private _renderFirstRun(): TemplateResult {
+    if (!this._config || this._loadingTemplates || this._pickable().length) return this._renderCardGallery();
+    // Turning this card into a template card only works where a card can change type.
+    const canCreate = !!editDialogOf(this) && !inSectionStrategyEditor(this);
+    const starters = this._galleryEntries().filter((entry) => entry.source === 'library' && entry.kind === 'card');
+    return html`
+      <div class="first-run">
+        <div class="first-run-empty">
+          <ha-icon icon="mdi:view-dashboard-outline" aria-hidden="true"></ha-icon>
+          <h3>${localize('editor.first_run.empty_title', undefined, this.hass)}</h3>
+          <p class="hint">${localize('editor.first_run.empty_hint', undefined, this.hass)}</p>
+          <div class="actions">
+            <ha-button appearance="filled" @click=${(): void => void (this._galleryOpen = true)}>
+              ${localize('gallery.open', undefined, this.hass)}
+            </ha-button>
+            ${
+              canCreate
+                ? html`<ha-button appearance="outlined" @click=${this._createTemplate}>
+                    ${localize('editor.first_run.create', undefined, this.hass)}
+                  </ha-button>`
+                : html``
+            }
+          </div>
+        </div>
+        ${
+          starters.length
+            ? html`<ha-expansion-panel outlined expanded class="first-run-starters">
+                <span slot="header">${localize('share.library_header', undefined, this.hass)}</span>
+                <div class="starters">
+                  ${starters.map(
+                    (entry) =>
+                      html`<button
+                        type="button"
+                        class="starter"
+                        .disabled=${this._installing}
+                        title=${localize('editor.first_run.use', { name: entry.name }, this.hass)}
+                        @click=${(): void => void this._useLibrary(entry.name)}
+                      >
+                        <span class="starter-name">${entry.title}</span>
+                        <span class="starter-about">${entry.description}</span>
+                        <small
+                          >${
+                            entry.variables === 1
+                              ? localize('gallery.variables_one', undefined, this.hass)
+                              : localize('gallery.variables_many', { count: entry.variables }, this.hass)
+                          }</small
+                        >
+                      </button>`,
+                  )}
+                </div>
+              </ha-expansion-panel>`
+            : html``
+        }
+        ${this._installError ? html`<ha-alert alert-type="error">${this._installError}</ha-alert>` : html``}
+      </div>
+      ${this._renderCardGallery()}
+    `;
+  }
+
+  // "Create a template": this card becomes a template card, and the dialog opens its editor.
+  private _createTemplate = (): void => {
+    fireEvent(this, 'config-changed', {
+      config: newTemplateCard(Object.keys(this._templates ?? {})) as unknown as DeclutteringCardConfig,
+    });
+  };
+
+  private _galleryEntries(): GalleryEntry[] {
+    return galleryEntries(
+      { library: LIBRARY, installed: collectTemplates(this._lovelace) },
+      (name) => localize(`library.${name}.summary`, undefined, this.hass),
+      this.hass,
+    );
+  }
+
+  // What a gallery tile means for this dashboard. Installs land in decluttering_templates, which keeps the view as it is.
+  private _galleryStatus(entry: GalleryEntry | undefined): GalleryStatus {
+    const existing = Object.keys(collectTemplates(this._lovelace));
+    const library = entry?.source === 'library' ? libraryEntry(entry.name) : undefined;
+    const needs = library ? libraryNeeds(library, existing) : [];
+    return {
+      already: !!entry && (entry.source === 'installed' || existing.includes(entry.name)),
+      armed: false,
+      busy: this._installing,
+      needs,
+      brings: [],
+      missingCards: library
+        ? missingCustomCards(
+            [library.template, ...needs.map((each) => libraryEntry(each)?.template)].filter(
+              (each) => each !== undefined,
+            ),
+            isDefinedHere,
+          )
+        : [],
+      risks: [],
+      destination: 'root',
+      communityLoaded: false,
+      communityLoading: false,
+    };
+  }
+
+  // Made once, as the template editor's is: made again, its ha-dialog closes on the first click.
+  private _galleryDialog?: HTMLElement & Record<string, unknown>;
+
+  private _renderCardGallery(): TemplateResult {
+    if (!this._galleryOpen) return html``;
+    const entries = this._galleryEntries();
+    if (!this._galleryDialog) {
+      // By tag name: the dialog's class is in this same editors chunk.
+      const dialog = document.createElement(GALLERY_TAG) as HTMLElement & Record<string, unknown>;
+      dialog.addEventListener('gallery-closed', () => {
+        this._galleryOpen = false;
+      });
+      dialog.addEventListener('gallery-select', (ev) => {
+        this._gallerySelected = (ev as CustomEvent).detail?.key;
+      });
+      dialog.addEventListener('gallery-install', (ev) => {
+        const entry = this._galleryEntries().find((each) => each.key === (ev as CustomEvent).detail?.key);
+        if (entry?.source === 'library') void this._useLibrary(entry.name);
+      });
+      this._galleryDialog = dialog;
+    }
+    const dialog = this._galleryDialog;
+    dialog.hass = this.hass;
+    dialog.entries = entries;
+    // The shared store needs the template editor's checks before an install: it is browsed from there.
+    dialog.sources = ['library', 'installed'];
+    dialog.open = true;
+    dialog.selectedKey = this._gallerySelected;
+    dialog.status = this._galleryStatus(entries.find((entry) => entry.key === this._gallerySelected));
+    return html`${dialog}`;
+  }
+
+  /*
+   * A starter template put on the dashboard and picked for this card in one go. Saved through
+   * the one place every rewrite goes, so the toast can undo it; the dialog's copy of the
+   * dashboard is not brought up to date by Home Assistant, so the editor reads it again.
+   */
+  private async _useLibrary(name: string): Promise<void> {
+    if (!this._config || this._installing) return;
+    const before = this._config;
+    const existing = Object.keys(collectTemplates(getLovelacePanel()?.config ?? this._lovelace));
+    this._installError = undefined;
+    if (!existing.includes(name)) {
+      if (!getLovelacePanel()) {
+        this._installError = localize('tools.cannot_save_here', undefined, this.hass);
+        return;
+      }
+      this._installing = true;
+      try {
+        await rewriteDashboards(
+          this,
+          this.hass,
+          'library_install',
+          [{ urlPath: pageDashboard(), build: (config) => withLibraryInstalled(config, name, existing, VERSION) }],
+          editDialogOf(this) ? before : undefined,
+        );
+      } catch (err) {
+        this._installError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, this.hass);
+        return;
+      } finally {
+        this._installing = false;
+      }
+      const saved = getLovelacePanel()?.config;
+      if (saved) this.lovelace = saved;
+      this._keepOnDialogSave(name);
+    }
+    this._galleryOpen = false;
+    fireEvent(this, 'config-changed', { config: { ...this._config, template: name } as DeclutteringCardConfig });
+  }
+
+  /*
+   * The edit dialog saves this card into the dashboard as the dialog first had it, which would
+   * take the template just installed away again. Its save is wrapped to put it back, and the
+   * copy older dialogs build from is brought up to date.
+   */
+  private _keepOnDialogSave(name: string): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const params = (editDialogOf(this) as any)?._params as Record<string, any> | undefined;
+    if (!params) return;
+    const panel = getLovelacePanel();
+    if (panel?.config && params.lovelaceConfig) params.lovelaceConfig = panel.config;
+    if (typeof params.saveCardConfig !== 'function') return;
+    params.saveCardConfig = keepingTemplates(
+      params.saveCardConfig,
+      name,
+      () => getLovelacePanel(),
+      (ll) => Object.keys(collectTemplates(ll as LovelaceConfig)),
+      VERSION,
+    );
   }
 
   private _templatePicked(ev: CustomEvent): void {
@@ -2405,8 +2945,82 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
                 ? html``
                 : this._renderRepeatBuilder(template)
         }
+        ${this._renderByDomainSwitch()}
       </div>
     `;
+  }
+
+  /*
+   * A mapping of domains to templates, started from the form: the switch turns the table on
+   * with the card's template as what anything else uses, and off again - asking first, since
+   * that drops every row. A mapping the table cannot read keeps the code-editor alert.
+   */
+  private _renderByDomainSwitch(): TemplateResult {
+    if (!this._config) return html``;
+    const on = hasByDomain(this._config);
+    const schema = [
+      {
+        name: 'by_domain',
+        label: localize('editor.by_domain.switch', undefined, this.hass),
+        helper: localize('editor.by_domain.switch_helper', undefined, this.hass),
+        selector: { boolean: {} },
+      },
+    ];
+    return html`
+      <ha-form
+        class="by-domain-switch"
+        .hass=${this.hass}
+        .data=${{ by_domain: on }}
+        .schema=${schema}
+        .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+        .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+        @value-changed=${this._byDomainToggled}
+      ></ha-form>
+      ${
+        this._byDomainOffPending && on
+          ? html`<ha-alert alert-type="warning" class="by-domain-off">
+              ${localize('editor.by_domain.off_confirm', undefined, this.hass)}
+              <div class="actions">
+                <ha-button
+                  @click=${(): void => {
+                    this._byDomainOffPending = false;
+                    this._byDomainDraft = undefined;
+                    fireEvent(this, 'config-changed', { config: stopByDomain(this._config as DeclutteringCardConfig) });
+                  }}
+                >
+                  ${localize('editor.by_domain.off_remove', undefined, this.hass)}
+                </ha-button>
+                <ha-button
+                  @click=${(): void => {
+                    this._byDomainOffPending = false;
+                  }}
+                >
+                  ${localize('editor.by_domain.off_keep', undefined, this.hass)}
+                </ha-button>
+              </div>
+            </ha-alert>`
+          : html``
+      }
+      ${on ? this._renderByDomain(byDomainOf(this._config) ?? {}) : html``}
+    `;
+  }
+
+  private _byDomainToggled(ev: CustomEvent): void {
+    ev.stopPropagation();
+    if (!this._config) return;
+    const wanted = !!ev.detail?.value?.by_domain;
+    if (wanted === hasByDomain(this._config)) {
+      this._byDomainOffPending = false;
+      return;
+    }
+    if (wanted) {
+      this._byDomainOffPending = false;
+      fireEvent(this, 'config-changed', { config: startByDomain(this._config) });
+      return;
+    }
+    // Off drops every row, so it is asked first; the switch stays on until the answer.
+    this._byDomainOffPending = true;
+    this.requestUpdate();
   }
 
   // How the copies are laid out and where the card sits, under the repeat they belong to.
@@ -2768,6 +3382,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     hidden: EditorHidden,
     template: TemplateConfig | undefined,
     error: Record<string, string | string[]>,
+    // Required variables with no value: each says, under its field, which template wants it.
+    needed: string[] = [],
   ): TemplateResult {
     const resets = this._resetTargets(shown, template);
     const schema = this._formSchema(shown, hidden, template) as SchemaEntry[];
@@ -2793,8 +3409,15 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
        * width. A field that never can has no place, so it gets the width back on a phone.
        */
       return html`<div class="declared-field">
-        ${form([entry])} ${this._defaultLine(name, defaultLine(reset, hidden.defaults))}
-        ${this._leftBehindNote(name, template)}
+        ${form([entry])}
+        ${
+          needed.includes(name)
+            ? html`<div class="required-line" data-required=${name}>
+                ${localize('editor.variables.required_by', { template: this._config?.template ?? '' }, this.hass)}
+              </div>`
+            : html``
+        }
+        ${this._defaultLine(name, defaultLine(reset, hidden.defaults))} ${this._leftBehindNote(name, template)}
         ${
           hasResetSlot(reset, entry.disabled)
             ? html`<span class="reset-slot"
@@ -2974,10 +3597,15 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
    * Warnings, never errors: a template can be edited after the cards that use it, so a
    * card that looks wrong now may be right again in a moment. Nothing here stops a save.
    */
-  private _renderDiagnostics(template: TemplateConfig | undefined, readable: boolean): TemplateResult {
+  /*
+   * What the diagnostics have to say about the card as it stands, as alerts to show and the
+   * required variables left unset - which the counter over the variables and the status line
+   * under the preview both read, so they are worked out once per render.
+   */
+  private _diagnose(template: TemplateConfig | undefined, readable: boolean): Diagnosis {
     // Choosing by domain, the variables are shared by copies of different templates, so
     // what one of them leaves unset or unused says nothing about the others.
-    if (!template || this._loadingTemplates || !readable || byDomainOf(this._config)) return html``;
+    if (!template || this._loadingTemplates || !readable || byDomainOf(this._config)) return { alerts: [], needed: [] };
 
     // The items' names count as supplied, so a variable only the items set is not
     // missing - but they are not the card's own, so they are never called unused.
@@ -3049,102 +3677,92 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const failed = this._failedChecks(template);
     // A key the chosen template has that no template reads, such as variblees: (#494).
     const unknownKeys = unknownTemplateKeys(this._lovelace).filter((each) => each.template === this._config?.template);
-    return html`
-      ${failed.map(
-        (alert) =>
-          html`<ha-alert alert-type=${alert.level === 'error' ? 'error' : 'warning'}>
-            ${localize(
-              alert.name ? 'editor.check_failed_named' : 'editor.check_failed',
-              { name: alert.name ?? '', message: alert.message },
-              this.hass,
-            )}
-          </ha-alert>`,
-      )}
-      ${misplaced.map(
-        (key) =>
-          html`<ha-alert alert-type="warning">
-            ${localize('editor.override_misplaced', { key, kind: kind as string, template: this._config?.template ?? '' }, this.hass)}
-          </ha-alert>`,
-      )}
-      ${
-        fixedColumns
-          ? html`<ha-alert alert-type="info">
-              ${localize('editor.columns_without_min_width', { columns }, this.hass)}
-            </ha-alert>`
-          : html``
-      }
-      ${
-        fitHidesStyle
-          ? html`<ha-alert alert-type="warning">${localize('editor.fit_hides_style', undefined, this.hass)}</ha-alert>`
-          : html``
-      }
-      ${
-        hiddenButSet.length
-          ? html`<ha-alert alert-type="warning">
-              ${localize(
-                hiddenButSet.length === 1 ? 'editor.hidden_but_set_one' : 'editor.hidden_but_set_many',
-                { names: hiddenButSet.join(', ') },
-                this.hass,
-              )}
-            </ha-alert>`
-          : html``
-      }
-      ${
-        needed.length
-          ? html`<ha-alert alert-type="error">
-              ${localize(
-                needed.length === 1 ? 'editor.required_one' : 'editor.required_many',
-                { names: needed.join(', ') },
-                this.hass,
-              )}
-            </ha-alert>`
-          : html``
-      }
-      ${
-        unlisted.length
-          ? html`<ha-alert alert-type="warning">
-              ${localize('editor.rebuild_on_hint', { names: unlisted.join(', ') }, this.hass)}
-            </ha-alert>`
-          : html``
-      }
-      ${
-        optional.length
-          ? html`<ha-alert alert-type="warning">
-              ${localize(
-                optional.length === 1 ? 'editor.optional_one' : 'editor.optional_many',
-                { names: optional.join(', ') },
-                this.hass,
-              )}
-            </ha-alert>`
-          : html``
-      }
-      ${unknownKeys.map(
-        (each) =>
-          html`<ha-alert alert-type="warning">
-            ${localize('tools.health_unknown_key', { template: each.template, key: each.key }, this.hass)}${
-              each.closest ? localize('error.did_you_mean', { closest: each.closest }, this.hass) : ''
-            }
-          </ha-alert>`,
-      )}
-      ${invalid.map(
-        (each) =>
-          html`<ha-alert alert-type="warning">
-            ${localize('editor.invalid_value', { name: each.name, expected: each.expected }, this.hass)}
-            ${localize('editor.invalid_value_now', { value: each.value }, this.hass)}
-          </ha-alert>`,
-      )}
-      ${
-        unused.length
-          ? html`<ha-alert alert-type="info">
-              ${localize(
-                unused.length === 1 ? 'editor.unused_one' : 'editor.unused_many',
-                { names: unused.join(', ') },
-                this.hass,
-              )}
-            </ha-alert>`
-          : html``
-      }
-    `;
+    const alerts: DiagnosisAlert[] = [];
+    const say = (level: DiagnosisAlert['level'], body: TemplateResult, fill = false): void => {
+      alerts.push({ level, body, fill });
+    };
+    for (const alert of failed) {
+      say(
+        alert.level === 'error' ? 'error' : 'warning',
+        html`${localize(
+          alert.name ? 'editor.check_failed_named' : 'editor.check_failed',
+          { name: alert.name ?? '', message: alert.message },
+          this.hass,
+        )}`,
+      );
+    }
+    for (const key of misplaced) {
+      say(
+        'warning',
+        html`${localize(
+          'editor.override_misplaced',
+          { key, kind: kind as string, template: this._config?.template ?? '' },
+          this.hass,
+        )}`,
+      );
+    }
+    if (fixedColumns) say('info', html`${localize('editor.columns_without_min_width', { columns }, this.hass)}`);
+    if (fitHidesStyle) say('warning', html`${localize('editor.fit_hides_style', undefined, this.hass)}`);
+    if (hiddenButSet.length) {
+      say(
+        'warning',
+        html`${localize(
+          hiddenButSet.length === 1 ? 'editor.hidden_but_set_one' : 'editor.hidden_but_set_many',
+          { names: hiddenButSet.join(', ') },
+          this.hass,
+        )}`,
+      );
+    }
+    if (needed.length) {
+      say(
+        'error',
+        html`${localize(
+          needed.length === 1 ? 'editor.required_one' : 'editor.required_many',
+          { names: needed.join(', ') },
+          this.hass,
+        )}`,
+        true,
+      );
+    }
+    if (unlisted.length) {
+      say('warning', html`${localize('editor.rebuild_on_hint', { names: unlisted.join(', ') }, this.hass)}`);
+    }
+    if (optional.length) {
+      say(
+        'warning',
+        html`${localize(
+          optional.length === 1 ? 'editor.optional_one' : 'editor.optional_many',
+          { names: optional.join(', ') },
+          this.hass,
+        )}`,
+      );
+    }
+    for (const each of unknownKeys) {
+      say(
+        'warning',
+        html`${localize('tools.health_unknown_key', { template: each.template, key: each.key }, this.hass)}${
+          each.closest ? localize('error.did_you_mean', { closest: each.closest }, this.hass) : ''
+        }`,
+      );
+    }
+    for (const each of invalid) {
+      say(
+        'warning',
+        html`${localize('editor.invalid_value', { name: each.name, expected: each.expected }, this.hass)}
+        ${localize('editor.invalid_value_now', { value: each.value }, this.hass)}`,
+      );
+    }
+    if (unused.length) {
+      say(
+        'info',
+        html`${localize(
+          unused.length === 1 ? 'editor.unused_one' : 'editor.unused_many',
+          { names: unused.join(', ') },
+          this.hass,
+        )}`,
+      );
+    }
+    return { alerts, needed };
   }
 
   /*

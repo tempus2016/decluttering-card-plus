@@ -45,7 +45,7 @@ export function templateAlerts(
   passed?: PassedCheck[],
 ): Alert[] {
   if (!checksOf(templateConfig).length) return [];
-  if (!hass && usesResolver(templateConfig, extras.itemTemplates)) return [];
+  if (!hass && usesResolver(templateConfig, extras.itemTemplates, variables)) return [];
   return runChecks(
     templateConfig,
     templateName,

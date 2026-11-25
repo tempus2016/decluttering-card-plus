@@ -51,6 +51,8 @@ export class DeclutteringGalleryDialog extends LitElement {
   @property({ type: Boolean }) public open = false;
   @property({ attribute: false }) public selectedKey?: string;
   @property({ attribute: false }) public status?: GalleryStatus;
+  // The tabs to offer. The card editor leaves out the shared store, whose installs the template editor checks.
+  @property({ attribute: false }) public sources: GallerySource[] = ['library', 'community', 'installed'];
 
   @state() private _source: GallerySource = 'library';
   @state() private _category?: string;
@@ -371,11 +373,13 @@ export class DeclutteringGalleryDialog extends LitElement {
     const category = this._category && categories.includes(this._category) ? this._category : undefined;
     const shown = filterGallery(inSource, { category, query: this._query });
     const selected = this.entries.find((entry) => entry.key === this.selectedKey);
-    const tabs: [GallerySource, string][] = [
-      ['library', 'gallery.tab_library'],
-      ['community', 'gallery.tab_community'],
-      ['installed', 'gallery.tab_installed'],
-    ];
+    const tabs = (
+      [
+        ['library', 'gallery.tab_library'],
+        ['community', 'gallery.tab_community'],
+        ['installed', 'gallery.tab_installed'],
+      ] as [GallerySource, string][]
+    ).filter(([source]) => this.sources.includes(source));
     return html`
       <ha-dialog
         open

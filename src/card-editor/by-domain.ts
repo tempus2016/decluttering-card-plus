@@ -88,3 +88,36 @@ export function remainingDomains(all: string[], rows: ByDomainRow[]): string[] {
   const taken = new Set(rows.map((row) => row.domain));
   return all.filter((domain) => !taken.has(domain));
 }
+
+/** Whether the card has a `template_by_domain:` written at all, readable by the table or not. */
+export function hasByDomain(config: unknown): boolean {
+  return (config as Record<string, unknown> | undefined)?.[BY_DOMAIN_KEY] !== undefined;
+}
+
+/**
+ * The card choosing its template by domain, started from the form: the template it had
+ * becomes what anything else uses, and the table takes it from there. A card with no template
+ * yet starts with an empty mapping, which the table shows as a row to fill.
+ */
+export function startByDomain(config: DeclutteringCardConfig): DeclutteringCardConfig {
+  const out = { ...config } as Record<string, unknown>;
+  const template = typeof config.template === 'string' ? config.template.trim() : '';
+  out[BY_DOMAIN_KEY] = template ? { [DEFAULT_KEY]: template } : {};
+  delete out.template;
+  return out as DeclutteringCardConfig;
+}
+
+/**
+ * Back to one template for every copy: the one anything else used, or failing that the
+ * first domain's, or the template the card still names. The mapping goes.
+ */
+export function stopByDomain(config: DeclutteringCardConfig): DeclutteringCardConfig {
+  const { rows, fallback } = byDomainRows(config);
+  const own = typeof config.template === 'string' && config.template ? config.template : undefined;
+  const template = fallback ?? rows.find((row) => row.template)?.template ?? own;
+  const out = { ...config } as Record<string, unknown>;
+  delete out[BY_DOMAIN_KEY];
+  if (template) out.template = template;
+  else delete out.template;
+  return out as DeclutteringCardConfig;
+}

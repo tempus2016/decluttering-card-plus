@@ -4,6 +4,7 @@ import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
 import { BuildTrace, ItemTrace, SkipTrace } from './trace';
 import { compile, Piece, SITE_SOURCE } from './compiled';
+import { hoistInlineBodies, INLINE_PREFIX, restoreInlineBodies } from './inline-body';
 import { warn, WarningKind } from './warnings';
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
 import {
@@ -1296,6 +1297,60 @@ function exposeFillValues(
 const SETTLING = new Set<string>();
 
 /*
+ * What filling a variable in gave, by name and value, for as long as the outermost build runs
+ * (#497). Builds further in - every item template's, every `with:` - fill it in again when a
+ * dotted name asked of it is one the mapping does not have, to look for it: ten milliseconds
+ * a time, 29 seconds for a camera card asking `show.ha_cam` of a mapping that has `cam_ha`.
+ * A build with the same values for the names written in the variable's value gets what the
+ * last fill gave. One that sets one of them itself - a `with:` that hands in its own `debug`
+ * for `[[_show|merge:debug]]` - fills it in again with its own. A name found by a fill further
+ * out is handed down as it was found, whatever a build further in sets, so a name not found
+ * is taken the same way.
+ */
+interface Filled {
+  entries: VariablesConfig[];
+  reads: Map<string, unknown>;
+}
+const FILLED = new Map<string, Filled[]>();
+// The fills kept for one variable: builds that each set what it reads would each add one.
+const MAX_FILLS_KEPT = 16;
+let building = 0;
+
+const NAME_IN_PLACEHOLDER = /[A-Za-z_][\w.-]*/g;
+
+// The text inside a value's placeholders, nested ones and all: the only place a name is read.
+function placeholderText(text: string): string {
+  let out = '';
+  let depth = 0;
+  for (let at = 0; at < text.length; at += 1) {
+    if (text.startsWith('[[', at)) {
+      depth += 1;
+      at += 1;
+      out += ' ';
+    } else if (depth && text.startsWith(']]', at)) {
+      depth -= 1;
+      at += 1;
+      out += ' ';
+    } else if (depth) out += text[at];
+  }
+  return out;
+}
+
+// The names written in a value's placeholders, steps and all, and the values they had.
+function readsOf(raw: string, values: Record<string, any>): Map<string, unknown> {
+  const reads = new Map<string, unknown>();
+  for (const word of placeholderText(raw).match(NAME_IN_PLACEHOLDER) ?? []) {
+    for (const name of word.includes('.') ? [word, word.split('.')[0]] : [word]) reads.set(name, values[name]);
+  }
+  return reads;
+}
+
+function sameReads(filled: Filled, values: Record<string, any>): boolean {
+  for (const [name, value] of filled.reads) if (values[name] !== value) return false;
+  return true;
+}
+
+/*
  * A variable whose value is a placeholder - `alert: '[[mdi|merge:fr]]'`, or just `'[[mdi]]'` -
  * is a mapping only once it is filled in, so the dotted names a written-out mapping gives
  * were never there for it (#458). Each one something here asks for is worked out by filling
@@ -1329,14 +1384,22 @@ function exposeSettledMappings(
     // Already being filled in further out: what that fill finds is what this one would.
     const settling = `${name}\u0000${raw}`;
     if (SETTLING.has(settling)) continue;
-    SETTLING.add(settling);
-    let filled: unknown;
-    try {
-      filled = settleText(raw);
-    } finally {
-      SETTLING.delete(settling);
+    // Filled in already from the same values: what it gave, without filling it in again.
+    const kept = FILLED.get(settling);
+    let entries = kept?.find((each) => sameReads(each, values))?.entries;
+    if (!entries) {
+      SETTLING.add(settling);
+      let filled: unknown;
+      try {
+        filled = settleText(raw);
+      } finally {
+        SETTLING.delete(settling);
+      }
+      entries = dottedEntries(name, filled);
+      const fill = { entries, reads: readsOf(raw, values) };
+      if (!kept) FILLED.set(settling, [fill]);
+      else if (kept.length < MAX_FILLS_KEPT) kept.push(fill);
     }
-    const entries = dottedEntries(name, filled);
     for (const entry of entries) {
       const key = Object.keys(entry)[0];
       if (Object.prototype.hasOwnProperty.call(values, key)) continue;
@@ -1419,8 +1482,9 @@ function deepReplaceBody(
   // What the console is told is also noted on the trace, for `debug: report` (#207) -
   // once per build, so a card building again still has the warning in its report even
   // when the set it keeps has heard it before.
-  const say = (message: string, kind: WarningKind = 'other', standing = false): void => {
+  const say = (said: string, kind: WarningKind = 'other', standing = false): void => {
     if (quiet === true) return;
+    const message = restoreInlineBodies(said);
     trace?.warnings.push(message);
     if (!standing) extras?.onWarning?.(message);
     if (quiet instanceof Set) {
@@ -1431,8 +1495,17 @@ function deepReplaceBody(
   };
   // A value read inside a build is built from that build's own list (#471): worked out once.
   const bare = Array.isArray(variables) && isBareTemplate(templateConfig) ? bareRead(variables) : undefined;
-  const variableArray = bare ? bare.list : resolveVariables(variables, templateConfig);
-  const resolvedLength = variableArray.length;
+  let variableArray = bare ? bare.list : resolveVariables(variables, templateConfig);
+  /*
+   * A `with:` or `repeat:` body written in place, in quotes (#498), is taken out into a hidden
+   * variable before anything is filled, so the rest of the build sees the two-line form.
+   */
+  const inline = hoistInlineBodies(content, variableArray);
+  if (inline.added.length || inline.variables !== variableArray) {
+    content = inline.content;
+    variableArray = [...inline.variables, ...inline.added];
+  }
+  const resolvedLength = bare && variableArray !== bare.list ? -1 : variableArray.length;
   /*
    * An entity the card rebuilds on can be written straight into a placeholder -
    * `[[input_select.layout|state]]` - with no variable to carry it. It stands for itself,
@@ -2362,8 +2435,17 @@ function deepReplaceBody(
   const spliced = jsonConfig.includes(`"${SPLICE_KEY}"`) ? unsplice(parsed) : parsed;
   // The list edits `extends:` had to leave until the lists were filled in (#453).
   const pruned = listEdits ? applyListEdits(spliced) : spliced;
-  if (keepEscapes || (!hasEscape(jsonConfig) && !marked)) return pruned;
-  return unescapeOutsideConsumers(pruned);
+  if (keepEscapes || (!hasEscape(jsonConfig) && !marked)) return keepEscapes ? pruned : shownAsWritten(pruned);
+  return shownAsWritten(unescapeOutsideConsumers(pruned));
+}
+
+// A quoted body that could not be filled (#498) is left in the card as its author wrote it.
+function shownAsWritten(value: any): any {
+  if (typeof value === 'string') return restoreInlineBodies(value);
+  if (!value || typeof value !== 'object') return value;
+  const json = JSON.stringify(value);
+  if (!json.includes(INLINE_PREFIX)) return value;
+  return JSON.parse(restoreInlineBodies(json, true));
 }
 
 /*
@@ -2403,6 +2485,26 @@ function deepReplace(
       extras,
       noteValues,
     );
+  // The fills remembered for builds further in go when the outermost one is done.
+  building += 1;
+  try {
+    return hostedBuild(body, depth, hass, quiet, trace, templateName, extras, content);
+  } finally {
+    building -= 1;
+    if (!building) FILLED.clear();
+  }
+}
+
+function hostedBuild(
+  body: () => any,
+  depth: number,
+  hass: any,
+  quiet: boolean | Set<string> | undefined,
+  trace: BuildTrace | undefined,
+  templateName: string | undefined,
+  extras: BuildExtras | undefined,
+  content: any,
+): any {
   const itemTemplates = extras?.itemTemplates;
   if (!itemTemplates || content === undefined) return body();
   // Said once per message, as a build says its own warnings.
