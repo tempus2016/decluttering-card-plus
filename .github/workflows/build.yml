@@ -117,10 +117,10 @@ jobs:
           # since it. A shallow clone has neither, so it invents a first release instead.
           fetch-depth: 0
           persist-credentials: false
-      - name: Use Node.js 22.x
+      - name: Use Node.js 26.x
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22.x
+          node-version: 26.x
           cache: npm
       - name: Install dependencies
         run: npm ci --ignore-scripts
