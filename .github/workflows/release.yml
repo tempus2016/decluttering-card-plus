@@ -35,10 +35,10 @@ jobs:
           # checkout credentials are not needed and would only sit in .git/config
           # while the release build runs.
           persist-credentials: false
-      - name: Use Node.js 22.x
+      - name: Use Node.js 26.x
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22.x
+          node-version: 26.x
           cache: npm
       - name: Install dependencies
         # --ignore-scripts: this job holds contents: write and hands GITHUB_TOKEN to the
