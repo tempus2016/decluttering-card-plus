@@ -512,16 +512,322 @@ describe('the What it builds panel (#488)', () => {
     }
   });
 
-  it('a required variable left unset holds the preview, and the banner offers Render now', async () => {
+  it('a required variable left unset holds the preview: the status line says so, and Show offers Render now', async () => {
     const editor = mount({
       variables: [{ name: 'who', required: true, selector: { text: {} } }],
       card: { type: 'markdown', content: 'hi [[who]]' },
     });
     try {
+      await until(() => !!shadow(editor, '.status'), 3000, 'the status line');
+      expect(shadow(editor, '.status-text').textContent.trim()).to.equal('1 variable to fill');
+      expect(held(editor), 'no banner at the top').to.equal('');
+      shadow(editor, '.status-toggle').click();
       await until(() => held(editor).includes('[[who]]'), 3000, 'the required banner');
       expect(heldButtons(editor).map((each) => each.textContent.trim())).to.deep.equal(['Render now']);
     } finally {
       editor.remove();
+    }
+  });
+});
+
+/*
+ * The first run: the picker's stub names no template, so a card just added opens on choosing
+ * one - in its preview and in its editor - instead of on an error about a missing template.
+ */
+describe('a card added from the picker', () => {
+  const STUB_TYPE = 'custom:decluttering-card-plus';
+  const shadow = (el: any, selector: string): any => el.shadowRoot?.querySelector(selector);
+
+  it('the stub names no template', () => {
+    const card = customElements.get('decluttering-card-plus') as any;
+    expect(card.getStubConfig()).to.deep.equal({ type: STUB_TYPE });
+  });
+
+  it('previewed in the edit dialog, it asks for a template instead of an error', async () => {
+    stubLovelace({ views: [{ cards: [] }] });
+    // Open first, as Home Assistant has it: the preview is configured before it is placed.
+    const dialog = document.createElement('hui-dialog-edit-card');
+    document.body.appendChild(dialog);
+    const el = document.createElement('decluttering-card-plus') as any;
+    el.setConfig({ type: STUB_TYPE });
+    el.hass = stubHass({});
+    dialog.appendChild(el);
+    try {
+      await until(() => !!shadow(el, '.choosing'), 2000, 'the prompt');
+      expect(shadow(el, '.choosing').textContent.trim()).to.equal('Pick a template to see the card.');
+      expect(shadow(el, 'ha-alert, .error-card'), 'no error').to.equal(null);
+    } finally {
+      dialog.remove();
+    }
+  });
+
+  it('outside the edit dialog a card with no template is the error it always was', () => {
+    stubLovelace({ views: [{ cards: [] }] });
+    const el = document.createElement('decluttering-card-plus') as any;
+    let thrown = '';
+    try {
+      el.setConfig({ type: STUB_TYPE });
+    } catch (err) {
+      thrown = String((err as Error).message);
+    }
+    expect(thrown).to.equal('Missing template object in your config');
+  });
+
+  const editorFor = (config: Record<string, unknown>, templates?: Record<string, unknown>): any => {
+    const lovelace = stubLovelace({
+      ...(templates ? { decluttering_templates: templates } : {}),
+      views: [{ cards: [] }],
+    });
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = stubHass({});
+    editor.lovelace = lovelace.config;
+    editor.setConfig(config);
+    document.body.appendChild(editor);
+    return editor;
+  };
+
+  it('on a dashboard with no templates the editor opens on the empty state, with no error', async () => {
+    const editor = editorFor({ type: STUB_TYPE });
+    try {
+      await until(() => !!shadow(editor, '.first-run-empty'), 3000, 'the empty state');
+      expect(shadow(editor, '.first-run-empty h3').textContent.trim()).to.equal('No templates on this dashboard yet');
+      const buttons = [...shadow(editor, '.first-run-empty').querySelectorAll('ha-button')].map((each: any) =>
+        each.textContent.trim(),
+      );
+      expect(buttons[0]).to.equal('Browse templates');
+      expect(editor.shadowRoot.textContent, 'no missing-template error').not.to.include('No template exists');
+      const starters = [...editor.shadowRoot.querySelectorAll('.starter-name')].map((each: any) =>
+        each.textContent.trim(),
+      );
+      expect(starters, 'the starter library offered').to.include('room_light_tile');
+      expect(shadow(editor, 'ha-expansion-panel.advanced'), 'nothing else yet').to.equal(null);
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('with templates to pick, the picker is all there is, still with no error', async () => {
+    const editor = editorFor({ type: STUB_TYPE }, { t: { card: { type: 'markdown', content: 'x' } } });
+    try {
+      await settle(6);
+      expect(shadow(editor, '.picker'), 'the picker').not.to.equal(null);
+      expect(shadow(editor, '.first-run-empty'), 'no empty state').to.equal(null);
+      expect(editor.shadowRoot.textContent).not.to.include('No template exists');
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('a template name that is not there still says so', async () => {
+    const editor = editorFor({ type: STUB_TYPE, template: 'nowhere' }, { t: { card: { type: 'markdown' } } });
+    try {
+      await settle(6);
+      expect(shadow(editor, '.first-run-empty'), 'no empty state').to.equal(null);
+      // No picker element in this page, so the plain dropdown says it in an alert below.
+      expect(editor.shadowRoot.textContent).to.include('No template exists with this name');
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('Browse templates opens the gallery without the shared store', async () => {
+    const editor = editorFor({ type: STUB_TYPE });
+    try {
+      await until(() => !!shadow(editor, '.first-run-empty ha-button'), 3000, 'the button');
+      shadow(editor, '.first-run-empty ha-button').click();
+      await until(() => !!shadow(editor, 'decluttering-card-plus-gallery'), 2000, 'the gallery');
+      const gallery = shadow(editor, 'decluttering-card-plus-gallery');
+      await settle(2);
+      const tabs = [...gallery.shadowRoot.querySelectorAll('[role="tab"]')].map((each: any) => each.textContent.trim());
+      expect(tabs.length).to.equal(2);
+      expect(tabs[0]).to.include('Starter library');
+    } finally {
+      editor.remove();
+    }
+  });
+});
+
+/*
+ * template_by_domain started from the form: a switch in the Repeat section turns the table on
+ * with the card's template as what anything else uses, and off again after asking. A mapping
+ * the table cannot read keeps the alert that sends it to the code editor.
+ */
+describe('choosing the template by domain from the form', () => {
+  const tile = { card: { type: 'tile', entity: '[[entity]]' } };
+  const mount = (config: Record<string, unknown>): any => {
+    const lovelace = stubLovelace({
+      decluttering_templates: { room_tile: tile, switch_tile: tile },
+      views: [{ cards: [] }],
+    });
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = stubHass({ 'light.sim_kitchen': 'on', 'switch.sim_fan': 'off' });
+    editor.lovelace = lovelace.config;
+    editor.setConfig({ type: 'custom:decluttering-card-plus', ...config });
+    document.body.appendChild(editor);
+    return editor;
+  };
+  const shadow = (editor: any, selector: string): any => editor.shadowRoot?.querySelector(selector);
+  const flip = (editor: any, on: boolean): void =>
+    shadow(editor, 'ha-form.by-domain-switch').dispatchEvent(
+      new CustomEvent('value-changed', { detail: { value: { by_domain: on } }, bubbles: true, composed: true }),
+    );
+
+  it('is off with no mapping, and on it starts one from the template', async () => {
+    const editor = mount({ template: 'room_tile', variables: [{ entity: 'light.sim_kitchen' }] });
+    try {
+      await until(() => !!shadow(editor, '.repeat ha-form.by-domain-switch'), 3000, 'the switch');
+      expect(shadow(editor, 'ha-form.by-domain-switch').data).to.deep.equal({ by_domain: false });
+      expect(shadow(editor, '.by-domain'), 'no table yet').to.equal(null);
+      let config: any;
+      editor.addEventListener('config-changed', (ev: CustomEvent) => (config = ev.detail.config), { once: true });
+      flip(editor, true);
+      expect(config).to.deep.equal({
+        type: 'custom:decluttering-card-plus',
+        variables: [{ entity: 'light.sim_kitchen' }],
+        template_by_domain: { default: 'room_tile' },
+      });
+      editor.setConfig(config);
+      await until(() => !!shadow(editor, '.repeat .by-domain'), 3000, 'the table under the switch');
+      expect(shadow(editor, '.by-domain .bd-default').textContent.trim()).to.equal('Anything else');
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('turned off, it asks first, and only then goes back to one template', async () => {
+    const editor = mount({ template_by_domain: { switch: 'switch_tile', default: 'room_tile' } });
+    try {
+      await until(() => !!shadow(editor, '.by-domain'), 3000, 'the table');
+      let fired = 0;
+      let config: any;
+      editor.addEventListener('config-changed', (ev: CustomEvent) => {
+        fired += 1;
+        config = ev.detail.config;
+      });
+      flip(editor, false);
+      await settle(2);
+      expect(fired, 'nothing changed yet').to.equal(0);
+      expect(!!shadow(editor, '.by-domain-off'), 'it asks').to.equal(true);
+      expect(shadow(editor, 'ha-form.by-domain-switch').data, 'still on').to.deep.equal({ by_domain: true });
+      const [, keep] = [...shadow(editor, '.by-domain-off').querySelectorAll('ha-button')];
+      keep.click();
+      await settle(2);
+      expect(shadow(editor, '.by-domain-off'), 'kept').to.equal(null);
+      expect(fired).to.equal(0);
+      flip(editor, false);
+      await settle(2);
+      shadow(editor, '.by-domain-off ha-button').click();
+      expect(config).to.deep.equal({ type: 'custom:decluttering-card-plus', template: 'room_tile' });
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('a mapping the table cannot read keeps the code-editor alert', async () => {
+    const editor = mount({ template_by_domain: { light: { nested: true }, default: 'room_tile' } });
+    try {
+      await until(() => !!shadow(editor, 'ha-form.by-domain-switch'), 3000, 'the switch');
+      expect(shadow(editor, 'ha-form.by-domain-switch').data).to.deep.equal({ by_domain: true });
+      expect(shadow(editor, '.by-domain'), 'no table').to.equal(null);
+      const alerts = [...editor.shadowRoot.querySelectorAll('ha-alert')].map((each: any) => each.textContent);
+      expect(alerts.some((text: string) => text.includes('change the mapping in the code editor'))).to.equal(true);
+    } finally {
+      editor.remove();
+    }
+  });
+});
+
+/*
+ * The editor's order (UX pass): the picker, then the variables with how many required ones
+ * are set, then the preview with one status line, then Advanced holding the rest - Repeat
+ * among it unless the card repeats.
+ */
+describe('the editor order', () => {
+  const template = {
+    variables: [
+      { name: 'entity', required: true, selector: { entity: {} } },
+      { name: 'name', required: true, selector: { text: {} } },
+      { name: 'icon', selector: { icon: {} } },
+    ],
+    card: { type: 'tile', entity: '[[entity]]', name: '[[name]]' },
+  };
+  const mount = (config: Record<string, unknown>): any => {
+    const lovelace = stubLovelace({ decluttering_templates: { room_tile: template }, views: [{ cards: [] }] });
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = stubHass({ 'light.sim_kitchen': 'on' });
+    editor.lovelace = lovelace.config;
+    editor.setConfig({ type: 'custom:decluttering-card-plus', template: 'room_tile', ...config });
+    document.body.appendChild(editor);
+    return editor;
+  };
+  const shadow = (editor: any, selector: string): any => editor.shadowRoot?.querySelector(selector);
+  // The top-level blocks in the order they are drawn.
+  const order = (editor: any): string[] =>
+    [
+      ...editor.shadowRoot.querySelectorAll(
+        '.picker, section.variables, ha-expansion-panel.preview, .status, ha-expansion-panel.advanced',
+      ),
+    ].map((each: any) =>
+      each.classList[0] === 'picker'
+        ? 'picker'
+        : each.localName === 'section'
+          ? 'variables'
+          : each.classList.contains('preview')
+            ? 'preview'
+            : each.classList.contains('status')
+              ? 'status'
+              : 'advanced',
+    );
+
+  it('picker, variables, preview, status, Advanced', async () => {
+    const editor = mount({ variables: [{ entity: 'light.sim_kitchen' }] });
+    try {
+      await until(() => !!shadow(editor, 'ha-expansion-panel.advanced'), 3000, 'the editor');
+      expect(order(editor)).to.deep.equal(['picker', 'variables', 'preview', 'status', 'advanced']);
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('counts the required variables set, and the bar follows', async () => {
+    const editor = mount({ variables: [{ entity: 'light.sim_kitchen' }] });
+    try {
+      await until(() => !!shadow(editor, '.variables .counter'), 3000, 'the counter');
+      expect(shadow(editor, '.variables .counter').textContent.trim()).to.equal('1 of 2 required set');
+      expect(shadow(editor, '.progress').getAttribute('aria-valuenow')).to.equal('1');
+      expect(shadow(editor, '.status-text').textContent.trim()).to.include('1 variable to fill');
+      expect(shadow(editor, '.required-line').dataset.required, 'the empty one says so').to.equal('name');
+      expect(shadow(editor, '.required-line').textContent.trim()).to.equal('Required by room_tile');
+      editor.setConfig({
+        type: 'custom:decluttering-card-plus',
+        template: 'room_tile',
+        variables: [{ entity: 'light.sim_kitchen' }, { name: 'Kitchen' }],
+      });
+      await until(
+        () => shadow(editor, '.variables .counter')?.textContent.trim() === '2 of 2 required set',
+        3000,
+        'all set',
+      );
+      expect(shadow(editor, '.status'), 'nothing left to say').to.equal(null);
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('Repeat sits in Advanced for a single card, and out in the open once the card repeats', async () => {
+    const single = mount({ variables: [{ entity: 'light.sim_kitchen' }, { name: 'K' }] });
+    try {
+      await until(() => !!shadow(single, 'ha-expansion-panel.advanced'), 3000, 'the editor');
+      expect(!!shadow(single, 'ha-expansion-panel.advanced .repeat'), 'inside Advanced').to.equal(true);
+    } finally {
+      single.remove();
+    }
+    const repeating = mount({ for_each: [{ entity: 'light.sim_kitchen', name: 'K' }] });
+    try {
+      await until(() => !!shadow(repeating, '.repeat'), 3000, 'the repeat');
+      expect(!!shadow(repeating, 'ha-expansion-panel.advanced .repeat'), 'not inside Advanced').to.equal(false);
+    } finally {
+      repeating.remove();
     }
   });
 });

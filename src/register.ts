@@ -5,7 +5,7 @@ import { loadLabels } from './labels';
 import { loadCategories, wantsCategories } from './categories';
 import { getLovelaceConfig } from './utils';
 import { localize } from './localize';
-import { DeclutteringCard } from './card';
+import { CardStub, DeclutteringCard } from './card';
 import { DeclutteringLazyCopy } from './lazy-copy';
 import { CARD_TAG, LAZY_COPY_TAG, TEMPLATE_TAG, defineElement } from './shared';
 import { DeclutteringMany, MANY_TAG } from './row-repeat';
@@ -216,7 +216,7 @@ if (defineElement(TEMPLATE_TAG, DeclutteringTemplate)) {
  * A single constructor cannot be registered under two tags, hence the subclasses.
  */
 class LegacyDeclutteringCard extends DeclutteringCard {
-  static getStubConfig(): DeclutteringCardConfig {
+  static getStubConfig(): CardStub {
     return { ...DeclutteringCard.getStubConfig(), type: `custom:${LEGACY_CARD_TAG}` };
   }
 }

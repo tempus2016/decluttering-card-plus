@@ -90,3 +90,50 @@ check(
   remainingDomains(['light', 'sensor', 'switch'], [{ domain: 'light', template: 'a' }]),
   ['sensor', 'switch'],
 );
+
+// --- the switch: starting and stopping a mapping from the form ---
+
+const { hasByDomain, startByDomain, stopByDomain } = require('../.test-build/card-editor/by-domain');
+
+check('no mapping written', hasByDomain({ type: 'x', template: 'a' }), false);
+check('a mapping written', hasByDomain(config), true);
+check('an empty mapping counts as written', hasByDomain({ type: 'x', template_by_domain: {} }), true);
+check('one the table cannot read counts too', hasByDomain({ template_by_domain: { light: { nested: true } } }), true);
+
+check(
+  'starting: the template becomes what anything else uses',
+  startByDomain({ type: 'x', template: 'room_tile', variables: [{ a: 1 }] }),
+  { type: 'x', variables: [{ a: 1 }], template_by_domain: { default: 'room_tile' } },
+);
+check('starting with no template: an empty mapping', startByDomain({ type: 'x' }), {
+  type: 'x',
+  template_by_domain: {},
+});
+check(
+  'the started mapping reads back as no rows and that default',
+  byDomainRows(startByDomain({ type: 'x', template: 'room_tile' })),
+  { rows: [], fallback: 'room_tile' },
+);
+
+check(
+  'stopping: the default becomes the template again',
+  stopByDomain({ type: 'x', template_by_domain: { light: 'room_tile', default: 'plain' }, variables: [] }),
+  { type: 'x', variables: [], template: 'plain' },
+);
+check(
+  'with no default, the first domain gives it',
+  stopByDomain({ type: 'x', template_by_domain: { switch: 'switch_tile', light: 'room_tile' } }),
+  { type: 'x', template: 'switch_tile' },
+);
+check(
+  'with nothing in the mapping, the template the card still names stays',
+  stopByDomain({ type: 'x', template: 'kept', template_by_domain: {} }),
+  { type: 'x', template: 'kept' },
+);
+check('with nothing at all, no template is made up', stopByDomain({ type: 'x', template_by_domain: {} }), {
+  type: 'x',
+});
+check('start then stop is where it began', stopByDomain(startByDomain({ type: 'x', template: 'room_tile' })), {
+  type: 'x',
+  template: 'room_tile',
+});

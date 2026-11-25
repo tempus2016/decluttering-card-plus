@@ -220,10 +220,10 @@ check('one undeclared name keeps the place it is read', lint({ card: { type: 'ti
 
 check(
   'placeholders in let values and declared defaults are read too',
-  lint({ let: { slug: '[[room|slgu]]' }, variables: [{ name: 'x', default: '[[y|nope]]' }] }),
+  lint({ let: { slug: '[[room|slgu]]' }, variables: [{ name: 'x', default: '[[y|zzqx]]' }] }),
   [
     'warning lint.unknown_step {"step":"slgu","placeholder":"[[room|slgu]]","closest":"slug"} @let.slug',
-    'warning lint.unknown_step {"step":"nope","placeholder":"[[y|nope]]"} @variables[0].default',
+    'warning lint.unknown_step {"step":"zzqx","placeholder":"[[y|zzqx]]"} @variables[0].default',
     'info lint.undeclared {"names":"room (let.slug), y (variables[0].default)"} @',
   ],
 );

@@ -1,3 +1,4 @@
+import { hoistInlineBodies, INLINE_PREFIX } from './inline-body';
 import { TemplateConfig } from './types';
 import {
   conditionTarget,
@@ -495,9 +496,17 @@ export function lintTemplate(
   const functions = options.functions ?? knownFunctionNames();
   const scan: Scan = { findings: [], heads: new Map(), targets: [], functions, lookups: [] };
   scanTemplateProse(template, scan);
+  // A quoted `with:`/`repeat:` body (#498) is filled for each copy from names nobody sets
+  // here, so it is read for mistakes in how it is written, as a page's repeat content is.
+  const inBodies: Scan = { findings: [], heads: new Map(), targets: [], functions, lookups: [] };
+  const walkHoisted = (value: unknown, path: string): void => {
+    const hoisted = hoistInlineBodies(value, []);
+    walk(hoisted.content, path, scan);
+    for (const entry of hoisted.added) walk(Object.values(entry)[0], path, inBodies);
+  };
   for (const key of LINTED_KEYS) {
     const value = (template as any)[key];
-    if (value !== undefined) walk(value, key, scan);
+    if (value !== undefined) walkHoisted(value, key);
   }
   if ((template as any)[PAGE_KEY] !== undefined) {
     // The page's own template keys are definitions, each linted where it is used. A repeat's
@@ -510,7 +519,7 @@ export function lintTemplate(
     scan.findings.push(...inRepeats.findings);
   }
   getDeclarations(template).forEach((declaration, index) => {
-    if (declaration.default !== undefined) walk(declaration.default, `variables[${index}].default`, scan);
+    if (declaration.default !== undefined) walkHoisted(declaration.default, `variables[${index}].default`);
     lintVisibility(declaration, `variables[${index}]`, scan);
   });
 
@@ -545,13 +554,14 @@ export function lintTemplate(
     ALERTS_NAME,
     ...(isFunction ? [FUNCTION_VALUE, ...functionParameters(template)] : []),
   ]);
-  const findings = [...scan.findings];
+  const findings = [...scan.findings, ...inBodies.findings];
   lintLanguages(template, known, scan, findings);
   lintMixedSources(template, scan, findings);
 
   // `[[room.light]]` reaches into `room`, so a condition on `room.light` names something real
   // once `room` is - a choose selector's `dims.active_choice` most of all (#346).
-  const isKnown = (name: string): boolean => defined.has(name) || scan.heads.has(name);
+  const isKnown = (name: string): boolean =>
+    defined.has(name) || scan.heads.has(name) || name.startsWith(INLINE_PREFIX);
   const reachable = (name: string): boolean =>
     isKnown(name) || name.split('.').some((_, i, parts) => i > 0 && isKnown(parts.slice(0, i).join('.')));
   for (const target of scan.targets) {
@@ -567,7 +577,9 @@ export function lintTemplate(
     });
   }
 
-  const undeclared = [...scan.heads.entries()].filter(([name]) => !defined.has(name));
+  const undeclared = [...scan.heads.entries()].filter(
+    ([name]) => !defined.has(name) && !name.startsWith(INLINE_PREFIX),
+  );
   if (undeclared.length) {
     findings.push({
       level: 'info',

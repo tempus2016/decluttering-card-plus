@@ -3,6 +3,7 @@ import { TemplateConfig, VariablesConfig } from './types';
 import {
   conditionTarget,
   orTarget,
+  structureSource,
   quotedText,
   ESCAPE,
   forEachItems,
@@ -52,7 +53,7 @@ export function readsIn(value: unknown): string[] {
         for (const each of [name, name.split('.')[0]]) if (each && each !== STAND_IN) names.add(each);
       }
       for (const step of steps) {
-        const target = step.startsWith('or:') ? orTarget(step) : conditionTarget(step);
+        const target = step.startsWith('or:') ? orTarget(step) : (conditionTarget(step) ?? structureSource(step));
         if (target && target !== STAND_IN) names.add(target);
       }
       return STAND_IN;

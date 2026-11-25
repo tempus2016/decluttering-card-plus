@@ -1,5 +1,5 @@
 import { inMasonry } from './skeleton';
-import { html, PropertyValues, TemplateResult } from 'lit';
+import { css, CSSResult, html, PropertyValues, TemplateResult } from 'lit';
 import { state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import {
@@ -121,6 +121,14 @@ const titleTranslations = new Map<string, Promise<void>>();
 // How long a preview held in an open edit dialog waits for the card editor to arrive (#407).
 const EDITOR_WAIT_MS = 5000;
 
+/*
+ * The values a card passes its template, which are filled in as much as the template is:
+ * a `[[x|card_exists]]` written here asks as surely as one in the template does (#505).
+ */
+function cardValues(config: DeclutteringCardConfig): unknown[] {
+  return [config.variables, config.for_each];
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function loadTitleTranslations(hass: any): Promise<void> {
   if (typeof hass?.loadBackendTranslation !== 'function') return Promise.resolve();
@@ -138,12 +146,33 @@ function loadTitleTranslations(hass: any): Promise<void> {
   return loading;
 }
 
+/** What the card picker adds: a card that has not chosen its template yet. */
+export type CardStub = Omit<DeclutteringCardConfig, 'template'> & { template?: string };
+
 export class DeclutteringCard extends DeclutteringElement {
+  static get styles(): CSSResult {
+    return css`
+      ${DeclutteringElement.styles}
+      .choosing p {
+        margin: 0;
+        padding: 24px 16px;
+        text-align: center;
+        color: var(--secondary-text-color);
+      }
+    `;
+  }
+
   private _pendingConfig?: DeclutteringCardConfig;
   private _lastConfig?: DeclutteringCardConfig;
   // A card repeating over the registry, kept so it can be worked out again when what is
   // registered changes - a lamp added to the kitchen should appear without an edit.
-  private _fromRegistry?: { templateConfig: TemplateConfig; config: DeclutteringCardConfig; picker?: TemplatePicker };
+  private _fromRegistry?: {
+    templateConfig: TemplateConfig;
+    config: DeclutteringCardConfig;
+    picker?: TemplatePicker;
+    // Asks what is installed (#397), so it works its copies out again when a card turns up (#505).
+    installs?: boolean;
+  };
   private _registry?: unknown[];
 
   // The same pair again, for a template that reads the registry through a resolver rather
@@ -219,6 +248,8 @@ export class DeclutteringCard extends DeclutteringElement {
    * new config, which is held again.
    */
   @state() private _held?: { reason: 'paused' } | { reason: 'required'; names: string[] };
+  // No template chosen yet, in the edit dialog: the card says to pick one instead of an error.
+  @state() private _choosing = false;
   private _builtAnyway?: DeclutteringCardConfig;
   private _holdStop?: () => void;
   /*
@@ -235,6 +266,11 @@ export class DeclutteringCard extends DeclutteringElement {
   public connectedCallback(): void {
     super.connectedCallback();
     this._holdStop ??= onPreviewHold((event) => this._heardHold(event));
+    // Taken for the dialog's preview before it was placed, and placed somewhere else: the error after all.
+    if (this._choosing && !editDialogOf(this)) {
+      this._choosing = false;
+      this._error = localize('error.missing_template');
+    }
     // Held before it was on the page, which is the only place it could tell it was a preview.
     if (this._held && !this._inPreview()) this._buildAnyway(false);
     else if (this._held) this._waitForEditor();
@@ -275,9 +311,12 @@ export class DeclutteringCard extends DeclutteringElement {
    * and a hass update need not follow it - so the card hears about it and builds again.
    */
   private _listenForInstalled(): void {
-    if (!this._fromResolvers?.installs || this._installedStop || !this.isConnected) return;
+    const installs = !!this._fromResolvers?.installs || !!this._fromRegistry?.installs;
+    if (!installs || this._installedStop || !this.isConnected) return;
     this._installedStop = whenInstalledChanges(() => {
-      if (this._hass) this._rebuildForResolvers(this._hass);
+      if (!this._hass) return;
+      this._rebuildForResolvers(this._hass);
+      this._resolveFromRegistry(this._hass);
     });
   }
 
@@ -338,11 +377,12 @@ export class DeclutteringCard extends DeclutteringElement {
     return document.createElement(CARD_EDITOR_TAG);
   }
 
-  static getStubConfig(): DeclutteringCardConfig {
-    return {
-      type: `custom:${CARD_TAG}`,
-      template: 'follow_the_sun',
-    };
+  /*
+   * No template named: a fresh install has none, and naming one it does not have made the
+   * first thing anyone saw an error. With none, the edit dialog opens on choosing one.
+   */
+  static getStubConfig(): CardStub {
+    return { type: `custom:${CARD_TAG}` };
   }
 
   /*
@@ -377,7 +417,17 @@ export class DeclutteringCard extends DeclutteringElement {
   }
 
   private _configure(config: DeclutteringCardConfig): void {
+    this._choosing = false;
     if (!config.template && !byDomainOf(config)) {
+      // The picker's stub, in the edit dialog: a prompt to choose rather than an error.
+      if (this._inEditDialog()) {
+        this._dropThing();
+        this._error = undefined;
+        this._errorDetail = undefined;
+        this._choosing = true;
+        this.requestUpdate();
+        return;
+      }
       throw new Error(localize('error.missing_template'));
     }
 
@@ -499,6 +549,14 @@ export class DeclutteringCard extends DeclutteringElement {
     }
   }
 
+  /*
+   * Whether this card is in the card edit dialog: placed in one, or - not placed yet, the
+   * way the dialog first builds its preview - made while one is open.
+   */
+  private _inEditDialog(): boolean {
+    return this.isConnected ? !!editDialogOf(this) : editDialogOnPage();
+  }
+
   /* ------------------------------------------------------------ preview hold (#407) */
 
   /*
@@ -583,6 +641,11 @@ export class DeclutteringCard extends DeclutteringElement {
   }
 
   protected render(): TemplateResult | void {
+    if (this._choosing) {
+      return html`<ha-card class="choosing"
+        ><p>${localize('card.choose_template', undefined, this._hass)}</p></ha-card
+      >`;
+    }
     if (!this._held) return super.render();
     const slow = this._held.reason === 'paused' ? previewSlowPause() : undefined;
     const message =
@@ -948,7 +1011,9 @@ export class DeclutteringCard extends DeclutteringElement {
         warnIfDeprecated(picked.name, picked.template, this._hass);
         return picked;
       },
-      resolvers: named.some((name) => usesResolver(lookup(name), this._buildExtras().itemTemplates)),
+      resolvers: named.some((name) =>
+        usesResolver(lookup(name), this._buildExtras().itemTemplates, cardValues(config)),
+      ),
       labels: named.some((name) => usesLabels(lookup(name), this._buildExtras().itemTemplates)),
     };
 
@@ -1059,9 +1124,11 @@ export class DeclutteringCard extends DeclutteringElement {
      * path left every copy of a repeat showing the brackets for good.
      */
     const { itemTemplates } = this._buildExtras();
-    const resolvers = picker ? picker.resolvers : usesResolver(templateConfig, itemTemplates);
+    // The card's own values are filled in as much as the template is (#505).
+    const own = cardValues(config);
+    const resolvers = picker ? picker.resolvers : usesResolver(templateConfig, itemTemplates, own);
     const translates = !!usesTranslate(templateConfig, itemTemplates);
-    const installs = !!usesInstalled(templateConfig, itemTemplates);
+    const installs = !!usesInstalled(templateConfig, itemTemplates, own);
     const labels = picker ? !!picker.labels : usesLabels(templateConfig, itemTemplates);
     // A template that reads the viewer's language or locale - `|translate`, `|format_number`
     // - is recorded too, even with nothing to resolve, so it builds again when the language
@@ -1083,7 +1150,8 @@ export class DeclutteringCard extends DeclutteringElement {
     if (isRegistrySource(config.for_each_from)) {
       // It works itself out again on a registry change already, which covers its resolvers.
       this._fromResolvers = undefined;
-      this._fromRegistry = { templateConfig, config, picker };
+      this._fromRegistry = { templateConfig, config, picker, installs };
+      this._listenForInstalled();
       // setConfig runs before hass is ever set, so the first resolution usually waits.
       if (this._hass) this._resolveFromRegistry(this._hass);
       return;
@@ -1146,6 +1214,13 @@ export class DeclutteringCard extends DeclutteringElement {
     if (sameRegistry(this._resolverRegistry, key)) return;
     this._resolverRegistry = key;
 
+    /*
+     * What the last build failed with goes, as setConfig drops it: a check that stopped the
+     * card when a custom card it asks about had not loaded yet passes once it has, and the
+     * card kept showing the old error over a build that worked (#505).
+     */
+    this._error = undefined;
+    this._errorDetail = undefined;
     // Built the same way it was built the first time, so a repeat comes back as a repeat.
     // Outside setConfig nobody catches a throw - and a card with on_error: lives on after
     // one - so the card says it itself.
@@ -1181,7 +1256,8 @@ export class DeclutteringCard extends DeclutteringElement {
     // The rendered templates are swapped for a new object when one lands, so that
     // counts as a change too.
     const context = { ...sourceContext(getLovelaceConfig()), rendered: this._rendered };
-    const key = [...registryKey(hass), context.views, context.rendered];
+    // What is installed moves without the registry, so a repeat asking about it follows it too (#505).
+    const key = [...registryKey(hass), context.views, context.rendered, ...(source.installs ? installedKey(hass) : [])];
     if (sameRegistry(this._registry, key)) return;
 
     // Its placeholders filled in from the card's variables first, so a filter can be built

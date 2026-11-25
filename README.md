@@ -98,14 +98,15 @@ here.
   quoted text (`[["Kitchen"|upper]]`), and values a whole dashboard, view or section sets for
   every card in it. Dates and times (`[[sensor|last_changed|relative]]`), attributes
   (`[[light|attr:brightness]]`), plurals and numbers in the viewer's language, colours worked
-  out from one (`[[accent|lighten:20]]`), `unless:` and `switch:`, two lists or mappings
-  joined into one (`[[base|merge:extra]]`), and values for a card that is narrow
-  (`variables_mobile:`).
+  out from one (`[[accent|lighten:20]]`), `unless:` and `switch:`, yes-or-no checks
+  (`[[mode|is:off|not]]`), two lists or mappings joined into one (`[[base|merge:extra]]`),
+  and values for a card that is narrow (`variables_mobile:`).
 - [Repeating a template][wiki-repeating] — one copy per item in a list, or per entity, area,
   device, floor or label Home Assistant knows about, filtered, sorted and grouped.
   [Whole sections or views][wiki-repeating-sections] can be repeated too.
 - [List entries][wiki-list-entries] — `with:` and `repeat:` fill a block of config into a
-  card's own lists, where a nested card cannot go. Rows and picture elements repeat in place,
+  card's own lists, where a nested card cannot go, from a template or a short body written in
+  place (`[["[[entity]]"|repeat:lights]]`). Rows and picture elements repeat in place,
   a template can leave slots for the card to fill with cards of its own, and decide with
   `visibility:` which copies are worth building.
 - Templates for a whole dashboard or a single section, used from the dashboard and section
@@ -129,8 +130,11 @@ here.
   (`[[__this__.name]]`), a dropdown can show a label for each value it stores or let you pick
   several (`multiple: true`), and the card editor points out fields you set by hand that an
   edit left behind.
-  The card editor shows each field's default, sets up a repeat as a form with its filters,
-  order and a live count, and edits `template_by_domain` as a table. Templates are picked from
+  The card editor puts the variables first, counting the required ones still to set, folds
+  everything it has to say into one status line, and keeps the rest under Advanced. It shows
+  each field's default, sets up a repeat as a form with its filters, order and a live count,
+  and starts or edits `template_by_domain` as a table. A new card opens on choosing a
+  template, with starter templates to install on a dashboard that has none. Templates are picked from
   a search box with descriptions and use counts, any field on the Card tab can be made a
   variable from its own menu, and the code editor colours placeholders and completes them
   after `[[`. A misspelt template key such as `variblees:` is flagged, with a did-you-mean.

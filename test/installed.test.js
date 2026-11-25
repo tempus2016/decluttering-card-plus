@@ -160,6 +160,25 @@ check(
   [true, true, true, false],
 );
 
+{
+  // #505: a step outside the template text is filled in all the same, so it counts as asking.
+  const { VIEW_VALUES, SHARED_TYPES } = require('../.test-build/variables.js');
+  const plain = { card: { type: 'markdown', content: '[[has]]' } };
+  check(
+    'a step in the card’s own values, the view’s or the shared types counts as asking (#505)',
+    [
+      usesInstalled(plain),
+      usesInstalled(plain, undefined, [[{ has: '[["late-card"|card_exists]]' }], undefined]),
+      usesResolver(plain, undefined, [[{ has: '[["late-card"|card_exists]]' }]]),
+      usesInstalled({ ...plain, [VIEW_VALUES]: [{ has: '[[cam|if_card_exists?]]' }] }),
+      usesInstalled({ ...plain, [SHARED_TYPES]: { flag: { default: '[[x|integration_exists]]' } } }),
+      usesInstalled(plain, undefined, [undefined, [{ has: '[[x|icon_exists]]' }]]),
+      usesInstalled(plain, undefined, [[{ has: '[[x|exists]]' }]]),
+    ],
+    [false, true, true, true, true, true, false],
+  );
+}
+
 check(
   'the lint knows all six steps',
   lint({

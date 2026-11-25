@@ -416,6 +416,9 @@ describe('checks (#389)', () => {
     editor.setConfig({ type: 'custom:decluttering-card-plus', template: 't', variables: [{ camera: 'camera.dummy' }] });
     document.body.appendChild(editor);
     await settle(6);
+    // Folded into the status line under the preview (UX pass): Show opens them.
+    editor.shadowRoot?.querySelector('.status-toggle')?.click();
+    await settle(2);
     const alerts = [...(editor.shadowRoot?.querySelectorAll('ha-alert') ?? [])].map((each: any) =>
       each.textContent.trim(),
     );
@@ -663,5 +666,110 @@ describe('templates used as steps (#307)', () => {
       'binary_sensor.frontdoor_car_occupancy / BINARY_SENSOR.FRONTDOOR_CAT_OCCUPANCY / none',
     );
     expect('title' in inner(el).config, 'the optional one with no sensor dropped').to.equal(false);
+  });
+});
+
+describe('a card defined after the build (#505)', () => {
+  // Each test registers its own tag, since a custom element can only be defined once a page.
+  const define = (tag: string): void => {
+    if (!customElements.get(tag)) customElements.define(tag, class extends HTMLElement {});
+  };
+
+  it('a check on card_exists that stopped the card lets it build once the card turns up', async () => {
+    stubLovelace({
+      decluttering_templates: {
+        t: {
+          default: [{ offer: { acc_exists: '[["dcp-late-505-t"|card_exists]]' } }],
+          checks: [
+            {
+              name: 'No Advanced Camera Card',
+              condition: 'offer.acc_exists',
+              fail_on: false,
+              level: 'error',
+              message: 'Advanced Camera Card must be installed',
+              continue_rendering: false,
+            },
+          ],
+          card: { type: 'markdown', content: 'has: [[offer.acc_exists]]' },
+        },
+      },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 't' }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!el._error, 2000, 'the failed check');
+    expect(el._error).to.include('Advanced Camera Card must be installed');
+    define('dcp-late-505-t');
+    await until(() => inner(el)?.config?.content === 'has: true', 2000, 'the build once it is defined').catch(
+      () => undefined,
+    );
+    expect(el._error).to.equal(undefined);
+    expect(inner(el)?.config?.content).to.equal('has: true');
+  });
+
+  it('card_exists in the card’s own variables builds again when the card turns up', async () => {
+    stubLovelace({
+      decluttering_templates: {
+        t: {
+          checks: [
+            {
+              condition: '[[has]]',
+              fail_on: false,
+              level: 'error',
+              message: 'Not installed',
+              continue_rendering: false,
+            },
+          ],
+          card: { type: 'markdown', content: 'has: [[has]]' },
+        },
+      },
+      views: [{ cards: [] }],
+    });
+    const el = card({ template: 't', variables: [{ has: '[["dcp-late-505-a"|card_exists]]' }] }, stubHass());
+    document.body.appendChild(el);
+    await until(() => !!el._error, 2000, 'the failed check');
+    expect(el._error).to.include('Not installed');
+    define('dcp-late-505-a');
+    await until(() => inner(el)?.config?.content === 'has: true', 2000, 'the build once it is defined').catch(
+      () => undefined,
+    );
+    expect(el._error).to.equal(undefined);
+    expect(inner(el)?.config?.content).to.equal('has: true');
+  });
+
+  it('card_exists in section defaults builds again when the card turns up', async () => {
+    stubLovelace({
+      decluttering_templates: { t: { card: { type: 'markdown', content: 'has: [[has]]' } } },
+      views: [
+        {
+          type: 'sections',
+          sections: [{ decluttering_defaults: [{ has: '[["dcp-late-505-b"|card_exists]]' }], cards: [] }],
+        },
+      ],
+    });
+    const section = stubSection(0, 0);
+    const el = card({ template: 't' }, stubHass());
+    section.appendChild(el);
+    await until(() => inner(el)?.config?.content === 'has: false', 2000, 'the first build');
+    define('dcp-late-505-b');
+    await until(() => inner(el)?.config?.content === 'has: true', 2000, 'the build once it is defined');
+  });
+
+  it('a card repeating over the registry builds again when the card turns up', async () => {
+    stubLovelace({
+      decluttering_templates: {
+        t: { card: { type: 'markdown', content: '[[entity]] [["dcp-late-505-c"|card_exists]]' } },
+      },
+      views: [{ cards: [] }],
+    });
+    const hass = stubHass({ 'light.a': 'on' });
+    hass.entities = { 'light.a': { entity_id: 'light.a' } };
+    const el = card({ template: 't', for_each_from: { entities: true, domain: 'light' } }, hass);
+    document.body.appendChild(el);
+    const text = (): string => JSON.stringify(el._lastBuilt ?? el._thingConfig ?? el._error ?? null);
+    await until(() => text().includes('light.a false'), 2000, 'the first build').catch(() => undefined);
+    expect(text()).to.include('light.a false');
+    define('dcp-late-505-c');
+    await until(() => text().includes('light.a true'), 2000, 'the build once it is defined');
   });
 });

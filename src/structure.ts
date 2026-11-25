@@ -1,3 +1,4 @@
+import { withInlineBodies } from './inline-body';
 import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import {
@@ -49,7 +50,9 @@ function itemNames(items: unknown[]): string[] {
  * items' own keys for a list. The mapping or source is looked up among the template's own
  * values, with `extra` - the card's variables, say - looked in first.
  */
-export function structureNames(template: TemplateConfig | undefined, extra?: VariablesConfig[]): string[] {
+export function structureNames(written: TemplateConfig | undefined, extra?: VariablesConfig[]): string[] {
+  // A quoted with:/repeat: body (#498) gives its copies the same names the two-line form does.
+  const template = withInlineBodies(written);
   const json = placeholderJson(template ?? {});
   if (typeof json !== 'string' || (!json.includes(`|${WITH_STEP}`) && !json.includes(`|${REPEAT_STEP}`))) return [];
   const values = variableValues([...normaliseVariables(extra), ...resolveVariables(undefined, template)]);

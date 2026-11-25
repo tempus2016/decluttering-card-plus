@@ -1,3 +1,4 @@
+import { isInlineName, withInlineBodies } from './inline-body';
 import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import { labelName } from './labels';
@@ -685,6 +686,17 @@ export const EXISTS_STEP = 'exists';
 const CONTAINS_STEP = 'contains';
 
 /*
+ * Two more (#499). `is:text` asks whether the value is exactly that text - `[[mode|is:off]]`,
+ * `[[mode|is:[[other]]]]` - which `if:mode=off|bool` cannot, because `bool` then reads the
+ * kept "off" as a no. A list or a mapping is never exactly some text, so it is a no. `not`
+ * turns a yes into a no and back: `[[mode|is:off|not]]`, `[[motion|exists|not]]`, and bare,
+ * `[[link|not]]`, it is `bool` turned round. Both answer an unset variable, `is:` with no and
+ * `not` with yes.
+ */
+const IS_STEP = 'is';
+const NOT_STEP = 'not';
+
+/*
  * `pick:field=value,out` looks an entry up by one of its fields (#429). An object selector with
  * fields saves a list of mappings - `icon_map: [{name: dog, icon: mdi:dog}, ...]` - which dotted
  * names cannot reach into, so `[[icon_map|pick:name=[[detect_type]],icon]]` finds the first entry
@@ -884,7 +896,12 @@ export function asksInstalled(step: string): boolean {
 /** Whether a step answers yes or no. */
 function isYesNoStep(step: string): boolean {
   return (
-    step === BOOL_STEP || step === EXISTS_STEP || INSTALLED_STEPS.includes(step) || stepName(step) === CONTAINS_STEP
+    step === BOOL_STEP ||
+    step === NOT_STEP ||
+    step === EXISTS_STEP ||
+    INSTALLED_STEPS.includes(step) ||
+    stepName(step) === CONTAINS_STEP ||
+    stepName(step) === IS_STEP
   );
 }
 
@@ -997,7 +1014,9 @@ function itemText(item: unknown): string {
 
 /** Whether a chain starting with this step takes a mapping or a list whole, rather than as text. */
 export function takesStructure(step: string, value: unknown): boolean {
-  if (writesWhole(step) || step === RAW_STEP || step === BOOL_STEP) return true;
+  if (writesWhole(step) || step === RAW_STEP || step === BOOL_STEP || step === NOT_STEP) return true;
+  // A list or a mapping is read whole, so `is:` can say it is no text rather than match its JSON.
+  if (stepName(step) === IS_STEP) return !!value && typeof value === 'object';
   // A list is asked whether it holds the item, a mapping whether it has the key.
   if (stepName(step) === CONTAINS_STEP) return !!value && typeof value === 'object';
   // A list or a mapping is looked through for the entry `pick:` asks for (#429).
@@ -1384,6 +1403,7 @@ const TRANSFORM_NAMES = [
   YAML_STEP,
   SLOT_STEP,
   BOOL_STEP,
+  NOT_STEP,
   IF_EXISTS_STEP,
   EXISTS_STEP,
   ...IF_INSTALLED_STEPS,
@@ -1933,6 +1953,19 @@ export const WITH_STEP = 'with';
 export const REPEAT_STEP = 'repeat';
 export const STRUCTURE_PARAM_STEPS = [WITH_STEP, REPEAT_STEP];
 
+/*
+ * The variable a `repeat:` works through, or the mapping a `with:` lays over: read by the
+ * template as surely as the name in front of them, so a card passing it has not set it for
+ * nothing. `with:` pairs (`with:a=1`) name no variable, and a bare `repeat` reads the item
+ * template's own list.
+ */
+const STRUCTURE_SOURCE = /^(?:with|repeat):([A-Za-z0-9_.-]+)$/;
+
+/** The variable a `repeat:` or `with:` step reads, or undefined for any other step. */
+export function structureSource(step: string): string | undefined {
+  return STRUCTURE_SOURCE.exec(step)?.[1];
+}
+
 /** Every structural step: the two that take an argument, and `slot`, which takes none. */
 export const STRUCTURE_STEPS = [...STRUCTURE_PARAM_STEPS, SLOT_STEP];
 
@@ -1945,6 +1978,7 @@ const PARAM_PREFIXES = [
   ...Object.keys(PARAM_TRANSFORMS),
   ...LIST_PARAM_STEPS,
   CONTAINS_STEP,
+  IS_STEP,
   PICK_STEP,
   ...CONVERT_STEPS,
   MERGE_STEP,
@@ -1993,6 +2027,7 @@ export const KNOWN_STEPS: string[] = [
     RAW_STEP,
     YAML_STEP,
     BOOL_STEP,
+    NOT_STEP,
     EXISTS_STEP,
     IF_EXISTS_STEP,
     ...INSTALLED_STEPS,
@@ -2018,6 +2053,7 @@ export const KNOWN_PARAM_STEPS: string[] = [
   ...NUMBER_PARAM_STEPS,
   ...LIST_PARAM_STEPS,
   CONTAINS_STEP,
+  IS_STEP,
   PICK_STEP,
   ...CONVERT_STEPS,
   MERGE_STEP,
@@ -2215,6 +2251,24 @@ export function applyTransform(
       // First in the chain it reads the value itself, so an empty list is a no rather
       // than the text "[]"; further along it reads what the steps before it made.
       text = String(truthy(list ?? (index === 0 && !takesJson ? value : text)));
+      list = undefined;
+      empty = false;
+      continue;
+    }
+
+    if (name === NOT_STEP) {
+      // `bool` turned round, read the same way: a "false" the step before wrote is a no, so a yes.
+      text = String(!truthy(list ?? (index === 0 && !takesJson ? value : empty ? undefined : text)));
+      list = undefined;
+      empty = false;
+      continue;
+    }
+
+    if (stepName(name) === IS_STEP) {
+      // Only text is ever exactly some text: a list or a mapping, and an unset value, are a no.
+      const wanted = argText(name.slice(IS_STEP.length + 1));
+      const whole = list !== undefined || (!!firstHand && typeof firstHand === 'object');
+      text = String(!whole && !empty && text !== undefined && stripHaMarks(text) === wanted);
       list = undefined;
       empty = false;
       continue;
@@ -3460,7 +3514,7 @@ function scanPlaceholders(json: string, pattern: RegExp, names: string[]): void 
       // `[[a|or:b]]` uses b as surely as it uses a, so b is not a value set for nothing -
       // and `[[a|if:b]]` reads b to decide whether a is shown at all.
       for (const step of inside.split('|').slice(1)) {
-        const other = orTarget(step) ?? conditionTarget(step);
+        const other = orTarget(step) ?? conditionTarget(step) ?? structureSource(step);
         if (other) names.push(other);
       }
     }
@@ -3601,10 +3655,20 @@ function usesStep(
   template: TemplateConfig | undefined,
   wanted: (step: string) => boolean,
   itemTemplates?: Record<string, TemplateConfig>,
+  cardValues?: unknown,
 ): boolean {
+  /*
+   * Everything a build fills in, not only the template: the values its view or section sets
+   * and the shared types ride on the copy under symbols, which JSON leaves out, and the card
+   * passes values of its own. A `card_exists` in any of them is as late as one in the
+   * template, and a card that never heard it asked kept its first "no" (#505).
+   */
   const json = placeholderJson([
     template,
     outerLet(template).map((layer) => layer.values),
+    (template as any)?.[VIEW_VALUES],
+    (template as any)?.[SHARED_TYPES],
+    cardValues,
     ...itemTemplatesReached(template, itemTemplates),
   ]);
   if (typeof json !== 'string') return false;
@@ -3676,6 +3740,7 @@ export function itemTemplatesReached(
 export function usesResolver(
   template: TemplateConfig | undefined,
   itemTemplates?: Record<string, TemplateConfig>,
+  cardValues?: unknown,
 ): boolean {
   // `exists` asks Home Assistant too, so it is built again once there is a Home Assistant to ask.
   // A `repeat:` over a registry source reads it too, and has to follow it the same way.
@@ -3688,6 +3753,7 @@ export function usesResolver(
       asksInstalled(step) ||
       stepName(step) === REPEAT_STEP,
     itemTemplates,
+    cardValues,
   );
 }
 
@@ -3698,8 +3764,9 @@ export function usesResolver(
 export function usesInstalled(
   template: TemplateConfig | undefined,
   itemTemplates?: Record<string, TemplateConfig>,
+  cardValues?: unknown,
 ): boolean {
-  return usesStep(template, asksInstalled, itemTemplates);
+  return usesStep(template, asksInstalled, itemTemplates, cardValues);
 }
 
 /**
@@ -3957,14 +4024,18 @@ export function patternIsSafe(pattern: string): boolean {
   return true;
 }
 
-export function usedVariables(template: TemplateConfig | undefined): string[] {
-  return reachable(template, variableValues(resolveVariables(undefined, template)));
+export function usedVariables(written: TemplateConfig | undefined): string[] {
+  // A quoted with:/repeat: body (#498) is read as the two-line form; its hidden name is nobody's.
+  const template = withInlineBodies(written);
+  return reachable(template, variableValues(resolveVariables(undefined, template))).filter(
+    (name) => !isInlineName(name),
+  );
 }
 
 /** What is wrong with one use of a template: nothing here should stop the card saving. */
 export function diagnoseInstance(
   variables: VariablesConfig[] | VariablesConfig | undefined,
-  template: TemplateConfig | undefined,
+  written: TemplateConfig | undefined,
   // Values supplied from elsewhere - a for_each item, say - which satisfy a variable the
   // template uses, but are not the card's own to be called unused.
   supplements?: VariablesConfig[],
@@ -3976,6 +4047,8 @@ export function diagnoseInstance(
   // never as missing, since a `with:` or a repeat's items may be what gives those names.
   bodies?: unknown[],
 ): { missing: string[]; unused: string[]; required: string[] } {
+  // A quoted with:/repeat: body (#498) is read as the two-line form it stands for.
+  const template = withInlineBodies(written);
   // Supplements go after full resolution, so they only fill names nothing else defines.
   // Folded in earlier, a supplement would shadow a declared default and hide the
   // variables that default's own value goes on to use.
