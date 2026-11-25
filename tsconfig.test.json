@@ -83,6 +83,7 @@
     "src/card-editor/template-link.ts",
     "src/card-editor/defaults.ts",
     "src/card-editor/left-behind.ts",
+    "src/card-editor/preview-on.ts",
     "src/card-editor/build-cache.ts",
     "src/declarations-rows.ts",
     "src/example-labels.ts",

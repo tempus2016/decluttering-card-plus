@@ -841,6 +841,14 @@
         "option_label": {
           "type": "string",
           "description": "With `options_from:`, what each option shows; the value when unset."
+        },
+        "preview_on": {
+          "type": "string",
+          "enum": [
+            "typing",
+            "leave"
+          ],
+          "description": "When the edit dialog's preview hears about a change to this field (#510): `typing`, on every keystroke, or `leave`, once the field is left - for values a slow card rebuilds on."
         }
       },
       "required": [
@@ -1041,6 +1049,14 @@
         "option_label": {
           "type": "string",
           "description": "With `options_from:`, what each option shows; the value when unset."
+        },
+        "preview_on": {
+          "type": "string",
+          "enum": [
+            "typing",
+            "leave"
+          ],
+          "description": "When the edit dialog's preview hears about a change to this field (#510): `typing`, on every keystroke, or `leave`, once the field is left - for values a slow card rebuilds on."
         }
       },
       "description": "A declaration under a mapping-form `variables:`, named by its key."
