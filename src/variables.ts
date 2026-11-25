@@ -65,6 +65,11 @@ export interface VariableDeclaration {
   option_value?: string;
   /** With `options_from:`, what each option shows; the value when unset. */
   option_label?: string;
+  /**
+   * When the edit dialog's preview hears about a change to this field (#510): `typing`, on
+   * every keystroke, or `leave`, once the field is left - for values a slow card rebuilds on.
+   */
+  preview_on?: 'typing' | 'leave';
 }
 
 /**

@@ -100,6 +100,7 @@ import {
   withoutVariable,
 } from './card-editor/defaults';
 import { changedNames, leftBehind, nextNotes, stillBehind } from './card-editor/left-behind';
+import { onlyLeaveFieldsChanged } from './card-editor/preview-on';
 import { CARD_SLOT_TAG } from './card-editor/card-slot';
 import { buildTime, previewLines, PreviewLine, previewModes, PreviewMode } from './card-editor/result-preview';
 import {
@@ -908,6 +909,12 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _leftBehind = new Map<string, string[]>();
   // The card's variables before the edits not yet looked at, and after them.
   private _pendingEdit?: { before: unknown; after: unknown };
+  // #510: an edit to a `preview_on: leave` field, kept here until the field is left.
+  private _unsent?: DeclutteringCardConfig;
+  // Any edit the editor sends carries the held one with it, so the hold ends there.
+  private _sentSomething = (ev: Event): void => {
+    if (ev.composedPath()[0] === this) this._unsent = undefined;
+  };
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
@@ -942,6 +949,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.removeEventListener('config-changed', this._sentSomething);
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
     for (const stop of this._holdStops) stop();
@@ -952,6 +960,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
 
   async connectedCallback(): Promise<void> {
     super.connectedCallback();
+    this.addEventListener('config-changed', this._sentSomething);
     if (!this._holdStops.length) {
       this._holdStops = [
         onPreviewHold((event) => {
@@ -1017,6 +1026,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   }
 
   public setConfig(config: DeclutteringCardConfig): void {
+    // A config from Home Assistant replaces anything held back (#510).
+    this._unsent = undefined;
     // The first config is the card as the dashboard has it saved; every later one is an edit.
     if (!this._openedWith) {
       this._openedWith = config;
@@ -3396,6 +3407,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
         .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
         .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
         @value-changed=${this._valueChanged}
+        @focusout=${this._sendUnsent}
+        @keydown=${this._enterSends}
       ></ha-form>`;
     if (!shown.length) return form(schema);
 
@@ -3830,7 +3843,27 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     setOrDelete(config, 'lazy', data.lazy === true ? true : undefined);
     setOrDelete(config, 'lazy_eager', data.lazy_eager);
 
+    // #510: a field that waits to be left keeps its value here and tells the preview later.
+    if (onlyLeaveFieldsChanged(this._config, config, declarations)) {
+      this.setConfig(config);
+      this._unsent = config;
+      return;
+    }
     fireEvent(this, 'config-changed', { config });
+  }
+
+  // Tells the preview about a value held back while its field was typed in (#510).
+  private _sendUnsent(): void {
+    const config = this._unsent;
+    if (!config) return;
+    this._unsent = undefined;
+    fireEvent(this, 'config-changed', { config });
+  }
+
+  // Enter in a one-line field counts as leaving it; in a box of lines it is a new line.
+  private _enterSends(ev: KeyboardEvent): void {
+    if (ev.key !== 'Enter' || (ev.composedPath()[0] as Element | undefined)?.tagName === 'TEXTAREA') return;
+    this._sendUnsent();
   }
 
   // The dropdown starts with this dashboard's templates and gains the borrowed ones once
