@@ -50,6 +50,11 @@ import {
   forEachNames,
   forEachVariables,
   getDeclarations,
+  getNotes,
+  isPlacedNote,
+  PlacedNote,
+  stripHaMarks,
+  withNotes,
   mergeVariables,
   ownVariables,
   POSITION_NAMES,
@@ -192,6 +197,7 @@ import {
   isVariablesShape,
   loadCardEditorPicker,
   leftOutParams,
+  markdownReady,
   pageDashboard,
   rewriteDashboards,
   setOrDelete,
@@ -215,6 +221,9 @@ interface Diagnosis {
 // Declared variables get their own form field, and the prefix keeps a variable called
 // "template" from colliding with the field that chooses the template.
 const VARIABLE_FIELD_PREFIX = 'variable:';
+// A note (#509) in the variables form: drawn by the editor itself, never given to ha-form.
+const NOTE_FIELD_PREFIX = 'note:';
+const NOTE_TYPE = 'decluttering_note';
 
 // mdi:alert-circle-outline and mdi:information-outline, on the status line under the preview.
 const ALERT_PATH =
@@ -235,6 +244,8 @@ const RESET_PATH =
 interface SchemaEntry {
   name?: string;
   type?: string;
+  /** A note's text (#509), filled in. */
+  content?: string;
   title?: string;
   label?: string;
   helper?: string;
@@ -784,6 +795,20 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         display: flex;
         align-items: flex-start;
         gap: 4px;
+      }
+      /* #509: a template's note among its fields, read as text rather than a field. */
+      .declared-note {
+        color: var(--secondary-text-color);
+        overflow-wrap: anywhere;
+      }
+      .declared-note ha-markdown,
+      .declared-note p {
+        margin: 0;
+      }
+      .declared-note pre {
+        margin: 0;
+        white-space: pre-wrap;
+        font-family: inherit;
       }
       .declared-field ha-form {
         flex: 1;
@@ -3228,37 +3253,71 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     // A group's show_if and hide_if (#473) hide each of its fields, so a hidden group leaves no section.
     const groups = templateGroups(template);
     if (!hasVisibilityConditions(declarations, groups)) return hidden;
-    const values = variableValues(resolveVariables(this._config?.variables, template));
-    // A value written with placeholders is read as the card fills it (#426), with the states
-    // it rebuilds on and the dashboard's item templates, as _failedChecks reads them.
-    const config = this._config;
-    const read = filledReader(values, (content) => {
-      if (!config || !template) return content;
-      const ll = this._lovelace ?? getLovelaceConfig();
-      const scoped = withStateScope(this.hass, this._rebuildOnFor(template));
-      const variables = withSlotVariables(config).variables;
-      return deepReplace(
-        variables,
-        template,
-        content,
-        config.template,
-        scoped,
-        true,
-        undefined,
-        0,
-        undefined,
-        undefined,
-        false,
-        {
-          itemTemplates: itemTemplatesOf(ll),
-          context: sourceContext(ll),
-        },
-      );
-    });
+    const read = filledReader(variableValues(resolveVariables(this._config?.variables, template)), (content) =>
+      this._fill(template, content),
+    );
     for (const declaration of declarations) {
       if (!declarationShown(declaration, read, groups)) hidden.add(declaration.name);
     }
     return hidden;
+  }
+
+  /*
+   * #509: the template's notes the editor shows, each with its text filled in from the values
+   * as they stand - read the way show_if reads them, so a note says what the card will be given.
+   */
+  private _shownNotes(template: TemplateConfig | undefined): (PlacedNote & { content: string })[] {
+    return this._builds.get('notes', this._readsKey(template), () => {
+      const notes = getNotes(template);
+      if (!notes.length) return [];
+      const groups = templateGroups(template);
+      const read = filledReader(variableValues(resolveVariables(this._config?.variables, template)), (content) =>
+        this._fill(template, content),
+      );
+      return notes
+        .filter((each) => declarationShown(each.note, read, groups))
+        .map((each) => ({ ...each, content: this._noteText(template, each.note.note) }));
+    });
+  }
+
+  // A note's text with its placeholders filled; one that cannot be filled shows as written.
+  private _noteText(template: TemplateConfig | undefined, text: string): string {
+    if (!PLACEHOLDER.test(text)) return text;
+    try {
+      const filled = this._fill(template, text);
+      return typeof filled === 'string' ? stripHaMarks(filled) : String(filled ?? '');
+    } catch {
+      return text;
+    }
+  }
+
+  /*
+   * Text filled in as the card fills it (#426), with the states it rebuilds on and the
+   * dashboard's item templates, as _failedChecks reads them.
+   */
+  private _fill(template: TemplateConfig | undefined, content: string): unknown {
+    const config = this._config;
+    if (!config || !template) return content;
+    const ll = this._lovelace ?? getLovelaceConfig();
+    const scoped = withStateScope(this.hass, this._rebuildOnFor(template));
+    const variables = withSlotVariables(config).variables;
+    return deepReplace(
+      variables,
+      template,
+      content,
+      config.template,
+      scoped,
+      true,
+      undefined,
+      0,
+      undefined,
+      undefined,
+      false,
+      {
+        itemTemplates: itemTemplatesOf(ll),
+        context: sourceContext(ll),
+      },
+    );
   }
 
   /*
@@ -3301,9 +3360,15 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     // under its title.
     const groups = templateGroups(template);
     const grouped: unknown[] = [];
-    for (const bucket of groupDeclarations(declarations.filter((declaration) => !isCardDeclaration(declaration)))) {
+    // A note (#509) sits where it is written among the fields, in the group it names.
+    const entry = (each: VariableDeclaration | (PlacedNote & { content: string })): Record<string, unknown> =>
+      isPlacedNote(each)
+        ? { name: `${NOTE_FIELD_PREFIX}${each.index}`, type: NOTE_TYPE, content: each.content }
+        : field(each);
+    const fields = declarations.filter((declaration) => !isCardDeclaration(declaration));
+    for (const bucket of groupDeclarations(withNotes(fields, this._shownNotes(template)))) {
       if (bucket.group === undefined) {
-        grouped.push(...bucket.declarations.map(field));
+        grouped.push(...bucket.declarations.map(entry));
         continue;
       }
       const settings = groups[bucket.group];
@@ -3314,7 +3379,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
         title: bucket.group,
         ...(settings?.expanded === true ? { expanded: true } : {}),
         ...(description ? { helper: description } : {}),
-        schema: bucket.declarations.map(field),
+        schema: bucket.declarations.map(entry),
       });
     }
 
@@ -3413,6 +3478,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     if (!shown.length) return form(schema);
 
     const field = (entry: SchemaEntry): TemplateResult => {
+      if (entry.type === NOTE_TYPE) return this._renderNote(entry);
       if (typeof entry.name !== 'string' || !entry.name.startsWith(VARIABLE_FIELD_PREFIX)) return form([entry]);
       const name = entry.name.slice(VARIABLE_FIELD_PREFIX.length);
       const reset = entry.disabled ? undefined : resets.get(name);
@@ -3468,6 +3534,17 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
             </ha-expansion-panel>`
           : field(entry),
       )}
+    </div>`;
+  }
+
+  /*
+   * #509: a template's note, in Home Assistant's own Markdown element - the one the Markdown
+   * card uses, which makes the HTML safe - and as plain text until that element is defined.
+   */
+  private _renderNote(entry: SchemaEntry): TemplateResult {
+    const text = entry.content ?? '';
+    return html`<div class="declared-note" data-note=${entry.name ?? ''}>
+      ${markdownReady(() => this.requestUpdate()) ? html`<ha-markdown .content=${text}></ha-markdown>` : html`<pre>${text}</pre>`}
     </div>`;
   }
 

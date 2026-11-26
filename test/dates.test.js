@@ -20,6 +20,22 @@ check('an empty value is not a date', parseDate(''), undefined);
 check('a short number is read as seconds, not as a year', parseDate('3') instanceof Date, true);
 check('a bad ISO string is not a date', parseDate('2026-13-45T99:00:00Z'), undefined);
 
+// A time selector's value has no date (#508): it is read as today at that time.
+{
+  const t = parseDate('14:30:00');
+  const today = new Date();
+  check(
+    'a bare time is today at that time',
+    [t.getFullYear(), t.getMonth(), t.getDate(), t.getHours(), t.getMinutes(), t.getSeconds()],
+    [today.getFullYear(), today.getMonth(), today.getDate(), 14, 30, 0],
+  );
+  check('seconds are optional', parseDate('7:05').getHours() * 100 + parseDate('7:05').getMinutes(), 705);
+  check('formatted like any date', formatDate(parseDate('14:30:00'), 'h:mm A', 'en'), '2:30 PM');
+  check('an hour past 23 is not a time', parseDate('24:00'), undefined);
+  check('a minute past 59 is not a time', parseDate('12:60'), undefined);
+  check('a ratio is not a time', parseDate('16:9:1:2'), undefined);
+}
+
 check('eighteen minutes ago', relative(new Date('2026-10-24T07:42:00Z'), now, 'en'), '18 minutes ago');
 check('seconds under forty-five', relative(new Date('2026-10-24T07:59:30Z'), now, 'en'), '30 seconds ago');
 check('hours under twenty-two', relative(new Date('2026-10-24T03:00:00Z'), now, 'en'), '5 hours ago');

@@ -8,6 +8,7 @@ import {
   ESCAPE,
   declarationGroup,
   getDeclarations,
+  getNotes,
   GROUPS_KEY,
   isWellFormedCondition,
   normaliseVariables,
@@ -279,6 +280,8 @@ function scanTemplateProse(template: TemplateConfig, scan: Scan): void {
   getDeclarations(template).forEach((declaration, index) => {
     for (const key of PROSE_DECLARATION_KEYS) scanProse((declaration as any)[key], `variables[${index}].${key}`, scan);
   });
+  // A note (#509) is prose too.
+  for (const { note, index } of getNotes(template)) scanProse(note.note, `variables.note[${index}]`, scan);
   const examples = (template as any).examples;
   (Array.isArray(examples) ? examples : examples ? [examples] : []).forEach((example: any, index: number) => {
     scanProse(example?.name, `examples[${index}].name`, scan);

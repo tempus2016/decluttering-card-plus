@@ -8,7 +8,19 @@ import { warn } from './warnings';
 import { cardExists, iconExists, integrationExists } from './installed';
 import { toYaml } from './yaml';
 import { AGE_UNITS, age, formatDate, parseDate, relative } from './dates';
-import { contrast, darken, isThemeVariable, lighten, mix, parseColour, toHex, toRgba } from './colour';
+import {
+  colourName,
+  contrast,
+  darken,
+  isThemeVariable,
+  lighten,
+  mix,
+  parseColour,
+  toHex,
+  toHexWithAlpha,
+  toRgba,
+  toRgbList,
+} from './colour';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -86,14 +98,13 @@ export function isCardDeclaration(declaration: VariableDeclaration | undefined):
  * Declarations gathered by their `group:`, in order of first appearance, the ungrouped
  * ones first - they are the essentials, and the groups are the detail behind them.
  */
-export function groupDeclarations(
-  declarations: VariableDeclaration[],
-): { group: string | undefined; declarations: VariableDeclaration[] }[] {
-  const buckets: { group: string | undefined; declarations: VariableDeclaration[] }[] = [
-    { group: undefined, declarations: [] },
-  ];
+export function groupDeclarations<T extends VariableDeclaration | PlacedNote = VariableDeclaration>(
+  declarations: T[],
+): { group: string | undefined; declarations: T[] }[] {
+  const buckets: { group: string | undefined; declarations: T[] }[] = [{ group: undefined, declarations: [] }];
   for (const declaration of declarations) {
-    const group = declarationGroup(declaration);
+    // A note (#509) goes in the group it names, as a declaration does.
+    const group = declarationGroup(isPlacedNote(declaration) ? declaration.note : declaration);
     let bucket = buckets.find((each) => each.group === group);
     if (!bucket) {
       bucket = { group, declarations: [] };
@@ -105,8 +116,82 @@ export function groupDeclarations(
 }
 
 /** The `group:` a declaration is in, or undefined when it names none. */
-export function declarationGroup(declaration: VariableDeclaration): string | undefined {
+export function declarationGroup(declaration: Pick<VariableDeclaration, 'group'>): string | undefined {
   return typeof declaration.group === 'string' && declaration.group ? declaration.group : undefined;
+}
+
+/**
+ * A line of text among a template's variables (#509): `- note: ...` in place of a declaration,
+ * Markdown with placeholders, drawn in the card editor where it is written. It is for the
+ * editor alone - it declares nothing, so the card, its build and the report never see it.
+ */
+export interface VariableNote {
+  /** The Markdown shown, with placeholders filled from what the card is given. */
+  note: string;
+  /** Written only by the mapping form, whose key names the entry; nothing reads it. */
+  name?: string;
+  /** Shows the note only while one of these holds, as a declaration's own show_if does. */
+  show_if?: string | string[];
+  /** Hides the note while any of these holds. */
+  hide_if?: string | string[];
+  /** The group whose section the note sits in. */
+  group?: string;
+}
+
+/** Everything a note may say; an entry with any other key is a declaration, as it always was. */
+export const NOTE_KEYS = ['note', 'name', 'show_if', 'hide_if', 'group'];
+
+/*
+ * Whether an entry of `variables:` is a note: a text under `note:` and nothing a declaration
+ * says about a value. So a declaration that happens to carry a `note:` of its own - with a
+ * type, a default, a selector - stays the declaration it has always been.
+ */
+export function isNoteEntry(entry: unknown): entry is VariableNote {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+  const written = entry as Record<string, unknown>;
+  return typeof written.note === 'string' && Object.keys(written).every((key) => NOTE_KEYS.includes(key));
+}
+
+/** A note with the names of the declarations written after it, which say where it goes. */
+export interface PlacedNote {
+  note: VariableNote;
+  /** Its place among the notes, which keeps it apart from the others. */
+  index: number;
+  /** The names written after it, nearest first. */
+  before: string[];
+}
+
+/** The notes among a template's variables (#509), in the order they are written. */
+export function getNotes(template: TemplateConfig | undefined): PlacedNote[] {
+  const declared = declarationList(template?.variables);
+  const notes: PlacedNote[] = [];
+  for (const entry of declared) {
+    if (isNoteEntry(entry)) notes.push({ note: entry, index: notes.length, before: [] });
+    else if (entry && typeof entry.name === 'string') for (const each of notes) each.before.push(entry.name);
+  }
+  return notes;
+}
+
+/**
+ * Declarations with notes put among them: each just before the first declaration written after
+ * it that is in the list, so a note still sits above its field when a field between them is
+ * hidden, and at the end when none of the fields after it is.
+ */
+export function withNotes<T extends { name: string }, N extends PlacedNote>(declarations: T[], notes: N[]): (T | N)[] {
+  if (!notes.length) return declarations;
+  const out: (T | N)[] = [...declarations];
+  const position = (name: string): number => out.findIndex((each) => !isPlacedNote(each) && each.name === name);
+  for (const note of notes) {
+    const at = note.before.map(position).find((index) => index !== -1);
+    if (at === undefined) out.push(note);
+    else out.splice(at, 0, note);
+  }
+  return out;
+}
+
+/** Whether an entry of a list made by withNotes is a note. */
+export function isPlacedNote(entry: unknown): entry is PlacedNote {
+  return !!entry && typeof entry === 'object' && 'note' in entry && 'before' in entry;
 }
 
 /**
@@ -190,7 +275,7 @@ function conditionsShow(written: Pick<VariableDeclaration, VisibilityKey>, read:
  * shows only while both its group and the field itself say so.
  */
 export function declarationShown(
-  declaration: VariableDeclaration,
+  declaration: Pick<VariableDeclaration, 'group' | VisibilityKey>,
   read: (name: string) => unknown,
   groups?: Record<string, VariableGroupSettings>,
 ): boolean {
@@ -1030,6 +1115,8 @@ export function takesStructure(step: string, value: unknown): boolean {
   if (isConvertStep(step)) return !!value && typeof value === 'object';
   // Two lists or two mappings are joined (#454); an unset value takes the other's whole.
   if (stepName(step) === MERGE_STEP) return true;
+  // The [r, g, b] list a color_rgb selector gives is a colour to the colour steps (#508).
+  if (isColourStep(step)) return Array.isArray(value) && parseColour(JSON.stringify(value)) !== undefined;
   // A mapping has a size, and nothing else a list step reads.
   return Array.isArray(value) ? isListStep(step) : step === COUNT_STEP;
 }
@@ -1281,30 +1368,52 @@ function localeStep(step: string, text: string, hass?: any): string | undefined 
  * `contrast` derive from one colour; a value that is not a colour is left as it was with a
  * word in the console, and a theme variable is passed through, since its value is not known
  * until the page paints.
+ *
+ * Each also reads the [r, g, b] list a color_rgb selector gives (#508), and three write a colour
+ * out as it is: `to_hex` as hex (alpha kept as #rrggbbaa), `to_rgb` as that list again - a real
+ * list as a whole value, so it can be another selector's default: - and `color_name` as its CSS
+ * name when it is exactly one, else as hex.
  */
 const CONTRAST_STEP = 'contrast';
+export const TO_HEX_STEP = 'to_hex';
+export const TO_RGB_STEP = 'to_rgb';
+export const COLOR_NAME_STEP = 'color_name';
+const COLOUR_BARE_STEPS = [CONTRAST_STEP, TO_HEX_STEP, TO_RGB_STEP, COLOR_NAME_STEP];
 const COLOUR_PARAM_STEPS = ['lighten', 'darken', 'alpha', 'mix'];
 
 function isColourStep(step: string): boolean {
   const colon = step.indexOf(':');
-  return colon === -1 ? step === CONTRAST_STEP : COLOUR_PARAM_STEPS.includes(step.slice(0, colon));
+  return colon === -1 ? COLOUR_BARE_STEPS.includes(step) : COLOUR_PARAM_STEPS.includes(step.slice(0, colon));
+}
+
+/** The colour a colour step reads from the text, or undefined - with a word in the console - when there is none. */
+function colourFor(step: string, text: string, hass?: any): ReturnType<typeof parseColour> {
+  if (isThemeVariable(text)) {
+    warnOnce('warn.colour_from_theme', step, text, hass);
+    return undefined;
+  }
+  const colour = parseColour(text);
+  if (!colour) warnOnce('warn.not_a_colour', step, text, hass);
+  return colour;
+}
+
+/** What `to_rgb` makes of one value: the [r, g, b] list, or the value as it was when it is no colour. */
+function rgbListFor(text: string, hass?: any): unknown {
+  const colour = colourFor(TO_RGB_STEP, text, hass);
+  return colour ? toRgbList(colour) : text;
 }
 
 function colourStep(step: string, text: string, hass?: any): string | undefined {
   if (!isColourStep(step)) return undefined;
-  if (isThemeVariable(text)) {
-    warnOnce('warn.colour_from_theme', step, text, hass);
-    return text;
-  }
-  const colour = parseColour(text);
-  if (!colour) {
-    warnOnce('warn.not_a_colour', step, text, hass);
-    return text;
-  }
+  const colour = colourFor(step, text, hass);
+  if (!colour) return text;
   const colon = step.indexOf(':');
   const name = colon === -1 ? step : step.slice(0, colon);
   const arg = colon === -1 ? '' : step.slice(colon + 1);
   if (name === CONTRAST_STEP) return contrast(colour);
+  if (name === TO_HEX_STEP) return toHexWithAlpha(colour);
+  if (name === COLOR_NAME_STEP) return colourName(colour) ?? toHexWithAlpha(colour);
+  if (name === TO_RGB_STEP) return JSON.stringify(toRgbList(colour));
   if (name === 'alpha') {
     const alpha = Number(arg);
     if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
@@ -1332,7 +1441,7 @@ function colourStep(step: string, text: string, hass?: any): string | undefined 
 }
 
 // Every new step, for the grammar and the lint: written bare, and written with an argument.
-const EXTRA_BARE_STEPS = [...DATE_BARE_STEPS, FORMAT_NUMBER_STEP, CONTRAST_STEP];
+const EXTRA_BARE_STEPS = [...DATE_BARE_STEPS, FORMAT_NUMBER_STEP, ...COLOUR_BARE_STEPS];
 const EXTRA_PARAM_STEPS = [...DATE_PARAM_STEPS, PLURAL_STEP, FORMAT_NUMBER_STEP, ...COLOUR_PARAM_STEPS];
 
 /** The name a step goes by, without its argument. */
@@ -1364,7 +1473,13 @@ export function yieldsList(chain: string | undefined): boolean {
   let list = false;
   for (const step of chain.split('|')) {
     if (isFallback(step) || isCondition(step)) continue;
-    if (stepName(step) === SPLIT_STEP || stepName(step) === TO_LIST_STEP || stepName(step) === MERGE_STEP) list = true;
+    if (
+      stepName(step) === SPLIT_STEP ||
+      stepName(step) === TO_LIST_STEP ||
+      stepName(step) === MERGE_STEP ||
+      step === TO_RGB_STEP
+    )
+      list = true;
     else if (
       isListStep(step) ||
       isYesNoStep(step) ||
@@ -2496,6 +2611,22 @@ export function applyTransform(
     // chain still gets its turn.
     if (text === undefined && list === undefined) continue;
 
+    // `to_rgb` (#508) makes the colour a list, so `join:`, `first` and a whole value read it as one.
+    // After a `split` each item becomes its own list. A value that is no colour is left as it was.
+    if (name === TO_RGB_STEP) {
+      if (list !== undefined) {
+        list = list.map((item) => rgbListFor(itemText(item), hass));
+        continue;
+      }
+      const made = rgbListFor(text as string, hass);
+      if (Array.isArray(made)) {
+        list = made;
+        text = undefined;
+        empty = false;
+      }
+      continue;
+    }
+
     /*
      * A template used as a step (#307): the value goes in as `[[value]]`, the argument as its
      * parameters, and what comes out carries on along the chain. Nothing coming out is a gap,
@@ -2869,6 +3000,8 @@ export function getDeclarations(template: TemplateConfig | undefined): VariableD
   const typesHere = (): Record<string, Record<string, unknown>> => (types ??= typesOf(template));
   for (const entry of declared) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    // A note (#509) is text for the editor, not a variable.
+    if (isNoteEntry(entry)) continue;
     const name = entry.name;
     if (typeof name !== 'string' || !name.trim() || seen.has(name)) continue;
     seen.add(name);
@@ -3591,6 +3724,11 @@ function visibilityReads(template: TemplateConfig | undefined): unknown[] {
   for (const owner of owners)
     for (const key of ['show_if', 'hide_if'] as const)
       for (const condition of visibilityConditions(owner, key)) conditionReads(condition, reads);
+  // A note (#509) reads what it shows, each as optional: a note never makes a variable needed.
+  for (const { note } of getNotes(template)) {
+    const shown = /\[\[([A-Za-z0-9_.-]+)/g;
+    for (let match = shown.exec(note.note); match; match = shown.exec(note.note)) reads.push(`[[${match[1]}?]]`);
+  }
   return reads;
 }
 

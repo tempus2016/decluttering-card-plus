@@ -672,7 +672,10 @@ function mergeDeclarations(parent: any, child: any): any[] {
   const childList: any[] = Array.isArray(child) ? child : [];
   const byName = new Map(childList.filter((entry) => entry?.name).map((entry) => [entry.name, entry]));
   const merged = parentList.map((entry) => (entry?.name && byName.has(entry.name) ? byName.get(entry.name) : entry));
-  const parentNames = new Set(parentList.map((entry) => entry?.name));
+  // Only names: a note (#509) has none, and a parent's note must not take the child's away.
+  const parentNames = new Set(
+    parentList.map((entry) => entry?.name).filter((name) => typeof name === 'string' && name),
+  );
   return [...merged, ...childList.filter((entry) => !parentNames.has(entry?.name))];
 }
 
