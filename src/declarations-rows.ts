@@ -1,4 +1,4 @@
-import { VariableDeclaration, declarationList } from './variables';
+import { VariableDeclaration, declarationList, isNoteEntry } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -66,6 +66,16 @@ export function rowsFrom(variables: unknown): DeclRow[] {
   return rows;
 }
 
+/** Whether a row is a note (#509): text among the variables, with no name of its own in a list. */
+export function isNoteRow(row: DeclRow): boolean {
+  return isNoteEntry(entryFrom(row));
+}
+
+/** A new note row, named only where the mapping form needs a key for it. */
+export function emptyNoteRow(rows: DeclRow[], shape: DeclShape): DeclRow {
+  return { name: shape === 'mapping' ? uniqueName(rows, 'note') : '', extra: { note: '' }, order: ['note'] };
+}
+
 /** One declaration as it is written in a list: name first, then the keys in their original order, new ones after. */
 function entryFrom(row: DeclRow): Record<string, unknown> {
   const fields: Record<string, unknown> = {};
@@ -77,6 +87,8 @@ function entryFrom(row: DeclRow): Record<string, unknown> {
   const out: Record<string, unknown> = { name: row.name };
   for (const key of row.order) if (key in fields) out[key] = fields[key];
   for (const key of Object.keys(fields)) if (!(key in out)) out[key] = fields[key];
+  // A note written in a list has no name (#509), and gets none from going through the table.
+  if (row.name === '' && isNoteEntry(out)) delete out.name;
   return out;
 }
 
@@ -95,7 +107,7 @@ export function variablesFrom(rows: DeclRow[], shape: DeclShape): unknown {
   if (shape === 'mapping') {
     const out: Record<string, unknown> = {};
     for (const entry of entries) {
-      const { name, ...rest } = entry;
+      const { name = 'note', ...rest } = entry;
       const keys = Object.keys(rest);
       if (!keys.length) out[String(name)] = null;
       else if (keys.length === 1 && keys[0] === 'default' && !isPlainObject(rest.default) && rest.default !== null)

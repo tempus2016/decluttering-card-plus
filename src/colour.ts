@@ -2,8 +2,9 @@
  * Colours for a placeholder (idea 41). One colour variable written once; `lighten:`,
  * `darken:`, `alpha:`, `mix:` and `contrast` derive a tint, a shade, a wash, a blend or a
  * readable text colour from it, so a `type: color` declaration's one pick carries a whole
- * scheme. Each reads a hex, an rgb() or a named CSS colour and writes a hex back (alpha
- * writes rgba()), so the result goes anywhere CSS goes. A theme variable - `var(--x)` -
+ * scheme. Each reads a hex, an rgb(), a named CSS colour or the [r, g, b] list Home Assistant's
+ * color_rgb selector gives (#508), and writes a hex back (alpha writes rgba()), so the result
+ * goes anywhere CSS goes. `to_hex`, `to_rgb` and `color_name` write a colour out as it is. A theme variable - `var(--x)` -
  * cannot be read at build time, and is passed through untouched with a word in the console.
  */
 
@@ -184,10 +185,28 @@ function channel(part: string): number | undefined {
   return Number.isFinite(n) ? clamp(Math.round(n)) : undefined;
 }
 
-/** The colour the text writes - hex, rgb()/rgba() or a CSS name - or undefined for anything else. */
+/*
+ * An [r, g, b] or [r, g, b, a] list, as Home Assistant's color_rgb selector gives one (#508). A
+ * list value reaches a step as its JSON, so that is what is read: numbers only, alpha 0 to 1.
+ */
+function parseList(value: string): Rgb | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed) || (parsed.length !== 3 && parsed.length !== 4)) return undefined;
+  if (!parsed.every((n) => typeof n === 'number' && Number.isFinite(n))) return undefined;
+  const [r, g, b, a = 1] = parsed as number[];
+  return { r: clamp(Math.round(r)), g: clamp(Math.round(g)), b: clamp(Math.round(b)), a: clamp(a, 0, 1) };
+}
+
+/** The colour the text writes - hex, rgb()/rgba(), a CSS name or an [r, g, b] list - or undefined for anything else. */
 export function parseColour(text: string): Rgb | undefined {
   const value = text.trim().toLowerCase();
   if (!value) return undefined;
+  if (value.startsWith('[')) return parseList(value);
   const hex = value.startsWith('#') ? value.slice(1) : NAMED[value];
   if (hex !== undefined) {
     if (!/^[0-9a-f]+$/.test(hex)) return undefined;
@@ -219,6 +238,30 @@ const hex2 = (n: number): string => clamp(Math.round(n)).toString(16).padStart(2
 /** `#rrggbb`, alpha dropped. */
 export function toHex(colour: Rgb): string {
   return `#${hex2(colour.r)}${hex2(colour.g)}${hex2(colour.b)}`;
+}
+
+/** `#rrggbb`, or `#rrggbbaa` when the colour is not solid, so nothing about it is lost. */
+export function toHexWithAlpha(colour: Rgb): string {
+  return colour.a < 1 ? `${toHex(colour)}${hex2(colour.a * 255)}` : toHex(colour);
+}
+
+/** The colour as `[r, g, b]`, the list a color_rgb selector takes; alpha dropped. */
+export function toRgbList(colour: Rgb): number[] {
+  return [colour.r, colour.g, colour.b].map((c) => clamp(Math.round(c)));
+}
+
+// Hex to its CSS name. The table is in alphabetical order and the first spelling is kept, so
+// gray wins over grey, aqua over cyan and fuchsia over magenta.
+let names: Map<string, string> | undefined;
+
+/** The CSS name of a solid colour that is exactly one, or undefined. */
+export function colourName(colour: Rgb): string | undefined {
+  if (colour.a < 1) return undefined;
+  if (!names) {
+    names = new Map();
+    for (const [name, hex] of Object.entries(NAMED)) if (!names.has(hex)) names.set(hex, name);
+  }
+  return names.get(toHex(colour).slice(1));
 }
 
 /** `rgba(r, g, b, a)` with the alpha written as given. */

@@ -65,6 +65,7 @@ import {
 import {
   HELPERS,
   LAZY_COPY_TAG,
+  markdownReady,
   TEMPLATE_TAG,
   THING_TYPE_KEYS,
   TemplatePicker,
@@ -164,9 +165,6 @@ function findInside(root: Element | null, selector: string): Element | undefined
   }
   return undefined;
 }
-
-// Whether a Markdown card has been asked for, so `debug: report` can show its report formatted.
-let markdownRequested = false;
 
 /*
  * A picture element is centred on its position and clipped by the card it sits in, so an
@@ -1533,15 +1531,8 @@ export abstract class DeclutteringElement extends LitElement {
    * the card helpers for one to load it, and shows the source until it has.
    */
   private _renderFormatted(text: string): TemplateResult {
-    if (customElements.get('ha-markdown'))
+    if (markdownReady(() => this.requestUpdate()))
       return html`<ha-markdown class="formatted" .content=${text} @click=${this._onFormattedClick}></ha-markdown>`;
-    if (!markdownRequested) {
-      markdownRequested = true;
-      HELPERS?.then((helpers: { createCardElement: (config: unknown) => unknown }) =>
-        helpers.createCardElement({ type: 'markdown', content: '' }),
-      ).catch(() => {});
-    }
-    customElements.whenDefined('ha-markdown').then(() => this.requestUpdate());
     return html`<pre tabindex="0">${text}</pre>`;
   }
 

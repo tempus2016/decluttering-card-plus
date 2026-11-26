@@ -184,7 +184,7 @@ export function translateText(text: string, template: unknown, hass?: any): stri
 }
 
 // What a declaration says to whoever fills it in; the rest of it is read by the card.
-const DECLARATION_TEXT_KEYS = ['label', 'description', 'helper', 'group'];
+const DECLARATION_TEXT_KEYS = ['label', 'description', 'helper', 'group', 'note'];
 
 function translateDeep(value: any, template: unknown, hass: any): any {
   if (typeof value === 'string') return translateText(value, template, hass);

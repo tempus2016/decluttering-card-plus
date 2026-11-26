@@ -98,6 +98,40 @@
     }
   }
 
+  /* ---- land on the link's target (#507) -------------------------------------------------
+     The browser jumps to #target as soon as it can, and the page then keeps moving under it:
+     the Plex fonts swap in, images arrive, and the highlighting above adds its spans. Once
+     all that has settled, put the target back at the top, unless the reader has already
+     moved. Smooth scrolling is switched on after that, so it never animates this jump. */
+  var moved = false;
+  var stop = function () {
+    moved = true;
+  };
+  ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (type) {
+    window.addEventListener(type, stop, { once: true, passive: true });
+  });
+  var settle = function () {
+    var id = location.hash.slice(1);
+    var target = null;
+    if (id) {
+      try {
+        target = document.getElementById(decodeURIComponent(id));
+      } catch {
+        target = document.getElementById(id);
+      }
+    }
+    if (target && !moved) target.scrollIntoView(true);
+    document.documentElement.classList.add('smooth');
+  };
+  var loaded = new Promise(function (done) {
+    if (document.readyState === 'complete') done();
+    else window.addEventListener('load', done, { once: true });
+  });
+  var fonts = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  Promise.all([loaded, fonts]).then(function () {
+    requestAnimationFrame(settle);
+  }, settle);
+
   /* ---- search -----------------------------------------------------------------------
      search.json is one entry per heading of every page (p the page, h the heading, u the
      link, x the words under it), plus one per key row of a table, which also carries k, the
@@ -405,29 +439,41 @@
     // read as markup.
     var marked = function (text, words) {
       var frag = document.createDocumentFragment();
+      // Longest first, so where a long and a short word both match at one place the long one
+      // is marked, and a short one is only ever the last thing tried there.
       var pattern = new RegExp(
-        '(' +
-          words
-            .map(function (w) {
-              var escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              // Two letters inside a word ("if" in notify) is noise, so those only at a start.
-              return w.length > 2 ? escaped : '(?<![a-z0-9])' + escaped;
-            })
-            .join('|') +
-          ')',
+        words
+          .slice()
+          .sort(function (a, b) {
+            return b.length - a.length;
+          })
+          .map(function (w) {
+            return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          })
+          .join('|'),
         'gi',
       );
-      // Marked wherever it is, start of a word or not, since find() counts both.
-      text.split(pattern).forEach(function (part, i) {
-        if (!part) return;
-        if (i % 2) {
-          var m = document.createElement('mark');
-          m.textContent = part;
-          frag.appendChild(m);
-        } else {
-          frag.appendChild(document.createTextNode(part));
+      // Marked wherever it is, start of a word or not, since find() counts both - except two
+      // letters inside a word ("if" in notify), which is noise. Checked by hand rather than
+      // with a lookbehind, which Safari before 16.4 cannot even parse.
+      var from = 0;
+      var m;
+      while ((m = pattern.exec(text))) {
+        if (!m[0]) {
+          pattern.lastIndex++;
+          continue;
         }
-      });
+        if (m[0].length <= 2 && m.index > 0 && /[a-z0-9]/i.test(text.charAt(m.index - 1))) {
+          pattern.lastIndex = m.index + 1;
+          continue;
+        }
+        if (m.index > from) frag.appendChild(document.createTextNode(text.slice(from, m.index)));
+        var mark = document.createElement('mark');
+        mark.textContent = m[0];
+        frag.appendChild(mark);
+        from = m.index + m[0].length;
+      }
+      if (from < text.length) frag.appendChild(document.createTextNode(text.slice(from)));
       return frag;
     };
 

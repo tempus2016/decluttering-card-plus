@@ -317,6 +317,27 @@ export async function undoFrom(
 const pageWindow: any = typeof window !== 'undefined' ? window : undefined;
 export const HELPERS = pageWindow?.loadCardHelpers ? pageWindow.loadCardHelpers() : undefined;
 
+// Whether a Markdown card has been asked for, to get Home Assistant's ha-markdown defined.
+let markdownRequested = false;
+
+/*
+ * Whether Home Assistant's own Markdown element, the one the Markdown card uses, can be drawn.
+ * It is only defined once something has needed it, so the first ask makes the card helpers
+ * build a Markdown card to load it, and `ready` is called once it is defined.
+ */
+export function markdownReady(ready: () => void): boolean {
+  if (typeof customElements === 'undefined') return false;
+  if (customElements.get('ha-markdown')) return true;
+  if (!markdownRequested) {
+    markdownRequested = true;
+    HELPERS?.then((helpers: { createCardElement: (config: unknown) => unknown }) =>
+      helpers.createCardElement({ type: 'markdown', content: '' }),
+    ).catch(() => {});
+  }
+  customElements.whenDefined('ha-markdown').then(ready);
+  return false;
+}
+
 export async function loadCardEditorPicker(): Promise<void> {
   // Ensure hui-card-element-editor and hui-card-picker are loaded.
   // They happen to be used by the vertical-stack card editor but there must be a better way?

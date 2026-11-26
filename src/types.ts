@@ -1,5 +1,5 @@
 import { HomeAssistant, LovelaceCard, LovelaceCardConfig } from 'custom-card-helpers';
-import { VariableDeclaration, VariableGroupSettings } from './variables';
+import { VariableDeclaration, VariableGroupSettings, VariableNote } from './variables';
 import { StrictConfig } from './strict';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -150,8 +150,8 @@ export interface TemplateConfig {
   /** The template this one builds on: its content underneath, this one's last word on top.
    *  A list builds on several, left to right, each later one over the ones before. */
   extends?: string | string[];
-  /** The variables the template takes, described so its editor can offer real controls. */
-  variables?: VariableDeclaration[];
+  /** The variables the template takes, described so its editor can offer real controls, and notes among them (#509). */
+  variables?: (VariableDeclaration | VariableNote)[];
   /**
    * What each `group:` of variables shares (#473), keyed by the group's name: a `show_if` and
    * `hide_if` for the whole group, whether its section starts open, and a line under its title.

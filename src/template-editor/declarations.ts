@@ -7,7 +7,9 @@ import { VARIABLE_TYPES, VariableDeclaration, hasLabelledAllowed, isBuiltinType 
 import {
   DeclRow,
   DeclShape,
+  emptyNoteRow,
   emptyRow,
+  isNoteRow,
   groupStarts,
   moveRow,
   rowType,
@@ -318,6 +320,9 @@ export class DeclutteringDeclarationsEditor extends LitElement {
       }
       <div class="add">
         <ha-button @click=${this._add}>${localize('declarations.add', undefined, this.hass)}</ha-button>
+        <ha-button appearance="plain" @click=${this._addNote}
+          >${localize('declarations.add_note', undefined, this.hass)}</ha-button
+        >
         ${
           this.shared.length
             ? html`<ha-button
@@ -352,7 +357,8 @@ export class DeclutteringDeclarationsEditor extends LitElement {
     return html`<div class="rows">
       ${repeat(
         rows,
-        (row) => row.name,
+        // A note in a list has no name (#509), so its place stands in for one.
+        (row, index) => (isNoteRow(row) ? `note:${row.name || index}` : row.name),
         (row, index) => html`
           ${starts[index] !== undefined ? html`<div class="group">${starts[index]}</div>` : nothing}
           <div
@@ -377,42 +383,61 @@ export class DeclutteringDeclarationsEditor extends LitElement {
               aria-label=${localize('template_editor.drag_hint', undefined, this.hass)}
               .path=${DRAG_PATH}
             ></ha-svg-icon>
-            <ha-form
-              .hass=${this.hass}
-              .data=${this._rowData(row)}
-              .schema=${this._rowSchema(row)}
-              .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-              .computeHelper=${(s: FormSchemaEntry): string => this._translatedHelper(row, s.name)}
-              @value-changed=${(ev: CustomEvent): void => this._rowChanged(ev, index)}
-            ></ha-form>
+            ${
+              isNoteRow(row)
+                ? html`<ha-form
+                    .hass=${this.hass}
+                    .data=${{ note: row.extra.note }}
+                    .schema=${[{ name: 'note', selector: { text: { multiline: true } } }]}
+                    .computeLabel=${(): string => localize('declarations.note', undefined, this.hass)}
+                    .computeHelper=${(): string => localize('declarations.note_helper', undefined, this.hass)}
+                    @value-changed=${(ev: CustomEvent): void => this._noteChanged(ev, index)}
+                  ></ha-form>`
+                : html`<ha-form
+                    .hass=${this.hass}
+                    .data=${this._rowData(row)}
+                    .schema=${this._rowSchema(row)}
+                    .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+                    .computeHelper=${(s: FormSchemaEntry): string => this._translatedHelper(row, s.name)}
+                    @value-changed=${(ev: CustomEvent): void => this._rowChanged(ev, index)}
+                  ></ha-form>`
+            }
             <div class="buttons">
-              <ha-icon-button
-                .path=${MORE_PATH}
-                .label=${localize(this._open === row.name ? 'declarations.less' : 'declarations.more', undefined, this.hass)}
-                @click=${(): void => {
-                  this._open = this._open === row.name ? undefined : row.name;
-                }}
-              ></ha-icon-button>
+              ${
+                isNoteRow(row)
+                  ? nothing
+                  : html`<ha-icon-button
+                      .path=${MORE_PATH}
+                      .label=${localize(
+                        this._open === row.name ? 'declarations.less' : 'declarations.more',
+                        undefined,
+                        this.hass,
+                      )}
+                      @click=${(): void => {
+                        this._open = this._open === row.name ? undefined : row.name;
+                      }}
+                    ></ha-icon-button>`
+              }
               <ha-icon-button
                 .path=${'M7,15L12,10L17,15H7Z'}
                 .disabled=${index === 0}
-                .label=${localize('template_editor.move_up', { name: row.name }, this.hass)}
+                .label=${localize('template_editor.move_up', { name: this._rowLabel(row) }, this.hass)}
                 @click=${(): void => this._move(index, index - 1)}
               ></ha-icon-button>
               <ha-icon-button
                 .path=${'M7,10L12,15L17,10H7Z'}
                 .disabled=${index === rows.length - 1}
-                .label=${localize('template_editor.move_down', { name: row.name }, this.hass)}
+                .label=${localize('template_editor.move_down', { name: this._rowLabel(row) }, this.hass)}
                 @click=${(): void => this._move(index, index + 1)}
               ></ha-icon-button>
               <ha-icon-button
                 .path=${'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z'}
-                .label=${localize('declarations.remove', { name: row.name }, this.hass)}
+                .label=${localize('declarations.remove', { name: this._rowLabel(row) }, this.hass)}
                 @click=${(): void => this._remove(index)}
               ></ha-icon-button>
             </div>
           </div>
-          ${this._open === row.name ? this._renderMore(row, index) : nothing}
+          ${this._open === row.name && !isNoteRow(row) ? this._renderMore(row, index) : nothing}
         `,
       )}
     </div>`;
@@ -643,6 +668,32 @@ export class DeclutteringDeclarationsEditor extends LitElement {
     const row = emptyRow(rows);
     this._open = row.name;
     this._emit(variablesFrom([...rows, row], this._shape));
+  }
+
+  private _addNote(): void {
+    const rows = this._rows;
+    this._emit(variablesFrom([...rows, emptyNoteRow(rows, this._shape)], this._shape));
+  }
+
+  // #509: a note's text, kept as written - an emptied note stays, for its row to be removed.
+  private _noteChanged(ev: CustomEvent, index: number): void {
+    ev.stopPropagation();
+    const rows = this._rows;
+    const was = rows[index];
+    if (!was) return;
+    const note = (ev.detail.value as { note?: unknown }).note;
+    const row: DeclRow = { ...was, extra: { ...was.extra, note: typeof note === 'string' ? note : '' } };
+    this._emit(
+      variablesFrom(
+        rows.map((each, i) => (i === index ? row : each)),
+        this._shape,
+      ),
+    );
+  }
+
+  // What the buttons of a row call it: its name, or "Note" for a note.
+  private _rowLabel(row: DeclRow): string {
+    return isNoteRow(row) ? localize('declarations.note', undefined, this.hass) : row.name;
   }
 
   private _takeShared(declaration: VariableDeclaration): void {

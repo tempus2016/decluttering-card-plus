@@ -21,6 +21,15 @@ export function parseDate(text: string): Date | undefined {
     const date = new Date(Math.abs(number) < 1e12 ? number * 1000 : number);
     return Number.isNaN(date.getTime()) ? undefined : date;
   }
+  // A time with no date, as the time selector gives one (#508), is today at that time.
+  const time = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
+  if (time) {
+    const [hours, minutes, seconds = 0] = time.slice(1).map((part) => (part === undefined ? 0 : Number(part)));
+    if (hours > 23 || minutes > 59 || seconds > 59) return undefined;
+    const today = new Date();
+    today.setHours(hours, minutes, seconds, 0);
+    return today;
+  }
   // Only what looks like a date is handed to Date.parse: it reads "3" and "on" as dates too.
   if (!/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return undefined;
   const date = new Date(trimmed);
