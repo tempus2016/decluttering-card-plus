@@ -1,4 +1,5 @@
 import { VariablesConfig } from './types';
+import { setKey } from './placeholder-text';
 
 /*
  * A `with:` or `repeat:` body written in place, in quotes (#498):
@@ -15,13 +16,16 @@ import { VariablesConfig } from './types';
  * the spelling people reach for, expecting to have to stop the card filling it in early.
  * `[[!!x]]` is how a body writes the brackets themselves.
  *
- * Only a quoted head followed straight away by `|with:` or `|repeat:` is taken: a quoted
- * literal with any other step (#398) is left alone. The scan counts brackets, a character at
+ * Only a quoted head followed straight away by `with` or `repeat` is taken, with an argument
+ * or bare (#314): a quoted literal with any other step (#398) is left alone. The scan counts brackets, a character at
  * a time, and never backtracks (#403).
  */
 export const INLINE_PREFIX = '__inline_';
 
-const STRUCTURE_AFTER_QUOTE = ['|with:', '|repeat:'];
+const STRUCTURE_AFTER_QUOTE = ['|with', '|repeat'];
+// What ends the step's name: its argument, the next step, the optional mark, or the brackets
+// of a bare `|with]]` (#314) - anything else is a longer name, a step of somebody's own.
+const AFTER_STEP_NAME = [':', '|', '?', ']'];
 
 // Each hidden name and the quoted head it was written as, for saying so in its own words.
 const written = new Map<string, string>();
@@ -56,7 +60,9 @@ function nameFor(body: string): string {
     hash ^= body.charCodeAt(index);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return `${INLINE_PREFIX}${hash.toString(36)}`;
+  // Always seven characters, so no hidden name is the start of another: putting the bodies
+  // back by name would otherwise write one body into the middle of a longer name.
+  return `${INLINE_PREFIX}${hash.toString(36).padStart(7, '0')}`;
 }
 
 /** Where the `]]` closing a placeholder whose inside starts at `from` is, or -1. */
@@ -89,7 +95,10 @@ function bodyEnd(text: string, from: number, quote: string): number {
       depth -= 1;
       index += 1;
     } else if (depth === 0 && text[index] === quote) {
-      if (STRUCTURE_AFTER_QUOTE.some((step) => text.startsWith(step, index + 1))) return index;
+      const structural = STRUCTURE_AFTER_QUOTE.some(
+        (step) => text.startsWith(step, index + 1) && AFTER_STEP_NAME.includes(text[index + 1 + step.length]),
+      );
+      if (structural) return index;
     }
   }
   return -1;
@@ -130,10 +139,28 @@ function hoistText(text: string, found: Map<string, string>): string {
 /** Any value with its quoted bodies taken out: the same value back when it has none. */
 function hoistValue(value: unknown, found: Map<string, string>): unknown {
   if (typeof value === 'string') return hoistText(value, found);
+  if (!value || typeof value !== 'object') return value;
+  /*
+   * A mapping or a list is taken apart once and kept against it. Every nested build is handed
+   * the whole scope again - each item template's body is a variable in it - and walking all of
+   * that for every value read was most of a large card's build.
+   */
+  let known = memo.get(value);
+  if (!known) {
+    const own = new Map<string, string>();
+    known = { content: hoistWalk(value, own), found: own };
+    memo.set(value, known);
+  }
+  for (const [name, body] of known.found) found.set(name, body);
+  return known.content;
+}
+
+function hoistWalk(value: unknown, found: Map<string, string>): unknown {
+  if (typeof value === 'string') return hoistText(value, found);
   if (Array.isArray(value)) {
     let changed = false;
     const out = value.map((item) => {
-      const next = hoistValue(item, found);
+      const next = hoistWalk(item, found);
       if (next !== item) changed = true;
       return next;
     });
@@ -143,9 +170,9 @@ function hoistValue(value: unknown, found: Map<string, string>): unknown {
     let changed = false;
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value)) {
-      const next = hoistValue(item, found);
+      const next = hoistWalk(item, found);
       if (next !== item) changed = true;
-      out[key] = next;
+      setKey(out, key, next);
     }
     return changed ? out : value;
   }
@@ -161,14 +188,6 @@ interface Hoisted {
 const memo = new WeakMap<object, Hoisted>();
 
 function hoistContent(content: unknown): Hoisted {
-  if (content && typeof content === 'object') {
-    const known = memo.get(content);
-    if (known) return known;
-    const found = new Map<string, string>();
-    const result = { content: hoistValue(content, found), found };
-    memo.set(content, result);
-    return result;
-  }
   const found = new Map<string, string>();
   return { content: hoistValue(content, found), found };
 }

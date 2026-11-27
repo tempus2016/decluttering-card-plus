@@ -4,8 +4,15 @@
  * readable text colour from it, so a `type: color` declaration's one pick carries a whole
  * scheme. Each reads a hex, an rgb(), a named CSS colour or the [r, g, b] list Home Assistant's
  * color_rgb selector gives (#508), and writes a hex back (alpha writes rgba()), so the result
- * goes anywhere CSS goes. `to_hex`, `to_rgb` and `color_name` write a colour out as it is. A theme variable - `var(--x)` -
- * cannot be read at build time, and is passed through untouched with a word in the console.
+ * goes anywhere CSS goes. `to_hex`, `to_rgb` and `color_name` write a colour out as it is.
+ *
+ * A theme colour - `var(--x)`, or the bare `--x` a colour picker's typed-in value gives (#518) -
+ * cannot be read at build time: the card builds once, and a view's own theme lives lower in the
+ * page than the card can see. So `lighten:`, `darken:`, `alpha:` and `mix:` write CSS
+ * `color-mix()` instead and leave the sums to the browser, which keeps up with a theme change
+ * without a rebuild. color-mix() needs Safari 16.2, Chrome 111 or Firefox 113; Home Assistant's
+ * own frontend already uses it. The steps that need the value itself - `contrast`, `to_hex`,
+ * `to_rgb`, `color_name` - pass the theme colour through with a word in the console.
  */
 
 export interface Rgb {
@@ -168,9 +175,44 @@ const NAMED: Record<string, string> = {
   yellowgreen: '9acd32',
 };
 
-/** Whether the text names a theme variable, which has no value until the page paints. */
+// A custom property written bare, `--primary-color`, as typed into a colour picker (#518).
+const BARE_PROPERTY = /^\s*--[\w-]+\s*$/;
+
+/** Whether the text names a theme variable - `var(--x)` or a bare `--x` - which has no value until the page paints. */
 export function isThemeVariable(text: string): boolean {
-  return /^\s*var\(/.test(text);
+  return /^\s*var\(/.test(text) || BARE_PROPERTY.test(text);
+}
+
+/*
+ * The text as a CSS colour the browser works out when the page paints, or undefined when it is
+ * not one: a theme variable, a bare `--x` wrapped in var(), or a color-mix() an earlier step
+ * wrote, so `lighten:20|alpha:0.5` chains on a theme colour too (#518).
+ */
+export function liveColour(text: string): string | undefined {
+  if (BARE_PROPERTY.test(text)) return `var(${text.trim()})`;
+  if (isThemeVariable(text) || /^\s*color-mix\(/.test(text)) return text.trim();
+  return undefined;
+}
+
+const percentText = (n: number): string => `${Number(clamp(n, 0, 100).toFixed(4))}%`;
+
+/*
+ * The CSS for a blend the browser works out (#518): `percent` towards `other`, as mix() takes it.
+ * color-mix() in srgb blends the same gamma-encoded channels mix() does, so a solid colour comes
+ * out the same. Two differences, both only for a colour that is see-through: color-mix() blends
+ * with premultiplied alpha and keeps the alpha, where mix() writes hex and drops it.
+ */
+export function mixCss(colour: string, other: string, percent: number): string {
+  return `color-mix(in srgb, ${colour}, ${other} ${percentText(percent)})`;
+}
+
+/*
+ * The CSS for `alpha:` on a colour the browser works out (#518): mixed with transparent, which
+ * leaves the channels as they are. toRgba() sets the alpha; this multiplies the colour's own by
+ * it, the same for a solid theme colour, which nearly all of Home Assistant's are.
+ */
+export function alphaCss(colour: string, alpha: number): string {
+  return `color-mix(in srgb, ${colour} ${percentText(alpha * 100)}, transparent)`;
 }
 
 const clamp = (n: number, low = 0, high = 255): number => Math.min(high, Math.max(low, n));
@@ -284,14 +326,14 @@ export function mix(colour: Rgb, other: Rgb, percent: number): Rgb {
 const WHITE: Rgb = { r: 255, g: 255, b: 255, a: 1 };
 const BLACK: Rgb = { r: 0, g: 0, b: 0, a: 1 };
 
-/** Towards white by a percentage. */
+/** Towards white by a percentage; how see-through it is stays as it was. */
 export function lighten(colour: Rgb, percent: number): Rgb {
-  return mix(colour, WHITE, percent);
+  return { ...mix(colour, WHITE, percent), a: colour.a };
 }
 
-/** Towards black by a percentage. */
+/** Towards black by a percentage; how see-through it is stays as it was. */
 export function darken(colour: Rgb, percent: number): Rgb {
-  return mix(colour, BLACK, percent);
+  return { ...mix(colour, BLACK, percent), a: colour.a };
 }
 
 function luminance(colour: Rgb): number {

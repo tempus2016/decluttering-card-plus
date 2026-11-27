@@ -1,23 +1,31 @@
-import { LitElement, html, TemplateResult, css, CSSResult, nothing } from 'lit';
+import { LitElement, html, TemplateResult, css, CSSResult, PropertyValues, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { HomeAssistant, fireEvent } from 'custom-card-helpers';
 import { FormSchemaEntry } from '../types';
-import { VARIABLE_TYPES, VariableDeclaration, hasLabelledAllowed, isBuiltinType } from '../variables';
+import { VARIABLE_TYPES, VariableDeclaration, hasLabelledAllowed } from '../variables';
 import {
   DeclRow,
   DeclShape,
+  builtinType,
+  defaultFromEdit,
   emptyNoteRow,
   emptyRow,
+  hasScalarDefault,
   isNoteRow,
+  isOpaqueRow,
   groupStarts,
+  moreData,
   moveRow,
+  rowKeys,
   rowType,
   rowsFrom,
   shapeOf,
+  shownDefault,
   uniqueName,
   variablesFrom,
   withField,
+  withMore,
   withType,
 } from '../declarations-rows';
 import { localize } from '../localize';
@@ -77,17 +85,6 @@ const DEFAULT_AS_OBJECT = (hass?: HomeAssistant): FormSchemaEntry => ({
 const MORE_PATH =
   'M16,12A2,2 0 0,1 18,10A2,2 0 0,1 20,12A2,2 0 0,1 18,14A2,2 0 0,1 16,12M10,12A2,2 0 0,1 12,10A2,2 0 0,1 14,12A2,2 0 0,1 12,14A2,2 0 0,1 10,12M4,12A2,2 0 0,1 6,10A2,2 0 0,1 8,12A2,2 0 0,1 6,14A2,2 0 0,1 4,12Z';
 
-/*
- * The built-in type a row's type comes down to: a named type (#472) stands for the built-in
- * one it says, if any, so a row typed `percent` gets the number fields a `type: number` would.
- */
-function builtinType(row: DeclRow, types: Record<string, Record<string, unknown>>): string {
-  const type = rowType(row);
-  if (isBuiltinType(type) || type === 'card' || !Object.prototype.hasOwnProperty.call(types, type)) return type;
-  const under = types[type].type;
-  return typeof under === 'string' ? under : '';
-}
-
 /** The fields the open row shows, by its type. */
 function extraSchema(
   row: DeclRow,
@@ -102,6 +99,16 @@ function extraSchema(
   };
   const common: FormSchemaEntry[] = [
     { name: 'group', label: localize('declarations.group', undefined, hass), selector: { text: {} } },
+    // #514: a field the card editor lets be cleared to nothing, rather than back to its default.
+    ...(type === 'card' || type === 'boolean'
+      ? []
+      : [
+          {
+            name: 'allow_empty',
+            label: localize('declarations.allow_empty', undefined, hass),
+            selector: { boolean: {} },
+          },
+        ]),
   ];
   const byType: FormSchemaEntry[] =
     type === 'entity'
@@ -179,17 +186,6 @@ function extraSchema(
     { name: '', type: 'grid', column_min_width: '260px', schema: [...common, ...byType, ...allowed, ...pattern] },
   ];
 }
-
-// Lists written as text, one value per comma.
-const asText = (value: unknown): string =>
-  Array.isArray(value) ? value.map(String).join(', ') : value === undefined || value === null ? '' : String(value);
-const asList = (text: string): unknown[] | undefined => {
-  const items = text
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-  return items.length ? items : undefined;
-};
 
 export class DeclutteringDeclarationsEditor extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
@@ -309,6 +305,15 @@ export class DeclutteringDeclarationsEditor extends LitElement {
     return shape === 'none' ? 'list' : shape;
   }
 
+  // A reorder written as a list is said under the table; once the template is a mapping again -
+  // an undo, the YAML put back - there is nothing left to say.
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    if (changed.has('variables') && this._reorderedAsList && shapeOf(this.variables) !== 'list') {
+      this._reorderedAsList = false;
+    }
+  }
+
   protected render(): TemplateResult {
     const rows = this._rows;
     return html`
@@ -348,97 +353,101 @@ export class DeclutteringDeclarationsEditor extends LitElement {
   }
 
   private _renderRows(rows: DeclRow[]): TemplateResult {
-    if (!rows.length) {
+    // An entry the table cannot draw keeps its place in the list and shows nothing.
+    if (rows.every(isOpaqueRow)) {
       return html`<div class="rows">
         <div class="empty">${localize('declarations.none', undefined, this.hass)}</div>
       </div>`;
     }
     const starts = groupStarts(rows);
+    const keys = rowKeys(rows);
     return html`<div class="rows">
       ${repeat(
         rows,
-        // A note in a list has no name (#509), so its place stands in for one.
-        (row, index) => (isNoteRow(row) ? `note:${row.name || index}` : row.name),
-        (row, index) => html`
-          ${starts[index] !== undefined ? html`<div class="group">${starts[index]}</div>` : nothing}
-          <div
-            class="row"
-            draggable="true"
-            ?data-dragging=${this._dragging === index}
-            @dragstart=${(): void => {
-              this._dragging = index;
-            }}
-            @dragover=${(ev: DragEvent): void => {
-              if (this._dragging !== undefined) ev.preventDefault();
-            }}
-            @drop=${(ev: DragEvent): void => this._drop(ev, index)}
-            @dragend=${(): void => {
-              this._dragging = undefined;
-              this.requestUpdate();
-            }}
-          >
-            <ha-svg-icon
-              class="handle"
-              role="img"
-              aria-label=${localize('template_editor.drag_hint', undefined, this.hass)}
-              .path=${DRAG_PATH}
-            ></ha-svg-icon>
-            ${
-              isNoteRow(row)
-                ? html`<ha-form
-                    .hass=${this.hass}
-                    .data=${{ note: row.extra.note }}
-                    .schema=${[{ name: 'note', selector: { text: { multiline: true } } }]}
-                    .computeLabel=${(): string => localize('declarations.note', undefined, this.hass)}
-                    .computeHelper=${(): string => localize('declarations.note_helper', undefined, this.hass)}
-                    @value-changed=${(ev: CustomEvent): void => this._noteChanged(ev, index)}
-                  ></ha-form>`
-                : html`<ha-form
-                    .hass=${this.hass}
-                    .data=${this._rowData(row)}
-                    .schema=${this._rowSchema(row)}
-                    .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-                    .computeHelper=${(s: FormSchemaEntry): string => this._translatedHelper(row, s.name)}
-                    @value-changed=${(ev: CustomEvent): void => this._rowChanged(ev, index)}
-                  ></ha-form>`
-            }
-            <div class="buttons">
-              ${
-                isNoteRow(row)
-                  ? nothing
-                  : html`<ha-icon-button
-                      .path=${MORE_PATH}
-                      .label=${localize(
-                        this._open === row.name ? 'declarations.less' : 'declarations.more',
-                        undefined,
-                        this.hass,
-                      )}
-                      @click=${(): void => {
-                        this._open = this._open === row.name ? undefined : row.name;
-                      }}
-                    ></ha-icon-button>`
-              }
-              <ha-icon-button
-                .path=${'M7,15L12,10L17,15H7Z'}
-                .disabled=${index === 0}
-                .label=${localize('template_editor.move_up', { name: this._rowLabel(row) }, this.hass)}
-                @click=${(): void => this._move(index, index - 1)}
-              ></ha-icon-button>
-              <ha-icon-button
-                .path=${'M7,10L12,15L17,10H7Z'}
-                .disabled=${index === rows.length - 1}
-                .label=${localize('template_editor.move_down', { name: this._rowLabel(row) }, this.hass)}
-                @click=${(): void => this._move(index, index + 1)}
-              ></ha-icon-button>
-              <ha-icon-button
-                .path=${'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z'}
-                .label=${localize('declarations.remove', { name: this._rowLabel(row) }, this.hass)}
-                @click=${(): void => this._remove(index)}
-              ></ha-icon-button>
-            </div>
-          </div>
-          ${this._open === row.name && !isNoteRow(row) ? this._renderMore(row, index) : nothing}
-        `,
+        (_row, index) => keys[index],
+        (row, index) =>
+          isOpaqueRow(row)
+            ? nothing
+            : html`
+                ${starts[index] !== undefined ? html`<div class="group">${starts[index]}</div>` : nothing}
+                <div
+                  class="row"
+                  draggable="true"
+                  ?data-dragging=${this._dragging === index}
+                  @dragstart=${(): void => {
+                    this._dragging = index;
+                  }}
+                  @dragover=${(ev: DragEvent): void => {
+                    if (this._dragging !== undefined) ev.preventDefault();
+                  }}
+                  @drop=${(ev: DragEvent): void => this._drop(ev, index)}
+                  @dragend=${(): void => {
+                    this._dragging = undefined;
+                    this.requestUpdate();
+                  }}
+                >
+                  <ha-svg-icon
+                    class="handle"
+                    role="img"
+                    aria-label=${localize('template_editor.drag_hint', undefined, this.hass)}
+                    .path=${DRAG_PATH}
+                  ></ha-svg-icon>
+                  ${
+                    isNoteRow(row)
+                      ? html`<ha-form
+                          .hass=${this.hass}
+                          .data=${{ note: row.extra.note }}
+                          .schema=${[{ name: 'note', selector: { text: { multiline: true } } }]}
+                          .computeLabel=${(): string => localize('declarations.note', undefined, this.hass)}
+                          .computeHelper=${(): string => localize('declarations.note_helper', undefined, this.hass)}
+                          @value-changed=${(ev: CustomEvent): void => this._noteChanged(ev, index)}
+                        ></ha-form>`
+                      : html`<ha-form
+                          .hass=${this.hass}
+                          .data=${this._rowData(row)}
+                          .schema=${this._rowSchema(row)}
+                          .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
+                          .computeHelper=${(s: FormSchemaEntry): string => this._translatedHelper(row, s.name)}
+                          @value-changed=${(ev: CustomEvent): void => this._rowChanged(ev, index)}
+                        ></ha-form>`
+                  }
+                  <div class="buttons">
+                    ${
+                      isNoteRow(row)
+                        ? nothing
+                        : html`<ha-icon-button
+                            .path=${MORE_PATH}
+                            .label=${localize(
+                              this._open === row.name ? 'declarations.less' : 'declarations.more',
+                              undefined,
+                              this.hass,
+                            )}
+                            @click=${(): void => {
+                              this._open = this._open === row.name ? undefined : row.name;
+                            }}
+                          ></ha-icon-button>`
+                    }
+                    <ha-icon-button
+                      .path=${'M7,15L12,10L17,15H7Z'}
+                      .disabled=${index === 0}
+                      .label=${localize('template_editor.move_up', { name: this._rowLabel(row) }, this.hass)}
+                      @click=${(): void => this._move(index, index - 1)}
+                    ></ha-icon-button>
+                    <ha-icon-button
+                      .path=${'M7,10L12,15L17,10H7Z'}
+                      .disabled=${index === rows.length - 1}
+                      .label=${localize('template_editor.move_down', { name: this._rowLabel(row) }, this.hass)}
+                      @click=${(): void => this._move(index, index + 1)}
+                    ></ha-icon-button>
+                    <ha-icon-button
+                      .path=${'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z'}
+                      .label=${localize('declarations.remove', { name: this._rowLabel(row) }, this.hass)}
+                      @click=${(): void => this._remove(index)}
+                    ></ha-icon-button>
+                  </div>
+                </div>
+                ${this._open === row.name && !isNoteRow(row) ? this._renderMore(row, index) : nothing}
+              `,
       )}
     </div>`;
   }
@@ -456,20 +465,7 @@ export class DeclutteringDeclarationsEditor extends LitElement {
   }
 
   private _renderMore(row: DeclRow, index: number): TemplateResult {
-    const data: Record<string, unknown> = {
-      description: row.description,
-      group: row.group,
-      pattern: row.pattern,
-      domain: asText(row.domain),
-      device_class: asText(row.device_class),
-      min: row.min,
-      max: row.max,
-      step: row.step,
-      unit: row.unit,
-      allowed: hasLabelledAllowed(row) ? undefined : asText(row.allowed),
-      multiline: row.multiline,
-      multiple: row.multiple,
-    };
+    const data = moreData(row);
     return html`<div class="more">
       <ha-form
         .hass=${this.hass}
@@ -544,18 +540,17 @@ export class DeclutteringDeclarationsEditor extends LitElement {
   /* ------------------------------------------------------------------ data in and out */
 
   private _rowData(row: DeclRow): Record<string, unknown> {
-    const scalar = row.default === undefined || ['string', 'number', 'boolean'].includes(typeof row.default);
     return {
       name: row.name,
       type: rowType(row),
       label: row.label,
-      default: scalar ? (row.default === undefined ? undefined : String(row.default)) : row.default,
+      default: shownDefault(row),
       required: row.required === true,
     };
   }
 
   private _rowSchema(row: DeclRow): FormSchemaEntry[] {
-    const scalar = row.default === undefined || ['string', 'number', 'boolean'].includes(typeof row.default);
+    const scalar = hasScalarDefault(row);
     const [grid] = ROW_SCHEMA(this.hass, Object.keys(this.types));
     if (scalar) return [grid];
     const schema = (grid.schema as FormSchemaEntry[]).map((entry) =>
@@ -585,10 +580,13 @@ export class DeclutteringDeclarationsEditor extends LitElement {
     }
     if ((data.type ?? '') !== rowType(was)) row = withType(row, String(data.type ?? ''));
     row = withField(row, 'label', typeof data.label === 'string' && data.label !== '' ? data.label : undefined);
-    row = withField(row, 'required', data.required === true ? true : undefined);
-    if (data.default !== was.default && !(data.default === '' && was.default === undefined)) {
-      row = withField(row, 'default', this._defaultFrom(data.default, was));
+    // An explicit `required: false` is somebody's YAML, and stays unless the switch moved.
+    if ((data.required === true) !== (was.required === true)) {
+      row = withField(row, 'required', data.required === true ? true : undefined);
     }
+    // Only a default that differs from what the box showed is an edit (see defaultFromEdit).
+    const typed = defaultFromEdit(was, data.default, builtinType(was, this.types));
+    if (typed.changed) row = withField(row, 'default', typed.value);
     this._emit(
       variablesFrom(
         rows.map((each, i) => (i === index ? row : each)),
@@ -597,51 +595,12 @@ export class DeclutteringDeclarationsEditor extends LitElement {
     );
   }
 
-  /*
-   * What a typed default means: a number for a number variable, yes/no for a boolean, the
-   * text otherwise - and nothing when the box was emptied. A default that was a mapping or a
-   * list stays whatever the object field gave back.
-   */
-  private _defaultFrom(value: unknown, row: DeclRow): unknown {
-    if (value === '' || value === undefined || value === null) return undefined;
-    if (typeof value !== 'string') return value;
-    const type = builtinType(row, this.types);
-    if (type === 'number' && value.trim() !== '' && !Number.isNaN(Number(value))) return Number(value);
-    if (type === 'boolean' && ['true', 'false'].includes(value.trim().toLowerCase())) return value.trim() === 'true';
-    return value;
-  }
-
   private _moreChanged(ev: CustomEvent, index: number): void {
     ev.stopPropagation();
     const rows = this._rows;
     const was = rows[index];
     if (!was) return;
-    const data = ev.detail.value as Record<string, unknown>;
-    let row = was;
-    const text = (value: unknown): string | undefined =>
-      typeof value === 'string' && value.trim() ? value : undefined;
-    row = withField(row, 'description', text(data.description));
-    row = withField(row, 'group', text(data.group));
-    row = withField(row, 'pattern', text(data.pattern));
-    row = withField(row, 'unit', text(data.unit));
-    for (const key of ['min', 'max', 'step'] as const) {
-      row = withField(row, key, typeof data[key] === 'number' ? data[key] : undefined);
-    }
-    row = withField(row, 'multiline', data.multiline === true ? true : undefined);
-    row = withField(row, 'multiple', data.multiple === true ? true : undefined);
-    // One domain stays a word, several become a list - the two spellings the card reads.
-    const listOrWord = (value: unknown): unknown => {
-      const list = typeof value === 'string' ? asList(value) : undefined;
-      return list === undefined ? undefined : list.length === 1 ? list[0] : list;
-    };
-    row = withField(row, 'domain', listOrWord(data.domain));
-    row = withField(row, 'device_class', listOrWord(data.device_class));
-    // Labelled values have no field here, so they stay as written (#482).
-    if (!hasLabelledAllowed(row)) {
-      // One made from a placeholder (#491) stays the text it is, not a list of one.
-      const allowed = typeof data.allowed === 'string' ? data.allowed.trim() : undefined;
-      row = withField(row, 'allowed', allowed?.includes('[[') ? allowed : allowed ? asList(allowed) : undefined);
-    }
+    const row = withMore(was, ev.detail.value as Record<string, unknown>);
     this._emit(
       variablesFrom(
         rows.map((each, i) => (i === index ? row : each)),
@@ -742,6 +701,6 @@ export class DeclutteringDeclarationsEditor extends LitElement {
   }
 }
 
-export const DECLARATIONS_EDITOR_TAG = 'decluttering-declarations-editor';
+const DECLARATIONS_EDITOR_TAG = 'decluttering-declarations-editor';
 if (!customElements.get(DECLARATIONS_EDITOR_TAG))
   customElements.define(DECLARATIONS_EDITOR_TAG, DeclutteringDeclarationsEditor);

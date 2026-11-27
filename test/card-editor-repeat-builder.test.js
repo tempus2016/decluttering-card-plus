@@ -339,3 +339,43 @@ check('a new item copies the keys of the last one, empty', withNewListItem([{ en
   { entity: '', name: '' },
 ]);
 check('a new item in an empty list is an entity', withNewListItem([]), [{ entity: '' }]);
+
+/* ------------------------------------------------------------ only what was changed is written (review) */
+
+const UNDRAWN = [
+  { entities: true, limit: '[[max]]', offset: '[[skip]]', reverse: '[[rev]]' },
+  { entities: true, domain: '[[domain]]', sort: ['area', 'name', 'entity'] },
+  { domain: 'light' },
+  { domain: ['light'], limit: '10', offset: 0 },
+  { areas: ['kitchen'], sort: 'name', reverse: false },
+  { entities: 'light.*', entity_category: ['diagnostic'], group_by: 'area' },
+  { devices: true, label: 'x', made_up: { kept: true } },
+];
+for (const source of UNDRAWN) {
+  check(
+    `the form left as it was writes ${JSON.stringify(source)} back untouched`,
+    applyRepeat(source, repeatData(source)),
+    source,
+  );
+}
+const undrawn = { entities: true, limit: '[[max]]', reverse: '[[rev]]', sort: ['area', 'name', 'entity'] };
+check(
+  'changing one filter leaves what the form cannot draw',
+  applyRepeat(undrawn, { ...repeatData(undrawn), domain: ['light'] }),
+  { ...undrawn, domain: 'light' },
+);
+check(
+  'changing the first sort key keeps the ones past the second',
+  applyRepeat(undrawn, { ...repeatData(undrawn), sort: 'floor' }).sort,
+  ['floor', 'name', 'entity'],
+);
+check(
+  'a limit typed over a placeholder replaces it',
+  applyRepeat(undrawn, { ...repeatData(undrawn), limit: 5 }).limit,
+  5,
+);
+check(
+  'a pattern of nothing but spaces is every one of them',
+  applyRepeat({ areas: true }, { ...repeatData({ areas: true }), patterns: [' '] }),
+  { areas: true },
+);

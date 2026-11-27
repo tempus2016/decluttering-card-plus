@@ -1,5 +1,6 @@
 import { KNOWN_PARAM_STEPS, KNOWN_STEPS, RESOLVERS, VariableDeclaration } from './variables';
 import { knownFunctionNames } from './closest';
+import { localize } from './localize';
 
 /*
  * The pure parts of the code editor hooks (ideas 25 and 27): where the placeholders are in
@@ -76,6 +77,8 @@ export interface CompletionContext {
   translations?: { key: string; text: string }[];
   /** For an entity-valued chain head: what each resolver gives for the example entity. */
   sample?: (step: string) => string | undefined;
+  /** Whose language the notes beside the options are written in. */
+  hass?: Parameters<typeof localize>[2];
 }
 
 // Steps that take an argument, offered with their colon.
@@ -118,11 +121,11 @@ export function completionsAt(text: string, pos: number, ctx: CompletionContext)
     if (!/^[\w.-]*$/.test(since)) return null;
     const typed = since.toLowerCase();
     const options: CompletionOption[] = [
-      ...ctx.variables.map((each) => ({ label: each.name, detail: typeDetail(each) })),
-      ...ctx.lets.map((name) => ({ label: name, detail: 'let' })),
+      ...ctx.variables.map((each) => ({ label: each.name, detail: typeDetail(each, ctx.hass) })),
+      ...ctx.lets.map((name) => ({ label: name, detail: localize('code_hooks.detail_let', undefined, ctx.hass) })),
       ...ctx.shared
         .filter((each) => !ctx.variables.some((own) => own.name === each.name))
-        .map((each) => ({ label: each.name, detail: 'dashboard' })),
+        .map((each) => ({ label: each.name, detail: localize('code_hooks.detail_dashboard', undefined, ctx.hass) })),
     ].filter((option) => option.label.toLowerCase().startsWith(typed));
     return options.length ? { from: open + 2, heading: 'variables', options } : null;
   }
@@ -147,20 +150,21 @@ export function completionsAt(text: string, pos: number, ctx: CompletionContext)
         ctx.sample && step in RESOLVERS
           ? ctx.sample(step)
           : knownFunctionNames().includes(step)
-            ? 'function'
+            ? localize('code_hooks.detail_function', undefined, ctx.hass)
             : undefined,
     }));
   return options.length ? { from: open + 2 + pipe + 1, heading: 'steps', options } : null;
 }
 
-function typeDetail(declaration: VariableDeclaration): string {
+function typeDetail(declaration: VariableDeclaration, hass?: Parameters<typeof localize>[2]): string {
   const type =
     declaration.type ??
     (declaration.selector && typeof declaration.selector === 'object'
       ? Object.keys(declaration.selector)[0]
       : undefined);
-  const required = declaration.required ? ', required' : '';
-  return `${type ?? 'any'}${required}`;
+  // The type is the word written in YAML, so it is shown as written; "any" and "required" are ours.
+  const shown = String(type ?? localize('code_hooks.detail_any', undefined, hass));
+  return declaration.required ? localize('code_hooks.detail_required', { type: shown }, hass) : shown;
 }
 
 /** Sample arguments for the steps whose argument comes from a small set. */

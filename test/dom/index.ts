@@ -10,6 +10,7 @@ stubElements();
 import '../../src/decluttering-card-plus';
 import '../../src/editors';
 import './regressions.test';
+import './review-runtime.test';
 import './accessibility.test';
 import './watch-target.test';
 import './code-mirror-classes.test';

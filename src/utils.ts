@@ -25,8 +25,31 @@ export function getLovelace(): LovelaceConfig | null {
   return root ? root.lovelace : null;
 }
 
+/*
+ * Home Assistant's live demos (embed.js from demo.home-assistant.io) draw a dashboard or one
+ * of its views on any web page, with no Home Assistant app around it. The dashboard is held
+ * by the hui-root or hui-view inside each ha-embed-dashboard / ha-embed-view, so that is
+ * where its decluttering_templates are. The first one on the page that has drawn wins: a
+ * page showing several gives each the same templates.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getLovelaceEmbed(): any {
+  if (typeof document === 'undefined') return null;
+  for (const el of Array.from(document.querySelectorAll('ha-embed-dashboard, ha-embed-view'))) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inner: any = el.shadowRoot?.querySelector('hui-root, hui-view');
+    if (inner?.lovelace?.config) return inner.lovelace;
+  }
+  return null;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function currentLovelace(): any {
+  return getLovelace() || getLovelaceCast() || getLovelaceEmbed();
+}
+
 export function getLovelaceConfig(): LovelaceConfig | null {
-  const ll = getLovelace() || getLovelaceCast();
+  const ll = currentLovelace();
   return ll?.config;
 }
 
@@ -37,7 +60,7 @@ export function getLovelaceConfig(): LovelaceConfig | null {
  */
 export function getDashboardPath(): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ll: any = getLovelace() || getLovelaceCast();
+  const ll: any = currentLovelace();
   if (typeof ll?.urlPath === 'string' && ll.urlPath) return ll.urlPath;
   if (typeof window === 'undefined') return 'lovelace';
   return window.location.pathname.split('/').filter(Boolean)[0] || 'lovelace';
@@ -46,13 +69,15 @@ export function getDashboardPath(): string {
 /**
  * The dashboard itself rather than its configuration, which is the only thing that can
  * save a change back. Null when there is nothing to save through - a cast session, or a
- * dashboard written in YAML, which cannot be edited from the interface at all.
+ * dashboard written in YAML, which cannot be edited from the interface at all, or a live
+ * demo on a web page.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getLovelacePanel(): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ll: any = getLovelace() || getLovelaceCast();
-  return typeof ll?.saveConfig === 'function' ? ll : null;
+  const ll: any = currentLovelace();
+  // A live demo's dashboard has a saveConfig that does nothing, so it counts as unsaveable.
+  return typeof ll?.saveConfig === 'function' && !ll.embedded ? ll : null;
 }
 
 /**

@@ -12,8 +12,9 @@ import type { PageState } from './playground-house';
  *
  *   #placeholder=[[room|upper]]&variables=room:%20Hall
  *                        written by hand, for a docs page's "try it" link: any of
- *                        placeholder, variables, entities, templates and only (1 for
- *                        "only my entities"), each URL-encoded
+ *                        placeholder, variables, entities, templates, card, only (1 for
+ *                        "only my entities") and all (1 for "every state readable"), each
+ *                        URL-encoded. A `+` is a plus sign, as in `add:+1`, not a space.
  *
  * A link that does not read - cut short, from a later version, deflated where this browser
  * cannot inflate - opens the page as it is without one, and says so.
@@ -25,6 +26,12 @@ const PREFIX = 'try=';
 // Past this the address is not something a person pasted; and no box needs a megabyte.
 const MAX_HASH = 200_000;
 const MAX_JSON = 1_000_000;
+
+/** What encodeState throws when the boxes hold more than a link this page would open again. */
+export const TOO_LARGE = 'too large';
+/** What the page says then, in place of a link. */
+export const TOO_LARGE_TO_LINK =
+  'There is too much in the boxes for a link. Share it as a gist, or cut it down to the part that shows the problem.';
 
 /*
  * The Try a template page (#427) shares the same links: its card box goes in as `card`, and
@@ -109,21 +116,31 @@ function unpacked(data: any): SharedState {
   return state;
 }
 
-/** The hash for these boxes, without the `#`: deflated when the browser can and it is shorter. */
+/**
+ * The hash for these boxes, without the `#`: deflated when the browser can and it is shorter.
+ * Throws TOO_LARGE for boxes decodeHash would refuse to open again - more JSON than it
+ * inflates, or a longer address than it reads - rather than write a link that does not work.
+ */
 export async function encodeState(state: SharedState, deflate = canDeflate()): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(packed(state)));
-  const plain = `${PREFIX}j.${toBase64Url(bytes)}`;
-  if (!deflate) return plain;
-  try {
-    const squeezed = await through(bytes, new (globalThis as any).CompressionStream('deflate-raw'), MAX_JSON);
-    const zipped = `${PREFIX}z.${toBase64Url(squeezed)}`;
-    return zipped.length < plain.length ? zipped : plain;
-  } catch {
-    return plain;
+  if (bytes.length > MAX_JSON) throw new Error(TOO_LARGE);
+  let hash = `${PREFIX}j.${toBase64Url(bytes)}`;
+  if (deflate) {
+    try {
+      const squeezed = await through(bytes, new (globalThis as any).CompressionStream('deflate-raw'), MAX_JSON);
+      const zipped = `${PREFIX}z.${toBase64Url(squeezed)}`;
+      if (zipped.length < hash.length) hash = zipped;
+    } catch {
+      // The plain spelling stands.
+    }
   }
+  if (hash.length > MAX_HASH) throw new Error(TOO_LARGE);
+  return hash;
 }
 
 export type Decoded = { state: SharedState } | { problem: string } | undefined;
+
+const TOO_LARGE_LINK = 'That link holds more than this page will open.';
 
 /**
  * What a hash says to put in the boxes. Undefined when it says nothing of the kind - no hash,
@@ -132,7 +149,7 @@ export type Decoded = { state: SharedState } | { problem: string } | undefined;
 export async function decodeHash(hash: string): Promise<Decoded> {
   const text = hash.replace(/^#/, '');
   if (!text) return undefined;
-  if (text.length > MAX_HASH) return { problem: 'That link is too long to be one this page made.' };
+  if (text.length > MAX_HASH) return { problem: TOO_LARGE_LINK };
   if (text.startsWith(PREFIX)) {
     const body = text.slice(PREFIX.length);
     const kind = body.slice(0, 2);
@@ -147,14 +164,18 @@ export async function decodeHash(hash: string): Promise<Decoded> {
       } else if (kind !== 'j.') throw new Error('unknown kind');
       if (bytes.length > MAX_JSON) throw new Error('too large');
       return { state: unpacked(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes))) };
-    } catch {
+    } catch (err) {
+      // Too much is not the same as cut short, and cutting it shorter is what would mend it.
+      if ((err as Error)?.message === TOO_LARGE) return { problem: TOO_LARGE_LINK };
       return { problem: 'That link did not read - it may have been cut short when it was copied.' };
     }
   }
-  // Written by hand: names a docs page can spell out.
-  const params = new URLSearchParams(text);
-  const names = ['placeholder', 'variables', 'entities', 'templates', 'only', 'card'];
-  if (!names.some((name) => params.has(name))) return undefined;
+  // Written by hand: names a docs page can spell out. Each has to be given a value - a bare
+  // `#variables` or `#card` is a heading's id, not an example.
+  const names = ['placeholder', 'variables', 'entities', 'templates', 'only', 'card', 'all'];
+  if (!names.some((name) => new RegExp(`(?:^|&)${name}=`).test(text))) return undefined;
+  // URLSearchParams reads `+` as a space, which is right for a form and wrong for `add:+1`.
+  const params = new URLSearchParams(text.replace(/\+/g, '%2B'));
   const state: SharedState = {};
   const read = (name: string): string | undefined => {
     const value = params.get(name);
@@ -166,6 +187,7 @@ export async function decodeHash(hash: string): Promise<Decoded> {
   if (read('templates') !== undefined) state.templates = read('templates');
   if (read('card') !== undefined) state.card = read('card');
   if (params.get('only') === '1' || params.get('only') === 'true') state.onlyMine = true;
+  if (params.get('all') === '1' || params.get('all') === 'true') state.readAll = true;
   return { state };
 }
 
@@ -181,6 +203,7 @@ export function readableHash(state: SharedState): string {
   if (state.templates) params.set('templates', state.templates);
   if (state.card) params.set('card', state.card);
   if (state.onlyMine) params.set('only', '1');
+  if (state.readAll) params.set('all', '1');
   // URLSearchParams writes a space as +; %20 reads the same and survives more places.
   return params.toString().replace(/\+/g, '%20');
 }

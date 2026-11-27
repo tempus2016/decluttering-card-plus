@@ -368,7 +368,8 @@ export function buildTemplates(text: string): BuilderResult {
     templates,
     leftOut,
     templatesYaml: toYaml({ decluttering_templates: madeTemplates }),
-    pastedYaml: rewritten.map(toYaml).join('---\n'),
+    // toYaml ends without a newline: joined on `---` alone, a document's last value ran into the marker.
+    pastedYaml: rewritten.map(toYaml).join('\n---\n'),
     dashboard,
   };
 }

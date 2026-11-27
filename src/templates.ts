@@ -1,5 +1,5 @@
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
-import { unknownTemplateKeys, UnknownTemplateKey } from './template-keys';
+import { TEMPLATE_KEYS, unknownTemplateKeys, UnknownTemplateKey } from './template-keys';
 import { DeclutteringTemplateConfig, TemplateConfig, VariablesConfig } from './types';
 import {
   LetLayer,
@@ -133,6 +133,8 @@ export function checkDashboard(
   // than a card's `template:`, so it is used when a placeholder anywhere starts with its name.
   const itemNames = available.filter((name) => isItemTemplate(templates[name]));
   const heads = itemNames.length ? placeholderHeads(ll) : new Set<string>();
+  // Read once: asked of every template below, it walked the dashboard once per template.
+  const extended = extendedNames(ll);
   let steps: Set<string> | undefined;
   const stepsUsed = (): Set<string> => (steps ??= placeholderSteps(ll));
   const missing = new Map<string, number>();
@@ -168,7 +170,11 @@ export function checkDashboard(
     if (CONSUMER_TYPES.includes(node.type) && typeof node.template === 'string') {
       const template = here[node.template];
       if (!template) {
-        if (!elsewhere.has(node.template)) missing.set(node.template, (missing.get(node.template) ?? 0) + 1);
+        // A name built from a placeholder - `[[kind]]_tile` - is picked when the card builds,
+        // so there is no one template to look for and nothing to call missing.
+        if (!elsewhere.has(node.template) && !node.template.includes('[[')) {
+          missing.set(node.template, (missing.get(node.template) ?? 0) + 1);
+        }
       } else {
         // A `with:` or `repeat:` in the template supplies names to the body it fills in, and
         // the item templates it names are the dashboard's: neither is the card's to set.
@@ -208,8 +214,9 @@ export function checkDashboard(
       .map(([template, entry]) => ({ template, names: [...entry.names].sort(), count: entry.count })),
     unusedTemplates: available
       // A page template (idea 33) is used by a strategy's page:, which no card names.
-      .filter((name) => !('dashboard' in (templates[name] ?? {})))
-      .filter((name) => totalUsages(ll, name) === 0 && !extendedNames(ll).has(name))
+      // A template written as text or a number has no keys to look among.
+      .filter((name) => !(!!templates[name] && typeof templates[name] === 'object' && 'dashboard' in templates[name]))
+      .filter((name) => !extended.has(name) && totalUsages(ll, name) === 0)
       .filter((name) => !(itemNames.includes(name) && heads.has(name)))
       // A function template (#307) is used as a step, which no card names either.
       // One named after a built-in step never is (#307): the built-in runs instead.
@@ -319,13 +326,19 @@ export function replaceSectionCards(
   return { ...ll, views };
 }
 
-/** The dashboard with the first card written exactly like `original` swapped for `replacement`. */
+/**
+ * The dashboard with the first card written exactly like `original` swapped for `replacement`.
+ * A template card is passed over whole: its body is often written exactly like the card it
+ * was made from, and swapping that for a card using the template leaves the template naming
+ * itself and the card on the view untouched.
+ */
 export function replaceCard(ll: any, original: Record<string, any>, replacement: Record<string, any>): any {
   const wanted = JSON.stringify(original);
   let done = false;
   const walk = (node: any): any => {
     if (done || !node || typeof node !== 'object') return node;
     if (Array.isArray(node)) return node.map(walk);
+    if (isTemplateCardType(node.type)) return node;
     if (!done && JSON.stringify(node) === wanted) {
       done = true;
       return replacement;
@@ -912,7 +925,9 @@ export function forEachPlace(
   ll: LovelaceConfig | null | undefined,
   visit: (node: unknown, view: number, section?: number) => void,
 ): void {
-  ((ll as any)?.views ?? []).forEach((viewConfig: any, view: number) => {
+  // `views: 3` is nothing to walk, not something to throw over.
+  const views = (ll as any)?.views;
+  (Array.isArray(views) ? views : []).forEach((viewConfig: any, view: number) => {
     if (!viewConfig || typeof viewConfig !== 'object') return;
     for (const [key, value] of Object.entries(viewConfig)) {
       if (key === 'sections' && Array.isArray(value)) value.forEach((each, section) => visit(each, view, section));
@@ -1163,21 +1178,38 @@ export function collectTemplates(
   section?: number,
 ): Record<string, TemplateConfig> {
   const templates = resolvedTemplates(ll, own);
+  const place = placeGives(ll, view, section);
+  if (!place) return templates;
+
+  const out: Record<string, TemplateConfig> = Object.create(null);
+  for (const [name, template] of Object.entries(templates)) out[name] = withPlace(template, place);
+  return out;
+}
+
+/** What a card's place gives every template it may use: the view's and section's values, the shared ones, the library's. */
+interface PlaceGives {
+  here: VariablesConfig[];
+  shared: VariablesConfig[];
+  lets: LetLayer[];
+  library: ReturnType<typeof libraryShares>;
+}
+
+/** That, or undefined when the place gives nothing and a template is used as it was resolved. */
+function placeGives(ll: LovelaceConfig | null | undefined, view?: number, section?: number): PlaceGives | undefined {
   const library = libraryShares();
   const here = collectViewDefaults(ll, view, section);
   const shared = [...collectDefaults(ll), ...library.defaults];
   const lets = [...placeLet(ll, view, section), ...dashboardLet(ll)];
   const libraryTypes = Object.keys(library.types).length > 0;
   if (!here.length && !shared.length && !lets.length && !library.declarations.length && !libraryTypes) {
-    return templates;
+    return undefined;
   }
+  return { here, shared, lets, library };
+}
 
-  const out: Record<string, TemplateConfig> = Object.create(null);
-  for (const [name, template] of Object.entries(templates)) {
-    const declared = withSharedTypes(withSharedDeclarations(template, library.declarations), library.types);
-    out[name] = withDefaults(declared, here, shared, lets);
-  }
-  return out;
+function withPlace(template: TemplateConfig, place: PlaceGives): TemplateConfig {
+  const declared = withSharedTypes(withSharedDeclarations(template, place.library.declarations), place.library.types);
+  return withDefaults(declared, place.here, place.shared, place.lets);
 }
 
 /**
@@ -1194,23 +1226,36 @@ export function expandSources(sources: string[], available: string[]): string[] 
 
 let dashboardListCache: Promise<string[]> | null = null;
 
-/** Every dashboard's url path, for expanding `'*'`. The default dashboard is 'lovelace'. */
+/**
+ * Every dashboard's url path, for expanding `'*'`. The default dashboard is 'lovelace'.
+ * A list that could not be read is no dashboards for whoever asked, and is asked for again
+ * by the next: a connection that dropped as the page loaded must not leave `'*'` standing
+ * for nothing until the page is loaded again.
+ */
 export function fetchDashboardPaths(hass: HomeAssistant): Promise<string[]> {
-  dashboardListCache ??= (hass as any)
-    .callWS({ type: 'lovelace/dashboards/list' })
-    .then((list: any[]) =>
-      (list ?? [])
-        .map((dashboard) => dashboard?.url_path)
-        .filter((path): path is string => typeof path === 'string' && !!path)
-        .sort()
-        .concat('lovelace'),
-    )
-    .catch(() => []) as Promise<string[]>;
-  void dashboardListCache.then((paths) => {
-    dashboardPaths = paths;
-    readVersion += 1;
-  });
-  return dashboardListCache;
+  if (dashboardListCache) return dashboardListCache;
+  const request: Promise<string[]> = (hass as any).callWS({ type: 'lovelace/dashboards/list' }).then((list: any[]) =>
+    (list ?? [])
+      .map((dashboard) => dashboard?.url_path)
+      .filter((path): path is string => typeof path === 'string' && !!path)
+      .sort()
+      .concat('lovelace'),
+  );
+  const cached = request.catch(() => [] as string[]);
+  dashboardListCache = cached;
+  // Once per read, not once per card that asked: the version is what item templates are kept against.
+  request.then(
+    (paths) => {
+      dashboardPaths = paths;
+      readVersion += 1;
+    },
+    () => {
+      // Known to be nothing for now, so no card waits on it; the next to ask reads it again.
+      dashboardPaths ??= [];
+      if (dashboardListCache === cached) dashboardListCache = null;
+    },
+  );
+  return cached;
 }
 
 /** The dashboards this one borrows templates from, in the order they were listed. */
@@ -1383,12 +1428,17 @@ export function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Prom
   if (cached) return cached;
 
   const url_path = DEFAULT_DASHBOARD_PATHS.includes(urlPath) ? null : urlPath;
+  // Set when the read failed for a reason that may pass - a dropped connection - rather than
+  // because there is no such dashboard, which is the answer and is kept.
+  let passing = false;
   const request = (hass as any).callWS({ type: 'lovelace/config', url_path }).catch((err: any) => {
-    // The library is looked for on every page, and most installs will never have one.
-    if (urlPath === LIBRARY_DASHBOARD) return null;
     // The original dashboard has nothing saved until somebody takes control of it, which
-    // is how most installs start out: it has no templates, and that is all.
+    // is how most installs start out: it has no templates, and that is all. The library is
+    // looked for on every page, and most installs will never have one: the same answer.
     if (err?.code === 'config_not_found') return null;
+    passing = true;
+    // The library is looked for by every page, so its failing is not worth a line in the console.
+    if (urlPath === LIBRARY_DASHBOARD) return null;
     warn({
       kind: 'other',
       message: `decluttering-card-plus: could not read the dashboard "${urlPath}": ${err?.message ?? err}`,
@@ -1396,6 +1446,11 @@ export function fetchDashboardConfig(hass: HomeAssistant, urlPath: string): Prom
     return null;
   }) as Promise<LovelaceConfig | null>;
   void request.then((config) => {
+    if (passing) {
+      // Asked for again by the next card to want it; what was read before, if anything, stands meanwhile.
+      if (configCache.get(urlPath) === request) configCache.delete(urlPath);
+      if (readConfigs.has(urlPath)) return;
+    }
     if (urlPath === LIBRARY_DASHBOARD) libraryConfig = config;
     readConfigs.set(urlPath, config);
     readVersion += 1;
@@ -1565,14 +1620,23 @@ export async function borrowedTemplateSources(
   return out;
 }
 
-/** A single template from this dashboard, without going to the network. */
+/**
+ * A single template from this dashboard, without going to the network. Only that one is
+ * given what its place gives: every card asks in setConfig, and laying the values under
+ * every template to hand one back was a copy of each template per card.
+ */
 export function findTemplate(
   ll: LovelaceConfig | null | undefined,
   template: string,
   view?: number,
   section?: number,
 ): TemplateConfig | null {
-  return collectTemplates(ll, view, undefined, section)[template] ?? null;
+  const templates = resolvedTemplates(ll);
+  // The resolved templates have no prototype, so a name like `constructor` finds nothing.
+  const found = Object.prototype.hasOwnProperty.call(templates, template) ? templates[template] : undefined;
+  if (!found) return null;
+  const place = placeGives(ll, view, section);
+  return place ? withPlace(found, place) : found;
 }
 
 /**
@@ -1894,7 +1958,8 @@ export function installedFromShared(
  * The dashboard with one template's definition swapped for another, wherever it is defined -
  * the root `decluttering_templates` key, a template card, or both - and nothing else touched:
  * the cards using it still name it, and are left exactly as they were. A template card keeps
- * its own type, and leads with its type and name as any template card does.
+ * its own type and the keys that are the card's rather than the template's, and leads with
+ * its type and name as any template card does.
  *
  * Nothing is mutated; the caller gets a new configuration to save.
  */
@@ -1907,7 +1972,14 @@ export function replaceTemplate(ll: any, name: string, template: Record<string, 
       const content: Record<string, any> = { ...template };
       delete content.type;
       delete content.template;
-      return { type: node.type, template: name, ...content };
+      // What Home Assistant and other cards put on the card - view_layout, card_mod - is the
+      // card's, not the template's, and stays: any key no template reads.
+      const kept: Record<string, any> = {};
+      for (const [key, value] of Object.entries(node)) {
+        if (key !== 'type' && key !== 'template' && !TEMPLATE_KEYS.includes(key) && !(key in content))
+          kept[key] = value;
+      }
+      return { type: node.type, template: name, ...content, ...kept };
     }
     const out: any = {};
     for (const [key, value] of Object.entries(node)) out[key] = rewrite(value);

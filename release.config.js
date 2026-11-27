@@ -49,6 +49,8 @@ const plugins = [
         'scripts/bundle-size.json',
         'docs-theme/assets/js/builder.js',
         'docs-theme/assets/js/playground.js',
+        // Carries the version in the report it writes, like the two above.
+        'docs-theme/assets/js/try-template.js',
       ],
     },
   ],

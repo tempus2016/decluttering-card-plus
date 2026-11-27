@@ -12,6 +12,7 @@ import { usesLookup } from './variables';
 import { getLovelaceConfig } from './utils';
 import { localize } from './localize';
 import { DeclutteringElement } from './element';
+import { loadEditors } from './editors-loader';
 import { PREVIEW_EXAMPLE_EVENT, TEMPLATE_EDITOR_TAG, TEMPLATE_TAG, previewExamples } from './shared';
 
 export class DeclutteringTemplate extends DeclutteringElement {
@@ -26,7 +27,7 @@ export class DeclutteringTemplate extends DeclutteringElement {
 
   // The editors live in a chunk of their own, fetched the first time one is opened (idea 4).
   static async getConfigElement(): Promise<HTMLElement> {
-    await import('./editors');
+    await loadEditors();
     return document.createElement(TEMPLATE_EDITOR_TAG);
   }
 

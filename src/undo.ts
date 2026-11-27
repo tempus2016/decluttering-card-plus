@@ -13,6 +13,8 @@
  * sometimes brings, but not the end of the tab.
  */
 
+import { localize } from './localize';
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export interface DashboardWrite {
@@ -75,7 +77,8 @@ export function sameConfig(a: unknown, b: unknown): boolean {
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
 
-function storage(): Storage | undefined {
+/** The tab's sessionStorage, or nothing where there is none or it may not be read. */
+export function sessionStore(): Storage | undefined {
   try {
     return typeof sessionStorage === 'undefined' ? undefined : sessionStorage;
   } catch {
@@ -86,7 +89,7 @@ function storage(): Storage | undefined {
 /** Keeps `entry` as the one thing that can be undone, replacing whatever was kept before. */
 export function holdUndo(entry: UndoEntry): void {
   held = entry;
-  const store = storage();
+  const store = sessionStore();
   if (!store) return;
   try {
     store.setItem(STORAGE_KEY, JSON.stringify(entry));
@@ -104,7 +107,7 @@ export function holdUndo(entry: UndoEntry): void {
 /** What can be undone, if anything. */
 export function heldUndo(): UndoEntry | undefined {
   if (held) return held;
-  const raw = storage()?.getItem(STORAGE_KEY);
+  const raw = sessionStore()?.getItem(STORAGE_KEY);
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw);
@@ -121,7 +124,7 @@ export function heldUndo(): UndoEntry | undefined {
 export function forgetUndo(): void {
   held = undefined;
   try {
-    storage()?.removeItem(STORAGE_KEY);
+    sessionStore()?.removeItem(STORAGE_KEY);
   } catch {
     // As above.
   }
@@ -138,7 +141,7 @@ export async function readDashboard(saver: Saver, urlPath: string): Promise<unkn
   const own = dashboardKey(urlPath) === dashboardKey(saver.ownPath) && !!saver.panel;
   if (!saver.hass) {
     if (own) return saver.panel?.config;
-    throw new Error(`cannot read the dashboard "${urlPath}"`);
+    throw new Error(localize('undo.cannot_read', { dashboard: urlPath }));
   }
   // `force` skips Home Assistant's own cache, so what is compared and rewritten is current.
   const read = saver.hass.callWS({ type: 'lovelace/config', url_path: wsUrlPath(urlPath), force: true });
@@ -151,7 +154,7 @@ export async function writeDashboard(saver: Saver, urlPath: string, config: unkn
     await saver.panel.saveConfig(config);
     return;
   }
-  if (!saver.hass) throw new Error(`cannot save the dashboard "${urlPath}"`);
+  if (!saver.hass) throw new Error(localize('undo.cannot_save', { dashboard: urlPath }));
   await saver.hass.callWS({ type: 'lovelace/config/save', url_path: wsUrlPath(urlPath), config });
 }
 
@@ -209,8 +212,10 @@ export async function runUndo(saver: Saver, entry: UndoEntry, force = false): Pr
     forgetUndo();
     return { result: 'nothing' };
   }
-  const changed = entry.dashboards
-    .filter((each, index) => !sameConfig(now[index], each.after))
+  // Only among those still to put back: one already as it was before - an undo that failed
+  // part-way and is being tried again - is not somebody else's save.
+  const changed = restore
+    .filter((each) => !sameConfig(now[entry.dashboards.indexOf(each)], each.after))
     .map((each) => each.urlPath);
   if (changed.length && !force) return { result: 'changed', dashboards: changed };
   for (const each of restore) await writeDashboard(saver, each.urlPath, each.before);

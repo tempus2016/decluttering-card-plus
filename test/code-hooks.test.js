@@ -107,3 +107,16 @@ check(
   [orderedSteps().includes('pick:'), argumentValues('pick')],
   [true, ['name=value,icon']],
 );
+
+// --- review: the notes beside the options are in the user's language ----------------------
+require('../.test-build/localize.js').registerLanguage('de', require('../src/locales/de.json'));
+const inGerman = completionsAt(doc, doc.length, {
+  ...ctx,
+  variables: [...ctx.variables, { name: 'anything' }],
+  hass: { language: 'de' },
+});
+check(
+  'the notes beside the variables are translated, the type as written in YAML is not',
+  inGerman.options.map((option) => option.detail),
+  ['entity, erforderlich', 'text', 'select', 'beliebig', 'let', 'Dashboard'],
+);

@@ -1,6 +1,9 @@
-import { placeholderJson } from './placeholder-text';
 import { PLACEHOLDER, VariableDeclaration, addDeclarations, declarationList } from './variables';
 import { freeName } from './share';
+import { readsIn } from './unread';
+import { cleanName, valueAt } from './similar';
+import { ENTITY_ID } from './suggest';
+import { validVariableName } from './rename-variable';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -22,9 +25,6 @@ export interface Setting {
 
 /** The keys a template's content can sit under, in the order a template is read. */
 export const CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group'] as const;
-
-const VALID_NAME = /^[A-Za-z0-9_-]+$/;
-const ENTITY_ID = /^[a-z_]+\.[a-z0-9_]+$/;
 
 /** Which key holds the template's content, if any does. */
 export function contentKey(template: any): (typeof CONTENT_KEYS)[number] | undefined {
@@ -70,9 +70,8 @@ export function namesInUse(template: any): string[] {
   for (const declaration of declarationList(template?.variables)) {
     if (declaration && typeof declaration.name === 'string') names.add(declaration.name);
   }
-  const text = placeholderJson(template ?? {});
-  const used = /\[\[([A-Za-z0-9_-]+)/g;
-  for (let match = used.exec(text); match; match = used.exec(text)) names.add(match[1]);
+  // Everything a placeholder reads, a step's `or:` and `if:` names included, as the lint counts them.
+  for (const read of readsIn(template ?? {})) if (validVariableName(read)) names.add(read);
   return [...names];
 }
 
@@ -80,10 +79,7 @@ export function namesInUse(template: any): string[] {
 export function nameForSetting(path: SettingPath, taken: string[]): string {
   const key = [...path].reverse().find((step) => typeof step === 'string') as string | undefined;
   const last = path[path.length - 1];
-  const base = (typeof last === 'number' ? `${key ?? 'item'}_${last + 1}` : (key ?? 'value'))
-    .replace(/[^A-Za-z0-9_-]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-  return freeName(base || 'value', taken);
+  return freeName(cleanName(typeof last === 'number' ? `${key ?? 'item'}_${last + 1}` : (key ?? 'value')), taken);
 }
 
 /** The kind of value it is, which picks the control a card using the template gets for it. */
@@ -102,10 +98,6 @@ function setAt(node: any, path: SettingPath, value: unknown): any {
   return { ...node, [step]: setAt(node?.[step], rest, value) };
 }
 
-function valueAt(node: any, path: SettingPath): unknown {
-  return path.reduce((at, step) => (at === undefined || at === null ? undefined : at[step]), node);
-}
-
 export type PromoteResult = { ok: true; template: any } | { ok: false; error: 'name_invalid' | 'name_taken' | 'gone' };
 
 /**
@@ -113,7 +105,7 @@ export type PromoteResult = { ok: true; template: any } | { ok: false; error: 'n
  * `name` declared with the old value as its default. Nothing is mutated.
  */
 export function promoteSetting(template: any, path: SettingPath, name: string): PromoteResult {
-  if (!VALID_NAME.test(name)) return { ok: false, error: 'name_invalid' };
+  if (!validVariableName(name)) return { ok: false, error: 'name_invalid' };
   if (namesInUse(template).includes(name)) return { ok: false, error: 'name_taken' };
   const key = contentKey(template);
   const value = key ? valueAt(template[key], path) : undefined;
@@ -170,7 +162,7 @@ export function promoteSettingAs(
  * anything, so two fields can share one variable rather than making `name_2`.
  */
 export function reuseVariable(template: any, path: SettingPath, name: string): PromoteResult {
-  if (!VALID_NAME.test(name)) return { ok: false, error: 'name_invalid' };
+  if (!validVariableName(name)) return { ok: false, error: 'name_invalid' };
   const key = contentKey(template);
   const value = key ? valueAt(template[key], path) : undefined;
   if (!key || value === undefined || value === null || typeof value === 'object') return { ok: false, error: 'gone' };

@@ -2,11 +2,11 @@ import { dump } from 'js-yaml';
 import { CardBuild, readCard, tryTemplate, TryTemplateResult, TryTemplateState } from './try-template';
 import { controlValue, StandInField, withVariable } from './try-template-form';
 import { gistId, loadGist } from './try-template-gist';
-import { decodeHash, encodeState, SharedState } from './playground-share';
+import { decodeHash, encodeState, SharedState, TOO_LARGE_TO_LINK } from './playground-share';
 import { houseRows } from './playground-house';
 import { outlineLines, outlineTags } from './report-outline';
 import { toYaml } from './yaml';
-import { el } from './docs-dom';
+import { el, houseTable } from './docs-dom';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -394,27 +394,7 @@ function renderField(field: StandInField, onSet: (name: string, value: unknown) 
 }
 
 function renderHouse(target: HTMLElement, result: TryTemplateResult): void {
-  const table = el('table', undefined, 'try-house');
-  const head = el('tr');
-  ['Entity', 'State', 'Where', 'Labels'].forEach((title) => head.appendChild(el('th', title)));
-  table.appendChild(el('thead')).appendChild(head);
-  const body = table.appendChild(el('tbody'));
-  for (const row of houseRows(result.entities.house, result.entities.added)) {
-    const tr = el('tr', undefined, row.own ? 'try-house-own' : undefined);
-    const id = el('td');
-    id.appendChild(el('code', row.entity));
-    if (row.own) id.appendChild(el('span', ' yours', 'try-house-mark'));
-    tr.appendChild(id);
-    const state = el('td');
-    if (row.state) state.appendChild(el('code', row.state));
-    tr.appendChild(state);
-    tr.appendChild(el('td', row.where));
-    tr.appendChild(el('td', row.labels.join(', ')));
-    body.appendChild(tr);
-  }
-  const scroll = el('div', undefined, 'try-house-scroll');
-  scroll.appendChild(table);
-  target.replaceChildren(scroll);
+  target.replaceChildren(houseTable(houseRows(result.entities.house, result.entities.added)));
 }
 
 async function start(): Promise<void> {
@@ -546,8 +526,14 @@ async function start(): Promise<void> {
 
   let writing: number | undefined;
   let written = '';
+  // Empty when the boxes hold too much for a link: the address is left as it was.
   const writeHash = async (): Promise<string> => {
-    const hash = await encodeState(shared());
+    let hash: string;
+    try {
+      hash = await encodeState(shared());
+    } catch {
+      return '';
+    }
     written = hash;
     try {
       history.replaceState(null, '', `#${hash}`);
@@ -578,6 +564,11 @@ async function start(): Promise<void> {
   copy.addEventListener('click', async () => {
     window.clearTimeout(writing);
     const hash = await writeHash();
+    if (!hash) {
+      link.hidden = true;
+      linkNote.textContent = TOO_LARGE_TO_LINK;
+      return;
+    }
     const url = `${location.href.split('#')[0]}#${hash}`;
     link.value = url;
     const long =

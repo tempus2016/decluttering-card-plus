@@ -15,9 +15,15 @@
      look like protection. It needs the response header, which Pages cannot set.
      connect-src: only Try a template (#427) may fetch anything off this origin, and only
      GitHub's API, to read a public gist. It says so in its own front matter, which a wiki
-     page cannot set: build.py writes every wiki page's front matter itself. -->
+     page cannot set: build.py writes every wiki page's front matter itself.
+     live_demo: the Live demo page runs Home Assistant's own frontend from
+     demo.home-assistant.io (its embed.js, the chunks and translations it fetches, and the
+     Roboto it draws cards in), so that one origin is added for script, connect and font.
+     Its Web Awesome controls fetch their icons from data: URLs, so connect-src takes data: too.
+     Set in the page's front matter, like connect_github. -->
+{%- if page.live_demo %}{% assign demo = ' https://demo.home-assistant.io' %}{% else %}{% assign demo = '' %}{% endif %}
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'self';{% if page.connect_github %} connect-src 'self' https://api.github.com;{% endif %} script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+      content="default-src 'self';{% if page.connect_github %} connect-src 'self' https://api.github.com;{% elsif page.live_demo %} connect-src 'self'{{ demo }} data:;{% endif %} script-src 'self'{{ demo }}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'{{ demo }}; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>{% if page.title and page.title != site.title %}{{ page.title }} · {% endif %}{{ site.title }}</title>
 <meta name="description" content="{{ page.description | default: site.description }}">
 <link rel="canonical" href="{{ page.url | absolute_url }}">

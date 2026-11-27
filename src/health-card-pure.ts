@@ -6,6 +6,7 @@ import { isRegistrySource, registryNames } from './registry';
 import { rebuildOnEntities } from './rebuild';
 import { structureNames } from './structure';
 import { withSlotVariables } from './slots';
+import { STRATEGY_TYPE } from './strategy';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -101,6 +102,24 @@ export function cardLabel(card: any): string {
   return label && !label.startsWith('#') ? label : String(card?.template ?? '');
 }
 
+/** The names a list of variables sets. */
+const namesOf = (variables: unknown): string[] => normaliseVariables(variables as any).map((v) => Object.keys(v)[0]);
+
+const repeats = (entry: any): boolean =>
+  !!entry && typeof entry === 'object' && (entry.for_each !== undefined || entry.for_each_from !== undefined);
+
+/**
+ * The configuration to check for a dashboard as it is saved. One written by this card's
+ * dashboard strategy has no `views:` of its own: its views, templates and defaults are the
+ * strategy's, which is what Home Assistant is handed once it has run - and reading the
+ * saved one as it stands found no cards at all, and called the dashboard clean.
+ */
+export function dashboardToCheck<T>(ll: T): T {
+  const strategy = (ll as any)?.strategy;
+  if (Array.isArray((ll as any)?.views) || !strategy || typeof strategy !== 'object') return ll;
+  return strategy.type === STRATEGY_TYPE && Array.isArray(strategy.views) ? (strategy as T) : ll;
+}
+
 /**
  * Every card on the dashboard with something to look at: pointing at a template that is not
  * there, leaving a variable unset, or using a deprecated template. `templates` is every
@@ -132,7 +151,11 @@ export function healthEntries(
         : undefined;
       const base = { dashboard, view, path, label: cardLabel(card), template: card.template };
       let problems = 0;
-      if (!template) {
+      // A name built from a placeholder - `[[kind]]_tile` - is picked when the card builds:
+      // there is no one template to hold the card up against, and nothing to call missing.
+      if (card.template.includes('[[')) {
+        // Counted as a card, and as fine below.
+      } else if (!template) {
         counts.missing += 1;
         problems += 1;
         if (kinds.includes('missing')) {
@@ -171,19 +194,26 @@ export function healthEntries(
     }
   };
 
-  views.forEach((viewConfig, index) => {
-    if (!viewConfig || typeof viewConfig !== 'object') return;
+  views.forEach((written, index) => {
+    if (!written || typeof written !== 'object') return;
+    // A view the dashboard strategy repeats (see dashboardToCheck) hands its copy's values
+    // to the cards in it, the way a repeated section does; those cards are checked loosely.
+    const repeated = repeats(written) && written.view && typeof written.view === 'object';
+    const viewConfig = repeated ? written.view : written;
+    const given: string[] = repeated
+      ? [...suppliedBy(written), ...namesOf(written.variables), ...namesOf((ll as any)?.variables)]
+      : [];
     const view = { index, title: String(viewConfig.title ?? viewConfig.path ?? '') };
     const cards: any[] = Array.isArray(viewConfig.cards) ? viewConfig.cards : [];
-    cards.forEach((card, cardIndex) => inspect(card, view, [index, cardIndex], []));
+    cards.forEach((card, cardIndex) => inspect(card, view, [index, cardIndex], given));
     // The view's own badges, counted as the panel lists them. A badge has no card path for
     // the editor to open, so its entry goes to the view.
     const badges: any[] = Array.isArray(viewConfig.badges) ? viewConfig.badges : [];
-    badges.forEach((badge) => inspect(badge, view, [index], []));
+    badges.forEach((badge) => inspect(badge, view, [index], given));
     const sections: any[] = Array.isArray(viewConfig.sections) ? viewConfig.sections : [];
     sections.forEach((section, sectionIndex) => {
       const inSection: any[] = Array.isArray(section?.cards) ? section.cards : [];
-      inSection.forEach((card, cardIndex) => inspect(card, view, [index, sectionIndex, cardIndex], []));
+      inSection.forEach((card, cardIndex) => inspect(card, view, [index, sectionIndex, cardIndex], given));
     });
     // A view strategy's repeated sections hand their copy's values down; those cards are checked loosely.
     const strategy = viewConfig.strategy;
@@ -192,9 +222,10 @@ export function healthEntries(
         if (!Array.isArray(list)) continue;
         list.forEach((entry: any) => {
           const handed = [
+            ...given,
             ...suppliedBy(entry ?? {}),
-            ...normaliseVariables(entry?.variables).map((v) => Object.keys(v)[0]),
-            ...normaliseVariables(strategy.variables).map((v) => Object.keys(v)[0]),
+            ...namesOf(entry?.variables),
+            ...namesOf(strategy.variables),
           ];
           inspect(entry?.section ?? entry?.badge ?? entry, view, [index], handed);
         });

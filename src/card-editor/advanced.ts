@@ -145,93 +145,131 @@ export function advancedData(config: DeclutteringCardConfig): AdvancedData {
 /**
  * The card with the form's values written in. A default removes its key; a value the form
  * cannot draw - a `grid_options` key other than columns and rows - is kept as it was.
+ *
+ * Only what the form changed is written. The form hands back every field on every change, so
+ * a key whose field is still what `advancedData` showed for it is left exactly as written:
+ * `strict: false`, a `rebuild_on:` entry the picker cannot draw and a row count with a decimal
+ * all read the same in the form as something else, and were rewritten as that something else
+ * by an edit to another field.
  */
 export function applyAdvanced(config: DeclutteringCardConfig, data: AdvancedData): DeclutteringCardConfig {
   const out = { ...config } as Record<string, unknown>;
+  const shown = advancedData(config);
+  const changed = (...fields: (keyof AdvancedData)[]): boolean =>
+    fields.some((field) => JSON.stringify(data[field]) !== JSON.stringify(shown[field]));
 
-  const grid = { ...((config.grid_options as Record<string, unknown> | undefined) ?? {}) };
-  const columns = gridValue(data.grid_columns);
-  const rows = gridValue(data.grid_rows);
-  if (columns === undefined) delete grid.columns;
-  else grid.columns = columns;
-  if (rows === undefined) delete grid.rows;
-  else grid.rows = rows;
-  if (Object.keys(grid).length) out.grid_options = grid;
-  else delete out.grid_options;
-
-  const style = typeof data.style === 'string' ? data.style : '';
-  if (style.trim()) out.style = style;
-  else delete out.style;
-
-  switch (data.on_error_mode) {
-    case 'hide':
-      out[ON_ERROR_KEY] = ON_ERROR_HIDE;
-      break;
-    case 'card':
-      // The card itself is chosen in the slot under the dropdown; until then there is
-      // nothing to write, and a card already there stays.
-      if (onErrorMode(config[ON_ERROR_KEY]) !== 'card') delete out[ON_ERROR_KEY];
-      break;
-    default:
-      delete out[ON_ERROR_KEY];
+  if (changed('grid_columns', 'grid_rows')) {
+    const grid = { ...((config.grid_options as Record<string, unknown> | undefined) ?? {}) };
+    const columns = gridValue(data.grid_columns);
+    const rows = gridValue(data.grid_rows);
+    if (changed('grid_columns')) {
+      if (columns === undefined) delete grid.columns;
+      else grid.columns = columns;
+    }
+    if (changed('grid_rows')) {
+      if (rows === undefined) delete grid.rows;
+      else grid.rows = rows;
+    }
+    if (Object.keys(grid).length) out.grid_options = grid;
+    else delete out.grid_options;
   }
 
-  // `false` written out is kept: it is how one card turns off what its template asks for.
-  if (data.show_card_errors === true) out[SHOW_CARD_ERRORS_KEY] = true;
-  else if (config.show_card_errors !== false) delete out[SHOW_CARD_ERRORS_KEY];
-
-  // What `strict: true` has always meant is still written that way; anything else level by level.
-  const errors = data.strict_errors ?? 'ignore';
-  const warnings = data.strict_warnings ?? 'ignore';
-  // An `ignore` the card wrote out is kept: it is how one card turns off what its dashboard asks for.
-  const written = config.strict && typeof config.strict === 'object' ? strictLayer(config.strict) : {};
-  const strict = {
-    ...(errors !== 'ignore' || written.errors ? { errors } : {}),
-    ...(warnings !== 'ignore' || written.warnings ? { warnings } : {}),
-  };
-  if (errors === STRICT_TRUE.errors && warnings === STRICT_TRUE.warnings && !written.warnings) out.strict = true;
-  else if (Object.keys(strict).length) out.strict = strict;
-  else delete out.strict;
-
-  // A placeholder or a `{entity, watch}` entry (#411) cannot be drawn in the entity picker,
-  // so it is kept as written rather than lost the first time anything on this tab changes.
-  const kept = rebuildPlaceholders(config);
-  const rebuild = [...rebuildOnEntities(data.rebuild_on), ...kept];
-  if (rebuild.length) out.rebuild_on = rebuild;
-  else delete out.rebuild_on;
-
-  switch (data.rebuild_on_watch) {
-    case 'all':
-    case 'read':
-      out.rebuild_on_watch = data.rebuild_on_watch;
-      break;
-    case 'custom':
-      // A list of parts is the YAML's to change; the form only keeps it.
-      if (watchMode(config.rebuild_on_watch) !== 'custom') delete out.rebuild_on_watch;
-      break;
-    default:
-      delete out.rebuild_on_watch;
+  if (changed('style')) {
+    const style = typeof data.style === 'string' ? data.style : '';
+    if (style.trim()) out.style = style;
+    else delete out.style;
   }
 
-  switch (data.debug) {
-    case 'json':
-      out.debug = true;
-      break;
-    case 'yaml':
-    case 'console':
-    case 'report':
-      out.debug = data.debug;
-      break;
-    default:
-      delete out.debug;
+  if (changed('on_error_mode')) {
+    switch (data.on_error_mode) {
+      case 'hide':
+        out[ON_ERROR_KEY] = ON_ERROR_HIDE;
+        break;
+      case 'card':
+        // The card itself is chosen in the slot under the dropdown; until then there is
+        // nothing to write, and a card already there stays.
+        if (onErrorMode(config[ON_ERROR_KEY]) !== 'card') delete out[ON_ERROR_KEY];
+        break;
+      default:
+        delete out[ON_ERROR_KEY];
+    }
   }
 
-  const name = typeof data.name === 'string' ? data.name.trim() : '';
-  if (name) out.name = name;
-  else delete out.name;
+  if (changed('show_card_errors')) {
+    // `false` written out is kept: it is how one card turns off what its template asks for.
+    if (data.show_card_errors === true) out[SHOW_CARD_ERRORS_KEY] = true;
+    else if (config.show_card_errors !== false) delete out[SHOW_CARD_ERRORS_KEY];
+  }
 
-  if (data.inherit_variables === true) out.inherit_variables = true;
-  else delete out.inherit_variables;
+  if (changed('strict_errors', 'strict_warnings')) {
+    // What `strict: true` has always meant is still written that way; anything else level by level.
+    const errors = data.strict_errors ?? 'ignore';
+    const warnings = data.strict_warnings ?? 'ignore';
+    // An `ignore` the card wrote out is kept: it is how one card turns off what its dashboard asks for.
+    const written =
+      config.strict === false || (config.strict && typeof config.strict === 'object') ? strictLayer(config.strict) : {};
+    const strict = {
+      ...(errors !== 'ignore' || written.errors ? { errors } : {}),
+      ...(warnings !== 'ignore' || written.warnings ? { warnings } : {}),
+    };
+    if (errors === STRICT_TRUE.errors && warnings === STRICT_TRUE.warnings && !written.warnings) out.strict = true;
+    else if (Object.keys(strict).length) out.strict = strict;
+    else delete out.strict;
+  }
+
+  if (changed('rebuild_on')) {
+    // What the entity picker cannot draw - a placeholder, a `{entity, watch}` entry (#411), a
+    // name that is not an entity id - is kept as written rather than lost the first time an
+    // entity is picked.
+    const drawn = shown.rebuild_on ?? [];
+    const kept = rebuildList(config.rebuild_on).filter(
+      (each) => !(typeof each === 'string' && drawn.includes(each.trim())),
+    );
+    const rebuild = [...rebuildOnEntities(data.rebuild_on), ...kept];
+    if (rebuild.length) out.rebuild_on = rebuild;
+    else delete out.rebuild_on;
+  }
+
+  if (changed('rebuild_on_watch')) {
+    switch (data.rebuild_on_watch) {
+      case 'all':
+      case 'read':
+        out.rebuild_on_watch = data.rebuild_on_watch;
+        break;
+      case 'custom':
+        // A list of parts is the YAML's to change; the form only keeps it.
+        if (watchMode(config.rebuild_on_watch) !== 'custom') delete out.rebuild_on_watch;
+        break;
+      default:
+        delete out.rebuild_on_watch;
+    }
+  }
+
+  if (changed('debug')) {
+    switch (data.debug) {
+      case 'json':
+        out.debug = true;
+        break;
+      case 'yaml':
+      case 'console':
+      case 'report':
+        out.debug = data.debug;
+        break;
+      default:
+        delete out.debug;
+    }
+  }
+
+  if (changed('name')) {
+    const name = typeof data.name === 'string' ? data.name.trim() : '';
+    if (name) out.name = name;
+    else delete out.name;
+  }
+
+  if (changed('inherit_variables')) {
+    if (data.inherit_variables === true) out.inherit_variables = true;
+    else delete out.inherit_variables;
+  }
 
   return out as DeclutteringCardConfig;
 }

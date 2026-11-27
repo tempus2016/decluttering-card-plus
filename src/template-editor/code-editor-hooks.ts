@@ -1,4 +1,4 @@
-import { LitElement, html, TemplateResult, css, CSSResult, PropertyValues, nothing } from 'lit';
+import { LitElement, html, TemplateResult, css, CSSResult, PropertyValues, nothing, unsafeCSS } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig } from '../types';
@@ -10,7 +10,9 @@ import { collectSharedDeclarations, collectTemplates } from '../templates';
 import { definedNames, lintTemplate } from '../lint';
 import { RESOLVERS, getDeclarations, normaliseVariables, templateDefaults, typesOf, variableName } from '../variables';
 import { localize } from '../localize';
-import { previewExamples } from '../shared';
+import { PREVIEW_EXAMPLE_EVENT, previewExamples } from '../shared';
+import { borrowedEpoch, fixedOffset } from './common';
+import { badMessageFor, memoLast } from './pure';
 import { watchTarget } from './watch-target';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -28,12 +30,17 @@ import { watchTarget } from './watch-target';
  * except to insert what the user picked.
  */
 
-const PH_STYLE = `
-  .dcp-ph { border-radius: 3px; padding: 0 1px; }
-  .dcp-ph-ok { background: color-mix(in srgb, var(--warning-color, #e39400) 22%, transparent); }
-  .dcp-ph-unset { background: color-mix(in srgb, var(--secondary-text-color, #727272) 18%, transparent); }
-  .dcp-ph-bad { background: color-mix(in srgb, var(--error-color, #db4437) 14%, transparent); text-decoration: underline wavy var(--error-color, #db4437); }
+// The placeholder colours, written once: for CodeMirror's own content, and - under `within` -
+// for the read-only copy this element draws when the editor cannot be decorated.
+const phStyle = (within = ''): string => `
+  ${within}.dcp-ph { border-radius: 3px; padding: 0 1px; }
+  ${within}.dcp-ph-ok { background: color-mix(in srgb, var(--warning-color, #e39400) 22%, transparent); }
+  ${within}.dcp-ph-unset { background: color-mix(in srgb, var(--secondary-text-color, #727272) 18%, transparent); }
+  ${within}.dcp-ph-bad { background: color-mix(in srgb, var(--error-color, #db4437) 14%, transparent); text-decoration: underline wavy var(--error-color, #db4437); }
 `;
+const PH_STYLE = phStyle();
+
+type Resolved = { template: any; variables: any[]; bad: Map<string, string> };
 
 const hooked = new WeakSet<Element>();
 
@@ -193,19 +200,14 @@ export class DeclutteringCodeHooks extends LitElement {
         text-align: left;
         word-break: break-word;
       }
-      pre.copy .dcp-ph {
-        border-radius: 3px;
-        padding: 0 1px;
-      }
-      pre.copy .dcp-ph-ok {
-        background: color-mix(in srgb, var(--warning-color, #e39400) 22%, transparent);
-      }
-      pre.copy .dcp-ph-unset {
-        background: color-mix(in srgb, var(--secondary-text-color, #727272) 18%, transparent);
-      }
-      pre.copy .dcp-ph-bad {
-        background: color-mix(in srgb, var(--error-color, #db4437) 14%, transparent);
-        text-decoration: underline wavy var(--error-color, #db4437);
+      ${unsafeCSS(phStyle('pre.copy '))}
+      .origin {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 0;
+        height: 0;
+        pointer-events: none;
       }
     `;
   }
@@ -213,14 +215,23 @@ export class DeclutteringCodeHooks extends LitElement {
   protected updated(changed: PropertyValues): void {
     super.updated(changed);
     if (changed.has('target')) this._watch();
-    if (changed.has('config') || changed.has('hass')) {
-      // The example or the template changed: colours are worked out again.
-      this._refresh();
-    }
+    // The template or the dashboard changed: colours are worked out again. Not on `hass`,
+    // which Home Assistant replaces on every state change - with no code editor open that
+    // resolved and linted the template for nothing, many times a second.
+    if (changed.has('config') || changed.has('lovelace')) this._refresh();
+  }
+
+  // The example the colours are judged under is picked in the strip, which says so on the window.
+  private readonly _onExample = (): void => this._refresh();
+
+  public connectedCallback(): void {
+    super.connectedCallback();
+    window.addEventListener(PREVIEW_EXAMPLE_EVENT, this._onExample);
   }
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
+    window.removeEventListener(PREVIEW_EXAMPLE_EVENT, this._onExample);
     this._stopWatching?.();
     this._stopWatching = undefined;
   }
@@ -274,10 +285,20 @@ export class DeclutteringCodeHooks extends LitElement {
 
   /* ---------------------------------------------------------------- what a placeholder is */
 
-  private _resolved(): { template: any; variables: any[]; bad: Map<string, string> } | undefined {
+  // Kept until the template, the dashboard or the chosen example is replaced: every key
+  // pressed in the code editor asks for it again.
+  private readonly _memoResolved = memoLast<Resolved>();
+
+  private _resolved(): Resolved | undefined {
     const config = this.config;
     if (!config) return undefined;
     const ll = this.lovelace;
+    return this._memoResolved([ll, borrowedEpoch(ll), config, previewExamples.get(config.template)], () =>
+      this._resolve(config, ll),
+    );
+  }
+
+  private _resolve(config: DeclutteringTemplateConfig, ll: LovelaceConfig | null | undefined): Resolved {
     const resolved = collectTemplates(ll, undefined, config)[config.template] ?? config;
     const variables =
       exampleVariables(resolved, previewExamples.get(config.template)) ??
@@ -300,14 +321,11 @@ export class DeclutteringCodeHooks extends LitElement {
     return { template: resolved, variables, bad };
   }
 
-  private _judge(
-    placeholder: string,
-    ctx: { template: any; variables: any[]; bad: Map<string, string> },
-  ): { kind: SpanKind; message?: string } {
+  private _judge(placeholder: string, ctx: Resolved): { kind: SpanKind; message?: string } {
     const head = placeholder.slice(2).split(/[|?\]]/)[0];
-    for (const [name, message] of ctx.bad) {
-      if (placeholder.includes(name)) return { kind: 'bad', message };
-    }
+    // By the names the placeholder uses, each as a whole word (see badMessageFor).
+    const message = badMessageFor(placeholder, ctx.bad);
+    if (message !== undefined) return { kind: 'bad', message };
     let result;
     try {
       result = tryPlaceholderIn(ctx.template, ctx.variables, placeholder, this.hass);
@@ -328,19 +346,29 @@ export class DeclutteringCodeHooks extends LitElement {
 
   private _refresh(): void {
     const editor = this._editor;
-    const ctx = this._resolved();
-    const text = typeof editor?.value === 'string' ? editor.value : '';
-    this._spans = ctx ? placeholderSpans(text, (p) => this._judge(p, ctx)) : [];
-    // The CodeMirror plugin reads the spans through this element; nudge it.
-    const view = editor?.codemirror;
+    // No code editor - the form is showing - and there is nothing to colour.
+    if (!editor) return;
+    // The colours CodeMirror draws were judged under what has now changed.
+    this._drawn = undefined;
+    const view = editor.codemirror;
     if (view && this._decorated) {
+      // The plugin works the spans out as the view updates; nudge it, and that is all.
       try {
         view.dispatch({});
       } catch {
         // A view that was torn down; the next attach makes a new one.
       }
+      return;
     }
+    // Not decorated: the read-only copy under the editor is drawn from these.
+    const ctx = this._resolved();
+    const text = typeof editor.value === 'string' ? editor.value : '';
+    this._spans = ctx ? placeholderSpans(text, (p) => this._judge(p, ctx)) : [];
   }
+
+  // What CodeMirror last drew, and the text it was drawn for: the view updates on every move
+  // of the caret, and the same text under the same template is coloured the same.
+  private _drawn?: { text: string; ctx: Resolved; decorations: any };
 
   /* ---------------------------------------------------------------- idea 25: decorations */
 
@@ -351,9 +379,10 @@ export class DeclutteringCodeHooks extends LitElement {
       const ctx = this._resolved();
       if (!ctx) return Decoration.none;
       const text = v.state.doc.toString();
+      const drawn = this._drawn;
+      if (drawn && drawn.text === text && drawn.ctx === ctx) return drawn.decorations;
       const spans = placeholderSpans(text, (p) => this._judge(p, ctx));
-      this._spans = spans;
-      return Decoration.set(
+      const decorations = Decoration.set(
         spans.map((span) =>
           Decoration.mark({
             class: `dcp-ph dcp-ph-${span.kind}`,
@@ -362,6 +391,8 @@ export class DeclutteringCodeHooks extends LitElement {
         ),
         true,
       );
+      this._drawn = { text, ctx, decorations };
+      return decorations;
     };
     const plugin = ViewPlugin.fromClass(
       class {
@@ -389,6 +420,8 @@ export class DeclutteringCodeHooks extends LitElement {
   /* ---------------------------------------------------------------- idea 27: completions */
 
   private _keyup(ev: KeyboardEvent): void {
+    // The read-only copy has no CodeMirror plugin to follow the typing for it.
+    if (!this._decorated) this._refresh();
     if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(ev.key)) return;
     this._complete();
   }
@@ -399,7 +432,7 @@ export class DeclutteringCodeHooks extends LitElement {
     if (!view || !config) return;
     const text: string = view.state.doc.toString();
     const pos: number = view.state.selection.main.head;
-    const resolved = collectTemplates(this.lovelace, undefined, config)[config.template] ?? config;
+    const resolved = this._resolved()?.template ?? config;
     const lets = normaliseVariables((resolved as any).let)
       .map(variableName)
       .filter((name): name is string => name !== undefined);
@@ -408,6 +441,7 @@ export class DeclutteringCodeHooks extends LitElement {
       variables: getDeclarations(config),
       lets,
       shared: collectSharedDeclarations(this.lovelace),
+      hass: this.hass,
       translations: translationEntries(resolved, hassLanguage(this.hass)).map((entry) => {
         const [name] = Object.keys(entry);
         const value = entry[name];
@@ -428,7 +462,9 @@ export class DeclutteringCodeHooks extends LitElement {
       return;
     }
     const coords = view.coordsAtPos(pos);
-    this._completion = { ...completion, x: coords?.left ?? 0, y: coords?.bottom ?? 0, pos };
+    // The caret's place is the viewport's; the list is a fixed box, measured from the dialog.
+    const { dx, dy } = fixedOffset(this.renderRoot.querySelector('.origin'));
+    this._completion = { ...completion, x: (coords?.left ?? 0) - dx, y: (coords?.bottom ?? 0) - dy, pos };
     this._selected = 0;
   }
 
@@ -489,6 +525,7 @@ export class DeclutteringCodeHooks extends LitElement {
   protected render(): TemplateResult {
     if (!this._editor) return html``;
     return html`
+      <span class="origin"></span>
       <div class="legend">
         <span><i class="ok"></i>${localize('code_hooks.legend_ok', undefined, this.hass)}</span>
         <span><i class="unset"></i>${localize('code_hooks.legend_unset', undefined, this.hass)}</span>
@@ -541,5 +578,5 @@ export class DeclutteringCodeHooks extends LitElement {
   }
 }
 
-export const CODE_HOOKS_TAG = 'decluttering-code-hooks';
+const CODE_HOOKS_TAG = 'decluttering-code-hooks';
 if (!customElements.get(CODE_HOOKS_TAG)) customElements.define(CODE_HOOKS_TAG, DeclutteringCodeHooks);

@@ -149,7 +149,11 @@ export class DeclutteringCardSlot extends LitElement {
 
   private _edited(ev: CustomEvent): void {
     ev.stopPropagation();
-    this._set(ev.detail?.config);
+    const card = ev.detail?.config;
+    // The nested editor says so when its YAML is emptied or cannot be read; that is somebody
+    // half-way through typing, not the card taken away - which is what Remove is for.
+    if (!card || typeof card !== 'object') return;
+    this._set(card);
   }
 
   private _set(card: Record<string, unknown> | undefined): void {

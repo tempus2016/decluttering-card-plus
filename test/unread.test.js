@@ -304,3 +304,27 @@ check(
     ['nobody'],
   );
 }
+
+/* -------------------------------------------------------------------- read through a repeat item (review) */
+
+check(
+  "a card's variable an item of its for_each reads is read",
+  checkUnreadVariables(
+    {
+      views: [
+        {
+          cards: [
+            {
+              type: 'custom:decluttering-card-plus',
+              template: 't',
+              variables: [{ prefix: 'Room' }, { stray: 1 }],
+              for_each: [{ label: '[[prefix]] 1' }, { label: '[[prefix]] 2' }],
+            },
+          ],
+        },
+      ],
+    },
+    { t: { card: { type: 'tile', name: '[[label]]' } } },
+  ).map((each) => each.name),
+  ['stray'],
+);

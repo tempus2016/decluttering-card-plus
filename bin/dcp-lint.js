@@ -32,12 +32,26 @@ Exit code 1 when anything is an error (a template that does not exist, an extend
 loop); warnings such as a misspelt step are printed with their line and exit 0.
 Unreadable files and bad arguments exit 2.`;
 
-function collect(target, out) {
-  const stat = fs.statSync(target);
-  if (stat.isDirectory()) {
-    for (const name of fs.readdirSync(target).sort()) {
+/*
+ * The .yaml files under a target. A target named on the command line that cannot be read
+ * throws, and ends the run; something inside a directory that cannot - a link to nowhere, a
+ * folder with no permission - is noted in `unreadable` and the rest of the directory is still read.
+ */
+function collect(target, out, unreadable, inside = false) {
+  let stat;
+  let names;
+  try {
+    stat = fs.statSync(target);
+    if (stat.isDirectory()) names = fs.readdirSync(target).sort();
+  } catch (err) {
+    if (!inside) throw err;
+    unreadable.push(`cannot read ${target}: ${err.message}`);
+    return;
+  }
+  if (names) {
+    for (const name of names) {
       if (name.startsWith('.')) continue;
-      collect(path.join(target, name), out);
+      collect(path.join(target, name), out, unreadable, true);
     }
   } else if (/\.ya?ml$/i.test(target)) {
     out.push(target);
@@ -71,15 +85,17 @@ function main(argv) {
   }
 
   const files = [];
+  const unreadable = [];
   for (const target of targets) {
     try {
-      collect(target, files);
+      collect(target, files, unreadable);
     } catch (err) {
       console.error(`cannot read ${target}: ${err.message}`);
       return 2;
     }
   }
   if (!files.length) {
+    unreadable.forEach((line) => console.error(line));
     console.error('no .yaml files found');
     return 2;
   }
@@ -87,8 +103,17 @@ function main(argv) {
   const started = Date.now();
   const findings = [];
   const tagsMet = new Set();
+  let checked = 0;
   for (const file of files) {
-    const { findings: found, tags } = lib.lintText(fs.readFileSync(file, 'utf8'), file);
+    let text;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch (err) {
+      unreadable.push(`cannot read ${file}: ${err.message}`);
+      continue;
+    }
+    checked += 1;
+    const { findings: found, tags } = lib.lintText(text, file);
     findings.push(...found);
     tags.forEach((tag) => tagsMet.add(tag));
   }
@@ -97,11 +122,13 @@ function main(argv) {
   if (out) console.log(out);
   if (format !== 'json') {
     console.log(
-      (findings.length ? '\n' : '') + lib.summaryLine(lib.summarise(findings, files.length), Date.now() - started),
+      (findings.length ? '\n' : '') + lib.summaryLine(lib.summarise(findings, checked), Date.now() - started),
     );
     if (tagsMet.size) console.log(`not followed: ${[...tagsMet].join(', ')} - what they bring in was not checked`);
   }
-  return lib.exitCodeFor(findings);
+  // What could not be read is said last, on stderr, and makes the run a 2 whatever else was found.
+  unreadable.forEach((line) => console.error(line));
+  return unreadable.length ? 2 : lib.exitCodeFor(findings);
 }
 
 process.exitCode = main(process.argv);

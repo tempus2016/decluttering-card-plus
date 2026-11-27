@@ -14,6 +14,7 @@
 
 import { DEFAULTS_ALIAS, templateDefaults } from './variables';
 import { integrationLoaded } from './installed';
+import { globMatches } from './registry';
 
 const MAX_TEXT = 200;
 const MAX_README = 8_000;
@@ -182,10 +183,12 @@ export function requirementsOf(template: unknown): Requirement[] {
 /**
  * Whether a version is at least another: dotted numbers compared in turn, a missing part
  * counting as nought, so 2026.10.4 is at least 2026.10. Anything after the digits of a part -
- * the b1 of a beta - is ignored.
+ * the b1 of a beta - is ignored, and so is anything before them.
  */
 export function versionAtLeast(have: string, want: string): boolean {
-  const parts = (value: string): number[] => value.split('.').map((each) => parseInt(each, 10) || 0);
+  // A part is read from its first digit, so the `v` of `v2.5` is not a version of nought.
+  const parts = (value: string): number[] =>
+    value.split('.').map((each) => parseInt(each.replace(/^\D+/, ''), 10) || 0);
   const a = parts(have);
   const b = parts(want);
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
@@ -194,12 +197,6 @@ export function versionAtLeast(have: string, want: string): boolean {
     if (x !== y) return x > y;
   }
   return true;
-}
-
-/** An entity pattern as a test: `*` stands for anything, the rest is literal. */
-function entityPattern(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}$`, 'i');
 }
 
 export interface Surroundings {
@@ -225,10 +222,9 @@ function met(requirement: Requirement, here: Surroundings): boolean {
     case 'integration':
       return requirement.any.some((each) => integrationLoaded(here.components, each));
     case 'entity':
-      return requirement.any.some((pattern) => {
-        const test = entityPattern(pattern);
-        return here.entities.some((id) => test.test(id));
-      });
+      // `*` stands for anything and the rest is literal. Never a regular expression: the
+      // pattern is a stranger's, and one of nothing but stars hung the tab (review 2026-11-27).
+      return requirement.any.some((pattern) => here.entities.some((id) => globMatches(id, pattern)));
     case 'custom_card':
       return requirement.any.some((tag) => here.isDefined(tag));
     case 'homeassistant':

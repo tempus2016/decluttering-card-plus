@@ -1949,10 +1949,19 @@ const knownStepForTest = (step) => KNOWN_PARAM_STEPS.includes(step.slice(0, step
   check('a named colour works', applyTransform('lighten:50', 'navy'), '#8080c0');
   check('colour steps chain', applyTransform('lighten:20|contrast', '#1565c0'), '#000000');
   check('not a colour is left as it was', applyTransform('lighten:20', 'amberish'), 'amberish');
-  check('a theme variable passes through', applyTransform('alpha:0.5', 'var(--primary-color)'), 'var(--primary-color)');
+  check(
+    'alpha on a theme variable is left to the browser (#518)',
+    applyTransform('alpha:0.5', 'var(--primary-color)'),
+    'color-mix(in srgb, var(--primary-color) 50%, transparent)',
+  );
+  check(
+    'contrast on a theme variable passes through',
+    applyTransform('contrast', 'var(--primary-color)'),
+    'var(--primary-color)',
+  );
   check(
     'and the console says so',
-    said.some((m) => m.includes('theme variable')),
+    said.some((m) => m.includes('theme colour')),
     true,
   );
   check('a bad alpha is left as it was', applyTransform('alpha:7', '#1565c0'), '#1565c0');

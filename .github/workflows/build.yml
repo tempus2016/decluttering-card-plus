@@ -89,12 +89,17 @@ jobs:
       # ship stale code to everyone while every other check stayed green. Checked on one
       # Node version only, so a difference in minifier output between them cannot fail the
       # build spuriously. --ignored=matching also catches stray output .gitignore would hide.
-      - name: Fail if the committed dist/ is stale
+      #
+      # The same build writes the command-line linter's library to bin/ and the docs site's
+      # three tools to docs-theme/assets/js/, committed for the same reason - the Pages build
+      # runs no npm - so they are checked with it: a fix to the linter or a tool that was
+      # never rebuilt would otherwise never reach anybody.
+      - name: Fail if a committed bundle is stale
         if: matrix.node-version == '22.x'
         run: |
-          if [ -n "$(git status --porcelain --ignored=matching -- dist/)" ]; then
-            echo "::error::dist/ does not match a fresh build. Run npm run build and commit the result."
-            git status --porcelain --ignored=matching -- dist/
+          if [ -n "$(git status --porcelain --ignored=matching -- dist/ bin/ docs-theme/assets/js/)" ]; then
+            echo "::error::dist/, bin/ or docs-theme/assets/js/ does not match a fresh build. Run npm run build and commit the result."
+            git status --porcelain --ignored=matching -- dist/ bin/ docs-theme/assets/js/
             exit 1
           fi
       # The bundle budget: more than 5% over the size recorded in scripts/bundle-size.json

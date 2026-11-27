@@ -1,4 +1,4 @@
-import { LitElement, html, TemplateResult, CSSResult } from 'lit';
+import { LitElement, html, TemplateResult, CSSResult, PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { keyed } from 'lit/directives/keyed.js';
 import { HomeAssistant, fireEvent, LovelaceConfig } from 'custom-card-helpers';
@@ -19,7 +19,7 @@ import {
   usagesOnOtherDashboards,
   listPlainCards,
 } from '../templates';
-import { getLovelaceConfig, getLovelacePanel } from '../utils';
+import { getLovelacePanel } from '../utils';
 import { localize } from '../localize';
 import { renderDiff, renderDiffWithFull } from '../diff-view';
 import { CardValueMatch, TemplateValueMatch, searchValues } from '../search';
@@ -42,8 +42,19 @@ import {
   validVariableName,
   variableNames,
 } from '../rename-variable';
-import { operationLabel, pageDashboard, rewriteDashboards, saverFor, thingContent, undoFrom } from '../shared';
-import { SIMILAR_SHOWN, SIMILAR_MEMBERS_SHOWN, SEARCH_SHOWN, textField, saveDashboardWith } from './common';
+import { operationLabel, pageDashboard, saverFor, thingContent, undoFrom } from '../shared';
+import {
+  SIMILAR_SHOWN,
+  SIMILAR_MEMBERS_SHOWN,
+  SEARCH_SHOWN,
+  SaveOutcome,
+  dashboardHref,
+  rewriteAndKeep,
+  savedLovelace,
+  saveDashboardWith,
+  textField,
+} from './common';
+import { memoLast } from './pure';
 import { TEMPLATE_EDITOR_STYLES } from './styles';
 import { FamilyNode, extendsFamilies, familyOf, familySize, layersOf } from '../family';
 import { toYaml } from '../yaml';
@@ -59,7 +70,7 @@ export class DeclutteringTemplateUsagesTab extends LitElement {
   }
 
   private get _savedLovelace(): LovelaceConfig | null | undefined {
-    return getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig();
+    return savedLovelace(this.lovelace);
   }
 
   static get styles(): CSSResult {
@@ -70,7 +81,11 @@ export class DeclutteringTemplateUsagesTab extends LitElement {
     fireEvent(this, 'config-changed', { config });
   }
 
-  private _saveDashboard(build: (config: unknown) => unknown, operation: string, dialog?: unknown): Promise<boolean> {
+  private _saveDashboard(
+    build: (config: unknown) => unknown,
+    operation: string,
+    dialog?: unknown,
+  ): Promise<SaveOutcome> {
     return saveDashboardWith(this, build, operation, dialog);
   }
 
@@ -78,6 +93,30 @@ export class DeclutteringTemplateUsagesTab extends LitElement {
     if (!this.hass || !this._config) return html``;
     return this._renderUsages();
   }
+
+  // The other dashboards are asked once per template name, before drawing rather than while
+  // drawing: the answer is state, and state set during a render draws everything twice.
+  private _remoteAsked?: string;
+
+  protected willUpdate(changed: PropertyValues): void {
+    super.willUpdate(changed);
+    const name = this._config?.template;
+    if (!this.hass || !name || this._remoteAsked === name) return;
+    this._remoteAsked = name;
+    this._remoteUsages = { name, list: [] };
+    // The page's own dashboard, by the path the dashboard list knows it under.
+    void usagesOnOtherDashboards(this.hass, name, pageDashboard()).then((list) => {
+      if (this._remoteAsked === name) this._remoteUsages = { name, list };
+    });
+  }
+
+  // The family tree and the layers under it, kept until the dashboard or the name changes:
+  // counting each template's cards walks the whole dashboard once per template.
+  private readonly _memoFamily = memoLast<{
+    root?: FamilyNode;
+    size?: { templates: number; cards: number };
+    layers: ReturnType<typeof layersOf>;
+  }>();
 
   // The Where-used counts, keyed by what they were computed from. The dialog re-renders
   // on every state change Home Assistant sends, and the answer only changes with the
@@ -169,7 +208,7 @@ export class DeclutteringTemplateUsagesTab extends LitElement {
     }
     const { views, templates } = this._usages.usages;
     const total = views.reduce((sum, view) => sum + view.count, 0);
-    const dashboard = document.location.pathname.split('/').slice(0, 2).join('/');
+    const dashboard = dashboardHref();
 
     return html`
       <div class="usages">
@@ -397,14 +436,7 @@ export class DeclutteringTemplateUsagesTab extends LitElement {
    * that matters today.
    */
   private _renderElsewhere(name: string): TemplateResult {
-    if (this._remoteUsages?.name !== name) {
-      this._remoteUsages = { name, list: [] };
-      const ownPath = document.location.pathname.split('/').filter(Boolean)[0];
-      void usagesOnOtherDashboards(this.hass, name, ownPath).then((list) => {
-        if (this._remoteUsages?.name === name) this._remoteUsages = { name, list };
-      });
-    }
-    const list = this._remoteUsages.list;
+    const list = this._remoteUsages?.name === name ? this._remoteUsages.list : [];
     if (!list.length) return html``;
     const summary = list.map((each) => `${each.urlPath} (${each.total})`).join(', ');
     return html`<ha-alert alert-type="info">
@@ -417,16 +449,16 @@ export class DeclutteringTemplateUsagesTab extends LitElement {
    * each layer changes about the one under it. Only when there is a family to show.
    */
   private _renderFamily(ll: LovelaceConfig, name: string): TemplateResult {
-    const raw = collectRawTemplates(ll);
-    // Cards only: a template extending another is a child in the tree, not a use of it.
-    const cardsUsing = (each: string): number =>
-      collectUsages(ll, each).views.reduce((sum, view) => sum + view.count, 0);
-    const roots = extendsFamilies(raw, cardsUsing);
-    const root = familyOf(roots, name);
-    if (!root) return html``;
-    const size = familySize(root);
-    const dashboard = document.location.pathname.split('/').slice(0, 2).join('/');
-    const layers = layersOf(raw, name);
+    const { root, size, layers } = this._memoFamily([ll, name], () => {
+      const raw = collectRawTemplates(ll);
+      // Cards only: a template extending another is a child in the tree, not a use of it.
+      const cardsUsing = (each: string): number =>
+        collectUsages(ll, each).views.reduce((sum, view) => sum + view.count, 0);
+      const found = familyOf(extendsFamilies(raw, cardsUsing), name);
+      return { root: found, size: found ? familySize(found) : undefined, layers: found ? layersOf(raw, name) : [] };
+    });
+    if (!root || !size) return html``;
+    const dashboard = dashboardHref();
     return html`
       <div class="family">
         <h3>${localize('family.header', undefined, this.hass)}</h3>
@@ -658,7 +690,7 @@ ${layers
     this._renaming = true;
     this._renameError = undefined;
     try {
-      await rewriteDashboards(
+      await rewriteAndKeep(
         this,
         this.hass,
         'rename_template',
@@ -932,7 +964,7 @@ ${layers
     try {
       // Worked out again from this dashboard as it is read for saving, which comes first.
       let lent: Set<string> | undefined;
-      await rewriteDashboards(
+      await rewriteAndKeep(
         this,
         this.hass,
         'rename_variable',
@@ -1024,7 +1056,9 @@ ${layers
     // Beside the one being copied, which is where somebody would look for it.
     const here = findTemplateLocation(panel?.config ?? this.lovelace, from);
     const saved = await this._saveDashboard(
-      (config) => addCardToView(config, here?.view?.index ?? 0, copy),
+      // Only where the name is still free, so the rewrite made again after the dialog saves adds nothing twice.
+      (config) =>
+        to in collectTemplates(config as LovelaceConfig) ? config : addCardToView(config, here?.view?.index ?? 0, copy),
       'duplicate',
     );
     if (saved) {
@@ -1035,6 +1069,5 @@ ${layers
 }
 
 /** The tag the template editor renders this tab as. */
-export const USAGES_TAB_TAG = 'decluttering-template-usages-tab';
-if (!customElements.get('decluttering-template-usages-tab'))
-  customElements.define('decluttering-template-usages-tab', DeclutteringTemplateUsagesTab);
+const USAGES_TAB_TAG = 'decluttering-template-usages-tab';
+if (!customElements.get(USAGES_TAB_TAG)) customElements.define(USAGES_TAB_TAG, DeclutteringTemplateUsagesTab);

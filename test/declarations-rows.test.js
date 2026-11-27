@@ -111,3 +111,120 @@ check(
   })(),
   [undefined, { card: {} }, undefined, undefined, 'number', undefined],
 );
+
+// --- review: an edit to one field leaves the others as written ---------------------------
+const {
+  isOpaqueRow,
+  rowKeys,
+  builtinType,
+  shownDefault,
+  defaultFromEdit,
+  moreData,
+  withMore,
+} = require('../.test-build/declarations-rows.js');
+
+const rowOf = (declaration) => rowsFrom([declaration])[0];
+
+// The row form sends the default back as the text it showed.
+const unchanged = (declaration) => {
+  const row = rowOf(declaration);
+  return defaultFromEdit(row, shownDefault(row), builtinType(row));
+};
+check(
+  'a number default with no type is not an edit when it comes back as text',
+  unchanged({ name: 'columns', default: 3 }),
+  {
+    changed: false,
+  },
+);
+check('nor is a false', unchanged({ name: 'show', default: false }), { changed: false });
+check('nor a select default', unchanged({ name: 'n', type: 'select', allowed: [1, 2], default: 2 }), {
+  changed: false,
+});
+check('nor a mapping handed back as a copy', defaultFromEdit(rowOf({ name: 'm', default: { a: 1 } }), { a: 1 }, ''), {
+  changed: false,
+});
+check('an empty box where there was no default is not an edit', defaultFromEdit(rowOf({ name: 'x' }), '', ''), {
+  changed: false,
+});
+check('typed text is the text', defaultFromEdit(rowOf({ name: 'x', default: 3 }), '4', ''), {
+  changed: true,
+  value: '4',
+});
+check(
+  'typed into a number variable it is a number',
+  defaultFromEdit(rowOf({ name: 'x', type: 'number' }), '4', 'number'),
+  {
+    changed: true,
+    value: 4,
+  },
+);
+check(
+  'typed into a boolean variable it is yes or no',
+  defaultFromEdit(rowOf({ name: 'x', type: 'boolean' }), 'False', 'boolean'),
+  {
+    changed: true,
+    value: false,
+  },
+);
+check('an emptied box takes the default out', defaultFromEdit(rowOf({ name: 'x', default: 3 }), '', ''), {
+  changed: true,
+});
+check(
+  'a named type comes down to the built-in one it says',
+  [
+    builtinType(rowOf({ name: 'x', type: 'percent' }), { percent: { type: 'number' } }),
+    builtinType(rowOf({ name: 'x', type: 'number' })),
+    builtinType(rowOf({ name: 'x', type: 'mystery' })),
+  ],
+  ['number', 'number', 'mystery'],
+);
+
+// More settings: only the field that was edited is written.
+const rich = rowOf({
+  name: 'level',
+  type: 'select',
+  allowed: [1, 2, 3],
+  min: '[[lowest]]',
+  max: 10,
+  domain: ['light', 'switch'],
+  multiple: false,
+});
+const describedRow = withMore(rich, { ...moreData(rich), description: 'How bright' });
+check('a description typed leaves a list of numbers as numbers', describedRow.allowed, [1, 2, 3]);
+check('and a placeholder minimum where it was', [describedRow.min, describedRow.max], ['[[lowest]]', 10]);
+check('and the domains a list', describedRow.domain, ['light', 'switch']);
+check('and an explicit false as written', describedRow.multiple, false);
+check('the description is set', describedRow.description, 'How bright');
+check(
+  'an edit to the allowed values is read as a list',
+  withMore(rich, { ...moreData(rich), allowed: 'a, b' }).allowed,
+  ['a', 'b'],
+);
+check(
+  'one made from a placeholder stays text',
+  withMore(rich, { ...moreData(rich), allowed: '[[choices]]' }).allowed,
+  '[[choices]]',
+);
+check('a cleared number goes', withMore(rich, { ...moreData(rich), max: undefined }).max, undefined);
+check('one domain is a word', withMore(rich, { ...moreData(rich), domain: 'light' }).domain, 'light');
+check('a switch turned on is written', withMore(rich, { ...moreData(rich), multiple: true }).multiple, true);
+check('nothing edited is the same row', withMore(rich, moreData(rich)), rich);
+
+// Entries the table cannot draw pass through as they were written.
+const odd = ['entity', { entity: 'sun.sun' }, null, { name: 'real', default: 1 }, { note: 'a note' }];
+check('a list with entries the table cannot draw round-trips', roundTrip(odd), odd);
+check('they are rows the table does not draw', rowsFrom(odd).map(isOpaqueRow), [true, true, true, false, false]);
+const editedOdd = rowsFrom(odd).map((row) => (row.name === 'real' ? withField(row, 'label', 'Real') : row));
+check('and survive an edit to the row beside them', variablesFrom(editedOdd, 'list'), [
+  'entity',
+  { entity: 'sun.sun' },
+  null,
+  { name: 'real', default: 1, label: 'Real' },
+  { note: 'a note' },
+]);
+
+// Two rows of one name get a key each.
+const twice = rowsFrom([{ name: 'a' }, { name: 'a' }, { note: 'x' }, { note: 'y' }, 'bare', { name: 'b' }]);
+check('every row has a key no other row has', new Set(rowKeys(twice)).size, twice.length);
+check('a name used once keeps it as its key', [rowKeys(twice)[0], rowKeys(twice)[5]], ['a', 'b']);

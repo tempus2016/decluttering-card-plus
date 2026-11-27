@@ -33,36 +33,47 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # The comparison script, from the base branch: this event's default checkout is the base,
+      # never the pull request's code, and the ref is named so that stays true. Only the one
+      # file is taken, and nothing from the pull request is ever run.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: scripts/lockfile-changes.js
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Check the lockfile only re-resolves the bumped packages' own trees
-        # The name checks above look at what Dependabot says it bumped. The lockfile can
+        # The name checks below look at what Dependabot says it bumped. The lockfile can
         # change more than that: a bump of c8 can move a copy of semver, minimatch or
         # supports-color that eslint, rollup and semantic-release load too, and the
-        # cooldown in dependabot.yml does not apply to those. So the diff of package-lock.json
-        # is read, and any package path outside the bumped packages' own node_modules trees
-        # leaves the PR for a person (review 2026-10-25).
+        # cooldown in dependabot.yml does not apply to those. So both lockfiles are read, the
+        # base's and the pull request's, and compared package by package: any entry added,
+        # removed or changed outside the bumped packages' own node_modules trees leaves the
+        # PR for a person (review 2026-10-25). Reading the diff instead missed a version
+        # changed in place, whose `"node_modules/x": {` line is context (review 2026-11-27).
+        # The lockfiles are only ever parsed as JSON. A step that fails leaves own_tree unset,
+        # which is not 'true', so nothing merges.
         id: lock
         run: |
-          changed=$(gh pr diff "$PR_URL" | grep -E '^[-+][[:space:]]+"node_modules/' | sed -E 's/^[-+][[:space:]]+"(node_modules\/[^"]+)".*/\1/' | sort -u || true)
-          outside=""
-          for path in $changed; do
-            own=false
-            IFS=',' read -ra names <<< "$NAMES"
-            for name in "${names[@]}"; do
-              name=$(echo "$name" | xargs)
-              case "$path" in
-                "node_modules/$name"|"node_modules/$name/"*) own=true ;;
-              esac
-            done
-            if [ "$own" = false ]; then outside="$outside $path"; fi
-          done
+          set -euo pipefail
+          fetch() {
+            gh api -H "Accept: application/vnd.github.raw+json" "repos/$REPO/contents/package-lock.json?ref=$1" > "$2"
+          }
+          fetch "$BASE_SHA" "$RUNNER_TEMP/base-lock.json"
+          fetch "$HEAD_SHA" "$RUNNER_TEMP/head-lock.json"
+          outside=$(node scripts/lockfile-changes.js "$RUNNER_TEMP/base-lock.json" "$RUNNER_TEMP/head-lock.json" "$NAMES")
           if [ -n "$outside" ]; then
-            echo "left for a person: the lockfile also changes$outside"
+            echo "left for a person: the lockfile also changes"
+            echo "$outside"
             echo "own_tree=false" >> "$GITHUB_OUTPUT"
           else
             echo "own_tree=true" >> "$GITHUB_OUTPUT"
           fi
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           NAMES: ${{ steps.meta.outputs.dependency-names }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -74,7 +85,8 @@ jobs:
         # The name checks are substring matches over a comma-separated list, so each one
         # covers a family: 'rollup' also catches rollup-plugin-* and @rollup/*, 'eslint'
         # catches eslint-*, typescript-eslint and @typescript-eslint/*, 'typescript' the
-        # compiler, 'conventional-changelog' the notes preset. They must keep matching the
+        # compiler, 'conventional-changelog' the notes preset, 'ts-json-schema-generator' what
+        # `npm run schema` runs inside the release build. They must keep matching the
         # release-tooling patterns in dependabot.yml.
         if: >-
           steps.lock.outputs.own_tree == 'true' &&
@@ -88,7 +100,8 @@ jobs:
           !contains(steps.meta.outputs.dependency-names, 'typescript') &&
           !contains(steps.meta.outputs.dependency-names, 'tslib') &&
           !contains(steps.meta.outputs.dependency-names, 'eslint') &&
-          !contains(steps.meta.outputs.dependency-names, 'prettier')
+          !contains(steps.meta.outputs.dependency-names, 'prettier') &&
+          !contains(steps.meta.outputs.dependency-names, 'ts-json-schema-generator')
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

@@ -6,7 +6,7 @@
  *
  * Pure: nothing here touches the DOM. element.ts draws the nodes with <details>.
  */
-import { ExpansionResult, TraceReport, TraceSection, headline } from './trace';
+import { BuildTrace, ExpansionResult, TraceReport, TraceSection, asText, headline } from './trace';
 import {
   ItemTables,
   allWarnings,
@@ -57,14 +57,8 @@ export interface TreeInput extends Pick<ExpansionResult, 'reports' | 'neverBuilt
   unredacted?: boolean;
 }
 
-const asText = (value: unknown): string =>
-  value === undefined
-    ? ''
-    : typeof value === 'string'
-      ? value
-      : typeof value === 'object' && value !== null
-        ? JSON.stringify(value)
-        : String(value);
+// A cell with nothing in it is empty, not the word "undefined".
+const cellText = (value: unknown): string => (value === undefined ? '' : asText(value));
 
 /** Every section a card built, as nodes under one card node. */
 /*
@@ -78,7 +72,7 @@ function tableNode(id: string, rows: Record<string, unknown>[], hide: (text: str
     kind: 'table',
     title: '',
     columns,
-    rows: rows.map((row) => columns.map((column) => hide(asText(row[column])))),
+    rows: rows.map((row) => columns.map((column) => hide(cellText(row[column])))),
   };
 }
 
@@ -100,7 +94,7 @@ function tableGroup(
 
 /** Each item template a fill built, a group each, with its values and placeholders as tables (#235). */
 function itemNodes(base: string, items: ItemTables[], hide: (text: string) => string, hass?: any): ReportNode[] {
-  const t = (key: string): string => localize(key, undefined, hass).replace(/[,:]\s*$/, '');
+  const t = (key: string): string => localize(key, undefined, hass);
   return items.map((item, i) => {
     const id = `${base}-i${i}`;
     return {
@@ -108,8 +102,8 @@ function itemNodes(base: string, items: ItemTables[], hide: (text: string) => st
       kind: 'group' as const,
       title: hide(item.title),
       children: [
-        tableGroup(`${id}-values`, t('trace.item_values'), item.values, hide),
-        tableGroup(`${id}-placeholders`, plainTitle(t('trace.placeholders')), item.placeholders, hide),
+        tableGroup(`${id}-values`, headingTitle(t('trace.item_values')), item.values, hide),
+        tableGroup(`${id}-placeholders`, t('trace.placeholders_title'), item.placeholders, hide),
         ...itemNodes(id, item.items, hide, hass),
       ],
     };
@@ -122,8 +116,12 @@ function itemNodes(base: string, items: ItemTables[], hide: (text: string) => st
  */
 export const headingTitle = (text: string): string => text.replace(/\s*[:\uFF1A]\s*$/, '');
 
-const plainTitle = (text: string): string =>
-  text.replace(/\s*[,:\uFF0C\uFF1A]\s*$/, '').replace(/, and what each became$/, '');
+// Every warning a build gave, its fills' included, each once - what allWarnings counts for the card.
+function traceWarnings(trace: BuildTrace, found: string[] = []): string[] {
+  for (const warning of trace.warnings) if (!found.includes(warning)) found.push(warning);
+  for (const item of trace.items ?? []) traceWarnings(item.trace, found);
+  return found;
+}
 
 function cardNode(
   report: TraceReport,
@@ -164,17 +162,8 @@ function cardNode(
     const base = `r${index}-s${sectionIndex}`;
     const own: ReportNode[] = [];
     const tables = allTables[sectionIndex];
-    own.push(
-      tableGroup(
-        `${base}-variables`,
-        t('trace.variables')
-          .replace(/[,:]\s*$/, '')
-          .replace(/, and where each came from$/, ''),
-        tables.variables,
-        hide,
-      ),
-    );
-    own.push(tableGroup(`${base}-placeholders`, plainTitle(t('trace.placeholders')), tables.placeholders, hide));
+    own.push(tableGroup(`${base}-variables`, t('editor.variables_label'), tables.variables, hide));
+    own.push(tableGroup(`${base}-placeholders`, t('trace.placeholders_title'), tables.placeholders, hide));
     if (section.trace.dropped.length) {
       own.push({
         id: `${base}-dropped`,
@@ -189,14 +178,15 @@ function cardNode(
       });
     }
     own.push(...itemNodes(base, tables.items, hide, hass));
-    if (section.trace.warnings.length) {
+    const warned = traceWarnings(section.trace);
+    if (warned.length) {
       own.push({
         id: `${base}-warnings`,
         kind: 'group',
         title: headingTitle(t('report.warnings')),
-        meta: String(section.trace.warnings.length),
+        meta: String(warned.length),
         open: true,
-        children: section.trace.warnings.map((warning, i) => ({
+        children: warned.map((warning, i) => ({
           id: `${base}-w${i}`,
           kind: 'leaf' as const,
           title: hide(warning),
@@ -222,7 +212,7 @@ function cardNode(
       children.push(...own);
     }
   });
-  const warnings = report.sections.reduce((sum, section) => sum + section.trace.warnings.length, 0);
+  const warnings = report.sections.reduce((sum, section) => sum + traceWarnings(section.trace).length, 0);
   return {
     id: `r${index}`,
     kind: 'card',
@@ -242,8 +232,8 @@ export function treeRedactor(reports: TraceReport[]): (text: string) => string {
 /** The whole report as nodes: the error, failed checks, warnings, the end result, what never built, then each card's build. */
 export function reportTree(input: TreeInput, hass?: any): ReportNode[] {
   const t = (key: string, params?: Record<string, unknown>): string => localize(key, params, hass);
-  const hide = treeRedactor(input.reports);
-  const keep = (text: string): string => (input.unredacted ? text : hide(text));
+  // Not worked out at all for `redact: false`: the secrets are only looked for to be taken out.
+  const keep = input.unredacted ? (text: string): string => text : treeRedactor(input.reports);
   const nodes: ReportNode[] = [];
   if (input.error) nodes.push({ id: 'error', kind: 'leaf', title: keep(input.error), warn: true });
   /*
@@ -410,7 +400,7 @@ export function highlightParts(text: string, query: string): { text: string; hit
 
 /* ---------------------------------------------------------------- GitHub issue */
 
-export const ISSUE_REPO = 'tempus2016/decluttering-card-plus';
+const ISSUE_REPO = 'tempus2016/decluttering-card-plus';
 
 // Browsers and GitHub both accept addresses well past this; staying under it leaves room for
 // the form's own additions and keeps the address pasteable.

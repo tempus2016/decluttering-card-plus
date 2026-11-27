@@ -123,6 +123,29 @@ export function isShownValue(value: unknown, shown: unknown): boolean {
   return JSON.stringify(value) === JSON.stringify(shown);
 }
 
+/**
+ * What one declared field of the card editor writes on the card, from the value its form gave
+ * back - or undefined for nothing, so the line goes and the default applies again.
+ *
+ * A switch shown for a written word it was not moved from keeps the word, and a default only
+ * shown in its field (#373) stays unwritten until the field is changed. A field left alone or
+ * cleared sets nothing, so the template's own default keeps working - unless it is declared
+ * `allow_empty: true` (#514): then a field that was showing something, a value the card sets
+ * or a default, and is cleared writes `''`, which beats the default, and one the card already
+ * sets to `''` keeps it. Home Assistant's text and entity fields hand back undefined once
+ * cleared, which is told from a field left alone by what the field was showing.
+ */
+export function fieldWrite(
+  declaration: Pick<VariableDeclaration, 'allow_empty'>,
+  value: unknown,
+  shownAs: { shown: unknown; written: unknown } | undefined,
+  set: boolean,
+): unknown {
+  if (shownAs && isShownValue(value, shownAs.shown)) return shownAs.written;
+  if (value !== undefined && value !== '') return value;
+  return declaration.allow_empty === true && (set || shownAs !== undefined) ? '' : undefined;
+}
+
 /*
  * #255 (idea 18): a field the card sets, where something else would give the variable a value
  * if the card did not, gets a Reset. Reset takes the card's own line out rather than writing

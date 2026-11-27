@@ -135,3 +135,9 @@ check(
   [settingValue(tile, ['tap_action', 'action']), settingValue(tile, ['nope'])],
   ['navigate', undefined],
 );
+
+/* -------------------------------------------------------------------- names read by a step (review) */
+
+const stepReads = { card: { type: 'tile', name: '[[a|or:title]]', icon: '[[b|if:shown]]', entity: 'light.a' } };
+check('a name read only by or: or if: is in use', namesInUse(stepReads).sort(), ['a', 'b', 'shown', 'title']);
+check('and cannot be promoted to', promoteSetting(stepReads, ['entity'], 'title'), { ok: false, error: 'name_taken' });

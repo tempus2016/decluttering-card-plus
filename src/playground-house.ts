@@ -42,7 +42,7 @@ import { TemplateConfig } from './types';
 
 /** As many entities as one entry may make, and as many as the box may make altogether. */
 export const MAX_COUNT = 500;
-export const MAX_OWN = 1000;
+const MAX_OWN = 1000;
 const MAX_ALIASES = 50;
 
 const KEYS = new Set([
@@ -104,18 +104,34 @@ function copyHouse(base: House): House {
   };
 }
 
+/*
+ * The id an area, a floor or a label gets from its name. `slug` keeps only a to z and digits,
+ * as an entity id must; a name with none of those - `厨房`, `Спальня` - came out empty, and
+ * every such area was the one area with no id. So those keep their own letters.
+ */
+export function idFor(name: string): string {
+  const plain = slug(name);
+  if (plain) return plain;
+  const own = name
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, '_')
+    .replace(/^_+|_+$/g, '');
+  return own || 'unnamed';
+}
+
 function find(collection: Record<string, any>, idKey: string, wanted: string): any {
   if (Object.prototype.hasOwnProperty.call(collection, wanted)) return collection[wanted];
   const lower = wanted.toLowerCase();
+  const id = idFor(wanted);
   return Object.values(collection).find(
-    (entry) => String(entry?.name ?? '').toLowerCase() === lower || entry?.[idKey] === slug(wanted),
+    (entry) => String(entry?.name ?? '').toLowerCase() === lower || entry?.[idKey] === id,
   );
 }
 
 function floorFor(house: House, wanted: string): any {
   const found = find(house.floors, 'floor_id', wanted);
   if (found) return found;
-  const floor = { floor_id: slug(wanted), name: wanted, icon: null };
+  const floor = { floor_id: idFor(wanted), name: wanted, icon: null };
   house.floors[floor.floor_id] = floor;
   return floor;
 }
@@ -123,7 +139,7 @@ function floorFor(house: House, wanted: string): any {
 function labelFor(house: House, wanted: string): any {
   const found = find(house.labels, 'label_id', wanted);
   if (found) return found;
-  const label = { label_id: slug(wanted), name: wanted };
+  const label = { label_id: idFor(wanted), name: wanted };
   house.labels[label.label_id] = label;
   return label;
 }
@@ -139,7 +155,7 @@ function areaFor(house: House, wanted: string, floorName: string | undefined): a
     house.areas[found.area_id] = placed;
     return placed;
   }
-  const area = { area_id: slug(wanted), name: wanted, floor_id: floor?.floor_id ?? null, icon: null };
+  const area = { area_id: idFor(wanted), name: wanted, floor_id: floor?.floor_id ?? null, icon: null };
   house.areas[area.area_id] = area;
   return area;
 }

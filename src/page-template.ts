@@ -89,8 +89,11 @@ export function buildPage(
   // Quietly: a repeat's `[[entity]]`, `[[index]]`... are filled by the writing-out after
   // this, which warns about what is still unset then. What the page itself leaves unset is
   // still said, from the body with every repeat's content taken out.
-  const built = deepReplace(variables, template, rest, page.template, hass, true);
-  deepReplace(variables, template, withoutRepeatContent(rest), page.template, hass, false);
+  // A body with no repeat and no card of ours in it is filled once, saying what it leaves unset as it goes.
+  const ownPart = withoutRepeatContent(rest);
+  const allOwn = JSON.stringify(ownPart) === JSON.stringify(rest);
+  const built = deepReplace(variables, template, rest, page.template, hass, !allOwn);
+  if (!allOwn) deepReplace(variables, template, ownPart, page.template, hass, false);
   const dashboard: Record<string, unknown> =
     built && typeof built === 'object' && !Array.isArray(built)
       ? { ...(built as Record<string, unknown>), ...held }

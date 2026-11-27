@@ -122,3 +122,17 @@ function foundInEntry(entry: Record<string, unknown>, pattern: RegExp): string[]
   }
   return out;
 }
+
+/*
+ * One key set on a plain object being built from somebody's config. Assigning `__proto__`
+ * would reparent the object rather than set a key, so that one name is defined instead, as
+ * JSON.parse does: the object keeps its ordinary prototype - a card may ask its config
+ * `hasOwnProperty` - and the key is a key like any other.
+ */
+export function setKey(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (key === '__proto__') {
+    Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
+  } else {
+    target[key] = value;
+  }
+}

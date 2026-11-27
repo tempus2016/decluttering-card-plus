@@ -10,6 +10,8 @@
  * Assistant is talking to in order to use a starter template.
  */
 
+import { CONSUMER_TYPES } from './variables';
+
 export interface LibraryEntry {
   /** The name it is installed under, which is also how a card would call it. */
   name: string;
@@ -112,7 +114,7 @@ export function libraryNeeds(entry: LibraryEntry, existing: string[]): string[] 
       return;
     }
     if (!node || typeof node !== 'object') return;
-    if (typeof node.type === 'string' && node.type.includes('decluttering-card') && typeof node.template === 'string') {
+    if (CONSUMER_TYPES.includes(node.type) && typeof node.template === 'string') {
       needed.add(node.template);
     }
     Object.values(node).forEach(walk);

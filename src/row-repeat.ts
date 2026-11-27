@@ -1,5 +1,5 @@
 import { HomeAssistant } from 'custom-card-helpers';
-import { HELPERS } from './shared';
+import { cardHelpers } from './shared';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -46,7 +46,7 @@ export class DeclutteringMany extends HTMLElement {
 
   private async _build(config: ManyConfig): Promise<void> {
     this._building = config;
-    const helpers = HELPERS ? await HELPERS : undefined;
+    const helpers = cardHelpers() ? await cardHelpers() : undefined;
     if (this._building !== config) return;
     for (const thing of this._things) thing.remove();
     this._things = [];

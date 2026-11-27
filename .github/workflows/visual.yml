@@ -50,7 +50,7 @@ jobs:
       # dist/ by the script, not from Home Assistant's www/. Pinned, because the baseline is
       # only good for the version it was taken on; bump it together with the baseline.
       homeassistant:
-        image: ghcr.io/home-assistant/home-assistant:2026.11.0
+        image: ghcr.io/home-assistant/home-assistant:2026.11.0@sha256:c6c1ca9931036bf3a2c4cc088d8db25dfea3b33935a5ecc83c40349462e2f69e
         ports:
           - 8123:8123
 

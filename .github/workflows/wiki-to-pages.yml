@@ -9,7 +9,7 @@ on:
   gollum: # fires when a wiki page is edited
   push:
     branches: [main]
-    paths: ['docs-theme/**', '.github/workflows/wiki-to-pages.yml']
+    paths: ['docs-theme/**', 'dist/*.js', '.github/workflows/wiki-to-pages.yml']
   pull_request:
     paths: ['docs-theme/**', '.github/workflows/wiki-to-pages.yml']
   workflow_dispatch:
@@ -30,7 +30,9 @@ jobs:
       - name: Take a copy of the theme
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          sparse-checkout: docs-theme
+          sparse-checkout: |
+            docs-theme
+            dist
           path: repo
           # This job processes wiki content and, on a pull_request, fork-controlled code;
           # neither should have the job token sitting in .git/config while it runs.
@@ -53,8 +55,13 @@ jobs:
                 repo/docs-theme/builder.html \
                 repo/docs-theme/playground.html \
                 repo/docs-theme/try-template.html \
+                repo/docs-theme/live-demo.html \
                 repo/docs-theme/schema \
                 site/
+          # The card itself, for the Live demo page and anyone embedding it on a page of
+          # their own. Main's dist is the newest release plus anything merged since.
+          mkdir -p site/assets/card
+          cp repo/dist/*.js site/assets/card/
 
       # No configure-pages step: url and baseurl are set in docs-theme/_config.yml, so the
       # build is the same on a pull request as it is on main.
@@ -92,6 +99,13 @@ jobs:
           test -s _site/assets/js/try-template.js || { echo "try-template script missing"; exit 1; }
           grep -q "connect-src 'self' https://api.github.com" _site/try-template.html || { echo "try-template lost its gist connect-src"; exit 1; }
           ! grep -q "connect-src 'self' https" _site/Variables.html || { echo "a wiki page has a connect-src"; exit 1; }
+          test -f _site/live-demo.html || { echo "no live-demo.html"; exit 1; }
+          grep -q "script-src 'self' https://demo.home-assistant.io" _site/live-demo.html || { echo "live demo lost its demo origin"; exit 1; }
+          ! grep -q "demo.home-assistant.io;" _site/Variables.html || { echo "a wiki page allows the demo origin"; exit 1; }
+          grep -q 'assets/card/decluttering-card-plus.js' _site/live-demo.html || { echo "live demo lost the card"; exit 1; }
+          test -s _site/assets/card/decluttering-card-plus.js || { echo "card bundle missing"; exit 1; }
+          for chunk in $(grep -o 'decluttering-card-plus\.[A-Za-z0-9_.-]*\.js' _site/assets/card/decluttering-card-plus.js | sort -u); do test -s "_site/assets/card/$chunk" || { echo "card chunk $chunk missing"; exit 1; }; done
+          test -s _site/assets/js/live-demo.js || { echo "live demo script missing"; exit 1; }
           grep -q 'class="ph"' _site/index.html || { echo "hero did not build"; exit 1; }
           grep -q 'search.json' _site/index.html || { echo "search box missing from the layout"; exit 1; }
           python3 -I -c 'import json,sys; d=json.load(open("_site/search.json")); sys.exit(len(d) < 100 and "search index has only %d sections" % len(d))'

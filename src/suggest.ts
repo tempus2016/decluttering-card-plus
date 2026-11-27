@@ -1,3 +1,4 @@
+import { localize } from './localize';
 import { PLACEHOLDER, VariableDeclaration } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -10,18 +11,20 @@ import { PLACEHOLDER, VariableDeclaration } from './variables';
 interface Candidate {
   /** The variable name to propose, before any numbering. */
   base: string;
+  /** The locale key of the label the variable is declared with. */
   label: string;
   selector: any;
   /** Whether this value is worth turning into a variable at all. */
   matches: (value: string) => boolean;
 }
 
-const ENTITY_ID = /^[a-z_]+\.[a-z0-9_]+$/;
+/** What an entity id looks like where a card names one; promote.ts reads a setting's kind with it too. */
+export const ENTITY_ID = /^[a-z_]+\.[a-z0-9_]+$/;
 
 // `entity` and `entity_id` are one candidate under two keys, so they cannot drift apart.
 const entityCandidate: Candidate = {
   base: 'entity',
-  label: 'Entity',
+  label: 'suggest.label_entity',
   selector: { entity: {} },
   matches: (v) => ENTITY_ID.test(v),
 };
@@ -33,14 +36,16 @@ function textCandidate(base: string, label: string): Candidate {
 const CANDIDATES: Record<string, Candidate> = {
   entity: entityCandidate,
   entity_id: entityCandidate,
-  name: textCandidate('name', 'Name'),
-  title: textCandidate('title', 'Title'),
-  heading: textCandidate('heading', 'Heading'),
-  icon: { base: 'icon', label: 'Icon', selector: { icon: {} }, matches: (v) => v.includes(':') },
+  name: textCandidate('name', 'suggest.label_name'),
+  title: textCandidate('title', 'suggest.label_title'),
+  heading: textCandidate('heading', 'suggest.label_heading'),
+  icon: { base: 'icon', label: 'suggest.label_icon', selector: { icon: {} }, matches: (v) => v.includes(':') },
 };
 
-function labelFor(candidate: Candidate, index: number): string {
-  return index === 1 ? candidate.label : `${candidate.label} ${index}`;
+// In the language of whoever is making the template: the label is written into it.
+function labelFor(candidate: Candidate, index: number, hass?: unknown): string {
+  const label = localize(candidate.label, undefined, hass as undefined);
+  return index === 1 ? label : `${label} ${index}`;
 }
 
 /**
@@ -49,9 +54,14 @@ function labelFor(candidate: Candidate, index: number): string {
  * until somebody passes something else in.
  *
  * `taken` is the names already spoken for, so a suggestion never quietly replaces a
- * variable the template already declares.
+ * variable the template already declares. `hass` says whose language the labels are in;
+ * without it they are in the page's.
  */
-export function suggestVariables(card: any, taken: string[]): { card: any; variables: VariableDeclaration[] } {
+export function suggestVariables(
+  card: any,
+  taken: string[],
+  hass?: unknown,
+): { card: any; variables: VariableDeclaration[] } {
   const used = new Set(taken);
   const variables: VariableDeclaration[] = [];
   // The same value in the same kind of place is the same variable: an entity named twice
@@ -71,7 +81,7 @@ export function suggestVariables(card: any, taken: string[]): { card: any; varia
     }
     used.add(name);
     assigned.set(key, name);
-    variables.push({ name, label: labelFor(candidate, index), selector: candidate.selector, default: value });
+    variables.push({ name, label: labelFor(candidate, index, hass), selector: candidate.selector, default: value });
     return name;
   };
 

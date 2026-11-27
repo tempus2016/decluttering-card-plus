@@ -8,7 +8,6 @@ import {
   collectSharedDeclarations,
   checkDashboard,
   collectTemplates,
-  collectUsages,
   listPlainCards,
   replaceCard,
   listSections,
@@ -23,6 +22,7 @@ import {
 import { contentKey, listSettings, nameForSetting, namesInUse, promoteSetting, SettingPath } from './promote';
 import {
   diagnoseTemplate,
+  requiredButEmpty,
   addDeclarations,
   getDeclarations,
   isDeclarationsShape,
@@ -31,21 +31,25 @@ import {
   VariableDeclaration,
 } from './variables';
 import { exampleVariables } from './examples';
-import { getLovelaceConfig, getLovelacePanel } from './utils';
 import deepReplace from './deep-replace';
 import { localize, onLanguageLoaded } from './localize';
 import { sameConfig } from './undo';
+import { LintFinding } from './lint';
 import { definedNames, lintTemplate } from './lint';
 import { functionNamesOf, isFunctionTemplate } from './functions';
 import { getThingType, isVariablesShape, loadCardEditorPicker, previewExamples, setOrDelete } from './shared';
 import {
-  THING_STUBS,
   DRAG_PATH,
+  SaveOutcome,
+  TabCounts,
+  borrowedEpoch,
   textField,
   loadRowEditor,
   saveDashboardWith,
+  savedLovelace,
   tabCounts,
 } from './template-editor/common';
+import { cameFromOutside, describeChange, hasOwnCardType, memoLast, templateKind } from './template-editor/pure';
 import { TrashEntry, loadTrash, onTrashChanged } from './trash';
 import { TEMPLATE_EDITOR_STYLES } from './template-editor/styles';
 import './template-editor/share-tab';
@@ -57,14 +61,6 @@ import './template-editor/field-menus';
 import './template-editor/code-editor-hooks';
 import './preview-frame';
 import './template-editor/usages-tab';
-
-/*
- * What the template defines, for the Type field: a card, badge, row or element - or a function
- * (#307), which has none of them. Read as a card otherwise, so a new template starts as one.
- */
-function templateKind(config: DeclutteringTemplateConfig): string {
-  return getThingType(config) ?? (isFunctionTemplate(config) ? 'function' : 'card');
-}
 
 export class DeclutteringTemplateEditor extends LitElement implements LovelaceCardEditor {
   @state() private _config?: DeclutteringTemplateConfig;
@@ -114,7 +110,46 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
    * the one a save through the page replaces; the dialog's is for where there is no page.
    */
   private get _savedLovelace(): LovelaceConfig | null | undefined {
-    return getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig();
+    return savedLovelace(this.lovelace);
+  }
+
+  /*
+   * What is worked out from the dashboard and the template, kept until one of them is
+   * replaced. The dialog draws again on every state change Home Assistant sends and on every
+   * key pressed; none of this reads a state, and the dashboard-wide parts - the health check
+   * behind the tab's pill above all - took tens of milliseconds a time on a big dashboard.
+   */
+  private readonly _memoResolved = memoLast<TemplateConfig | undefined>();
+  private readonly _memoTypes = memoLast<ReturnType<typeof typesOf>>();
+  private readonly _memoShared = memoLast<VariableDeclaration[]>();
+  private readonly _memoLint = memoLast<LintFinding[]>();
+  private readonly _memoCounts = memoLast<TabCounts>();
+  private readonly _memoDiagnosis = memoLast<ReturnType<typeof diagnoseTemplate>>();
+  private readonly _memoPlain = memoLast<ReturnType<typeof listPlainCards>>();
+  private readonly _memoSections = memoLast<ReturnType<typeof listSections>>();
+  private readonly _memoSaved = memoLast<boolean>();
+
+  /** The template as the dashboard would resolve it - parents, shared values and all - with this editor's edits in. */
+  private _resolved(): TemplateConfig | undefined {
+    const config = this._config;
+    if (!config) return undefined;
+    const ll = this._savedLovelace;
+    return this._memoResolved(
+      [ll, borrowedEpoch(ll), config],
+      () => collectTemplates(ll, undefined, config)[config.template],
+    );
+  }
+
+  /** What the Type field shows: see templateKind. */
+  private _kind(): string {
+    return templateKind(this._config, this._resolved());
+  }
+
+  /** How many things use the template, cards leaving it short, and trash entries (see tabCounts). */
+  private _counts(ll: LovelaceConfig, name: string): TabCounts {
+    return this._memoCounts([ll, borrowedEpoch(ll), name, this._trash], () =>
+      tabCounts(totalUsages(ll, name), checkDashboard(ll).unsetVariables, this._trash, name),
+    );
   }
 
   private _loadedElements = false;
@@ -127,71 +162,106 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     this._announce(String((ev as CustomEvent).detail?.text ?? ''));
   };
 
-  // Shared instances, built on first use so they speak the user's language - a fresh
-  // schema object per render would mark every field dirty for no reason.
-  private static _describeSchema?: unknown[];
-  private static _defaultsSchema?: unknown[];
+  // Shared instances, built on first use - a fresh schema object per render would mark every
+  // field dirty for no reason. Kept per language, and dropped when a language's sentences
+  // land: built before then, the labels were English and stayed English until a reload.
+  private static readonly _describeSchemas = new Map<string, unknown[]>();
+  private static readonly _defaultsSchemas = new Map<string, unknown[]>();
 
-  /** Describe: the template's name, kind, description and category. */
-  private static describeSchema(): unknown[] {
-    DeclutteringTemplateEditor._describeSchema ??= [
+  private static _language(hass?: HomeAssistant): string {
+    return hass?.locale?.language ?? hass?.language ?? '';
+  }
+
+  /**
+   * Describe: the template's name, kind, description and category. An item template or a
+   * page is offered as what it is, so the field shows its type; other templates are offered
+   * the kinds a template card is made as.
+   */
+  private static describeSchema(hass: HomeAssistant | undefined, kind: string): unknown[] {
+    const special = kind === 'item' || kind === 'dashboard' ? kind : '';
+    const key = `${DeclutteringTemplateEditor._language(hass)}\u0000${special}`;
+    let schema = DeclutteringTemplateEditor._describeSchemas.get(key);
+    if (schema) return schema;
+    schema = [
       {
         name: 'template',
-        label: localize('template_editor.template_label'),
+        label: localize('template_editor.template_label', undefined, hass),
         selector: { text: {} },
       },
       {
         name: 'thingType',
-        label: localize('template_editor.type_label'),
+        label: localize('template_editor.type_label', undefined, hass),
         selector: {
           select: {
             mode: 'dropdown',
             options: [
-              { value: 'card', label: localize('template_editor.type_card') },
-              { value: 'badge', label: localize('template_editor.type_badge') },
-              { value: 'row', label: localize('template_editor.type_row') },
-              { value: 'element', label: localize('template_editor.type_element') },
-              { value: 'function', label: localize('template_editor.type_function') },
+              { value: 'card', label: localize('template_editor.type_card', undefined, hass) },
+              { value: 'badge', label: localize('template_editor.type_badge', undefined, hass) },
+              { value: 'row', label: localize('template_editor.type_row', undefined, hass) },
+              { value: 'element', label: localize('template_editor.type_element', undefined, hass) },
+              { value: 'function', label: localize('template_editor.type_function', undefined, hass) },
+              ...(special
+                ? [{ value: special, label: localize(`template_editor.type_${special}`, undefined, hass) }]
+                : []),
             ],
           },
         },
       },
       {
         name: 'description',
-        label: localize('template_editor.description_label'),
-        helper: localize('template_editor.description_helper'),
+        label: localize('template_editor.description_label', undefined, hass),
+        helper: localize('template_editor.description_helper', undefined, hass),
         selector: { text: { multiline: true } },
       },
       {
         name: 'category',
-        label: localize('template_editor.category_label'),
-        helper: localize('template_editor.category_helper'),
+        label: localize('template_editor.category_label', undefined, hass),
+        helper: localize('template_editor.category_helper', undefined, hass),
         selector: { text: {} },
       },
     ];
-    return DeclutteringTemplateEditor._describeSchema;
+    DeclutteringTemplateEditor._describeSchemas.set(key, schema);
+    return schema;
   }
 
   /** The defaults, for values nobody declared. */
-  private static defaultsSchema(): unknown[] {
-    DeclutteringTemplateEditor._defaultsSchema ??= [
+  private static defaultsSchema(hass?: HomeAssistant): unknown[] {
+    const key = DeclutteringTemplateEditor._language(hass);
+    let schema = DeclutteringTemplateEditor._defaultsSchemas.get(key);
+    if (schema) return schema;
+    schema = [
       {
         name: 'default',
-        label: localize('template_editor.defaults_label'),
-        helper: localize('template_editor.defaults_helper'),
+        label: localize('template_editor.defaults_label', undefined, hass),
+        helper: localize('template_editor.defaults_helper', undefined, hass),
         selector: { object: {} },
       },
     ];
-    return DeclutteringTemplateEditor._defaultsSchema;
+    DeclutteringTemplateEditor._defaultsSchemas.set(key, schema);
+    return schema;
   }
 
+  // The config this editor last sent the dialog, to tell its own edits coming back from one made elsewhere.
+  private _lastSent?: DeclutteringTemplateConfig;
+
   public setConfig(config: DeclutteringTemplateConfig): void {
-    this._config = config;
     // Config can also arrive from outside - the dialog's YAML mode, an undo - and a
     // suggestion computed against the old card must not survive that any more than it
     // survives an edit made here.
     this._suggestion = undefined;
     this._suggestedNothing = false;
+    // Nor may a setting picked to become a variable, or a card picked to be replaced: both
+    // were picked off the template as it was, and would now act on whatever sits there.
+    if (cameFromOutside(config, this._lastSent ?? this._config)) {
+      this._promotePath = undefined;
+      this._promoteName = '';
+      this._promoteError = undefined;
+      this._declutterOriginal = undefined;
+      this._declutterSection = undefined;
+      this._declutterPending = false;
+    }
+    this._lastSent = undefined;
+    this._config = config;
   }
 
   protected render(): TemplateResult | void {
@@ -207,7 +277,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
 
     const data = {
       template: this._config.template,
-      thingType: templateKind(this._config),
+      thingType: this._kind(),
       description: this._config.description,
       category: this._config.category,
     };
@@ -282,7 +352,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                 <span slot="header">${localize('template_editor.panel_describe', undefined, this.hass)}</span>
                 <div class="panel">
                   ${this._renderInUse()}
-                  ${(DeclutteringTemplateEditor.describeSchema() as FormSchemaEntry[]).map(
+                  ${(DeclutteringTemplateEditor.describeSchema(this.hass, data.thingType) as FormSchemaEntry[]).map(
                     (entry) => html`
                       <div class="field-row">
                         <ha-form
@@ -316,8 +386,8 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                   <decluttering-declarations-editor
                     .hass=${this.hass}
                     .variables=${this._config.variables}
-                    .shared=${collectSharedDeclarations(this._savedLovelace)}
-                    .types=${typesOf(this._resolvedTexts())}
+                    .shared=${this._shared()}
+                    .types=${this._types()}
                     .texts=${this._resolvedTexts()}
                     @value-changed=${this._declarationsChanged}
                   ></decluttering-declarations-editor>
@@ -325,7 +395,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
                     <ha-form
                       .hass=${this.hass}
                       .data=${defaultsData}
-                      .schema=${DeclutteringTemplateEditor.defaultsSchema()}
+                      .schema=${DeclutteringTemplateEditor.defaultsSchema(this.hass)}
                       .error=${error}
                       .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
                       .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
@@ -418,7 +488,9 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
       return html``;
     }
 
-    const { unused, duplicated, contradictory } = diagnoseTemplate(this._config);
+    const config = this._config;
+    const { unused, duplicated, contradictory } = this._memoDiagnosis([config], () => diagnoseTemplate(config));
+    const emptyRequired = requiredButEmpty(config);
     return html`
       ${
         unused.length
@@ -453,6 +525,19 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
             </ha-alert>`
           : html``
       }
+      ${
+        emptyRequired.length
+          ? html`<ha-alert alert-type="warning">
+              ${localize(
+                emptyRequired.length === 1
+                  ? 'template_editor.required_allow_empty_one'
+                  : 'template_editor.required_allow_empty_many',
+                { names: emptyRequired.join(', ') },
+                this.hass,
+              )}
+            </ha-alert>`
+          : html``
+      }
     `;
   }
 
@@ -464,19 +549,13 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
    */
   private _cardForEditor(): unknown {
     const own = this._config?.card;
-    if (!this._config || (own && typeof own === 'object' && typeof (own as { type?: unknown }).type === 'string'))
-      return own;
-    const resolved = collectTemplates(this._savedLovelace, undefined, this._config)[this._config.template];
-    const merged = resolved?.card;
-    return merged && typeof merged === 'object' && typeof (merged as { type?: unknown }).type === 'string'
-      ? merged
-      : own;
+    if (!this._config || hasOwnCardType(own)) return own;
+    const merged = this._resolved()?.card;
+    return hasOwnCardType(merged) ? merged : own;
   }
 
   private _renderCardFromParents(): TemplateResult {
-    const own = this._config?.card;
-    if (!this._config || (own && typeof own === 'object' && typeof (own as { type?: unknown }).type === 'string'))
-      return html``;
+    if (!this._config || hasOwnCardType(this._config.card)) return html``;
     const parents = parentsOf(this._config);
     if (!parents.length) return html``;
     return html`<ha-alert alert-type="info">
@@ -499,27 +578,40 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
    * ones it inherits, as the dashboard would resolve it.
    */
   private _resolvedTexts(): unknown {
-    if (!this._config) return undefined;
-    const resolved = collectTemplates(this._savedLovelace, undefined, this._config)[this._config.template];
-    return resolved ?? this._config;
+    return this._resolved() ?? this._config;
+  }
+
+  /** The named variable types the template can use (#472): the dashboard's, the library's and its own. */
+  private _types(): ReturnType<typeof typesOf> {
+    const resolved = this._resolvedTexts() as TemplateConfig | undefined;
+    return this._memoTypes([resolved], () => typesOf(resolved));
+  }
+
+  /** The dashboard's shared declarations, for "Take one from the dashboard". */
+  private _shared(): VariableDeclaration[] {
+    const ll = this._savedLovelace;
+    return this._memoShared([ll, borrowedEpoch(ll)], () => collectSharedDeclarations(ll));
   }
 
   private _renderLint(): TemplateResult {
     if (!this._config) return html``;
+    const config = this._config;
     const ll = this._savedLovelace;
-    const resolved = collectTemplates(ll, undefined, this._config)[this._config.template];
-    // Item templates are names a placeholder may start with, and the dashboard's to define.
-    const items = itemTemplatesOf(ll);
-    // The template being written counts as a function as soon as it has a function: (#307).
-    const functions = [
-      ...functionNamesOf(items),
-      ...(isFunctionTemplate(this._config) && this._config.template ? [this._config.template] : []),
-    ];
-    const findings = lintTemplate(this._config, [...definedNames(resolved), ...Object.keys(items)], {
-      name: this._config.template,
-      functions,
-      // The dashboard's and the library's types as well as its own (#472).
-      types: typesOf(resolved ?? this._config),
+    const findings = this._memoLint([ll, borrowedEpoch(ll), config], () => {
+      const resolved = this._resolved();
+      // Item templates are names a placeholder may start with, and the dashboard's to define.
+      const items = itemTemplatesOf(ll);
+      // The template being written counts as a function as soon as it has a function: (#307).
+      const functions = [
+        ...functionNamesOf(items),
+        ...(isFunctionTemplate(config) && config.template ? [config.template] : []),
+      ];
+      return lintTemplate(config, [...definedNames(resolved), ...Object.keys(items)], {
+        name: config.template,
+        functions,
+        // The dashboard's and the library's types as well as its own (#472).
+        types: typesOf(resolved ?? config),
+      });
     });
     if (!findings.length) return html``;
     return html`${findings.map(
@@ -715,8 +807,8 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     const ll = this._savedLovelace;
     if (!name || !ll) return html``;
 
-    const { views, templates } = collectUsages(ll, name);
-    const total = views.reduce((sum, view) => sum + view.count, 0) + templates.length;
+    // Cards on views and templates built on it, as the tab's pill counts them.
+    const total = this._counts(ll, name).usages;
     if (!total) return html``;
 
     return html`<ha-alert alert-type="info">
@@ -780,7 +872,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
 
     this._suggestedNothing = false;
     const taken = getDeclarations(this._config).map((declaration) => declaration.name);
-    const suggestion = suggestVariables(this._config.card, taken);
+    const suggestion = suggestVariables(this._config.card, taken, this.hass);
     if (!suggestion.variables.length) {
       this._suggestedNothing = true;
       return;
@@ -795,12 +887,15 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
    */
   private _renderDeclutter(): TemplateResult {
     const ll = this._savedLovelace;
-    const cards = listPlainCards(ll);
+    const cards = this._memoPlain([ll], () => listPlainCards(ll));
     // A section is made into a group, which only a card template can be.
-    const sections = getThingType(this._config ?? ({} as TemplateConfig)) === 'card' ? listSections(ll) : [];
+    const sections =
+      getThingType(this._config ?? ({} as TemplateConfig)) === 'card'
+        ? this._memoSections([ll], () => listSections(ll))
+        : [];
     if ((!cards.length && !sections.length) || !this._config) return html``;
     const name = this._config.template;
-    const saved = !!name && name in collectTemplates(ll);
+    const saved = this._memoSaved([ll, borrowedEpoch(ll), name], () => !!name && name in collectTemplates(ll));
     const picked = this._declutterOriginal ?? this._declutterSection;
     return html`
       <ha-expansion-panel outlined>
@@ -929,15 +1024,18 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
       return;
     }
     const replacement = { type: 'custom:decluttering-card-plus', template: name };
-    let unchanged = false;
     const saved = await this._saveDashboard((config) => {
       if (original) return replaceCard(config, original, replacement);
-      const built = replaceSectionCards(config, section!.view, section!.section, section!.cards, [replacement]);
-      unchanged = built === config;
-      return built;
+      return replaceSectionCards(config, section!.view, section!.section, section!.cards, [replacement]);
     }, 'declutter');
-    if (saved && unchanged)
-      this._toolError = localize('template_editor.declutter_section_changed', undefined, this.hass);
+    // Nothing written: what was picked is no longer on the dashboard as it was picked.
+    if (saved === 'unchanged') {
+      this._toolError = localize(
+        original ? 'template_editor.declutter_card_changed' : 'template_editor.declutter_section_changed',
+        undefined,
+        this.hass,
+      );
+    }
     if (saved) {
       this._declutterPending = false;
       this._declutterOriginal = undefined;
@@ -1025,35 +1123,8 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   private _describeChanged(ev: CustomEvent): void {
     if (!this._config) return;
     // Each field is its own form (so a help icon can sit beside it), so the event carries
-    // one field; the rest is read off the template as it stands.
-    const data = {
-      template: this._config.template,
-      thingType: templateKind(this._config),
-      description: this._config.description,
-      category: this._config.category,
-      ...(ev.detail.value as Record<string, unknown>),
-    };
-    const config = { ...this._config, template: data.template };
-    // A function (#307) has no card: picked, it gets a body of its own; left, it loses it.
-    const wasFunction = templateKind(this._config) === 'function';
-    const loose = config as unknown as Record<string, unknown>;
-    if (data.thingType === 'function' && !isFunctionTemplate(config)) loose.function = '[[value]]';
-    if (wasFunction && data.thingType !== 'function') {
-      delete loose.function;
-      delete loose.parameters;
-    }
-    // Unlike the stubs below, these replace whatever is already there rather than only
-    // filling in what is absent.
-    setOrDelete(config, 'description', data.description);
-    setOrDelete(config, 'category', data.category);
-    // A group is a card template's body too, so it stays while the type stays a card - without
-    // this, editing any setting gave the group a starter card beside it and broke the template.
-    const keepsGroup = config.group !== undefined && data.thingType === 'card';
-    if (!keepsGroup) delete config.group;
-    for (const [thingType, stub] of Object.entries(THING_STUBS)) {
-      DeclutteringTemplateEditor.stubMember(!keepsGroup && data.thingType === thingType, config, thingType, stub);
-    }
-    this._fireConfigChanged(config);
+    // one field; the rest is read off the template as it stands (see describeChange).
+    this._fireConfigChanged(describeChange(this._config, ev.detail.value as Record<string, unknown>, this._resolved()));
   }
 
   /** The declarations editor wrote a new `variables:`, in the shape it read. */
@@ -1099,9 +1170,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
      * Assistant's element editor hands that straight back as it loads. That is no edit: taking
      * it would write the parents' card into this template and cut it off from them on save.
      */
-    const own = this._config.card;
-    const ownType = own && typeof own === 'object' && typeof (own as { type?: unknown }).type === 'string';
-    if (!ownType && sameConfig(ev.detail.config, this._cardForEditor())) return;
+    if (!hasOwnCardType(this._config.card) && sameConfig(ev.detail.config, this._cardForEditor())) return;
 
     this._suggestion = undefined;
     this._suggestedNothing = false;
@@ -1128,23 +1197,19 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     // have since declared.
     this._suggestion = undefined;
     this._suggestedNothing = false;
+    this._lastSent = config;
     fireEvent(this, 'config-changed', { config });
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private static stubMember(include: boolean, dict: any, name: string, stub: any): void {
-    if (include) {
-      if (!(name in dict)) dict[name] = stub;
-    } else {
-      delete dict[name];
-    }
   }
 
   static get styles(): CSSResult {
     return TEMPLATE_EDITOR_STYLES;
   }
 
-  private _saveDashboard(build: (config: unknown) => unknown, operation: string, dialog?: unknown): Promise<boolean> {
+  private _saveDashboard(
+    build: (config: unknown) => unknown,
+    operation: string,
+    dialog?: unknown,
+  ): Promise<SaveOutcome> {
     return saveDashboardWith(this, build, operation, dialog);
   }
 
@@ -1158,7 +1223,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     const name = this._config?.template;
     const ll = this._savedLovelace;
     if (!name || !ll) return { usages: html``, share: html`` };
-    const counts = tabCounts(totalUsages(ll, name), checkDashboard(ll).unsetVariables, this._trash, name);
+    const counts = this._counts(ll, name);
     const usages =
       counts.usages === 0
         ? html`<span class="pill grey" title=${localize('template_editor.pill_unused', undefined, this.hass)}>0</span>`
@@ -1194,7 +1259,7 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
   private _renderCardPreview(): TemplateResult {
     const config = this._config;
     if (!config?.card || !this.hass) return html``;
-    const resolved = collectTemplates(this._savedLovelace, undefined, config)[config.template] ?? config;
+    const resolved = this._resolved() ?? config;
     const variables = exampleVariables(resolved, previewExamples.get(config.template)) ?? [];
     let built: unknown;
     try {
@@ -1214,7 +1279,11 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     // Opened from the chip's "Where used" (idea 47): start on that tab.
     const asked = takeInitialTab();
     if (asked) this._selectedTab = asked;
-    this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
+    this._stopLanguageListener ??= onLanguageLoaded(() => {
+      DeclutteringTemplateEditor._describeSchemas.clear();
+      DeclutteringTemplateEditor._defaultsSchemas.clear();
+      this.requestUpdate();
+    });
     this._unwatchTrash = onTrashChanged(() => void this._loadTrash());
     void this._loadTrash();
     this.addEventListener('decluttering-announce', this._onAnnounce);
@@ -1232,6 +1301,8 @@ export class DeclutteringTemplateEditor extends LitElement implements LovelaceCa
     this.removeEventListener('decluttering-announce', this._onAnnounce);
     this._unwatchTrash?.();
     this._unwatchTrash = undefined;
+    if (this._announceTimer) clearTimeout(this._announceTimer);
+    this._announceTimer = undefined;
   }
 
   protected updated(changed: PropertyValues): void {

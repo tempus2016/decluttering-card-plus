@@ -437,6 +437,70 @@ describe('editor builds kept (#430)', () => {
 });
 
 /*
+ * #516: the diagnostics under the variables are kept like the other builds, so a state
+ * changing elsewhere in the house works nothing out again - but the entity a typed
+ * variable names is still read for its device_class.
+ */
+describe('diagnostics kept (#516)', () => {
+  // Home Assistant keeps a state object that has not changed, so each class has one.
+  const sensors: Record<string, any> = {};
+  const sensor = (deviceClass: string): any =>
+    (sensors[deviceClass] ??= { entity_id: 'sensor.door', state: 'on', attributes: { device_class: deviceClass } });
+  const lamp = (state: string): any => ({ entity_id: 'light.lamp', state, attributes: {} });
+  const base = stubHass({});
+  const house = (deviceClass: string, light: string): any => ({
+    ...base,
+    states: { 'sensor.door': sensor(deviceClass), 'light.lamp': lamp(light) },
+  });
+  const alerts = (editor: any): string =>
+    [...editor.shadowRoot.querySelectorAll('ha-alert')].map((each: any) => each.textContent).join('\n');
+
+  it('a state changing elsewhere builds nothing, the named entity changing does', async () => {
+    const lovelace = stubLovelace({
+      decluttering_templates: {
+        t: {
+          variables: [
+            { name: 'door', type: 'entity', device_class: 'door' },
+            { name: 'label', default: '[[door]] open' },
+          ],
+          card: { type: 'markdown', content: '[[label]] [[door]]' },
+        },
+      },
+      views: [{ cards: [] }],
+    });
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = house('door', 'off');
+    editor.lovelace = lovelace.config;
+    editor.setConfig({ type: 'custom:decluttering-card-plus', template: 't', variables: [{ door: 'sensor.door' }] });
+    document.body.appendChild(editor);
+    try {
+      await until(() => editor._builds.last('diagnose') !== undefined, 3000, 'the diagnosis');
+      const kept = editor._builds.last('diagnose');
+      for (const light of ['on', 'off', 'on']) {
+        editor.hass = house('door', light);
+        await settle(2);
+      }
+      expect(editor._builds.last('diagnose') === kept, 'a lamp switching builds no diagnosis').to.equal(true);
+      expect(alerts(editor).includes('sensor.door'), 'no warning for a door sensor').to.equal(false);
+
+      editor.hass = house('window', 'on');
+      await settle(4);
+      expect(editor._builds.last('diagnose') === kept, 'the named entity changing builds again').to.equal(false);
+      expect(editor._builds.last('diagnose').alerts.length > kept.alerts.length, 'and warns of the class').to.equal(
+        true,
+      );
+
+      const now = editor._builds.last('diagnose');
+      editor.setConfig({ type: 'custom:decluttering-card-plus', template: 't', variables: [{ door: 'sensor.other' }] });
+      await settle(4);
+      expect(editor._builds.last('diagnose') === now, 'an edit builds again').to.equal(false);
+    } finally {
+      editor.remove();
+    }
+  });
+});
+
+/*
  * #488: the "What it builds" panel starts folded to its header row, `editor_hide: preview`
  * leaves it out, and a held preview is said at the top of the editor either way.
  */
@@ -828,6 +892,180 @@ describe('the editor order', () => {
       expect(!!shadow(repeating, 'ha-expansion-panel.advanced .repeat'), 'not inside Advanced').to.equal(false);
     } finally {
       repeating.remove();
+    }
+  });
+});
+
+/*
+ * The review of the card editor: an edit writes what was changed and nothing else, what the
+ * editor remembers about a card goes when another card's config arrives, and the forms are
+ * handed the same schema for as long as nothing it is made from changes.
+ */
+describe('the card editor review', () => {
+  const template = {
+    variables: [
+      { name: 'entity', selector: { entity: {} } },
+      { name: 'title', selector: { text: {} } },
+    ],
+    card: { type: 'markdown', content: '[[title]] [[entity]]' },
+  };
+  const base = stubHass({ 'light.a': 'on' });
+  const mount = (config: Record<string, unknown>): any => {
+    const lovelace = stubLovelace({
+      decluttering_templates: { lamp: template, plain: { card: { type: 'markdown', content: '[[x]]' } } },
+      views: [{ cards: [] }],
+    });
+    const editor = document.createElement('decluttering-card-plus-editor') as any;
+    editor.hass = base;
+    editor.lovelace = lovelace.config;
+    editor.setConfig({ type: 'custom:decluttering-card-plus', template: 'lamp', ...config });
+    document.body.appendChild(editor);
+    return editor;
+  };
+  const forms = (editor: any): any[] => [...(editor.shadowRoot?.querySelectorAll('ha-form') ?? [])];
+  const formWith = (editor: any, name: string): any =>
+    forms(editor).find((form) => (form.schema ?? []).some((entry: any) => entry?.name === name));
+  // What Home Assistant's form does on a change: every field back, with the one that changed.
+  const change = (editor: any, form: any, changed: Record<string, unknown>): any => {
+    let config: any;
+    editor.addEventListener('config-changed', (ev: CustomEvent) => (config = ev.detail.config), { once: true });
+    form.dispatchEvent(
+      new CustomEvent('value-changed', {
+        detail: { value: { ...form.data, ...changed } },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    return config;
+  };
+
+  it('fit is written for a template that declares variables', async () => {
+    const editor = mount({ variables: [{ entity: 'light.a' }] });
+    try {
+      await until(() => !!formWith(editor, 'fit'), 3000, 'the layout form');
+      const config = change(editor, formWith(editor, 'fit'), { fit: 'contents' });
+      expect(config.fit).to.equal('contents');
+      expect(config.variables, 'the variables as they were').to.deep.equal([{ entity: 'light.a' }]);
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('an empty string the card wrote stays through an edit to another field', async () => {
+    const editor = mount({ variables: [{ title: '' }, { entity: 'light.a' }, { zone: 'x' }] });
+    try {
+      await until(() => !!formWith(editor, 'variable:entity'), 3000, 'the entity field');
+      const config = change(editor, formWith(editor, 'variable:entity'), { 'variable:entity': 'light.b' });
+      expect(config.variables).to.deep.equal([{ title: '' }, { entity: 'light.b' }, { zone: 'x' }]);
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it("an open item's YAML box stays with its item when the list is put in another order", async () => {
+    const items = [{ entity: 'light.a' }, { entity: 'light.b' }, { entity: 'light.c' }];
+    const editor = mount({ for_each: items });
+    try {
+      await until(() => editor.shadowRoot?.querySelectorAll('.items li').length === 3, 3000, 'the list');
+      const rows = (): any[] => [...editor.shadowRoot.querySelectorAll('.items li')];
+      // The third button of a row opens its YAML: up, down, edit, remove.
+      rows()[1].querySelectorAll('ha-icon-button')[2].click();
+      await until(() => !!rows()[1].querySelector('ha-yaml-editor'), 3000, 'the open item');
+      const box = rows()[1].querySelector('ha-yaml-editor');
+      expect(box.defaultValue).to.deep.equal({ entity: 'light.b' });
+
+      let config: any;
+      editor.addEventListener('config-changed', (ev: CustomEvent) => (config = ev.detail.config), { once: true });
+      rows()[1].querySelectorAll('ha-icon-button')[1].click();
+      expect(config.for_each, 'moved down').to.deep.equal([items[0], items[2], items[1]]);
+      editor.setConfig(config);
+      await until(() => !!rows()[2].querySelector('ha-yaml-editor'), 3000, 'the box at its new place');
+      expect(rows()[2].querySelector('ha-yaml-editor') === box, 'the same box, moved with its item').to.equal(true);
+      expect(rows()[1].querySelector('ha-yaml-editor'), 'none left where it was').to.equal(null);
+
+      // Typed into, it writes its own item.
+      editor.addEventListener('config-changed', (ev: CustomEvent) => (config = ev.detail.config), { once: true });
+      box.dispatchEvent(
+        new CustomEvent('value-changed', {
+          detail: { value: { entity: 'light.b', name: 'B' }, isValid: true },
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      expect(config.for_each).to.deep.equal([items[0], items[2], { entity: 'light.b', name: 'B' }]);
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it("another card's config lets go of what was remembered, and this card's own edits do not", async () => {
+    const editor = mount({ variables: [{ entity: 'light.a' }] });
+    try {
+      await until(() => !!formWith(editor, 'variable:entity'), 3000, 'the editor');
+      editor._ejectPending = true;
+      editor._byDomainDraft = [{ domain: 'light', template: '' }];
+      const mine = change(editor, formWith(editor, 'variable:entity'), { 'variable:entity': 'light.b' });
+      editor.setConfig(JSON.parse(JSON.stringify(mine)));
+      await settle(2);
+      expect([editor._ejectPending, !!editor._byDomainDraft], 'kept through its own edit').to.deep.equal([true, true]);
+      editor.setConfig({ ...mine });
+      expect(editor._ejectPending, 'kept when handed the same card again').to.equal(true);
+
+      editor.setConfig({ type: 'custom:decluttering-card-plus', template: 'lamp', variables: [{ entity: 'light.z' }] });
+      await settle(2);
+      expect([editor._ejectPending, editor._byDomainDraft], 'gone for the next card').to.deep.equal([false, undefined]);
+      expect(editor._leftBehind.size, 'and no note about fields the other card left behind').to.equal(0);
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('the Result builds after a change however busy the house is', async () => {
+    const editor = mount({ variables: [{ entity: 'light.a' }, { title: 'One' }] });
+    const yaml = (): string => editor.shadowRoot.querySelector('pre.yaml')?.textContent ?? '';
+    try {
+      editor._resultOpen = true;
+      await until(() => yaml().includes('One light.a'), 3000, 'the Result');
+      const mine = change(editor, formWith(editor, 'variable:title'), { 'variable:title': 'Two' });
+      editor.setConfig(mine);
+      // A state somewhere else every 50 ms, for longer than the Result waits.
+      const lamp = base.states['light.a'];
+      for (let tick = 0; tick < 16; tick += 1) {
+        editor.hass = {
+          ...base,
+          states: { 'light.a': lamp, 'light.other': { entity_id: 'light.other', state: `${tick}`, attributes: {} } },
+        };
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      expect(yaml(), 'built while the states kept coming').to.include('Two light.a');
+    } finally {
+      editor.remove();
+    }
+  });
+
+  it('a state changing elsewhere hands the forms the schemas they had', async () => {
+    const editor = mount({ variables: [{ entity: 'light.a' }], for_each_from: { entities: true, domain: 'light' } });
+    try {
+      await until(() => !!formWith(editor, 'fit') && !!formWith(editor, 'domain'), 3000, 'the forms');
+      const before = forms(editor).map((form) => form.schema);
+      const labels = forms(editor).map((form) => form.computeLabel);
+      editor.hass = {
+        ...base,
+        states: { ...base.states, 'light.other': { entity_id: 'light.other', state: 'on', attributes: {} } },
+      };
+      await settle(4);
+      const after = forms(editor).map((form) => form.schema);
+      expect(after.length).to.equal(before.length);
+      expect(
+        after.every((schema, index) => schema === before[index]),
+        'the same schema objects',
+      ).to.equal(true);
+      expect(
+        forms(editor).every((form, index) => form.computeLabel === labels[index]),
+        'and label functions',
+      ).to.equal(true);
+    } finally {
+      editor.remove();
     }
   });
 });

@@ -278,6 +278,52 @@ const retitle = (title) => (config) => ({ ...config, views: [{ title }] });
   }
 
   {
+    // Review: an undo that failed part-way is tried again, and what it already put back is not "changed by someone".
+    const store = { a: { v: 'after' }, b: { v: 'after' } };
+    let failing = true;
+    const saver = {
+      ownPath: 'elsewhere',
+      hass: {
+        callWS: async (message) => {
+          if (message.type === 'lovelace/config') return store[message.url_path];
+          if (message.url_path === 'b' && failing) throw new Error('boom');
+          store[message.url_path] = message.config;
+          return undefined;
+        },
+      },
+    };
+    const entry = {
+      operation: 'rename_variable',
+      at: 4,
+      dashboards: [
+        { urlPath: 'a', before: { v: 'before' }, after: { v: 'after' } },
+        { urlPath: 'b', before: { v: 'before' }, after: { v: 'after' } },
+      ],
+    };
+    let threw = false;
+    try {
+      await undo.runUndo(saver, entry);
+    } catch {
+      threw = true;
+    }
+    check(
+      'an undo that fails part-way says so, with the first dashboard back',
+      [threw, store.a],
+      [true, { v: 'before' }],
+    );
+    failing = false;
+    const again = await undo.runUndo(saver, entry);
+    check('trying again finishes it without asking', [again, store.b], [{ result: 'done' }, { v: 'before' }]);
+    const elsewhere = { ...entry, dashboards: entry.dashboards.map((each) => ({ ...each })) };
+    store.a = { v: 'someone else' };
+    store.b = { v: 'after' };
+    check('a dashboard somebody saved since still asks', await undo.runUndo(saver, elsewhere), {
+      result: 'changed',
+      dashboards: ['a'],
+    });
+  }
+
+  {
     const saved = global.sessionStorage;
     delete global.sessionStorage;
     const entry = { operation: 'duplicate', at: 3, dashboards: [] };

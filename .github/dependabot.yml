@@ -52,6 +52,8 @@ updates:
           - 'eslint'
           - 'eslint-*'
           - 'prettier'
+          # Run by `npm run schema`, which the release job's `npm run build` runs.
+          - 'ts-json-schema-generator'
         update-types:
           - minor
           - patch
@@ -73,6 +75,8 @@ updates:
           - 'eslint'
           - 'eslint-*'
           - 'prettier'
+          # Run by `npm run schema`, which the release job's `npm run build` runs.
+          - 'ts-json-schema-generator'
         update-types:
           - minor
           - patch

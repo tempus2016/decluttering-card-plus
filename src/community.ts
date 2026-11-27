@@ -13,8 +13,8 @@
 import { load } from 'js-yaml';
 import deepReplace from './deep-replace';
 import { isRegistrySource } from './registry';
-import { scanDependencies, validateImport } from './share';
-import { withoutSharing } from './sharing';
+import { scanDependencies, THING_KEYS, validateImport } from './share';
+import { shareInfo, withoutSharing } from './sharing';
 import { CONSUMER_TYPES } from './templates';
 import { TemplateConfig, VariablesConfig } from './types';
 
@@ -43,6 +43,11 @@ const MAX_BODY_LENGTH = 65_536;
 const MAX_NODES = 20_000;
 const CHARS_PER_NODE = 16;
 const MAX_ALIASES = 50;
+// A template's name is what it is installed under and what every card using it writes. One
+// longer than this is not a name anybody chose to type.
+const MAX_NAME_LENGTH = 100;
+// How long GitHub is given to answer before the list is given up on.
+const FETCH_TIMEOUT_MS = 15_000;
 
 export interface CommunityEntry {
   /** The discussion's number, which is how an entry is told apart from the others. */
@@ -132,7 +137,7 @@ export function withinBudget(value: unknown): boolean {
   return walk(value);
 }
 
-const isMapping = (value: unknown): value is Record<string, any> =>
+export const isMapping = (value: unknown): value is Record<string, any> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
 /*
@@ -160,7 +165,33 @@ export function cleanTitle(title: unknown): string | undefined {
   return text.length > MAX_TITLE_LENGTH ? `${text.slice(0, MAX_TITLE_LENGTH - 1)}…` : text;
 }
 
-const THING_KEYS = ['card', 'badge', 'row', 'element', 'group'];
+/*
+ * A readme is drawn as Markdown before anything is installed, and a picture in Markdown is
+ * fetched the moment it is drawn - from wherever the post's author says, who then knows the
+ * post was opened and from which address. So a post's readme keeps its words and its links
+ * and loses whatever would be fetched without a press: a Markdown picture becomes the link
+ * it wraps, and the tags that load something are taken out. Again until nothing changes,
+ * since taking one tag out can leave another behind it (`<im<img>g ...>`).
+ */
+const FETCHING_TAGS =
+  /<\/?(?:img|picture|source|video|audio|track|iframe|object|embed|link|style|svg|image|input)\b[^>]*>?/gi;
+export function withoutImages(readme: string): string {
+  let text = readme;
+  for (let before = ''; before !== text;) {
+    before = text;
+    text = text.replace(/!+(?=\[)/g, '').replace(FETCHING_TAGS, '');
+  }
+  return text;
+}
+
+/** A template out of a post or the cache as the list keeps it: no type, text for a description, a readme that fetches nothing. */
+function listedTemplate(template: Record<string, any>): Record<string, any> {
+  delete template.type;
+  // The description is shown as text next to the install button, so it has to be text.
+  if (typeof template.description !== 'string') delete template.description;
+  if (typeof template.readme === 'string') template.readme = withoutImages(template.readme);
+  return template;
+}
 
 /** The templates a post carries with it: mappings that define something, nothing else. */
 function usableIncludes(includes: unknown): Record<string, any> {
@@ -202,12 +233,11 @@ export function parseDiscussion(discussion: any): CommunityEntry | undefined {
   if (typeof discussion?.number !== 'number') return undefined;
 
   const { template: name, includes, ...template } = parsed;
-  delete template.type;
-  // The description is shown as text next to the install button, so it has to be text.
-  if (typeof template.description !== 'string') delete template.description;
+  if (name.trim().length > MAX_NAME_LENGTH) return undefined;
+  listedTemplate(template);
   return {
     id: discussion.number,
-    title: cleanTitle(discussion.title) ?? name,
+    title: cleanTitle(discussion.title) ?? cleanTitle(name) ?? name.trim(),
     author: typeof discussion.user?.login === 'string' ? discussion.user.login : '',
     url: postUrl(discussion.number, discussion.html_url),
     name: name.trim(),
@@ -253,6 +283,11 @@ const SENSITIVE_DOMAINS = [
   'lawn_mower',
   'update',
 ];
+// Cards that toggle their entity when pressed unless told otherwise: with no `tap_action:`
+// there is no `action:` to read, and the press works the entity all the same.
+const DEFAULT_TOGGLE_TYPES = ['button', 'entity-button', 'custom:button-card'];
+const togglesByDefault = (node: Record<string, any>): boolean =>
+  typeof node.type === 'string' && DEFAULT_TOGGLE_TYPES.includes(node.type) && node.tap_action === undefined;
 // Actions that only show something or go somewhere, fine on anything.
 const HARMLESS_ACTIONS = ['more-info', 'navigate', 'none', 'assist'];
 // The values that decide what a press does and what a card is. A placeholder in one of them
@@ -326,6 +361,7 @@ function unaimedPresses(node: unknown, entity: string | undefined, found = new S
   if (!isMapping(node)) return found;
   const own = typeof node.entity === 'string' ? node.entity : entity;
   const action = node.action;
+  if (togglesByDefault(node) && typeof node.entity === 'string' && node.entity.includes('[[')) found.add('toggle');
   if (typeof action === 'string' && !HARMLESS_ACTIONS.includes(action) && !action.includes('[[')) {
     if (action !== 'perform-action' && action !== 'call-service' && action !== 'fire-dom-event' && action !== 'url') {
       const aimed = ([] as unknown[]).concat(node.target?.entity_id ?? node.entity_id ?? own ?? []);
@@ -380,7 +416,7 @@ export function communityRisks(
   let placeholders = false;
   let overlay = false;
 
-  const scanText = (raw: string): void => {
+  const scanUrls = (raw: string): void => {
     const text = asBrowserReads(raw);
     for (const url of text.match(URL_PATTERN) ?? []) urls.add(url);
     for (const pattern of CSS_FETCHES) {
@@ -391,6 +427,10 @@ export function communityRisks(
         found = pattern.exec(text);
       }
     }
+  };
+
+  const scanText = (raw: string): void => {
+    scanUrls(raw);
     if (SCRIPT_MARKERS.test(raw)) scripts = true;
     if (COVERS_SCREEN.test(raw) && HIDDEN.test(raw)) overlay = true;
   };
@@ -459,6 +499,8 @@ export function communityRisks(
     if (Object.keys(node).some((key) => key.includes('[['))) placeholders = true;
     if (DECIDING_KEYS.some((key) => typeof node[key] === 'string' && node[key].includes('[['))) placeholders = true;
     if (typeof node.action === 'string') noteAction(node, own);
+    // A button with no tap action toggles its entity, which nothing above has read.
+    if (togglesByDefault(node) && sensitive(node.entity)) actions.add(`toggle ${node.entity}`);
     if (node.type === 'iframe' || node.type === 'webpage') embeds = true;
     for (const key of FETCHED_KEYS) if (typeof node[key] === 'string') scanFetched(node[key]);
     /*
@@ -499,10 +541,54 @@ export function communityRisks(
   };
 
   // What a template says about itself (#345) is not what it does: its links are not fetched.
+  // Its readme is the exception, when it holds a picture: that is drawn as Markdown and a
+  // picture in it is fetched as it is drawn, so the readme's addresses are said. A post's
+  // readme has had its pictures taken out by the time it is listed; pasted text has not. A
+  // link is still a link, and Jinja written about in prose runs nowhere.
+  for (const template of [entry.template, ...Object.values(entry.includes)]) {
+    const readme = shareInfo(template).readme;
+    if (readme && withoutImages(readme) !== readme) scanUrls(readme);
+  }
   const templates = [entry.template, ...Object.values(entry.includes)].map(withoutSharing);
   walk(templates, undefined);
   for (const template of templates) walk(withOwnDefaults(template), undefined);
   return { actions: [...actions].sort(), urls: [...urls].sort(), embeds, scripts, placeholders, overlay };
+}
+
+// What makes a string something Home Assistant or a card works out rather than shows.
+const RUNS = /\{\{|\{%|\[\[\[|\$\{/;
+
+/** Whether a config holds nothing that is run and no card but Home Assistant's own, keys included. */
+function plainConfig(node: unknown): boolean {
+  if (typeof node === 'string') return !RUNS.test(node);
+  if (Array.isArray(node)) return node.every(plainConfig);
+  if (!isMapping(node)) return true;
+  if (typeof node.type === 'string' && (node.type.startsWith('custom:') || node.type.includes('[['))) return false;
+  return Object.entries(node).every(([key, value]) => !RUNS.test(key) && plainConfig(value));
+}
+
+const noRisks = (risks: CommunityRisks): boolean =>
+  !risks.actions.length &&
+  !risks.urls.length &&
+  !risks.embeds &&
+  !risks.scripts &&
+  !risks.placeholders &&
+  !risks.overlay;
+
+/**
+ * Whether a post can be drawn before anybody has agreed to it. The gallery draws a tile's
+ * card for real - Home Assistant's own card element, on the viewer's connection - so a post
+ * is only drawn when nothing in it can do anything: no address, no embedded page, no press
+ * that works something, no Jinja or JavaScript, and no card that is not Home Assistant's
+ * own, whose behaviour this cannot know. `built` is the config about to be drawn, held to
+ * the same: a `{{` put together from two defaults is in neither default, only in what they
+ * make. Anything short of that is shown as what it is, in words.
+ */
+export function inertPost(entry: Pick<CommunityEntry, 'template' | 'includes'>, built?: unknown): boolean {
+  const all = [entry.template, ...Object.values(entry.includes)];
+  if (!all.every(plainConfig) || !noRisks(communityRisks(entry))) return false;
+  if (built === undefined) return true;
+  return plainConfig(built) && noRisks(communityRisks({ template: { card: built }, includes: {} }));
 }
 
 /** The posts in the shared-templates category, best received first, then newest. */
@@ -532,7 +618,12 @@ export function communityNeeds(
   return {
     customTypes: [...customTypes].sort(),
     templates: [...templates]
-      .filter((each) => each !== entry.name && !(each in entry.includes) && !existing.includes(each))
+      .filter(
+        (each) =>
+          each !== entry.name &&
+          !Object.prototype.hasOwnProperty.call(entry.includes, each) &&
+          !existing.includes(each),
+      )
       .sort(),
   };
 }
@@ -557,13 +648,18 @@ function cachedEntry(value: any): CommunityEntry | undefined {
   // Sized, flattened and checked as a fresh post is: storage is anybody's on this origin.
   const plain = plainWithinBudget({ template: value.template, includes: value.includes });
   if (!plain || !isMapping(plain.template)) return undefined;
-  if (!validateImport({ template: value.name, ...plain.template }).ok) return undefined;
-  const template = { ...plain.template };
-  delete template.type;
-  if (typeof template.description !== 'string') delete template.description;
+  if (value.name.trim().length > MAX_NAME_LENGTH) return undefined;
+  // With what it carries, as a fresh post is checked with its `includes:`.
+  const whole = {
+    template: value.name,
+    ...plain.template,
+    ...(plain.includes === undefined ? {} : { includes: plain.includes }),
+  };
+  if (!validateImport(whole).ok) return undefined;
+  const template = listedTemplate({ ...plain.template });
   return {
     id: value.id,
-    title: cleanTitle(value.title) ?? value.name,
+    title: cleanTitle(value.title) ?? cleanTitle(value.name) ?? value.name,
     author: typeof value.author === 'string' ? value.author : '',
     url: postUrl(value.id, value.url),
     name: value.name,
@@ -572,6 +668,15 @@ function cachedEntry(value: any): CommunityEntry | undefined {
     reactions: typeof value.reactions === 'number' ? value.reactions : 0,
     updated: typeof value.updated === 'string' ? value.updated : '',
   };
+}
+
+/** The browser's storage, or nothing where there is none or it may not be touched - asking can itself throw. */
+function browserStorage(): Storage | undefined {
+  try {
+    return typeof localStorage === 'undefined' ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
 }
 
 function readCache(storage: Storage | undefined): CommunityList | undefined {
@@ -593,26 +698,41 @@ function readCache(storage: Storage | undefined): CommunityList | undefined {
  * the caller can still show something.
  */
 export async function fetchCommunity(
-  options: { refresh?: boolean; fetcher?: typeof fetch; storage?: Storage; now?: number } = {},
+  options: { refresh?: boolean; fetcher?: typeof fetch; storage?: Storage; now?: number; timeout?: number } = {},
 ): Promise<CommunityList> {
   const fetcher = options.fetcher ?? fetch.bind(globalThis);
-  const storage = options.storage ?? (typeof localStorage === 'undefined' ? undefined : localStorage);
+  const storage = options.storage ?? browserStorage();
   const now = options.now ?? Date.now();
+  const timeout = options.timeout ?? FETCH_TIMEOUT_MS;
 
   const cached = readCache(storage);
-  if (cached && !options.refresh && now - cached.fetched < CACHE_HOURS * 3600 * 1000) return cached;
+  // A stamp from the future - a clock put right since - would otherwise never go stale.
+  const age = cached ? now - cached.fetched : -1;
+  if (cached && !options.refresh && age >= 0 && age < CACHE_HOURS * 3600 * 1000) return cached;
 
   const discussions: any[] = [];
+  // One clock for the whole read, pages and all: a connection that stalls would otherwise
+  // leave the button saying "Loading" for as long as the editor stayed open.
+  const abort = typeof AbortController === 'undefined' ? undefined : new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    abort?.abort();
+  }, timeout);
   try {
     for (let page = 1; page <= MAX_PAGES; page += 1) {
       const response = await fetcher(
         `https://api.github.com/repos/${COMMUNITY_REPO}/discussions?per_page=100&page=${page}`,
-        { headers: { Accept: 'application/vnd.github+json' } },
+        { headers: { Accept: 'application/vnd.github+json' }, signal: abort?.signal },
       );
       if (!response.ok) {
         const error = new CommunityError(`GitHub answered ${response.status}`);
+        const wait = Number(response.headers.get('retry-after'));
         if (response.headers.get('x-ratelimit-remaining') === '0') {
           error.retryAt = Number(response.headers.get('x-ratelimit-reset')) * 1000 || undefined;
+        } else if (Number.isFinite(wait) && wait > 0) {
+          // The secondary limit says how long to wait rather than until when.
+          error.retryAt = now + wait * 1000;
         }
         throw error;
       }
@@ -622,9 +742,18 @@ export async function fetchCommunity(
       if (batch.length < 100) break;
     }
   } catch (err) {
-    const error = err instanceof CommunityError ? err : new CommunityError((err as Error)?.message ?? String(err));
+    const error =
+      err instanceof CommunityError
+        ? err
+        : new CommunityError(
+            timedOut
+              ? `no answer from GitHub after ${Math.round(timeout / 1000)} s`
+              : ((err as Error)?.message ?? String(err)),
+          );
     error.cached = cached;
     throw error;
+  } finally {
+    clearTimeout(timer);
   }
 
   const list = { entries: parseDiscussions(discussions), fetched: now };

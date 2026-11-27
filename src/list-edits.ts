@@ -4,6 +4,8 @@
  * own `card:` override, which merges after.
  */
 
+import { setKey } from './placeholder-text';
+
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -131,7 +133,7 @@ export function applyListEdits(node: unknown): unknown {
     if (pending(list) || added.some(pending)) return { [LIST_EDIT_KEY]: { ...done, [LIST_EDIT_KEY]: list } };
     return editList(list, done);
   }
-  const out: Record<string, unknown> = Object.create(null);
-  for (const [key, value] of Object.entries(node)) out[key] = applyListEdits(value);
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) setKey(out, key, applyListEdits(value));
   return out;
 }

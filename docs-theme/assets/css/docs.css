@@ -587,3 +587,13 @@ blockquote > :last-child { margin-bottom: 0; }
   .search { position: static; }
   .search-results { left: .5rem; right: .5rem; width: auto; top: calc(var(--bar-h) - .25rem); }
 }
+
+/* Live demo (live-demo.html): Home Assistant's embedded dashboard scrolls inside itself,
+   so it needs a height; 600px, its own default, leaves the first tab mostly empty. */
+ha-embed-dashboard.live-demo {
+  display: block;
+  height: min(520px, 75vh);
+  margin: 1.25rem 0 2rem;
+  border-radius: 8px;
+  overflow: hidden;
+}

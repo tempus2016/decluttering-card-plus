@@ -103,6 +103,7 @@
     "src/dates.ts",
     "src/colour.ts",
     "src/card-editor/presets.ts",
+    "src/card-editor/edits.ts",
     "src/initial-tab.ts",
     "src/report-tree.ts",
     "src/report-outline.ts",
@@ -111,6 +112,8 @@
     "src/idle.ts",
     "src/cli-lint.ts",
     "src/convert.ts",
-    "src/structure.ts"
+    "src/structure.ts",
+    "src/template-editor/pure.ts",
+    "src/utils.ts"
   ]
 }

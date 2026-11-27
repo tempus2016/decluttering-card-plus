@@ -150,5 +150,5 @@ export class DeclutteringHelpIcon extends LitElement {
   }
 }
 
-export const HELP_ICON_TAG = 'decluttering-help';
+const HELP_ICON_TAG = 'decluttering-help';
 if (!customElements.get(HELP_ICON_TAG)) customElements.define(HELP_ICON_TAG, DeclutteringHelpIcon);

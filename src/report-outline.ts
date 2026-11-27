@@ -36,7 +36,7 @@ export interface OutlineNode {
 }
 
 /** The id a report's card, section or fill has in the tree and as an anchor in the Markdown. */
-export const sectionId = (report: number, section: number, labelled: boolean): string =>
+const sectionId = (report: number, section: number, labelled: boolean): string =>
   labelled ? `r${report}-s${section}` : `r${report}`;
 
 // `"Porch" [camera_card]` is the card called Porch, built from camera_card.

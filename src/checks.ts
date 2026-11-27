@@ -10,8 +10,6 @@ import {
   truthy,
 } from './variables';
 
-export { ALERTS_NAME };
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /*

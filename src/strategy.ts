@@ -216,6 +216,36 @@ export async function renderStrategyTemplates(
   return rendered;
 }
 
+// The registries Home Assistant carries on hass, which a written-out view, section or dashboard reads.
+export const STRATEGY_REGISTRIES = ['entities', 'devices', 'areas', 'floors'];
+
+/**
+ * What a strategy read that hass does not carry, as it stood when the strategy last ran:
+ * the label and category registries this card fetches for itself. Only for a strategy that
+ * reads them; the others are left `undefined` and never make it run again.
+ */
+export interface StrategyRead {
+  labels?: unknown;
+  categories?: unknown;
+}
+
+/**
+ * Whether what a strategy wrote out may no longer be true: a registry on hass has been
+ * replaced, or a registry fetched on the side is not the one it read. A label renamed moves
+ * nothing on hass, so a view repeating over labels went on showing the old name until the
+ * page was reloaded. `read` is nothing when the strategy has not run, or read neither.
+ *
+ * A `for_each_from: { template: }` is not covered and cannot be: its Jinja is rendered once,
+ * when the view is written, and nothing says when it would render differently.
+ */
+export function strategyStale(read: StrategyRead | undefined, oldHass: any, newHass: any, now: StrategyRead): boolean {
+  if (STRATEGY_REGISTRIES.some((key) => oldHass?.[key] !== newHass?.[key])) return true;
+  if (!read) return false;
+  return (
+    ('labels' in read && read.labels !== now.labels) || ('categories' in read && read.categories !== now.categories)
+  );
+}
+
 /** Whether a repeat in the strategy reads labels, which have to be fetched before it runs. */
 export function wantsLabels(config: any): boolean {
   return /label/i.test(JSON.stringify([config?.sections, config?.badges]));
@@ -553,7 +583,7 @@ export function sectionPerCopy(ll: any, card: any): any {
   const badges = rest.badges;
   delete rest.sections;
   delete rest.badges;
-  const strategy: any = { type: 'custom:decluttering-card-plus' };
+  const strategy: any = { type: STRATEGY_TYPE };
   if (badges !== undefined) strategy.badges = badges;
   strategy.sections = sections;
 

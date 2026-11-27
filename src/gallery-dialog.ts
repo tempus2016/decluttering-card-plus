@@ -19,9 +19,9 @@ import {
   galleryTemplates,
   thumbnailConfig,
   thumbnailHass,
+  thumbnailStamp,
 } from './gallery';
-// Moves to ./shared with idea 51; template-editor/common re-exports it there.
-import { textField } from './template-editor/common';
+import { textField } from './shared';
 import { localize } from './localize';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -59,12 +59,17 @@ export class DeclutteringGalleryDialog extends LitElement {
   @state() private _query = '';
   @state() private _showYaml = false;
 
-  // One rendered card per tile, kept so scrolling and searching do not rebuild them.
-  private _thumbnails = new Map<string, HTMLElement | null>();
+  // One rendered card per tile, kept so scrolling and searching do not rebuild them - with what
+  // it was built from, so a tile whose template has changed since is drawn again.
+  private _thumbnails = new Map<string, { stamp: string; element: HTMLElement | null }>();
 
   static get styles(): CSSResult {
     return css`
+      /* The dialog is wide, so the tiles sit three or four to a row. Home Assistant's own
+         dialog takes width="large" plus --ha-dialog-width-lg; the older mwc one, still drawn
+         by releases before the Web Awesome dialog, reads the two --mdc-dialog widths. */
       ha-dialog {
+        --ha-dialog-width-lg: min(1040px, 96vw);
         --mdc-dialog-min-width: min(1040px, 96vw);
         --mdc-dialog-max-width: min(1040px, 96vw);
       }
@@ -137,14 +142,9 @@ export class DeclutteringGalleryDialog extends LitElement {
         background: var(--secondary-background-color);
         padding: 10px;
         min-height: 96px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: block;
         pointer-events: none;
         overflow: hidden;
-      }
-      .tile .preview {
-        display: block;
       }
       .tile .preview .thumb {
         display: block;
@@ -159,8 +159,6 @@ export class DeclutteringGalleryDialog extends LitElement {
         display: block;
         text-align: center;
         padding: 32px 0;
-      }
-      .tile .preview .kind {
         color: var(--secondary-text-color);
         font-size: 13px;
       }
@@ -242,15 +240,18 @@ export class DeclutteringGalleryDialog extends LitElement {
 
   /*
    * A tile's card, rendered by Home Assistant's own hui-card against the sample house, so
-   * it looks exactly as it would on a dashboard. Built once per entry; a template that
-   * will not build, or is not a card, shows what it is instead.
+   * it looks exactly as it would on a dashboard. Built once per entry and template; a template
+   * that will not build, is not a card, or is a shared post that could do anything at all
+   * (see thumbnailConfig) shows what it is instead.
    */
   private _thumbnail(entry: GalleryEntry): TemplateResult {
-    if (!this._thumbnails.has(entry.key)) {
+    const stamp = thumbnailStamp(entry);
+    const wrapper = customElements.get('hui-card');
+    // Nothing to draw with yet is not an answer to keep: the next render may have both.
+    if (this._thumbnails.get(entry.key)?.stamp !== stamp && wrapper && this.hass) {
       let element: HTMLElement | null = null;
       const config = thumbnailConfig(entry, galleryTemplates(this.entries));
-      const wrapper = customElements.get('hui-card');
-      if (config && wrapper && this.hass) {
+      if (config) {
         try {
           const card = new wrapper() as any;
           card.preview = true;
@@ -261,9 +262,10 @@ export class DeclutteringGalleryDialog extends LitElement {
           element = null;
         }
       }
-      this._thumbnails.set(entry.key, element);
+      this._thumbnails.set(entry.key, { stamp, element });
     }
-    const element = this._thumbnails.get(entry.key);
+    const kept = this._thumbnails.get(entry.key);
+    const element = kept?.stamp === stamp ? kept.element : undefined;
     if (element) {
       // The sample house never changes, but the page's hass does: themes and locale follow it.
       if (this.hass) (element as any).hass = thumbnailHass(this.hass);
@@ -383,6 +385,7 @@ export class DeclutteringGalleryDialog extends LitElement {
     return html`
       <ha-dialog
         open
+        width="large"
         .heading=${this._t('gallery.title')}
         .headerTitle=${this._t('gallery.title')}
         @closed=${this._close}

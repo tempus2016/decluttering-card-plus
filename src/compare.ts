@@ -8,11 +8,11 @@ import { toYaml } from './yaml';
 
 /*
  * Compare with (idea 30): the versions of a template worth holding the current one against -
- * the starter library's, a shared post's, the copy on another dashboard, the one the trash
+ * the starter library's, a shared post's, the one the trash
  * kept - gathered into one list for the Share tab's dropdown, and the diff's size in a line.
  */
 
-export type CompareKind = 'library' | 'shared' | 'elsewhere' | 'trash';
+export type CompareKind = 'library' | 'shared' | 'trash';
 
 export interface CompareSource {
   /** `kind:detail`, unique in the list. */
@@ -26,12 +26,10 @@ export interface CompareContext {
   library?: LibraryEntry[];
   installed?: SharedUpdate[];
   trash?: TrashEntry[];
-  elsewhere?: { urlPath: string; template: Record<string, any> }[];
   now?: number;
   labels: {
     library: (name: string) => string;
     shared: (title: string, author: string) => string;
-    elsewhere: (urlPath: string) => string;
     trash: (ago: string, reason: string) => string;
     ago: (ms: number) => string;
   };
@@ -49,7 +47,7 @@ export function templateBody(template: unknown): Record<string, any> {
 /**
  * Every version there is to compare the current template with, most useful first: the
  * library entry it matches by name (then any other library template), the shared post it
- * was installed from, the same name on other dashboards, and the trash's copies newest first.
+ * was installed from, and the trash's copies newest first.
  */
 export function compareSources(name: string, ctx: CompareContext): CompareSource[] {
   const out: CompareSource[] = [];
@@ -69,14 +67,6 @@ export function compareSources(name: string, ctx: CompareContext): CompareSource
       kind: 'shared',
       label: ctx.labels.shared(update.entry.title, update.entry.author),
       template: templateBody(update.latest),
-    });
-  }
-  for (const copy of ctx.elsewhere ?? []) {
-    out.push({
-      id: `elsewhere:${copy.urlPath}`,
-      kind: 'elsewhere',
-      label: ctx.labels.elsewhere(copy.urlPath),
-      template: templateBody(copy.template),
     });
   }
   const now = ctx.now ?? Date.now();

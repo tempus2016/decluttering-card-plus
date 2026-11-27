@@ -2,10 +2,12 @@ import { LitElement, html, TemplateResult, css, CSSResult, PropertyValues, nothi
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, fireEvent } from 'custom-card-helpers';
 import { DeclutteringTemplateConfig, FormSchemaEntry } from '../types';
-import { SettingPath, promoteSettingAs, reuseVariable, settingValue } from '../promote';
+import { SettingPath, namesInUse, promoteSettingAs, reuseVariable, settingValue } from '../promote';
 import { getDeclarations } from '../variables';
+import { validVariableName } from '../rename-variable';
 import { copyText } from '../utils';
 import { localize } from '../localize';
+import { fixedOffset } from './common';
 import { watchTarget } from './watch-target';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -33,8 +35,6 @@ interface Field {
   width: number;
   height: number;
 }
-
-const VALID_NAME = /^[A-Za-z0-9_-]+$/;
 
 function* selectorsIn(root: Element | ShadowRoot): Generator<Element> {
   const queue: (Element | ShadowRoot)[] = [root];
@@ -226,14 +226,8 @@ export class DeclutteringFieldMenus extends LitElement {
       this._fields = [];
       return;
     }
-    /*
-     * A dialog that is transformed becomes what position: fixed is measured from, so a button
-     * placed at a field's viewport position lands off to the side by the dialog's own offset.
-     * Where a fixed box at 0,0 really sits is that offset, whichever it is.
-     */
-    const origin = this.renderRoot.querySelector('.origin')?.getBoundingClientRect();
-    const dx = origin?.left ?? 0;
-    const dy = origin?.top ?? 0;
+    // The dialog's own offset, which a fixed box is measured from (see fixedOffset).
+    const { dx, dy } = fixedOffset(this.renderRoot.querySelector('.origin'));
     const fields: Field[] = [];
     for (const selector of selectorsIn(target.shadowRoot ?? target)) {
       // A selector holding other selectors (an expandable) is a container, not a field.
@@ -330,7 +324,7 @@ export class DeclutteringFieldMenus extends LitElement {
   private _startPromote(field: Field): void {
     const last = field.path[field.path.length - 1];
     const base = typeof last === 'string' ? last.replace(/[^A-Za-z0-9_-]/g, '_') : 'value';
-    const taken = new Set(getDeclarations(this.config).map((each) => each.name));
+    const taken = new Set(namesInUse(this.config));
     let name = base;
     let n = 2;
     while (taken.has(name)) name = `${base}_${n++}`;
@@ -390,8 +384,9 @@ export class DeclutteringFieldMenus extends LitElement {
 
   private _checkName(name: string): string | undefined {
     if (!name) return undefined;
-    if (!VALID_NAME.test(name)) return localize('template_editor.promote_name_invalid', undefined, this.hass);
-    if (getDeclarations(this.config).some((each) => each.name === name)) {
+    if (!validVariableName(name)) return localize('template_editor.promote_name_invalid', undefined, this.hass);
+    // Every name the template already uses, as the rewrite itself checks: a `let:` name is taken too.
+    if (namesInUse(this.config).includes(name)) {
       return localize('template_editor.promote_name_taken', { name }, this.hass);
     }
     return undefined;
@@ -434,5 +429,5 @@ export class DeclutteringFieldMenus extends LitElement {
   }
 }
 
-export const FIELD_MENUS_TAG = 'decluttering-field-menus';
+const FIELD_MENUS_TAG = 'decluttering-field-menus';
 if (!customElements.get(FIELD_MENUS_TAG)) customElements.define(FIELD_MENUS_TAG, DeclutteringFieldMenus);

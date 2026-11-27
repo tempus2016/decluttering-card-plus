@@ -1,6 +1,6 @@
 import { HomeAssistant, createThing } from 'custom-card-helpers';
 import { LAZY_MARGIN, placeholderHeight } from './layout';
-import { HELPERS } from './shared';
+import { cardHelpers } from './shared';
 import { skeletonHeight, skeletonRows } from './skeleton';
 
 /*
@@ -140,8 +140,8 @@ export class DeclutteringLazyCopy extends HTMLElement {
     if (wrapper) {
       thing = new wrapper();
       thing.config = this._card;
-    } else if (HELPERS) {
-      thing = (await HELPERS).createCardElement(this._card);
+    } else if (cardHelpers()) {
+      thing = (await cardHelpers()).createCardElement(this._card);
     } else {
       thing = createThing(this._card);
     }
