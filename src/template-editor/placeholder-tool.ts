@@ -1,7 +1,7 @@
 import { LitElement, html, TemplateResult, css, CSSResult, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
-import { DeclutteringTemplateConfig, FormSchemaEntry } from '../types';
+import { DeclutteringTemplateConfig, FormSchemaEntry, TemplateConfig } from '../types';
 import { PlaygroundResult, StepResult, firstRowUnset, kindOf, tryPlaceholderIn } from '../playground';
 import { listPlaceholders } from '../placeholders';
 import { exampleVariables } from '../examples';
@@ -10,6 +10,8 @@ import { KNOWN_PARAM_STEPS, KNOWN_STEPS, normaliseVariables, templateDefaults } 
 import { knownFunctionNames } from '../closest';
 import { localize } from '../localize';
 import { previewExamples, sourceContext } from '../shared';
+import { borrowedEpoch } from './common';
+import { memoLast } from './pure';
 
 /*
  * Try a placeholder, inside the editor (idea 28): the docs site's playground fed by the
@@ -28,6 +30,9 @@ export class DeclutteringPlaceholderTool extends LitElement {
 
   @state() protected _expression = '';
   @state() protected _more = false;
+
+  // Kept until the template or the dashboard is replaced: the tool draws on every state change.
+  private readonly _memoResolved = memoLast<TemplateConfig>();
 
   static get styles(): CSSResult {
     return css`
@@ -177,7 +182,11 @@ export class DeclutteringPlaceholderTool extends LitElement {
   protected _result(expression: string): PlaygroundResult | undefined {
     const config = this.config;
     if (!config) return undefined;
-    const resolved = collectTemplates(this.lovelace, undefined, config)[config.template] ?? config;
+    const ll = this.lovelace;
+    const resolved = this._memoResolved(
+      [ll, borrowedEpoch(ll), config],
+      () => collectTemplates(ll, undefined, config)[config.template] ?? config,
+    );
     const example = exampleVariables(resolved, previewExamples.get(config.template));
     const variables = example ?? normaliseVariables(templateDefaults(resolved));
     // Built with what a card on this dashboard builds with, so the function steps offered as
@@ -278,5 +287,5 @@ export const KINDS: ReturnType<typeof kindOf>[] = [
   'removed',
 ];
 
-export const PLACEHOLDER_TOOL_TAG = 'decluttering-placeholder-tool';
+const PLACEHOLDER_TOOL_TAG = 'decluttering-placeholder-tool';
 if (!customElements.get(PLACEHOLDER_TOOL_TAG)) customElements.define(PLACEHOLDER_TOOL_TAG, DeclutteringPlaceholderTool);

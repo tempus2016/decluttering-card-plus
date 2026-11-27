@@ -107,3 +107,22 @@ check(
   })(),
   true,
 );
+
+/* -------------------------------------------------------------------- labels in the user's language (review) */
+
+const { registerLanguage } = require('../.test-build/localize.js');
+registerLanguage('de', require('../src/locales/de.json'));
+check(
+  'the labels are in the language of whoever is making the template',
+  suggestVariables(
+    {
+      cards: [
+        { entity: 'light.hall', name: 'Hall' },
+        { entity: 'light.shed', title: 'T', heading: 'H', icon: 'mdi:x' },
+      ],
+    },
+    [],
+    { language: 'de' },
+  ).variables.map((variable) => variable.label),
+  ['Entität', 'Name', 'Entität 2', 'Titel', 'Überschrift', 'Symbol'],
+);

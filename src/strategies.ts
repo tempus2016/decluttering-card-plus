@@ -1,20 +1,55 @@
 import { HomeAssistant } from 'custom-card-helpers';
 import { collectAllTemplates, itemTemplatesOf } from './templates';
-import { loadLabels } from './labels';
-import { loadCategories, wantsCategories } from './categories';
+import { labelRegistry, loadLabels } from './labels';
+import { categoryRegistry, loadCategories, wantsCategories } from './categories';
 import { renderTemplateOnce } from './template-source';
 import {
   generateSection,
   generateView,
   renderStrategyTemplates,
+  dashboardWantsLabels,
   sectionStubTemplate,
+  STRATEGY_REGISTRIES,
   STRATEGY_TYPE,
+  StrategyRead,
+  strategyStale,
   wantsLabels,
   writeDashboard,
 } from './strategy';
 import { publishedStub } from './picker';
 import { getLovelaceConfig } from './utils';
 import { CARD_EDITOR_TAG, sourceContext, warnUnlisted } from './shared';
+
+/*
+ * What each strategy config read of the label and category registries when it last ran.
+ * Those are fetched by this card rather than carried on hass, so Home Assistant's own
+ * comparison of one hass with the next never sees them change; see strategyStale.
+ */
+const reads = new WeakMap<object, StrategyRead>();
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function remember(config: any, hass: any, labels: boolean, categories: boolean): void {
+  if (!config || typeof config !== 'object' || (!labels && !categories)) return;
+  reads.set(config, {
+    ...(labels ? { labels: labelRegistry(hass) } : {}),
+    ...(categories ? { categories: categoryRegistry() } : {}),
+  });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function stale(config: any, oldHass: any, newHass: any): boolean {
+  const read = config && typeof config === 'object' ? reads.get(config) : undefined;
+  const now = { labels: labelRegistry(newHass), categories: categoryRegistry() };
+  if (!strategyStale(read, oldHass, newHass, now)) return false;
+  // Said once: Home Assistant asks on every hass update, and the strategy it runs in answer
+  // takes a moment to fetch what changed and note it.
+  if (read)
+    reads.set(config, {
+      ...('labels' in read ? { labels: now.labels } : {}),
+      ...('categories' in read ? { categories: now.categories } : {}),
+    });
+  return true;
+}
 
 /*
  * The view strategy - `strategy: { type: custom:decluttering-card-plus }` on a view - which
@@ -25,12 +60,21 @@ export class DeclutteringViewStrategy extends HTMLElement {
   // What Home Assistant compares between one hass and the next to decide whether the view
   // needs writing out again. Floors are not in its own default list, and a repeat can
   // depend on them as much as on areas.
-  static registryDependencies = ['entities', 'devices', 'areas', 'floors'];
+  static registryDependencies = STRATEGY_REGISTRIES;
+
+  // The same registries, and the labels and categories a repeat read that hass does not carry.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static shouldRegenerate(config: any, oldHass: any, newHass: any): boolean {
+    return stale(config, oldHass, newHass);
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static async generate(config: any, hass: HomeAssistant): Promise<unknown> {
-    if (wantsLabels(config)) await loadLabels(hass);
-    if (wantsCategories([config?.sections, config?.badges])) await loadCategories(hass);
+    const labels = wantsLabels(config);
+    const categories = wantsCategories([config?.sections, config?.badges]);
+    if (labels) await loadLabels(hass);
+    if (categories) await loadCategories(hass);
+    remember(config, hass, labels, categories);
     // Rendered once each, here, before the view is written - generate is the one place a
     // strategy may wait, and Home Assistant only calls it again on a registry change.
     const rendered = await renderStrategyTemplates(config, (template) => renderTemplateOnce(hass, template));
@@ -48,10 +92,22 @@ export class DeclutteringViewStrategy extends HTMLElement {
  * 2021.5), so there is no newer floor for this one. See strategy.ts.
  */
 export class DeclutteringDashboardStrategy extends HTMLElement {
-  static registryDependencies = ['entities', 'devices', 'areas', 'floors'];
+  static registryDependencies = STRATEGY_REGISTRIES;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static shouldRegenerate(config: any, oldHass: any, newHass: any): boolean {
+    return stale(config, oldHass, newHass);
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static async generate(config: any, hass: HomeAssistant): Promise<unknown> {
+    const written = await DeclutteringDashboardStrategy.write(config, hass);
+    remember(config, hass, dashboardWantsLabels(config), wantsCategories(config?.views));
+    return written;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static write(config: any, hass: HomeAssistant): Promise<unknown> {
     // A page (idea 33) may name a template this strategy borrows, which only hass can fetch.
     return writeDashboard(config, hass, {
       render: (template) => renderTemplateOnce(hass, template),
@@ -62,9 +118,6 @@ export class DeclutteringDashboardStrategy extends HTMLElement {
     });
   }
 }
-
-// What a written-out section strategy reads from hass, and so what makes it worth writing again.
-const SECTION_DEPENDENCIES = ['entities', 'devices', 'areas', 'floors'];
 
 /*
  * The section strategy (#400) - the same type again, written as one section's strategy -
@@ -81,14 +134,17 @@ export class DeclutteringSectionStrategy extends HTMLElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static shouldRegenerate(config: any, oldHass: any, newHass: any): boolean {
     if (config?.section === undefined) return false;
-    return SECTION_DEPENDENCIES.some((key) => oldHass?.[key] !== newHass?.[key]);
+    return stale(config, oldHass, newHass);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   static async generate(config: any, hass: HomeAssistant): Promise<unknown> {
     if (config?.section === undefined) return generateSection(config, hass);
-    if (wantsLabels({ sections: [config.section] })) await loadLabels(hass);
-    if (wantsCategories([config.section])) await loadCategories(hass);
+    const labels = wantsLabels({ sections: [config.section] });
+    const categories = wantsCategories([config.section]);
+    if (labels) await loadLabels(hass);
+    if (categories) await loadCategories(hass);
+    remember(config, hass, labels, categories);
     const ll = getLovelaceConfig();
     return generateSection(config, hass, { ...sourceContext(ll), itemTemplates: itemTemplatesOf(ll) });
   }

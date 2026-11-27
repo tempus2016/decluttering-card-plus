@@ -22,13 +22,28 @@ const BASE = 'https://tempus2016.github.io/decluttering-card-plus/schema/';
 
 // The step lists and the other closed sets live in TypeScript; the test build already
 // compiles those modules to CommonJS.
+// When any source file was last changed, so a .test-build left over from before an edit is not read as current.
+let sourcesChanged;
+function newestSource(dir = path.join(ROOT, 'src')) {
+  let newest = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) newest = Math.max(newest, newestSource(full));
+    else if (/\.(ts|json)$/.test(entry.name)) newest = Math.max(newest, fs.statSync(full).mtimeMs);
+  }
+  return newest;
+}
+
 function compiled(name) {
   const built = path.join(ROOT, '.test-build', `${name}.js`);
-  if (!fs.existsSync(built)) {
+  if (sourcesChanged === undefined) sourcesChanged = newestSource();
+  if (!fs.existsSync(built) || fs.statSync(built).mtimeMs < sourcesChanged) {
     execFileSync(process.platform === 'win32' ? 'npx.cmd' : 'npx', ['tsc', '-p', 'tsconfig.test.json'], {
       cwd: ROOT,
       stdio: 'inherit',
     });
+    // Compiled now, whatever the clock on a file tsc found nothing to rewrite in says.
+    sourcesChanged = 0;
   }
   return require(built);
 }

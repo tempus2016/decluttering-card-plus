@@ -33,7 +33,6 @@ import {
 } from './variables';
 import { isRegistrySource, REGISTRY_KEYS, SOURCE_KEYS } from './registry';
 
-export { closestStep, knownStep };
 import { structureNames } from './structure';
 import { unknownHidden } from './card-editor/hide';
 import { CHECK_KEYS, CHECKS_KEY, checkLevel, conditionStep } from './checks';

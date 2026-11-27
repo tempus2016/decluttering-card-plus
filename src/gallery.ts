@@ -6,13 +6,14 @@
 import { placeholderJson } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import { LibraryEntry } from './library';
-import { CommunityEntry } from './community';
+import { CommunityEntry, inertPost, isMapping } from './community';
+import { scanDependencies } from './share';
 import { SAMPLE_HOUSE } from './playground';
 import { exampleSets } from './examples';
 import { getThingType, thingContent } from './shared';
 import { localize } from './localize';
 import deepReplace from './deep-replace';
-import { getDeclarations, withStateScope } from './variables';
+import { CONSUMER_TYPES, getDeclarations, withStateScope } from './variables';
 import { VariableDeclaration } from './variables';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -44,15 +45,12 @@ export interface GalleryEntry {
   communityId?: number;
 }
 
-const isMapping = (value: unknown): value is Record<string, any> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value);
+const own = (object: object, key: string): boolean => Object.prototype.hasOwnProperty.call(object, key);
 
-function customCardsIn(node: unknown, found = new Set<string>()): string[] {
-  if (Array.isArray(node)) node.forEach((item) => customCardsIn(item, found));
-  else if (isMapping(node)) {
-    if (typeof node.type === 'string' && node.type.startsWith('custom:')) found.add(node.type);
-    Object.values(node).forEach((value) => customCardsIn(value, found));
-  }
+/** The custom cards a set of templates is built from - other people's, not this card's own. */
+function customCardsIn(templates: unknown[]): string[] {
+  const found = new Set<string>();
+  for (const template of templates) for (const type of scanDependencies(template).customTypes) found.add(type);
   return [...found].sort();
 }
 
@@ -156,7 +154,6 @@ export function galleryEntries(
     entries.push(
       entryFrom('installed', `installed:${name}`, name, name, template as Record<string, any>, {}, hass, {
         author: typeof source.author === 'string' ? source.author : undefined,
-        url: typeof source.url === 'string' ? source.url : undefined,
       }),
     );
   }
@@ -282,7 +279,7 @@ export function sampleVariables(template: TemplateConfig, content: unknown): Var
       const domain = entity ? (asList(entity.domain) ?? asList(entity.filter?.domain)) : undefined;
       out.push({ [declaration.name]: sampleEntity(domain) });
       set.add(declaration.name);
-    } else if (declaration.name in SAMPLE_VALUES && declaration.name !== 'name') {
+    } else if (own(SAMPLE_VALUES, declaration.name) && declaration.name !== 'name') {
       out.push({ [declaration.name]: SAMPLE_VALUES[declaration.name] });
       set.add(declaration.name);
     } else {
@@ -294,13 +291,11 @@ export function sampleVariables(template: TemplateConfig, content: unknown): Var
   const declared = new Set(declarations.map((each) => each?.name));
   for (const name of placeholderNames(content)) {
     if (set.has(name) || declared.has(name)) continue;
-    if (name in SAMPLE_VALUES) out.push({ [name]: SAMPLE_VALUES[name] });
+    if (own(SAMPLE_VALUES, name)) out.push({ [name]: SAMPLE_VALUES[name] });
     else if (name === 'entity' || name.endsWith('_entity')) out.push({ [name]: sampleEntity(undefined) });
   }
   return out;
 }
-
-const CONSUMERS = ['custom:decluttering-card-plus', 'custom:decluttering-card'];
 
 /*
  * A card inside the thumbnail that uses another template is built here too, from the
@@ -311,8 +306,8 @@ function expandNested(node: unknown, templates: Record<string, any>, depth: numb
   if (depth > 4) return node;
   if (Array.isArray(node)) return node.map((item) => expandNested(item, templates, depth));
   if (!isMapping(node)) return node;
-  if (typeof node.type === 'string' && CONSUMERS.includes(node.type) && typeof node.template === 'string') {
-    const template = templates[node.template];
+  if (typeof node.type === 'string' && CONSUMER_TYPES.includes(node.type) && typeof node.template === 'string') {
+    const template = own(templates, node.template) ? templates[node.template] : undefined;
     if (isMapping(template)) {
       try {
         const kind = getThingType(template as TemplateConfig);
@@ -340,7 +335,8 @@ function expandNested(node: unknown, templates: Record<string, any>, depth: numb
 
 /** Every template the gallery can see, by name: each entry's own and what it bundles. */
 export function galleryTemplates(entries: GalleryEntry[]): Record<string, any> {
-  const out: Record<string, any> = {};
+  // No prototype, so a template called `constructor` is a key like any other.
+  const out: Record<string, any> = Object.create(null);
   for (const entry of entries) {
     for (const [name, template] of Object.entries(entry.includes)) if (!(name in out)) out[name] = template;
     if (!(entry.name in out)) out[entry.name] = entry.template;
@@ -353,7 +349,8 @@ export function galleryTemplates(entries: GalleryEntry[]): Record<string, any> {
  * example, or with sample values for what it declares and uses. A group shows its first
  * card; a badge, row or element has no card to show and gives nothing, so the tile says
  * what it is instead. A template that will not build gives nothing too, rather than an
- * error in a thumbnail. Cards inside it that use other templates are built from
+ * error in a thumbnail. A shared post that could fetch, run or press anything gives nothing
+ * either: see inertPost. Cards inside it that use other templates are built from
  * `templates`, the gallery's own, since the thumbnail has no dashboard to find them on.
  */
 export function thumbnailConfig(
@@ -374,7 +371,15 @@ export function thumbnailConfig(
     void _each;
     const known = { ...templates, ...entry.includes, [entry.name]: entry.template };
     const expanded = expandNested(one, known, 0);
-    return isMapping(expanded) ? expanded : one;
+    const drawn = isMapping(expanded) ? expanded : one;
+    /*
+     * A shared post is somebody's text that nobody here has agreed to yet, and the tile draws
+     * it for real: Jinja in it is rendered by this Home Assistant, a picture in it is fetched,
+     * a custom card in it runs. So a post is drawn only when it and the card about to be
+     * drawn can do none of that (review 2026-11-27); otherwise the tile says what it is.
+     */
+    if (entry.source === 'community' && !inertPost(entry, drawn)) return undefined;
+    return drawn;
   } catch {
     return undefined;
   }
@@ -386,15 +391,47 @@ function firstGroupCard(template: TemplateConfig): unknown {
   return cards[0];
 }
 
+// The sample house as a thumbnail's hass carries it: the same objects every time. Cards tell a
+// registry change from a state change by whether these are the objects they last saw, so a
+// fresh copy per render read as a new registry and built every templated tile again.
+const SAMPLE_PARTS = {
+  states: { ...SAMPLE_HOUSE.states },
+  entities: { ...SAMPLE_HOUSE.entities },
+  devices: { ...SAMPLE_HOUSE.devices },
+  areas: { ...SAMPLE_HOUSE.areas },
+  floors: { ...SAMPLE_HOUSE.floors },
+};
+// One per page hass, so every tile is handed the same object until the page's hass moves.
+const thumbnailHasses = new WeakMap<object, any>();
+
 /** The hass a thumbnail is drawn with: the page's, but with the sample house's entities. */
 export function thumbnailHass(hass: any): any {
   if (!hass) return undefined;
-  return {
-    ...hass,
-    states: { ...SAMPLE_HOUSE.states },
-    entities: { ...SAMPLE_HOUSE.entities },
-    devices: { ...SAMPLE_HOUSE.devices },
-    areas: { ...SAMPLE_HOUSE.areas },
-    floors: { ...SAMPLE_HOUSE.floors },
-  };
+  let made = thumbnailHasses.get(hass);
+  if (!made) {
+    made = { ...hass, ...SAMPLE_PARTS };
+    thumbnailHasses.set(hass, made);
+  }
+  return made;
+}
+
+// A template's text, worked out once per template object: a post's stays the same object
+// until the list is read again.
+const stamps = new WeakMap<object, string>();
+const textOf = (value: object): string => {
+  let text = stamps.get(value);
+  if (text === undefined) {
+    text = JSON.stringify(value);
+    stamps.set(value, text);
+  }
+  return text;
+};
+
+/**
+ * What a tile's drawn card was built from, as text. A tile's key says which tile it is and
+ * not what is in it - a post edited since, or an installed template changed, keeps its key -
+ * so the dialog keeps a card only for as long as this has not moved.
+ */
+export function thumbnailStamp(entry: GalleryEntry): string {
+  return `${textOf(entry.template)}\n${textOf(entry.includes)}`;
 }

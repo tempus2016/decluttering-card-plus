@@ -23,6 +23,8 @@ export interface Site {
   chain: string | undefined;
   optional: string | undefined;
   trail: string | undefined;
+  /** Its quotes are not a whole value's: see inText. */
+  inText?: boolean;
 }
 
 /** Literal text between sites, or a site. */
@@ -40,6 +42,24 @@ export interface Compiled {
  * placeholder stays visible. deep-replace.ts scans with the same source.
  */
 export const SITE_SOURCE = `(")?\\[\\[([^|\\[\\]?]+)${TRANSFORM_SUFFIX}${OPTIONAL_SUFFIX}\\]\\](")?`;
+
+/*
+ * Whether a site with a quote either side is still not a value of its own. The quote before
+ * it may be one somebody wrote - `say "[[n]]` is `"say \"[[n]]"` in JSON, and that `\"` is
+ * text - and the two quotes may be a mapping's key, `{"[[level]]": ...}`, which JSON only
+ * takes as a string. Either way a bare number or mapping put there is not JSON any more, so
+ * the site is filled as part of the string it is in.
+ */
+export function inText(
+  json: string,
+  index: number,
+  text: string,
+  lead: string | undefined,
+  trail: string | undefined,
+): boolean {
+  if (!lead || !trail) return false;
+  return json[index - 1] === '\\' || json[index + text.length] === ':';
+}
 
 const compiled = new WeakMap<object, Compiled>();
 
@@ -61,6 +81,7 @@ export function splitSites(json: string): Piece[] {
       chain: match[3],
       optional: match[4],
       trail: match[5],
+      ...(inText(json, match.index, match[0], match[1], match[5]) ? { inText: true } : {}),
     });
     last = match.index + match[0].length;
     match = scan.exec(json);

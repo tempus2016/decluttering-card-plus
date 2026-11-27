@@ -21,12 +21,20 @@ import {
   HealthCardConfig,
   HealthEntry,
   HealthReport,
+  dashboardToCheck,
   healthEntries,
   shownKinds,
   toLookAt,
 } from './health-card-pure';
 
 export { HEALTH_CARD_TAG, HEALTH_CARD_TYPE };
+
+// How long a check that failed is left alone before it is tried again: hass arrives many
+// times a second, and a dashboard that cannot be read now will not be readable in a moment.
+const RETRY_MS = 30_000;
+// How long after a dashboard is saved the checks wait, so the saves of one edit are one check
+// and the copy of the dashboard kept for borrowing has been dropped by then.
+const SAVED_WAIT_MS = 500;
 
 /*
  * A health card on the dashboard, and the same thing as a badge in a view's row (idea 50):
@@ -47,6 +55,14 @@ export class DeclutteringHealthCard extends LitElement {
   // The dashboard config the last check was run against, by identity.
   private _checkedFor?: unknown;
   private _running = false;
+  // A check asked for while one was running, which runs once that one is done.
+  private _again = false;
+  // Not before this, after a check that failed.
+  private _retryAt = 0;
+  // Listening for saved dashboards, and the way to stop.
+  private _watching = false;
+  private _stopWatching?: () => void;
+  private _savedTimer?: ReturnType<typeof setTimeout>;
 
   public setConfig(config: HealthCardConfig): void {
     this._config = config;
@@ -56,8 +72,50 @@ export class DeclutteringHealthCard extends LitElement {
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
+    this._watch();
     // Identity only: hass arrives on every state change, the dashboard config only on a save.
-    if (this._checkedFor !== getLovelaceConfig()) void this._check();
+    if (this._due()) void this._check();
+  }
+
+  /** Whether the dashboard on the page is not the one last checked, and a failed check has had its rest. */
+  private _due(): boolean {
+    return this._checkedFor !== getLovelaceConfig() && Date.now() >= this._retryAt;
+  }
+
+  /*
+   * Another dashboard being saved changes what this card says - about that dashboard, with
+   * `dashboards: all`, and about this one when it borrows templates from it - and nothing on
+   * this page moves when it happens. Home Assistant announces every save, so the checks run
+   * again on one.
+   */
+  private _watch(): void {
+    const connection = this._hass?.connection;
+    if (this._watching || !this.isConnected || typeof connection?.subscribeEvents !== 'function') return;
+    this._watching = true;
+    Promise.resolve(connection.subscribeEvents(() => this._dashboardSaved(), 'lovelace_updated'))
+      .then((stop) => {
+        // Taken off the page while the subscription was on its way.
+        if (this._watching) this._stopWatching = stop;
+        else stop();
+      })
+      // Refused or disconnected: the card still checks on its own dashboard's saves.
+      .catch(() => undefined);
+  }
+
+  private _dashboardSaved(): void {
+    clearTimeout(this._savedTimer);
+    this._savedTimer = setTimeout(() => {
+      this._checkedFor = undefined;
+      void this._check();
+    }, SAVED_WAIT_MS);
+  }
+
+  public disconnectedCallback(): void {
+    super.disconnectedCallback();
+    clearTimeout(this._savedTimer);
+    this._stopWatching?.();
+    this._stopWatching = undefined;
+    this._watching = false;
   }
 
   public connectedCallback(): void {
@@ -69,7 +127,8 @@ export class DeclutteringHealthCard extends LitElement {
     requestAnimationFrame(() => {
       if (this.isConnected) this._syncWrapperPreview();
     });
-    if (this._checkedFor !== getLovelaceConfig()) void this._check();
+    this._watch();
+    if (this._due()) void this._check();
   }
 
   /*
@@ -107,8 +166,15 @@ export class DeclutteringHealthCard extends LitElement {
     const config = this._config;
     const hass = this._hass;
     const ll = getLovelaceConfig();
-    if (!config || !hass || !ll || this._running) return;
+    if (!config || !hass || !ll) return;
+    // Asked for while one runs - a new config, a dashboard saved - is run after it, not dropped.
+    if (this._running) {
+      this._again = true;
+      return;
+    }
     this._running = true;
+    this._again = false;
+    // Marked first, so the hass updates arriving meanwhile do not each ask again.
     this._checkedFor = ll;
     try {
       const kinds = shownKinds(config.show);
@@ -122,8 +188,9 @@ export class DeclutteringHealthCard extends LitElement {
       if (config.dashboards === 'all') {
         const paths = (await fetchDashboardPaths(hass)).filter((path) => path !== here);
         for (const path of paths) {
-          const other = await fetchDashboardConfig(hass, path);
-          if (!other) continue;
+          const saved = await fetchDashboardConfig(hass, path);
+          if (!saved) continue;
+          const other = dashboardToCheck(saved);
           const templates = mayBorrowTemplates(other)
             ? await collectAllTemplates(hass, other)
             : collectTemplates(other);
@@ -136,9 +203,14 @@ export class DeclutteringHealthCard extends LitElement {
       this._reports = reports;
       this._checkedAt = Date.now();
       this._syncHidden();
+    } catch {
+      // Left saying "checking" would be for good: tried again, after a rest.
+      this._checkedFor = undefined;
+      this._retryAt = Date.now() + RETRY_MS;
     } finally {
       this._running = false;
     }
+    if (this._again) void this._check();
   }
 
   /** `hide_when_clean`: the badge or card goes when there is nothing to look at, and says so to the row. */
@@ -183,9 +255,23 @@ export class DeclutteringHealthCard extends LitElement {
       this._panel = false;
       return;
     }
-    void loadEditors().then(() => {
-      this._panel = true;
-    });
+    loadEditors().then(
+      () => {
+        this._panel = true;
+      },
+      // The chunk is gone - the card was updated under an open page - and a button that does
+      // nothing says less than a line that says what to do.
+      () => {
+        const target = document.querySelector('home-assistant') ?? this;
+        target.dispatchEvent(
+          new CustomEvent('hass-notification', {
+            detail: { message: localize('health_card.open_panel_failed', undefined, this._hass) },
+            bubbles: true,
+            composed: true,
+          }),
+        );
+      },
+    );
   }
 
   private _describe(entry: HealthEntry): string {

@@ -1,5 +1,5 @@
 import { isInlineName, withInlineBodies } from './inline-body';
-import { placeholderJson } from './placeholder-text';
+import { placeholderJson, setKey } from './placeholder-text';
 import { TemplateConfig, VariablesConfig } from './types';
 import { labelName } from './labels';
 import { registryIndex } from './registry-index';
@@ -9,14 +9,15 @@ import { cardExists, iconExists, integrationExists } from './installed';
 import { toYaml } from './yaml';
 import { AGE_UNITS, age, formatDate, parseDate, relative } from './dates';
 import {
+  alphaCss,
   colourName,
   contrast,
   darken,
-  isThemeVariable,
   lighten,
+  liveColour,
   mix,
+  mixCss,
   parseColour,
-  toHex,
   toHexWithAlpha,
   toRgba,
   toRgbList,
@@ -37,6 +38,12 @@ export interface VariableDeclaration {
   defaults?: any;
   /** Whether the template is unusable without it. Warns; it never blocks a save. */
   required?: boolean;
+  /**
+   * Whether the card editor lets the field be left empty (#514): clearing it writes `''` on the
+   * card, which beats the default, instead of taking the line out so the default comes back.
+   * Reset still takes the line out. Without it, a cleared field sets nothing, as it always has.
+   */
+  allow_empty?: boolean;
   /** A regular expression the value must match. Warns; it never blocks a save. */
   pattern?: string;
   /**
@@ -610,25 +617,38 @@ export function stripHaMarks(text: string): string {
  */
 export function restoreHaText(text: string): string {
   if (!text.includes(HA_MARK)) return text;
-  let out = '';
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch !== HA_MARK) {
-      out += ch;
-      continue;
+  /*
+   * Written a run at a time, with the last two characters written kept beside it: asking the
+   * text built so far what it ends with, a character at a time, read the whole of it again
+   * for every marker - two seconds for a quarter of a megabyte of an attribute's JSON.
+   */
+  const parts: string[] = [];
+  let prev = '';
+  let beforePrev = '';
+  let from = 0;
+  for (let at = text.indexOf(HA_MARK); at !== -1; at = text.indexOf(HA_MARK, from)) {
+    if (at > from) {
+      parts.push(text.slice(from, at));
+      beforePrev = at - from >= 2 ? text[at - 2] : prev;
+      prev = text[at - 1];
     }
-    if (out.endsWith(HA_MARK)) continue;
-    let j = i + 1;
-    while (text[j] === HA_MARK) j += 1;
-    const next = text[j];
-    const prev = out[out.length - 1];
+    let after = at + 1;
+    while (text[after] === HA_MARK) after += 1;
+    const next = text[after];
     const opens =
-      (next === '[' && out.endsWith('[[')) ||
-      (next === '{' && (prev === '{' || prev === '$')) ||
-      (prev === '{' && (next === '%' || next === '#'));
-    if (opens) out += HA_MARK;
+      prev !== HA_MARK &&
+      ((next === '[' && prev === '[' && beforePrev === '[') ||
+        (next === '{' && (prev === '{' || prev === '$')) ||
+        (prev === '{' && (next === '%' || next === '#')));
+    if (opens) {
+      parts.push(HA_MARK);
+      beforePrev = prev;
+      prev = HA_MARK;
+    }
+    from = after;
   }
-  return out;
+  parts.push(text.slice(from));
+  return parts.join('');
 }
 
 export function asHaText<T>(value: T): T {
@@ -636,7 +656,7 @@ export function asHaText<T>(value: T): T {
   if (Array.isArray(value)) return value.map(asHaText) as unknown as T;
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value)) out[key] = asHaText(entry);
+    for (const [key, entry] of Object.entries(value)) setKey(out, key, asHaText(entry));
     return out as T;
   }
   return value;
@@ -1148,13 +1168,21 @@ function numberText(value: number): string {
 }
 
 // Each complaint once per page: a dashboard of copies would otherwise say it once a copy.
+// The value is part of what is remembered, and a card that rebuilds on a sensor hands in a new
+// one each time, so past this many the list starts over rather than growing for as long as
+// the page is open.
+const MAX_WARNED_ABOUT = 500;
 const warnedAbout = new Set<string>();
 
 function warnOnce(key: string, step: string, value: string, hass?: any): void {
-  const id = `${key}|${step}|${value}`;
+  // Told apart by the start of the value: a megabyte of text is not worth keeping to compare.
+  const id = `${key}|${step}|${value.length > 200 ? value.slice(0, 200) : value}`;
   if (warnedAbout.has(id)) return;
+  if (warnedAbout.size >= MAX_WARNED_ABOUT) warnedAbout.clear();
   warnedAbout.add(id);
-  warn({ kind: 'refused', message: localize(key, { step, value }, hass), step });
+  // Shown cut short past a few lines: a message is read, not a megabyte of text.
+  const shown = value.length > 300 ? `${value.slice(0, 300)}\u2026` : value;
+  warn({ kind: 'refused', message: localize(key, { step, value: shown }, hass), step });
 }
 
 /** Rounded to so many places, written with exactly that many - `round:2` of 2.5 is 2.50. */
@@ -1232,7 +1260,7 @@ function languageOf(hass: any): string {
   return String(hass?.locale?.language ?? hass?.language ?? 'en');
 }
 
-function numberLocaleOf(hass: any): string | undefined {
+function numberLocaleOf(hass: any): string | string[] | undefined {
   switch (hass?.locale?.number_format) {
     case 'comma_decimal':
       return 'en';
@@ -1240,6 +1268,11 @@ function numberLocaleOf(hass: any): string | undefined {
       return 'de';
     case 'space_comma':
       return 'fr';
+    case 'quote_decimal':
+      return 'de-CH';
+    case 'system':
+      // The browser's own: no locale named at all.
+      return [];
     case 'none':
       return undefined;
     default:
@@ -1366,8 +1399,9 @@ function localeStep(step: string, text: string, hass?: any): string | undefined 
 /*
  * Colours (idea 41). `lighten:20`, `darken:20`, `alpha:0.12`, `mix:#ff9800,50` and
  * `contrast` derive from one colour; a value that is not a colour is left as it was with a
- * word in the console, and a theme variable is passed through, since its value is not known
- * until the page paints.
+ * word in the console. A theme colour - `var(--x)`, or a bare `--x` read as one (#518) - has no
+ * value until the page paints, so those four write CSS color-mix() for the browser to work out,
+ * and the steps that need the value itself pass it through as a var().
  *
  * Each also reads the [r, g, b] list a color_rgb selector gives (#508), and three write a colour
  * out as it is: `to_hex` as hex (alpha kept as #rrggbbaa), `to_rgb` as that list again - a real
@@ -1388,7 +1422,7 @@ function isColourStep(step: string): boolean {
 
 /** The colour a colour step reads from the text, or undefined - with a word in the console - when there is none. */
 function colourFor(step: string, text: string, hass?: any): ReturnType<typeof parseColour> {
-  if (isThemeVariable(text)) {
+  if (liveColour(text) !== undefined) {
     warnOnce('warn.colour_from_theme', step, text, hass);
     return undefined;
   }
@@ -1400,44 +1434,100 @@ function colourFor(step: string, text: string, hass?: any): ReturnType<typeof pa
 /** What `to_rgb` makes of one value: the [r, g, b] list, or the value as it was when it is no colour. */
 function rgbListFor(text: string, hass?: any): unknown {
   const colour = colourFor(TO_RGB_STEP, text, hass);
-  return colour ? toRgbList(colour) : text;
+  return colour ? toRgbList(colour) : (liveColour(text) ?? text);
+}
+
+/** The percentage `lighten:`, `darken:` and `mix:` read, or undefined when it is no number. */
+function stepPercent(text: string): number | undefined {
+  // An argument left empty is no number: Number('') is 0.
+  const percent = Number(text);
+  return text.trim() && Number.isFinite(percent) ? percent : undefined;
+}
+
+/** The alpha `alpha:` reads, 0 to 1, or undefined. */
+function stepAlpha(text: string): number | undefined {
+  // An argument left empty is no number: Number('') is 0, which made the colour invisible.
+  const alpha = Number(text);
+  return text.trim() && Number.isFinite(alpha) && alpha >= 0 && alpha <= 1 ? alpha : undefined;
+}
+
+/*
+ * A colour step on a theme colour (#518), already written as CSS: lighten and darken mix towards
+ * white and black, alpha towards transparent, and mix towards the other colour, which may be a
+ * theme colour too - each as color-mix(), so `lighten:20` is 20% white, as it is for a hex. The
+ * steps that need the value itself, and a step whose argument cannot be read, pass it through.
+ */
+function themeColourStep(step: string, name: string, arg: string, text: string, live: string, hass?: any): string {
+  if (name === 'alpha') {
+    const alpha = stepAlpha(arg);
+    if (alpha !== undefined) return alphaCss(live, alpha);
+    warnOnce('warn.bad_step_argument', step, text, hass);
+    return live;
+  }
+  if (name === 'mix') {
+    const comma = arg.lastIndexOf(',');
+    const otherText = comma === -1 ? arg : arg.slice(0, comma);
+    const percent = comma === -1 ? 50 : stepPercent(arg.slice(comma + 1));
+    const parsed = parseColour(otherText);
+    const other = liveColour(otherText) ?? (parsed && toHexWithAlpha(parsed));
+    if (other && percent !== undefined) return mixCss(live, other, percent);
+    warnOnce('warn.not_a_colour', step, text, hass);
+    return live;
+  }
+  if (name === 'lighten' || name === 'darken') {
+    const percent = stepPercent(arg);
+    if (percent !== undefined) return mixCss(live, name === 'lighten' ? 'white' : 'black', percent);
+    warnOnce('warn.bad_step_argument', step, text, hass);
+    return live;
+  }
+  warnOnce('warn.colour_from_theme', step, text, hass);
+  return live;
 }
 
 function colourStep(step: string, text: string, hass?: any): string | undefined {
   if (!isColourStep(step)) return undefined;
-  const colour = colourFor(step, text, hass);
-  if (!colour) return text;
   const colon = step.indexOf(':');
   const name = colon === -1 ? step : step.slice(0, colon);
   const arg = colon === -1 ? '' : step.slice(colon + 1);
+  const live = liveColour(text);
+  if (live !== undefined) return themeColourStep(step, name, arg, text, live, hass);
+  const colour = colourFor(step, text, hass);
+  if (!colour) return text;
   if (name === CONTRAST_STEP) return contrast(colour);
   if (name === TO_HEX_STEP) return toHexWithAlpha(colour);
   if (name === COLOR_NAME_STEP) return colourName(colour) ?? toHexWithAlpha(colour);
   if (name === TO_RGB_STEP) return JSON.stringify(toRgbList(colour));
   if (name === 'alpha') {
-    const alpha = Number(arg);
-    if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1) {
+    const alpha = stepAlpha(arg);
+    if (alpha === undefined) {
       warnOnce('warn.bad_step_argument', step, text, hass);
       return text;
     }
     return toRgba(colour, alpha);
   }
   if (name === 'mix') {
-    const comma = arg.lastIndexOf(',');
-    const other = parseColour(comma === -1 ? arg : arg.slice(0, comma));
-    const percent = comma === -1 ? 50 : Number(arg.slice(comma + 1));
-    if (!other || !Number.isFinite(percent)) {
+    // The whole argument first: `rgb(0,0,255)` and `[0,0,255]` have commas of their own.
+    const whole = parseColour(arg);
+    const comma = whole ? -1 : arg.lastIndexOf(',');
+    const otherText = comma === -1 ? arg : arg.slice(0, comma);
+    const other = whole ?? parseColour(otherText);
+    const percent = stepPercent(comma === -1 ? '50' : arg.slice(comma + 1));
+    // A theme colour to mix with (#518) leaves the blend to the browser.
+    const otherLive = other ? undefined : liveColour(otherText);
+    if (otherLive && percent !== undefined) return mixCss(toHexWithAlpha(colour), otherLive, percent);
+    if (!other || percent === undefined) {
       warnOnce('warn.not_a_colour', step, text, hass);
       return text;
     }
-    return toHex(mix(colour, other, percent));
+    // Alpha kept (as #rrggbbaa) when either colour had one; a solid colour is #rrggbb as before.
+    return toHexWithAlpha(mix(colour, other, percent));
   }
-  const percent = Number(arg);
-  if (!Number.isFinite(percent)) {
+  const percent = stepPercent(arg);
+  if (percent === undefined) {
     warnOnce('warn.bad_step_argument', step, text, hass);
     return text;
   }
-  return toHex(name === 'lighten' ? lighten(colour, percent) : darken(colour, percent));
+  return toHexWithAlpha(name === 'lighten' ? lighten(colour, percent) : darken(colour, percent));
 }
 
 // Every new step, for the grammar and the lint: written bare, and written with an argument.
@@ -2623,7 +2713,7 @@ export function applyTransform(
         list = made;
         text = undefined;
         empty = false;
-      }
+      } else text = made as string;
       continue;
     }
 
@@ -2767,7 +2857,10 @@ export function resolveFallback(
 
 // The parts of a template that get substituted into, and so the only places a placeholder
 // can do anything.
-// A function template's result (#307) is one too.
+// A function template's result (#307) is one too. Its `name:` is filled in as well, for the
+// report's label, and is read by visibilityReads as something only shown. placeholders.ts
+// keeps a longer list of its own, for offering every placeholder written anywhere - `let:`
+// and `default:` values included - which is a different question from what a card must set.
 const CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group', 'style', 'function'];
 
 // Substitution reads one name and one value per entry, so everything here has to agree
@@ -3368,6 +3461,8 @@ export function fieldDefaults(declaration: VariableDeclaration): Record<string, 
 export const THIS_PREFIX = '__this__.';
 const THIS_REF = /\[\[__this__\.([^|[\]?.]+)((?:[^\][]|\[(?!\[))*)\]\]/g;
 
+const has = (object: object, key: string): boolean => Object.prototype.hasOwnProperty.call(object, key);
+
 interface FieldRead {
   state: 'set' | 'unset' | 'loop';
   value?: unknown;
@@ -3385,8 +3480,9 @@ function thisDefaults(
   const read = (field: string): FieldRead => {
     const known = done.get(field);
     if (known) return known;
-    if (field in entry) return { state: 'set', value: entry[field] };
-    if (!(field in defaults)) return { state: 'unset' };
+    // Own fields only: `constructor` and `toString` are in every object, and are not fields.
+    if (has(entry, field)) return { state: 'set', value: entry[field] };
+    if (!has(defaults, field)) return { state: 'unset' };
     if (reading.has(field)) return { state: 'loop' };
     reading.add(field);
     let loop = false;
@@ -3418,7 +3514,7 @@ function thisDefaults(
       if (Array.isArray(value)) return value.map(walk);
       if (!isPlainMapping(value)) return value;
       const out: Record<string, unknown> = {};
-      for (const [key, inner] of Object.entries(value)) out[key] = walk(inner);
+      for (const [key, inner] of Object.entries(value)) setKey(out, key, walk(inner));
       return out;
     };
     const value = walk(defaults[field]);
@@ -3429,7 +3525,7 @@ function thisDefaults(
     return result;
   };
   const out: Record<string, unknown> = {};
-  for (const key of missing) out[key] = read(key).value;
+  for (const key of missing) setKey(out, key, read(key).value);
   return out;
 }
 
@@ -3444,11 +3540,11 @@ export function filledObject(
 ): { value: unknown; filled: boolean; extras: VariablesConfig[] } {
   const reads = Object.values(defaults).some((each) => JSON.stringify(each)?.includes('[[__this__.'));
   const fill = (entry: Record<string, unknown>, path: string): { value: unknown; filled: boolean } => {
-    const missing = Object.keys(defaults).filter((key) => !(key in entry));
+    const missing = Object.keys(defaults).filter((key) => !has(entry, key));
     if (!missing.length) return { value: entry, filled: false };
     const out: Record<string, unknown> = { ...entry };
     const filled = reads ? thisDefaults(entry, defaults, missing, path, extras) : defaults;
-    for (const key of missing) out[key] = filled[key];
+    for (const key of missing) setKey(out, key, filled[key]);
     return { value: out, filled: true };
   };
   if (value === undefined || value === null || value === '') {
@@ -3717,18 +3813,28 @@ function conditionReads(condition: unknown, reads: unknown[]): void {
 function visibilityReads(template: TemplateConfig | undefined): unknown[] {
   const reads: unknown[] = [];
   const declared = (template as any)?.variables;
+  // Read through declarationList, so declarations written as a mapping (#223) count too.
   const owners: Pick<VariableDeclaration, VisibilityKey>[] = [
-    ...(Array.isArray(declared) ? declared.filter((each) => each && typeof each === 'object') : []),
+    ...declarationList(declared).filter((each) => each && typeof each === 'object'),
     ...Object.values(templateGroups(template)),
   ];
   for (const owner of owners)
     for (const key of ['show_if', 'hide_if'] as const)
       for (const condition of visibilityConditions(owner, key)) conditionReads(condition, reads);
   // A note (#509) reads what it shows, each as optional: a note never makes a variable needed.
-  for (const { note } of getNotes(template)) {
-    const shown = /\[\[([A-Za-z0-9_.-]+)/g;
-    for (let match = shown.exec(note.note); match; match = shown.exec(note.note)) reads.push(`[[${match[1]}?]]`);
-  }
+  for (const { note } of getNotes(template)) reads.push(...shownReads(note.note));
+  // So does the template's `name:`, which a card's report is labelled with: filled in from
+  // the card's variables, and never a reason to call one missing.
+  const name = (template as any)?.name;
+  if (typeof name === 'string') reads.push(...shownReads(name));
+  return reads;
+}
+
+// The names a text only shows, each as an optional placeholder: used, and never missing.
+function shownReads(text: string): string[] {
+  const reads: string[] = [];
+  const shown = /\[\[([A-Za-z0-9_.-]+)/g;
+  for (let match = shown.exec(text); match; match = shown.exec(text)) reads.push(`[[${match[1]}?]]`);
   return reads;
 }
 
@@ -3924,10 +4030,6 @@ export function usesLabels(
   return usesStep(template, (step) => step.trim() === 'labels', itemTemplates);
 }
 
-/**
- * Whether the template asks for a translation, whose answer changes when Home Assistant
- * loads more of them or the language changes - not when the registry does.
- */
 /** Whether the template says how long ago something was, which goes stale unless the card rebuilds (idea 38). */
 export function usesTimeStep(template: TemplateConfig | undefined): boolean {
   return usesStep(template, (step) => step === RELATIVE_STEP || stepName(step) === AGE_STEP);
@@ -3968,6 +4070,10 @@ export function stateReads(
   };
 }
 
+/**
+ * Whether the template asks for a translation, whose answer changes when Home Assistant
+ * loads more of them or the language changes - not when the registry does.
+ */
 export function usesTranslate(
   template: TemplateConfig | undefined,
   itemTemplates?: Record<string, TemplateConfig>,
@@ -4019,7 +4125,6 @@ export function hasRequiredVariables(
   });
 }
 
-/** Every variable the template itself uses, before any instance passes anything in. */
 /**
  * The values that break their own declaration: a `pattern:` they do not match, or an
  * `allowed:` list they are not in. Unset is not invalid - that is what `missing` is for -
@@ -4054,10 +4159,12 @@ export function validateDeclared(
      * cannot be yet - `[[room]]_light` is an entity id only once room is in. Neither the type
      * nor allowed: nor pattern: is checked against the brackets as written (#490).
      */
-    const json = JSON.stringify(value);
+    // Read as placeholderJson writes it: a list holding one list is `[[1,2]]` in plain JSON,
+    // which is no placeholder, and was passed over unjudged as though it were one.
+    const json = placeholderJson(value);
     if (typeof json === 'string' && PLACEHOLDER.test(json)) {
       value = fill ? fill(value, declaration.name) : undefined;
-      const worked = JSON.stringify(value);
+      const worked = placeholderJson(value);
       if (
         value === undefined ||
         value === null ||
@@ -4091,7 +4198,7 @@ export function validateDeclared(
       // both have come from somebody else's template - so one that could run away is not
       // run at all, and nor is one against text longer than any pattern here is for.
       const text = String(value);
-      if (text.length > MAX_CHECKED_LENGTH || !patternIsSafe(declaration.pattern)) continue;
+      if (text.length > MAX_CHECKED_LENGTH || !patternIsSafe(declaration.pattern, text.length)) continue;
       let expression: RegExp;
       try {
         expression = new RegExp(declaration.pattern);
@@ -4128,12 +4235,31 @@ const MAX_PATTERN_LENGTH = 200;
  * that backtracks for seconds on thirty characters; a plain `^light\.` or `^[a-z-]+$` is
  * not. Read character by character so that an escaped bracket or one inside a class does
  * not count.
+ *
+ * A row of open-ended quantifiers with no group at all backtracks too, only more slowly:
+ * `^a*a*a*a*b$` tries every way of sharing the text out between them, the text's length to
+ * the power of how many there are. So with the text's length given, a pattern whose worst
+ * case is past what a keystroke can wait for is not run either.
  */
-export function patternIsSafe(pattern: string): boolean {
+const MAX_PATTERN_STEPS = 1e7;
+// A `{n}` or `{n,m}` this small repeats a fixed handful of times, which shares nothing out.
+const SMALL_REPEAT = 10;
+
+/** What a `{` at `at` is: nothing (a literal brace), a small fixed repeat, or an open-ended one. */
+function braceQuantifier(pattern: string, at: number): 'none' | 'small' | 'open' {
+  const written = /^\{(\d+)(,(\d*))?\}/.exec(pattern.slice(at, at + 24));
+  if (!written) return 'none';
+  const most = written[2] === undefined ? Number(written[1]) : written[3] === '' ? Infinity : Number(written[3]);
+  return most <= SMALL_REPEAT ? 'small' : 'open';
+}
+
+export function patternIsSafe(pattern: string, textLength?: number): boolean {
   if (pattern.length > MAX_PATTERN_LENGTH) return false;
   // One flag per open group: whether a quantifier or a bar has been seen inside it.
   const groups: boolean[] = [];
   let inClass = false;
+  // How many quantifiers can each take any amount of the text.
+  let open = 0;
   for (let i = 0; i < pattern.length; i += 1) {
     const char = pattern[i];
     if (char === '\\') {
@@ -4150,13 +4276,17 @@ export function patternIsSafe(pattern: string): boolean {
     }
     if (char === '(') {
       groups.push(false);
+      // The `?` of `(?:`, `(?=`, `(?!` and a named group says what kind of group it is; it repeats nothing.
+      if (pattern[i + 1] === '?') i += 1;
       continue;
     }
-    const quantifier = char === '+' || char === '*' || char === '{' || char === '?';
+    const brace = char === '{' ? braceQuantifier(pattern, i) : 'none';
+    if (char === '+' || char === '*' || brace === 'open') open += 1;
+    const quantifier = char === '+' || char === '*' || brace === 'open' || char === '?';
     if (char === ')') {
       const busy = groups.pop() ?? false;
       const next = pattern[i + 1];
-      const quantified = next === '+' || next === '*' || next === '{';
+      const quantified = next === '+' || next === '*' || (next === '{' && braceQuantifier(pattern, i + 1) === 'open');
       if (busy && quantified) return false;
       // A quantified group counts as busy for the group around it.
       if (quantified && groups.length) groups[groups.length - 1] = true;
@@ -4164,9 +4294,11 @@ export function patternIsSafe(pattern: string): boolean {
     }
     if ((quantifier || char === '|') && groups.length) groups[groups.length - 1] = true;
   }
-  return true;
+  if (textLength === undefined || open < 2) return true;
+  return Math.pow(Math.max(textLength, 2), open) <= MAX_PATTERN_STEPS;
 }
 
+/** Every variable the template itself uses, before any instance passes anything in. */
 export function usedVariables(written: TemplateConfig | undefined): string[] {
   // A quoted with:/repeat: body (#498) is read as the two-line form; its hidden name is nobody's.
   const template = withInlineBodies(written);
@@ -4189,7 +4321,14 @@ export function diagnoseInstance(
   // bare `[[row|with]]` drawing on the card's own variables does not call them unused - but
   // never as missing, since a `with:` or a repeat's items may be what gives those names.
   bodies?: unknown[],
-): { missing: string[]; unused: string[]; required: string[] } {
+): {
+  missing: string[];
+  unused: string[];
+  // The unused names only another variable's own default reads (#511), with those
+  // variables, and whether the card sets every one of them (so their default never applies).
+  unusedVia?: { name: string; via: string[]; set: boolean }[];
+  required: string[];
+} {
   // A quoted with:/repeat: body (#498) is read as the two-line form it stands for.
   const template = withInlineBodies(written);
   // Supplements go after full resolution, so they only fill names nothing else defines.
@@ -4206,8 +4345,6 @@ export function diagnoseInstance(
     if (part === undefined || part === null) continue;
     for (const name of reachable({ card: part } as TemplateConfig, values)) if (!used.includes(name)) used.push(name);
   }
-  const isUsed = new Set(used);
-
   // What the card wrote, not the dotted names derived from its mappings - and a mapping
   // reached only through one of its keys (`[[room.light]]`) is still used.
   const passed = ownVariables(variables);
@@ -4216,15 +4353,45 @@ export function diagnoseInstance(
   // `[[show.ele.weather]]` uses whatever that value reads in turn.
   for (const body of bodies ?? [])
     for (const name of reachableFrom(placeholdersIn(body), values)) readByBodies.add(name);
-  const reached = (name: string): boolean =>
-    isUsed.has(name) ||
-    readByBodies.has(name) ||
-    [...used, ...readByBodies].some((each) => each.startsWith(name + '.'));
+  // Every name read, and every mapping one of them reaches into, worked out once.
+  const reachedNames = new Set<string>();
+  for (const each of [...used, ...readByBodies]) {
+    reachedNames.add(each);
+    for (let at = each.indexOf('.'); at > 0; at = each.indexOf('.', at + 1)) reachedNames.add(each.slice(0, at));
+  }
+  const reached = (name: string): boolean => reachedNames.has(name);
   const unused: string[] = [];
   for (const entry of passed) {
     const name = firstKey(entry);
     if (name !== undefined && !reached(name) && !unused.includes(name)) unused.push(name);
   }
+  /*
+   * #511: an unused name that the template's own default for another variable reads - a
+   * `weather_offset_diff` defaulting to `[[base|mul:[[weather_scale]]]]` - is unused only
+   * because that default never comes into play: the card sets the other variable itself, or
+   * nothing reads it. Said apart, so the notice does not look as if the default went unread.
+   */
+  const feeders: Record<string, string[]> = Object.create(null);
+  if (unused.length) {
+    const defaults: [string, unknown][] = [
+      ...getDeclarations(template)
+        .filter((declaration) => 'default' in declaration)
+        .map((declaration): [string, unknown] => [declaration.name, declaration.default]),
+      ...defaultList(template).map((entry): [string, unknown] => [firstKey(entry) as string, Object.values(entry)[0]]),
+    ];
+    for (const [owner, value] of defaults) {
+      if (owner === undefined || unused.includes(owner)) continue;
+      for (const name of reachableFrom(placeholdersIn(value), values)) {
+        if (name === owner || !unused.includes(name)) continue;
+        const list = (feeders[name] ??= []);
+        if (!list.includes(owner)) list.push(owner);
+      }
+    }
+  }
+  const passedNames = new Set(passed.map(firstKey));
+  const unusedVia = unused
+    .filter((name) => name in feeders)
+    .map((name) => ({ name, via: feeders[name], set: feeders[name].every((owner) => passedNames.has(owner)) }));
 
   const answered = answeredNames(template, values, used);
   // A chain with a step nobody knows (`name|uper`) is told apart as an unknown step, not an unset variable.
@@ -4243,7 +4410,9 @@ export function diagnoseInstance(
       .filter((declaration) => declaration.required === true)
       .map((declaration) => declaration.name),
   );
-  return { missing, unused, required: missing.filter((name) => insisted.has(name)) };
+  const result = { missing, unused, required: missing.filter((name) => insisted.has(name)) };
+  // Left out when empty, so the result keeps its old shape for everything that reads it whole.
+  return unusedVia.length ? { ...result, unusedVia } : result;
 }
 
 /*
@@ -4294,6 +4463,16 @@ export function diagnoseTemplate(template: TemplateConfig | undefined): {
 }
 
 /**
+ * The declarations marked both `required: true` and `allow_empty: true` (#514): required asks
+ * for a value, and allow_empty lets the card editor give none, so the template editor says so.
+ */
+export function requiredButEmpty(template: TemplateConfig | undefined): string[] {
+  return getDeclarations(template)
+    .filter((declaration) => declaration.required === true && declaration.allow_empty === true)
+    .map((declaration) => declaration.name);
+}
+
+/**
  * The variables an editor wants written back, ordered so that editing a card produces the
  * smallest possible change to the configuration: names already there keep their place,
  * names that have just been set are appended, and names no longer wanted disappear.
@@ -4327,9 +4506,6 @@ export function forEachVariables(
   index?: number,
   count?: number,
 ): VariablesConfig[] {
-  // Where the copy sits in the list, counted from one because these are read by people
-  // writing "Zone [[index]] of [[count]]" rather than by programmers. They go last, so
-  // an item or a card that sets either of those names by hand still wins.
   // Where the copy sits in the list, counted from one because these are read by people
   // writing "Zone [[index]] of [[count]]" rather than by programmers - with index0 beside
   // it for the times a list is being indexed into, and first/last for the ends, which is

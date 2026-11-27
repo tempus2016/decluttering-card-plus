@@ -102,19 +102,21 @@ export function findSimilarCards(cards: any[]): SimilarGroup[] {
   return groups.sort((a, b) => b.indices.length - a.indices.length || a.indices[0] - b.indices[0]);
 }
 
-const clean = (text: string): string => text.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'value';
+/** Text as a variable or template name: anything else becomes an underscore, and nothing at all becomes `value`. */
+export const cleanName = (text: string): string =>
+  text.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'value';
 
 /** The short name for a path: its last key, or for a list item the list's key and the item's place. */
 function shortName(path: Path): string {
   const last = path[path.length - 1];
-  if (typeof last === 'string') return clean(last);
+  if (typeof last === 'string') return cleanName(last);
   const key = [...path].reverse().find((step) => typeof step === 'string');
-  return clean(`${key ?? 'item'}_${(last as number) + 1}`);
+  return cleanName(`${key ?? 'item'}_${(last as number) + 1}`);
 }
 
 /** The long name for a path, every step of it, for when two short names clash. */
 function longName(path: Path): string {
-  return clean(path.map((step) => (typeof step === 'number' ? String(step + 1) : step)).join('_'));
+  return cleanName(path.map((step) => (typeof step === 'number' ? String(step + 1) : step)).join('_'));
 }
 
 /**
@@ -202,7 +204,7 @@ export function makeTemplateFromSimilar(ll: any, cards: any[], name: string): an
  * `light_tile_card`. Never a name already taken.
  */
 export function suggestTemplateName(type: string, taken: string[], cards: any[] = []): string {
-  let base = clean(type.replace(/^custom:/, '').replace(/-/g, '_')).toLowerCase();
+  let base = cleanName(type.replace(/^custom:/, '').replace(/-/g, '_')).toLowerCase();
   if (!/(^|_)card$/.test(base)) base = `${base}_card`;
   const domains = new Set(
     cards.map((card) =>
@@ -210,6 +212,6 @@ export function suggestTemplateName(type: string, taken: string[], cards: any[] 
     ),
   );
   const [domain] = [...domains];
-  if (domains.size === 1 && domain) base = `${clean(domain).toLowerCase()}_${base}`;
+  if (domains.size === 1 && domain) base = `${cleanName(domain).toLowerCase()}_${base}`;
   return freeName(base, taken);
 }

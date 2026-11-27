@@ -26,6 +26,15 @@ export function integrationExists(domain: string, hass: any): boolean | undefine
   return integrationLoaded(components, domain);
 }
 
+/**
+ * Whether a tag could be a custom element's at all: lower case, with a hyphen. The registry
+ * refuses to wait for any other - `whenDefined` rejects - so a type written without the
+ * hyphen, or with a capital, is one that will never be there rather than one to wait for.
+ */
+export function isElementName(tag: string): boolean {
+  return /^[a-z][a-z0-9._-]*-[a-z0-9._-]*$/.test(tag);
+}
+
 /** The element a card type names: `custom:mushroom-entity-card` and `mushroom-entity-card` alike. */
 export function cardTag(type: string): string {
   return type.trim().replace(/^custom:/, '');
@@ -53,7 +62,7 @@ export function cardExists(type: string): boolean | undefined {
   if (!registry || typeof registry.get !== 'function') return undefined;
   const tag = cardTag(type);
   // Only a valid custom element name can ever be defined; anything else is a plain no.
-  if (!/^[a-z][a-z0-9._-]*-[a-z0-9._-]*$/.test(tag)) return false;
+  if (!isElementName(tag)) return false;
   if (registry.get(tag)) return true;
   if (!waiting.has(tag) && typeof registry.whenDefined === 'function') {
     waiting.add(tag);

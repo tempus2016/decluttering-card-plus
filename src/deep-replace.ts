@@ -1,9 +1,9 @@
-import { findAcross, placeholderJson } from './placeholder-text';
+import { findAcross, placeholderJson, setKey } from './placeholder-text';
 import { applyListEdits, LIST_EDIT_KEY } from './list-edits';
 import { VariablesConfig, TemplateConfig } from './types';
 import { localize } from './localize';
 import { BuildTrace, ItemTrace, SkipTrace } from './trace';
-import { compile, Piece, SITE_SOURCE } from './compiled';
+import { compile, inText, Piece, SITE_SOURCE } from './compiled';
 import { hoistInlineBodies, INLINE_PREFIX, restoreInlineBodies } from './inline-body';
 import { warn, WarningKind } from './warnings';
 import { isRegistrySource, resolveRegistryItems, SourceContext } from './registry';
@@ -141,6 +141,13 @@ export interface BuildExtras {
   readDepth?: number;
   tooDeep?: Set<string>;
   /*
+   * The values being worked out right now, by name and text, all the way out. One that reads
+   * itself - `n: '[[n|or:other]] x'` - is read as written the second time round: worked out
+   * again inside itself at every level, each level put the one below in ten times over, and
+   * a card's name came out a megabyte long.
+   */
+  reading?: Set<string>;
+  /*
    * Told every warning the build says, even one the console has already heard, so a card's
    * `strict: {warnings: ...}` (#390) knows what this build had to say. Not told about a
    * placeholder left standing: that is an error to `strict:`, and is reported as one.
@@ -210,8 +217,8 @@ function unsplice(node: any): any {
   }
   if (node && typeof node === 'object') {
     if (isSplice(node)) return node[SPLICE_KEY].map(unsplice);
-    const out: Record<string, any> = Object.create(null);
-    for (const [key, value] of Object.entries(node)) out[key] = unsplice(value);
+    const out: Record<string, any> = {};
+    for (const [key, value] of Object.entries(node)) setKey(out, key, unsplice(value));
     return out;
   }
   return node;
@@ -253,6 +260,16 @@ function outputLimit(originalLength: number): number {
   return Math.max(MAX_OUTPUT_LENGTH, originalLength * 50);
 }
 
+/*
+ * What every build inside one outermost build may add between them. A value read on the way -
+ * what an `if:` asks about, a step's input - is built against a ceiling of its own, and values
+ * that lead back to each other through a mapping had each of those builds fill its megabyte,
+ * level after level: two minutes for four short variables. A few times the outermost build's
+ * own ceiling is far past what any card's reads add up to, and ends that in good time.
+ */
+const GROWTH_SHARE = 4;
+let growthLeft = Infinity;
+
 // Substitution is string surgery on JSON text, so anything inserted into a JSON string
 // has to be escaped for one. Without this a value containing a newline, a double quote
 // or a backslash produces invalid JSON and the card dies with "Bad control character"
@@ -263,15 +280,15 @@ function escapeForJsonString(value: string): string {
   return quoted.slice(1, quoted.length - 1);
 }
 
-// A placeholder standing as the whole JSON value takes the place of its quotes too, so it
-// can become any JSON. A string is the exception: it is left for the pass below to put
-// inside the quotes that are already there.
 /** Whether a value - text, or a mapping or list with text in it - still has a placeholder to fill. */
 function holdsPlaceholder(value: unknown): boolean {
   if (typeof value === 'string') return PLACEHOLDER.test(value);
   return !!value && typeof value === 'object' && PLACEHOLDER.test(placeholderJson(value));
 }
 
+// A placeholder standing as the whole JSON value takes the place of its quotes too, so it
+// can become any JSON. A string is the exception: it is left for the pass below to put
+// inside the quotes that are already there.
 function asWholeValue(value: any, match: string): string {
   // `typeof null` is 'object', and JSON.stringify(null) is 'null', which is what a bare
   // `"[[name]]"` should become - so null belongs here rather than with the strings.
@@ -368,7 +385,7 @@ function unescapeOutsideConsumers(node: any): any {
   if (CONSUMER_TYPES.includes(node.type)) return node;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
-    out[restoreHaText(unescapePlaceholders(key))] = unescapeOutsideConsumers(value);
+    setKey(out, restoreHaText(unescapePlaceholders(key)), unescapeOutsideConsumers(value));
   }
   return out;
 }
@@ -386,6 +403,31 @@ function hasStyleKey(node: any): boolean {
   if (Array.isArray(node)) return node.some(hasStyleKey);
   if (!node || typeof node !== 'object') return false;
   return Object.keys(node).some((key) => STYLE_KEYS.includes(key) || hasStyleKey(node[key]));
+}
+
+/** Whether a mapping or a list has `[[` in any of its text - a placeholder, or an escape. */
+function holdsBrackets(value: object): boolean {
+  return placeholderJson(value).includes('[[');
+}
+
+// Whether a content object has a style to build, asked once per object: a template's content
+// is the same object on every build, and most have no stylesheet with a placeholder in it.
+const STYLE_TO_BUILD = new WeakMap<object, boolean>();
+function hasStyleToBuild(content: unknown): boolean {
+  if (!content || typeof content !== 'object') return false;
+  let known = STYLE_TO_BUILD.get(content);
+  if (known === undefined) {
+    known = hasStyleKey(content) && holdsBrackets(content);
+    STYLE_TO_BUILD.set(content, known);
+  }
+  return known;
+}
+
+// A value as a warning names it: text past a few lines is cut, since a message is read, and
+// one built around a megabyte of text for every placeholder left standing held the build.
+const BRIEF = 300;
+function brief(value: unknown): unknown {
+  return typeof value === 'string' && value.length > BRIEF ? `${value.slice(0, BRIEF)}\u2026` : value;
 }
 
 /** How to describe a value that a transform cannot shape, in a sentence about it. */
@@ -483,8 +525,17 @@ function substitutePass(
   const within = (match: string, out: string): string => {
     const growth = out.length - match.length;
     if (budget) {
-      if (growth > budget.left) return match;
+      /*
+       * The first site that does not fit ends the build's filling altogether: nothing is left
+       * to spend. Left a little room, the passes and the rounds after them went on over a
+       * megabyte of text - seconds of it - shrinking one site to grow another.
+       */
+      if (growth > budget.left || growth > growthLeft) {
+        budget.left = 0;
+        return match;
+      }
       budget.left -= growth;
+      if (growth > 0) growthLeft -= growth;
       return out;
     }
     if (growth > room) return match;
@@ -492,8 +543,12 @@ function substitutePass(
     return out;
   };
 
-  const site = (...found: SiteMatch): string => {
+  // `asText`: the quotes around the site are not a whole value's (see inText in compiled.ts).
+  const site = (found: SiteMatch, asText = false): string => {
     const [match, lead, name, rawTransform, rawOptional, trail] = found;
+    // Nothing left to spend: the sites still to come are left as written, without working out
+    // what would have gone in - a megabyte of text escaped for each one, only to be refused.
+    if (budget && budget.left <= 0) return match;
     /*
      * A quoted name is its own value (#398): `[["sensor.hall"|if_exists]]` needs no variable.
      * The text here is JSON, where somebody's double quote is `\"` - a bare `"` is JSON's own,
@@ -514,7 +569,10 @@ function substitutePass(
     const fromHa = !!haNames?.has(name);
     // The placeholder itself, without whichever quotes the scan took with it.
     const inner = match.slice(lead ? 1 : 0, trail ? -1 : undefined);
-    const whole = !!lead && !!trail;
+    // Brackets opened in one value and closed in a later one, with a name or a step's argument
+    // that happens to read as one across the JSON between them: not a placeholder.
+    if (inner.includes('"') && acrossStrings(inner)) return match;
+    const whole = !!lead && !!trail && !asText;
 
     // Every replacement goes through a function so that `$&`, `$1` and friends in a
     // variable's value are inserted literally rather than read as replacement patterns.
@@ -572,7 +630,7 @@ function substitutePass(
           : value;
       const unlisted = unlistedState(transform, input, hass, values, read);
       if (unlisted !== undefined) {
-        return refuse(match, written, localize('warn.state_unlisted', { entity: unlisted }), 'unlisted');
+        return refuse(match, written, localize('warn.state_unlisted', { entity: brief(unlisted) }), 'unlisted');
       }
       const text = applyTransform(transform, input, hass, values, read, shield, fromHa);
       if (text !== undefined) return wrap(text);
@@ -597,7 +655,7 @@ function substitutePass(
         if (isIfExistsStep(steps[upTo - 1])) {
           if (optional) return match;
           const id = upTo === 1 ? input : applyTransform(steps.slice(0, upTo - 1).join('|'), input, hass, values, read);
-          return refuse(match, written, localize('warn.nothing_for', { value: id }), 'missing');
+          return refuse(match, written, localize('warn.nothing_for', { value: brief(id) }), 'missing');
         }
         /*
          * A function that gave nothing (#307) is a gap of its own making, like `if_exists`: an
@@ -628,7 +686,7 @@ function substitutePass(
           return refuse(
             match,
             written,
-            localize('warn.function_nothing', { name: stepName(steps[upTo - 1]), value: given }),
+            localize('warn.function_nothing', { name: stepName(steps[upTo - 1]), value: brief(given) }),
             'function',
           );
         }
@@ -647,7 +705,7 @@ function substitutePass(
            * the author looking at the list; a default: would not fix it either.
            */
           if (upTo === 1 && !gap && (input === null || typeof input !== 'object')) {
-            return refuse(match, written, localize('warn.pick_not_list', { value: input }), 'structure');
+            return refuse(match, written, localize('warn.pick_not_list', { value: brief(input) }), 'structure');
           }
           const stepsBefore = steps.slice(0, upTo - 1).join('|');
           if (upTo > 1 && !yieldsList(stepsBefore)) {
@@ -655,7 +713,7 @@ function substitutePass(
             return refuse(
               match,
               written,
-              localize('warn.pick_not_list_after', { step: stepName(steps[upTo - 2]), value: before }),
+              localize('warn.pick_not_list_after', { step: stepName(steps[upTo - 2]), value: brief(before) }),
               'structure',
             );
           }
@@ -675,9 +733,9 @@ function substitutePass(
           upTo === 1 ? input : applyTransform(steps.slice(0, upTo - 1).join('|'), input, hass, values, read);
         // A placeholder that filled in a mapping or a list is refused as a written-out one is, not quoted as text.
         if (before !== null && typeof before === 'object') return refuse(match, written, kindOf(before));
-        return refuse(match, written, localize('warn.no_map_match', { value: before }), 'map');
+        return refuse(match, written, localize('warn.no_map_match', { value: brief(before) }), 'map');
       }
-      return refuse(match, written, localize('warn.nothing_for', { value }), 'missing');
+      return refuse(match, written, localize('warn.nothing_for', { value: brief(value) }), 'missing');
     };
 
     /*
@@ -843,19 +901,15 @@ function substitutePass(
       out +=
         typeof piece === 'string'
           ? piece
-          : site(piece.text, piece.lead, piece.name, piece.chain, piece.optional, piece.trail);
+          : site([piece.text, piece.lead, piece.name, piece.chain, piece.optional, piece.trail], piece.inText);
     }
     return out;
   }
-  return jsonConfig.replace(SITE, (...found) => site(...(found.slice(0, 6) as SiteMatch)));
+  return jsonConfig.replace(SITE, (...found) =>
+    site(found.slice(0, 6) as SiteMatch, inText(jsonConfig, found[6] as number, found[0], found[1], found[5])),
+  );
 }
 
-/*
- * The placeholders still standing once substitution has done all it can, which are the
- * ones no variable defines. An escaped `[[!name]]` is not one of them - it is meant to be
- * there - and neither is a placeholder a transform deliberately refused, which says so
- * for itself in a message of its own.
- */
 /*
  * The names a value brings in, read from its placeholders as written - escaped ones are
  * text, so they bring nothing in.
@@ -891,6 +945,12 @@ export function findLoop(start: string, values: Record<string, unknown>): string
   return given(start) ? walk(start, [start]) : undefined;
 }
 
+/*
+ * The placeholders still standing once substitution has done all it can, which are the
+ * ones no variable defines. An escaped `[[!name]]` is not one of them - it is meant to be
+ * there - and neither is a placeholder a transform deliberately refused, which says so
+ * for itself in a message of its own.
+ */
 function unresolvedPlaceholders(json: string, refused: Map<string, Refusal>): string[] {
   const names = new Set<string>();
   const everyPlaceholder = new RegExp(PLACEHOLDER.source, 'g');
@@ -906,9 +966,14 @@ function unresolvedPlaceholders(json: string, refused: Map<string, Refusal>): st
 }
 
 /** Whether this text is nothing but one optional placeholder that found no value. */
+// Neither keeps a place between uses: one is not global, the other only ever goes through
+// String.replace, which starts from the beginning for itself.
+const ONLY_PLACEHOLDER = new RegExp(`^${PLACEHOLDER.source}$`);
+const ANY_PLACEHOLDER = new RegExp(PLACEHOLDER.source, 'g');
+
 function isEmptyOption(value: unknown): boolean {
-  if (typeof value !== 'string') return false;
-  const match = new RegExp(`^${PLACEHOLDER.source}$`).exec(value);
+  if (typeof value !== 'string' || !value.startsWith('[[')) return false;
+  const match = ONLY_PLACEHOLDER.exec(value);
   return !!match && !match[1].startsWith(ESCAPE) && isOptional(match[1]);
 }
 
@@ -947,15 +1012,23 @@ function pruneBlock(value: any, path = '', dropped?: string[]): any {
   }
   if (value && typeof value === 'object') {
     const entries = Object.entries(value);
-    // Rebuilt without a prototype so that a config key of `__proto__` sets a plain own
-    // property here rather than reparenting the object it is copied into. The card is parsed
-    // straight back from this with JSON, which does not care whether the object has a
-    // prototype, so nothing downstream is affected.
-    const out: Record<string, any> = Object.create(null);
+    // Set through setKey, so a config key of `__proto__` is a plain own property here rather
+    // than reparenting the object it is copied into. The object keeps its ordinary prototype:
+    // this is the config the card is handed, and a card may call `config.hasOwnProperty`.
+    const out: Record<string, any> = {};
     if (!entries.length) return out;
-    for (const [key, entry] of entries) {
+    for (const [written, entry] of entries) {
+      // A key that is only an option nothing set takes its entry with it, and one inside a
+      // longer key leaves quietly, as in a value.
+      if (isEmptyOption(written)) {
+        dropped?.push(
+          localize('trace.dropped_option', { path: path ? `${path}.${written}` : written, placeholder: written }),
+        );
+        continue;
+      }
+      const key = written.includes('[[') ? (pruneEmptyOptions(written) as string) : written;
       const pruned = pruneBlock(entry, path ? `${path}.${key}` : key, dropped);
-      if (pruned !== GONE) out[key] = pruned;
+      if (pruned !== GONE) setKey(out, key, pruned);
     }
     if (Object.keys(out).length) return out;
     if (path) dropped?.push(localize('trace.dropped_block', { path }));
@@ -970,11 +1043,11 @@ function pruneEmptyOptions(value: any, dropped?: string[]): any {
     // still the card that was asked for, and says so more clearly than nothing at all.
     const pruned = pruneBlock(value, '', dropped);
     if (pruned !== GONE) return pruned;
-    return Array.isArray(value) ? [] : Object.create(null);
+    return Array.isArray(value) ? [] : {};
   }
   if (typeof value === 'string') {
-    const anyOptional = new RegExp(PLACEHOLDER.source, 'g');
-    return value.replace(anyOptional, (match, inside: string) =>
+    if (!value.includes('[[')) return value;
+    return value.replace(ANY_PLACEHOLDER, (match, inside: string) =>
       !inside.startsWith(ESCAPE) && isOptional(inside) ? '' : match,
     );
   }
@@ -1010,6 +1083,22 @@ function structureStandIn(
  * never even reached by it - this pass is what gives those their turn, once everything that
  * could be substituted has been.
  */
+/*
+ * Whether what stands between two pairs of brackets runs from one string of the JSON into
+ * another: a `[[` somebody wrote in one value and a `]]` in a later one, with only the JSON's
+ * own quotes, colons and braces between them. That is no placeholder, and filling or blanking
+ * it takes the structure between the two strings with it. Inside a string a quote is always
+ * written `\"`, so a bare one is the JSON's.
+ */
+function acrossStrings(inside: string): boolean {
+  for (let at = inside.indexOf('"'); at !== -1; at = inside.indexOf('"', at + 1)) {
+    let slashes = 0;
+    while (inside[at - 1 - slashes] === '\\') slashes += 1;
+    if (slashes % 2 === 0) return true;
+  }
+  return false;
+}
+
 function fallbackPass(
   jsonConfig: string,
   values: Record<string, any>,
@@ -1022,6 +1111,7 @@ function fallbackPass(
   // left for the pruning pass to take out - `[[name|default:?]]` drops the key, as
   // `[[name?]]` would (discussion #155).
   const standIn = (inside: string): string | undefined => {
+    if (acrossStrings(inside)) return undefined;
     // A state the card does not rebuild on keeps its brackets here too, a `default:` or
     // not. Unset, the name is the entity - `[[sensor.x|state|default:off]]`.
     const [name, ...steps] = withoutOptional(inside).split('|');
@@ -1034,7 +1124,9 @@ function fallbackPass(
   let json = jsonConfig;
   // The whole value first, so a stand-in replaces the quotes around it too rather than
   // landing inside them twice.
-  json = json.replace(/"\[\[([^[\]]+)\]\]"/g, (match: string, inside: string) => {
+  json = json.replace(/"\[\[([^[\]]+)\]\]"/g, (match: string, inside: string, offset: number, all: string) => {
+    // A quote somebody wrote, or a mapping's key: left for the pass below to fill as text.
+    if (inText(all, offset, match, '"', '"') || acrossStrings(inside)) return match;
     const [name, ...steps] = withoutOptional(inside).split('|');
     const structure = steps.length
       ? structureStandIn(steps.join('|'), values[name], values, hass, read, shield)
@@ -1070,7 +1162,7 @@ function blankNestedOptionals(json: string, trace?: BuildTrace): string {
   return json.replace(/\[\[([^[\]]+)\]\]/g, (match: string, inside: string, offset: number) => {
     depth += opens(json.slice(from, offset));
     from = offset + match.length;
-    if (depth <= 0 || inside.startsWith(ESCAPE) || !isOptional(inside)) return match;
+    if (depth <= 0 || inside.startsWith(ESCAPE) || !isOptional(inside) || acrossStrings(inside)) return match;
     if (trace && !trace.placeholders.has(match)) trace.placeholders.set(match, '');
     return '';
   });
@@ -1085,9 +1177,60 @@ function blankNestedOptionals(json: string, trace?: BuildTrace): string {
  * and as there, nothing is said about the name the default covered. One with no fallback after
  * the gap is left as written, to be reported unset as before.
  */
-const NESTED_ONCE = '(?:[^[\\]]|\\[\\[[^[\\]]*\\]\\])*\\[\\[[^[\\]]*\\]\\](?:[^[\\]]|\\[\\[[^[\\]]*\\]\\])*';
-const WHOLE_AROUND = new RegExp(`"\\[\\[(${NESTED_ONCE})\\]\\]"`, 'g');
-const PART_AROUND = new RegExp(`\\[\\[(${NESTED_ONCE})\\]\\]`, 'g');
+/*
+ * Where the placeholder opening at `open` ends when it holds at least one placeholder of its
+ * own and nothing else in brackets - a bracket alone, or one nested two deep, is no such
+ * placeholder - or -1. Read a character at a time, never going back: the expression this
+ * used to be tried every way of sharing the inner placeholders out before giving up on one
+ * that never closed, a second and a half for sixteen thousand of them.
+ */
+function aroundEnd(json: string, open: number): number {
+  let inner = 0;
+  let at = open + 2;
+  while (at < json.length) {
+    const char = json[at];
+    if (char === ']') return inner > 0 && json[at + 1] === ']' ? at + 2 : -1;
+    if (char !== '[') {
+      at += 1;
+      continue;
+    }
+    if (json[at + 1] !== '[') return -1;
+    at += 2;
+    while (at < json.length && json[at] !== '[' && json[at] !== ']') at += 1;
+    if (json[at] !== ']' || json[at + 1] !== ']') return -1;
+    at += 2;
+    inner += 1;
+  }
+  return -1;
+}
+
+/**
+ * Every placeholder with a placeholder inside it put through `replace`, left to right - with
+ * `whole`, only one standing in quotes as a value of its own, quotes included.
+ */
+export function replaceAround(
+  json: string,
+  whole: boolean,
+  replace: (match: string, inside: string, offset: number) => string,
+): string {
+  let out = '';
+  let kept = 0;
+  let from = 0;
+  for (let open = json.indexOf('[[', from); open !== -1; open = json.indexOf('[[', from)) {
+    const end = aroundEnd(json, open);
+    const quoted = end !== -1 && whole && json[open - 1] === '"' && json[end] === '"' && open - 1 >= kept;
+    if (end === -1 || (whole && !quoted)) {
+      from = open + 1;
+      continue;
+    }
+    const start = whole ? open - 1 : open;
+    const stop = whole ? end + 1 : end;
+    out += json.slice(kept, start) + replace(json.slice(start, stop), json.slice(open + 2, end - 2), start);
+    kept = stop;
+    from = stop;
+  }
+  return kept ? out + json.slice(kept) : json;
+}
 
 /** A chain split at the bars outside any placeholder in it. */
 function splitOutside(chain: string): string[] {
@@ -1125,7 +1268,7 @@ function fillAroundUnset(
     return !Object.prototype.hasOwnProperty.call(values, head) || read(head) === undefined;
   };
   const standIn = (inside: string): string | undefined => {
-    if (inside.startsWith(ESCAPE)) return undefined;
+    if (inside.startsWith(ESCAPE) || acrossStrings(inside)) return undefined;
     const [head, ...steps] = splitOutside(withoutOptional(inside));
     if (head.includes('[[')) return undefined;
     let gap = -1;
@@ -1139,13 +1282,14 @@ function fillAroundUnset(
     const text = applyTransform(rest.join('|'), undefined, hass, values, read, shield);
     return text === '' && isOptional(inside) ? undefined : text;
   };
-  const whole = json.replace(WHOLE_AROUND, (match: string, inside: string) => {
+  const whole = replaceAround(json, true, (match, inside, offset) => {
+    if (inText(json, offset, match, '"', '"')) return match;
     const text = standIn(inside);
     if (text === undefined) return match;
     const rest = splitOutside(withoutOptional(inside)).slice(1);
     return noted(trace, `[[${inside}]]`, asShapedWholeValue(text, rest.join('|')), true);
   });
-  return whole.replace(PART_AROUND, (match: string, inside: string) => {
+  return replaceAround(whole, false, (match, inside) => {
     const text = standIn(inside);
     return text === undefined ? match : noted(trace, match, escapeForJsonString(text), false);
   });
@@ -1162,11 +1306,6 @@ function hasFallback(jsonConfig: string): boolean {
   return false;
 }
 
-/*
- * The placeholders still standing once every pass is done, and why: an optional one found
- * nothing and is about to be taken out, a refused one says what refused it, and anything else
- * is a name nothing sets. Escaped ones are meant to be there, so they are not mentioned.
- */
 /*
  * A `with:` or `repeat:` whose name is neither an item template nor a variable here (#349).
  * Left standing it looks like any unset name, but what is missing is the template, and
@@ -1200,6 +1339,11 @@ function consumerTemplates(node: unknown): string[] {
   return found;
 }
 
+/*
+ * The placeholders still standing once every pass is done, and why: an optional one found
+ * nothing and is about to be taken out, a refused one says what refused it, and anything else
+ * is a name nothing sets. Escaped ones are meant to be there, so they are not mentioned.
+ */
 function noteLeftStanding(
   trace: BuildTrace,
   json: string,
@@ -1238,6 +1382,26 @@ function noteLeftStanding(
  * worked out, each with the item template's body swapped for that one value.
  */
 const FILL_VALUE = /^\[\[([A-Za-z0-9_-]+)\|with:(.*)\]\]$/;
+
+/** The item template and the `with:` argument of a value that is one fill and nothing else. */
+function fillValue(raw: string): RegExpExecArray | null {
+  const fill = FILL_VALUE.exec(raw);
+  if (!fill) return null;
+  // The brackets that open the value must be the ones that close it: `[[a|with:x]] and [[b]]`
+  // starts and ends with brackets too, and its argument is not `x]] and [[b`.
+  let depth = 0;
+  for (let at = 2; at < raw.length - 2; at += 1) {
+    if (raw.startsWith('[[', at)) {
+      depth += 1;
+      at += 1;
+    } else if (raw.startsWith(']]', at)) {
+      if (depth === 0) return null;
+      depth -= 1;
+      at += 1;
+    }
+  }
+  return fill;
+}
 const DOTTED_ASK = /(?:\[\[!?|\|(?:if:!?|or:))([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)/g;
 /*
  * The same, and a name whose key is itself a placeholder - `[[m3.[[pet]]]]` (#489) - which
@@ -1267,11 +1431,11 @@ function exposeFillValues(
     if (Object.prototype.hasOwnProperty.call(values, dotted)) continue;
     const [name, key] = dotted.split('.');
     const raw = values[name];
-    const fill = typeof raw === 'string' ? FILL_VALUE.exec(raw) : null;
+    const fill = typeof raw === 'string' ? fillValue(raw) : null;
     if (!fill || !Object.prototype.hasOwnProperty.call(itemTemplates, fill[1])) continue;
     const arg = fill[2].includes('[[') ? settleText(fill[2]) : fill[2];
     if (typeof arg !== 'string' || arg.includes('[[')) continue;
-    const overlay = fillOverlay(arg, values);
+    const overlay = fillOverlay(arg, values, (_name, value) => settleText(value));
     if (!overlay) continue;
     const value = build([...overlay, ...variableArray], itemTemplates[fill[1]], key);
     // Nothing in the fill sets it: left alone, so it reads as unset like any other name.
@@ -1336,12 +1500,29 @@ function placeholderText(text: string): string {
   return out;
 }
 
-// The names written in a value's placeholders, steps and all, and the values they had.
+/*
+ * The names written in a value's placeholders, steps and all, and the values they had - and
+ * the names those values read in turn: with `m: '[[a]]'` and `a: '[[b]]'`, what `m` fills to
+ * depends on `b`, and a copy that sets its own `b` must not be handed the last copy's.
+ */
 function readsOf(raw: string, values: Record<string, any>): Map<string, unknown> {
   const reads = new Map<string, unknown>();
-  for (const word of placeholderText(raw).match(NAME_IN_PLACEHOLDER) ?? []) {
-    for (const name of word.includes('.') ? [word, word.split('.')[0]] : [word]) reads.set(name, values[name]);
-  }
+  const follow = (text: string): void => {
+    for (const word of placeholderText(text).match(NAME_IN_PLACEHOLDER) ?? []) {
+      for (const name of word.includes('.') ? [word, word.split('.')[0]] : [word]) {
+        if (reads.has(name)) continue;
+        const value = values[name];
+        reads.set(name, value);
+        if (typeof value === 'string') {
+          if (value.includes('[[')) follow(value);
+        } else if (value && typeof value === 'object') {
+          const json = placeholderJson(value);
+          if (json.includes('[[')) follow(json);
+        }
+      }
+    }
+  };
+  follow(raw);
   return reads;
 }
 
@@ -1379,7 +1560,7 @@ function exposeSettledMappings(
     settled.add(name);
     const raw = values[name];
     if (typeof raw !== 'string' || !PLACEHOLDER.test(raw)) continue;
-    const fill = FILL_VALUE.exec(raw);
+    const fill = fillValue(raw);
     if (fill && Object.prototype.hasOwnProperty.call(itemTemplates, fill[1])) continue;
     // Already being filled in further out: what that fill finds is what this one would.
     const settling = `${name}\u0000${raw}`;
@@ -1428,8 +1609,14 @@ function placeholderNames(values: Record<string, any>, shared: boolean): Set<str
   return names;
 }
 
-// The values a `with:` lays over, read the same way as where it is filled in.
-function fillOverlay(arg: string, values: Record<string, any>): VariablesConfig[] | undefined {
+// The values a `with:` lays over - `a=1,b=2` pairs read as text, or a mapping variable - read
+// one way by the fill itself and by the dotted names worked out from it beforehand.
+function fillOverlay(
+  arg: string,
+  values: Record<string, any>,
+  // An entry's own value worked out from the variables out here.
+  fromOutside: (name: string, value: string) => unknown,
+): VariablesConfig[] | undefined {
   if (!arg) return [];
   if (arg.includes('=')) {
     const pairs: VariablesConfig[] = [];
@@ -1441,7 +1628,17 @@ function fillOverlay(arg: string, values: Record<string, any>): VariablesConfig[
     return pairs;
   }
   const mapping = values[arg];
-  return mapping && typeof mapping === 'object' && !Array.isArray(mapping) ? normaliseVariables(mapping) : undefined;
+  if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return undefined;
+  /*
+   * An entry that names itself - `ent_exists: '[[ent_exists]]'` - can only mean the value
+   * out here: inside the fill it would be its own value, and never settle. So it is filled
+   * in from these variables first (#235).
+   */
+  return normaliseVariables(mapping).map((entry) => {
+    const [name, value] = Object.entries(entry)[0] ?? [];
+    if (typeof value !== 'string' || !value.includes(`[[${name}`)) return entry;
+    return { [name]: fromOutside(name, value) };
+  });
 }
 
 // Who a warning is about: the item template the placeholder is written in when a fill is
@@ -1775,47 +1972,25 @@ function deepReplaceBody(
     );
   };
   // What a `with:` lays over the variables: `a=1,b=2` pairs read as text, or a mapping variable.
-  const overlayOf = (arg: string): VariablesConfig[] | undefined => {
-    if (!arg) return [];
-    if (arg.includes('=')) {
-      const pairs: VariablesConfig[] = [];
-      for (const pair of arg.split(',')) {
-        const equals = pair.indexOf('=');
-        if (equals === -1) return undefined;
-        pairs.push({ [pair.slice(0, equals).trim()]: pair.slice(equals + 1) });
-      }
-      return pairs;
-    }
-    const mapping = values[arg];
-    if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return undefined;
-    /*
-     * An entry that names itself - `ent_exists: '[[ent_exists]]'` - can only mean the value
-     * out here: inside the fill it would be its own value, and never settle. So it is filled
-     * in from these variables first (#235).
-     */
-    return normaliseVariables(mapping).map((entry) => {
-      const [name, value] = Object.entries(entry)[0] ?? [];
-      if (typeof value !== 'string' || !value.includes(`[[${name}`)) return entry;
+  const overlayOf = (arg: string): VariablesConfig[] | undefined =>
+    fillOverlay(arg, values, (name, value) => {
       const below = deeper(name, value);
-      if (!below) return entry;
-      return {
-        [name]: deepReplace(
-          variableArray,
-          {},
-          value,
-          templateName,
-          hass,
-          true,
-          undefined,
-          depth,
-          undefined,
-          shield,
-          true,
-          below,
-        ),
-      };
+      if (!below) return value;
+      return deepReplace(
+        variableArray,
+        {},
+        value,
+        templateName,
+        hass,
+        true,
+        undefined,
+        depth,
+        undefined,
+        shield,
+        true,
+        below,
+      );
     });
-  };
   /*
    * Whether a copy's own conditions hold (#429): `if:enabled` after a `repeat:` or `with:` reads
    * the copy's values - its entry's fields, the item template's defaults, then the card's - each
@@ -2028,6 +2203,9 @@ function deepReplaceBody(
   // How much the text may still grow, counted across every fill this build makes.
   const limit = outputLimit(jsonConfig.length);
   const budget = extras?.budget ?? { left: limit - jsonConfig.length, fills: 0 };
+  // The outermost build says how much there is; the builds it started on the way here have
+  // been counted against the smallest ceiling there is.
+  if (building === 1) growthLeft += GROWTH_SHARE * (limit - MAX_OUTPUT_LENGTH);
   const unsetSaid = extras?.unsetSaid ?? new Set<string>();
 
   /*
@@ -2036,38 +2214,68 @@ function deepReplaceBody(
    * stay in until the end like everything else's; a nested template card inside is left for
    * its own build. A build that is itself a style has the shield already and skips this.
    */
-  const shieldStyles = (node: any): any => {
-    if (Array.isArray(node)) return node.map(shieldStyles);
-    if (!node || typeof node !== 'object') return node;
-    if (CONSUMER_TYPES.includes(node.type)) return node;
-    const out: Record<string, any> = {};
+  // A style with no placeholder in it has nothing to fill and nothing to shield.
+  const toBuild = (value: unknown): boolean =>
+    typeof value === 'string' ? value.includes('[[') : !!value && typeof value === 'object' && holdsBrackets(value);
+  const styleValues: unknown[] = [];
+  const collectStyles = (node: any): void => {
+    if (Array.isArray(node)) return node.forEach(collectStyles);
+    if (!node || typeof node !== 'object' || CONSUMER_TYPES.includes(node.type)) return;
     for (const [key, value] of Object.entries(node)) {
-      if (!STYLE_KEYS.includes(key)) {
-        out[key] = shieldStyles(value);
-        continue;
-      }
-      // Built inside a wrapper, so a style that is nothing but options nobody set is taken out
-      // of the wrapper rather than left as an empty string - and is then put back as written
-      // here, for the pass over the whole card to take out along with whatever held it.
-      const styled = deepReplace(
-        variables,
-        templateConfig,
-        { style: value },
-        templateName,
-        hass,
-        true,
-        undefined,
-        depth,
-        trace,
-        cssSafe,
-        true,
-        { ...extras, budget },
-      );
-      out[key] = styled && typeof styled === 'object' && 'style' in styled ? styled.style : value;
+      if (!STYLE_KEYS.includes(key)) collectStyles(value);
+      else if (toBuild(value)) styleValues.push(value);
     }
-    return out;
   };
-  if (shield === undefined && hasStyleKey(content)) {
+  if (shield === undefined && hasStyleToBuild(content)) collectStyles(content);
+  if (styleValues.length) {
+    /*
+     * Built inside a wrapper, so a style that is nothing but options nobody set is taken out
+     * of the wrapper rather than left as an empty string - and is then put back as written
+     * here, for the pass over the whole card to take out along with whatever held it. Every
+     * style of the card goes in the one wrapper: a build each was a picture's hundred
+     * elements each working the template's variables out again.
+     */
+    const wrapper: Record<string, unknown> = {};
+    styleValues.forEach((value, index) => (wrapper[`s${index}`] = value));
+    // With the quoted bodies taken out of this content (#498), which the wrapper's own build
+    // cannot find again: without them a body in a style was left for the pass with no shield.
+    const written = Array.isArray(variables) ? variables : variables ? [variables] : [];
+    const styled = deepReplace(
+      inline.added.length ? [...written, ...inline.added] : variables,
+      templateConfig,
+      wrapper,
+      templateName,
+      hass,
+      true,
+      undefined,
+      depth,
+      trace,
+      cssSafe,
+      true,
+      { ...extras, budget },
+    );
+    let next = 0;
+    const shieldStyles = (node: any): any => {
+      if (Array.isArray(node)) return node.map(shieldStyles);
+      if (!node || typeof node !== 'object') return node;
+      if (CONSUMER_TYPES.includes(node.type)) return node;
+      const out: Record<string, any> = {};
+      for (const [key, value] of Object.entries(node)) {
+        if (!STYLE_KEYS.includes(key)) {
+          setKey(out, key, shieldStyles(value));
+          continue;
+        }
+        if (!toBuild(value)) {
+          out[key] = value;
+          continue;
+        }
+        const slot = `s${next}`;
+        next += 1;
+        const built = styled && typeof styled === 'object' && Object.prototype.hasOwnProperty.call(styled, slot);
+        out[key] = built ? styled[slot] : value;
+      }
+      return out;
+    };
     jsonConfig = unwrapNestedOr(placeholderJson(shieldStyles(content)));
     // The compiled sites belong to the text as written, not to this one.
     pieces = undefined;
@@ -2092,7 +2300,20 @@ function deepReplaceBody(
       templateChain: extras?.templateChain,
       readDepth: readDepth + 1,
       tooDeep,
+      reading,
     };
+  };
+  const reading = extras?.reading ?? new Set<string>();
+  // A value worked out below this build, unless it is already being worked out further out.
+  const once = (name: string, raw: unknown, run: () => unknown): unknown => {
+    const key = `${name}\u0000${typeof raw === 'string' ? raw : ''}`;
+    if (reading.has(key)) return raw;
+    reading.add(key);
+    try {
+      return run();
+    } finally {
+      reading.delete(key);
+    }
   };
   const settled = new Map<string, unknown>();
   const read = (name: string): unknown => {
@@ -2100,19 +2321,21 @@ function deepReplaceBody(
     const raw = values[name];
     const below = deeper(name, raw);
     const value = below
-      ? deepReplace(
-          variableArray,
-          {},
-          raw,
-          templateName,
-          hass,
-          true,
-          undefined,
-          depth,
-          undefined,
-          undefined,
-          false,
-          below,
+      ? once(name, raw, () =>
+          deepReplace(
+            variableArray,
+            {},
+            raw,
+            templateName,
+            hass,
+            true,
+            undefined,
+            depth,
+            undefined,
+            undefined,
+            false,
+            below,
+          ),
         )
       : raw;
     settled.set(name, value);
@@ -2132,7 +2355,22 @@ function deepReplaceBody(
     // values as they end up, rather than filled in afterwards around the YAML's own quotes.
     const below = deeper(name, holdsPlaceholder(raw) && typeof raw === 'object' ? placeholderJson(raw) : raw);
     const value = below
-      ? deepReplace(variableArray, {}, raw, templateName, hass, true, undefined, depth, undefined, shield, true, below)
+      ? once(name, raw, () =>
+          deepReplace(
+            variableArray,
+            {},
+            raw,
+            templateName,
+            hass,
+            true,
+            undefined,
+            depth,
+            undefined,
+            shield,
+            true,
+            below,
+          ),
+        )
       : raw;
     shapedInputs.set(name, value);
     return value;
@@ -2487,6 +2725,7 @@ function deepReplace(
     );
   // The fills remembered for builds further in go when the outermost one is done.
   building += 1;
+  if (building === 1) growthLeft = GROWTH_SHARE * MAX_OUTPUT_LENGTH;
   try {
     return hostedBuild(body, depth, hass, quiet, trace, templateName, extras, content);
   } finally {

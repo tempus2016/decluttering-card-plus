@@ -317,24 +317,56 @@ export async function undoFrom(
 const pageWindow: any = typeof window !== 'undefined' ? window : undefined;
 export const HELPERS = pageWindow?.loadCardHelpers ? pageWindow.loadCardHelpers() : undefined;
 
+/*
+ * The card helpers, for what is only needed once somebody opens an editor. HELPERS is read
+ * as this module loads, and a bundle loaded before the dashboard panel - as a frontend
+ * module rather than a dashboard resource - finds no loadCardHelpers there yet and never
+ * looks again. By the time an editor is open the panel has long defined it, so it is looked
+ * for again here.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let lateHelpers: Promise<any> | undefined;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function cardHelpers(): Promise<any> | undefined {
+  lateHelpers ??= HELPERS ?? (pageWindow?.loadCardHelpers ? pageWindow.loadCardHelpers() : undefined);
+  return lateHelpers;
+}
+
 // Whether a Markdown card has been asked for, to get Home Assistant's ha-markdown defined.
 let markdownRequested = false;
+// Who is waiting for ha-markdown to be defined, each once, and whether the one wait is on.
+const markdownWaiters = new Map<unknown, () => void>();
+let markdownWaiting = false;
 
 /*
  * Whether Home Assistant's own Markdown element, the one the Markdown card uses, can be drawn.
  * It is only defined once something has needed it, so the first ask makes the card helpers
  * build a Markdown card to load it, and `ready` is called once it is defined.
+ *
+ * An element asks on every render until then, so it says who it is: one wait serves
+ * everybody, and each `owner` is called back once, however many times it asked.
  */
-export function markdownReady(ready: () => void): boolean {
+export function markdownReady(ready: () => void, owner: unknown = ready): boolean {
   if (typeof customElements === 'undefined') return false;
   if (customElements.get('ha-markdown')) return true;
-  if (!markdownRequested) {
+  markdownWaiters.set(owner, ready);
+  const helpers = cardHelpers();
+  if (!markdownRequested && helpers) {
     markdownRequested = true;
-    HELPERS?.then((helpers: { createCardElement: (config: unknown) => unknown }) =>
-      helpers.createCardElement({ type: 'markdown', content: '' }),
-    ).catch(() => {});
+    helpers
+      .then((loaded: { createCardElement: (config: unknown) => unknown }) =>
+        loaded.createCardElement({ type: 'markdown', content: '' }),
+      )
+      .catch(() => {});
   }
-  customElements.whenDefined('ha-markdown').then(ready);
+  if (!markdownWaiting) {
+    markdownWaiting = true;
+    void customElements.whenDefined('ha-markdown').then(() => {
+      const waiting = [...markdownWaiters.values()];
+      markdownWaiters.clear();
+      for (const each of waiting) each();
+    });
+  }
   return false;
 }
 
@@ -343,8 +375,9 @@ export async function loadCardEditorPicker(): Promise<void> {
   // They happen to be used by the vertical-stack card editor but there must be a better way?
   let cls = customElements.get('hui-vertical-stack-card');
   if (!cls) {
-    if (!HELPERS) return;
-    (await HELPERS).createCardElement({ type: 'vertical-stack', cards: [] });
+    const helpers = cardHelpers();
+    if (!helpers) return;
+    (await helpers).createCardElement({ type: 'vertical-stack', cards: [] });
     await customElements.whenDefined('hui-vertical-stack-card');
     cls = customElements.get('hui-vertical-stack-card');
   }

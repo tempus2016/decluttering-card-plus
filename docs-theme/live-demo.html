@@ -1,0 +1,160 @@
+---
+layout: wiki
+title: Live demo
+description: Real Home Assistant cards built by Decluttering Card Plus, running in your browser on a made-up house. No Home Assistant needed.
+live_demo: true
+---
+<h1>Live demo</h1>
+
+<p>These are real Home Assistant cards, built by the card from the templates in the YAML below and drawn by Home Assistant's own frontend, loaded from <a href="https://demo.home-assistant.io">demo.home-assistant.io</a>. The house is made up and lives in your browser: the tiles switch and dim, but there is no Home Assistant behind them, so nothing is sent anywhere.</p>
+
+<p>Each tab shows one idea. <strong>First template</strong> is one template used three times with different variables. <strong>Every light</strong> is a single card that makes a tile for each light the house has. <strong>Rooms</strong> is a whole view written by the card: a section per area and a badge per light.</p>
+
+<noscript><blockquote>The demo runs in your browser and needs JavaScript.</blockquote></noscript>
+
+<script type="module" src="https://demo.home-assistant.io/embed.js"></script>
+<script type="module" src="{{ '/assets/card/decluttering-card-plus.js' | relative_url }}"></script>
+
+<ha-embed-provider id="house">
+<script type="text/yaml">
+areas:
+  - area_id: kitchen
+    name: Kitchen
+  - area_id: living_room
+    name: Living Room
+  - area_id: bedroom
+    name: Bedroom
+entities:
+  - entity_id: light.kitchen_ceiling
+    state: "on"
+    area_id: kitchen
+    attributes: { friendly_name: Kitchen ceiling, brightness: 200, supported_color_modes: [brightness], color_mode: brightness }
+  - entity_id: light.kitchen_counter
+    state: "off"
+    area_id: kitchen
+    attributes: { friendly_name: Kitchen counter, supported_color_modes: [brightness] }
+  - entity_id: light.living_room_lamp
+    state: "on"
+    area_id: living_room
+    attributes: { friendly_name: Living room lamp, brightness: 90, supported_color_modes: [brightness], color_mode: brightness }
+  - entity_id: light.bedroom_bedside
+    state: "off"
+    area_id: bedroom
+    attributes: { friendly_name: Bedside lamp, supported_color_modes: [brightness] }
+  - entity_id: sensor.kitchen_temperature
+    state: "20.6"
+    area_id: kitchen
+    attributes: { friendly_name: Kitchen temperature, unit_of_measurement: "°C", device_class: temperature, state_class: measurement }
+  - entity_id: sensor.living_room_temperature
+    state: "21.4"
+    area_id: living_room
+    attributes: { friendly_name: Living room temperature, unit_of_measurement: "°C", device_class: temperature, state_class: measurement }
+  - entity_id: sensor.bedroom_temperature
+    state: "18.9"
+    area_id: bedroom
+    attributes: { friendly_name: Bedroom temperature, unit_of_measurement: "°C", device_class: temperature, state_class: measurement }
+  - entity_id: binary_sensor.front_door
+    state: "off"
+    attributes: { friendly_name: Front door, device_class: door }
+</script>
+</ha-embed-provider>
+
+<ha-embed-dashboard class="live-demo" provider="house">
+<script type="text/yaml">
+decluttering_templates:
+  room_light:
+    default:
+      - colour: amber
+    card:
+      type: tile
+      entity: '[[light]]'
+      name: '[[room]]'
+      color: '[[colour]]'
+  light_tile:
+    card:
+      type: tile
+      entity: '[[entity]]'
+      color: amber
+      features:
+        - type: light-brightness
+  entity_tile:
+    card:
+      type: tile
+      entity: '[[entity]]'
+views:
+  - title: First template
+    path: first
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: One template, three cards
+          - type: custom:decluttering-card-plus
+            template: room_light
+            variables:
+              - light: light.kitchen_ceiling
+              - room: Kitchen
+          - type: custom:decluttering-card-plus
+            template: room_light
+            variables:
+              - light: light.living_room_lamp
+              - room: Living Room
+              - colour: teal
+          - type: custom:decluttering-card-plus
+            template: room_light
+            variables:
+              - light: light.bedroom_bedside
+              - room: Bedroom
+  - title: Every light
+    path: lights
+    type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: A tile for every light Home Assistant knows
+          - type: custom:decluttering-card-plus
+            template: light_tile
+            columns: 2
+            for_each_from:
+              domain: light
+  - title: Rooms
+    path: rooms
+    strategy:
+      type: custom:decluttering-card-plus
+      badges:
+        - for_each_from: { domain: light }
+          badge:
+            type: entity
+            entity: '[[entity]]'
+            show_name: true
+      sections:
+        - for_each_from: { areas: true }
+          section:
+            type: grid
+            cards:
+              - type: heading
+                heading: '[[area]]'
+              - type: custom:decluttering-card-plus
+                template: entity_tile
+                for_each_from:
+                  area: '[[area_id]]'
+</script>
+</ha-embed-dashboard>
+
+<h2 id="the-dashboard">The dashboard</h2>
+<p>Everything the demo draws comes from this, written as it would be on your own dashboard. The templates sit at the top, level with <code>views:</code>.</p>
+<div class="live-demo-yaml" data-from="ha-embed-dashboard"></div>
+
+<h2 id="the-house">The house</h2>
+<p>The entities and areas the demo makes up. <code>for_each_from</code> and the Rooms view read these the way they read your own Home Assistant.</p>
+<div class="live-demo-yaml" data-from="ha-embed-provider"></div>
+
+<h2 id="on-your-own-page">On your own page</h2>
+<p>Home Assistant's <a href="https://contributors.home-assistant.io/frontend/custom-ui/demo/">live demo elements</a> work on any web page. Load the card after <code>embed.js</code>, then put your templates in the dashboard of an <code>ha-embed-dashboard</code> or <code>ha-embed-view</code>, as here:</p>
+<pre><code>&lt;script type="module" src="https://demo.home-assistant.io/embed.js"&gt;&lt;/script&gt;
+&lt;script type="module" src="https://tempus2016.github.io/decluttering-card-plus/assets/card/decluttering-card-plus.js"&gt;&lt;/script&gt;</code></pre>
+<p>That copy of the card is updated whenever the card changes. A lone <code>ha-embed-card</code> has no dashboard around it, so it has no templates to use. Several demos on one page all read their templates from the first that has drawn, so give each the same <code>decluttering_templates:</code>.</p>
+
+<script src="{{ '/assets/js/live-demo.js' | relative_url }}" defer></script>

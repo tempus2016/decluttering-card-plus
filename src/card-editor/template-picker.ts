@@ -2,6 +2,7 @@ import { LovelaceConfig } from 'custom-card-helpers';
 import { TemplateConfig } from '../types';
 import { deprecationOf, totalUsages } from '../templates';
 import { localize } from '../localize';
+import { CONTENT_KEYS } from '../promote';
 
 /*
  * Idea 21: the Template dropdown as a combo box. Typing filters by name and description;
@@ -26,8 +27,6 @@ export interface PickerItem {
   /** Lower-cased text the filter looks through. */
   search: string;
 }
-
-const CONTENT_KEYS = ['card', 'badge', 'row', 'element', 'group'];
 
 /** `base: true`: a template written only for others to extend, kept out of the pickers (#444). */
 export function isBaseTemplate(template: unknown): boolean {

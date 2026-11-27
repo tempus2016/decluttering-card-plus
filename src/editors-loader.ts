@@ -11,6 +11,13 @@
 let editorsLoading: Promise<void> | undefined;
 
 export function loadEditors(): Promise<void> {
-  editorsLoading ??= import('./editors').then(() => undefined);
-  return editorsLoading;
+  if (editorsLoading) return editorsLoading;
+  const loading = import('./editors').then(() => undefined);
+  editorsLoading = loading;
+  // A chunk that would not load - the connection dropped - is asked for again by the next to
+  // want it. Kept, the failure was the answer until the page was loaded again.
+  loading.catch(() => {
+    if (editorsLoading === loading) editorsLoading = undefined;
+  });
+  return loading;
 }

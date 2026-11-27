@@ -2609,3 +2609,44 @@ collectAllTemplates(hass, borrower).then((all) => {
   ]);
   check('the original is not changed', sectioned.views[0].sections[1].cards, []);
 }
+
+/* ------------------------------------------------- findTemplate builds only the one it hands back */
+{
+  const placed = {
+    decluttering_defaults: [{ colour: 'red' }],
+    decluttering_let: [{ shade: '[[colour]]-dark' }],
+    decluttering_variables: [{ name: 'colour', description: 'shared' }],
+    decluttering_templates: {
+      base: { card: { type: 'tile', color: '[[colour]]' }, default: [{ size: 1 }] },
+      child: { extends: 'base', variables: [{ name: 'colour' }], card: { name: '[[shade]]' } },
+    },
+    views: [
+      {
+        decluttering_defaults: [{ colour: 'blue' }],
+        sections: [{ decluttering_let: [{ here: 'yes' }], decluttering_defaults: [{ size: 2 }], cards: [] }],
+      },
+    ],
+  };
+  const sameAsCollected = (view, section) =>
+    ['base', 'child'].map((name) => {
+      const one = findTemplate(placed, name, view, section);
+      const all = collectTemplates(placed, view, undefined, section)[name];
+      return (
+        JSON.stringify(one) === JSON.stringify(all) &&
+        JSON.stringify(variableValues(resolveVariables([{ a: 1 }], one))) ===
+          JSON.stringify(variableValues(resolveVariables([{ a: 1 }], all)))
+      );
+    });
+  check(
+    'one template is given what its place gives, as all of them are',
+    [...sameAsCollected(), ...sameAsCollected(0), ...sameAsCollected(0, 0)],
+    [true, true, true, true, true, true],
+  );
+  check('and one that is not there is still nothing', findTemplate(placed, 'nope', 0, 0), null);
+  const bare = { decluttering_templates: { a: { card: {} } } };
+  check(
+    'a dashboard that gives nothing hands the resolved template itself back',
+    findTemplate(bare, 'a') === collectTemplates(bare).a,
+    true,
+  );
+}

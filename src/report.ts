@@ -1,5 +1,14 @@
 import { localize } from './localize';
-import { BuildTrace, describeSection, headline, ItemTrace, itemTitle, itemValueRows, TraceReport } from './trace';
+import {
+  asText,
+  BuildTrace,
+  describeSection,
+  headline,
+  ItemTrace,
+  itemTitle,
+  itemValueRows,
+  TraceReport,
+} from './trace';
 import { toYaml } from './yaml';
 import { OutlineNode, outlineTags, reportOutline } from './report-outline';
 import { changesText, clockTime } from './rebuild';
@@ -52,7 +61,12 @@ export interface ReportInput {
 // of these: `password`, `api_token`, `client_secret`, `x-api-key`. Not `tokens` or `secretary`.
 const SECRET_WORDS =
   'token|secret|password|passwd|pwd|pass|pin|passcode|code|auth|authorization|credentials?|api[_-]?key|apikey|webhook[_-]?id|private[_-]?key|signature|lat|latitude|lon|lng|longitude|gps';
-const SECRET_KEY = `(?:[a-z0-9]+[_-])*(?:${SECRET_WORDS})(?:[_-][a-z0-9]+)*`;
+// The parts either side are counted: unbounded, a long word made of secret words - `pass_pass_pass_...` -
+// was tried every way round from every place it could start, the cube of its length (review 2026-11-27).
+// A part is bounded as well, so a long run with no separator in it is not walked once per letter.
+const MOST_PARTS = 16;
+const PART = '[a-z0-9]{1,256}';
+const SECRET_KEY = `(?:${PART}[_-]){0,${MOST_PARTS}}(?:${SECRET_WORDS})(?:[_-]${PART}){0,${MOST_PARTS}}`;
 export const SECRET_NAME = new RegExp(`^${SECRET_KEY}$`, 'i');
 // More count in a query string: `?key=` and `?sig=` mean plenty of other things as config keys.
 const URL_KEYS = `${SECRET_KEY}|sig|key`;
@@ -215,6 +229,30 @@ function replaceNotAfter(text: string, pattern: RegExp, replacement: string, not
 const SHORTEST_SECRET = 4;
 
 /*
+ * Values nobody would call a secret whatever they are named: `show_code: false`, `code_format:
+ * none`, `pin_entity: light`. Hunted down by value they took every `false`, `none` and `light`
+ * out of the report, entity ids included. The value at the secret-named key is still blanked
+ * where it sits; it is only not looked for anywhere else.
+ */
+const EVERYDAY_WORDS = new Set(
+  (
+    'true false none null on off yes no auto unknown unavailable ' +
+    // Entity domains: a `pin_entity: light` must not take `light.` off every entity id.
+    'alarm_control_panel automation binary_sensor button calendar camera climate conversation counter cover ' +
+    'date datetime device_tracker event fan group humidifier image input_boolean input_button input_datetime ' +
+    'input_number input_select input_text lawn_mower light lock media_player notify number person remote scene ' +
+    'schedule script select sensor siren switch text time timer todo update vacuum valve water_heater weather zone'
+  ).split(' '),
+);
+// A number with fewer than four digits in it: `-12.5`, `0.25`.
+const SHORT_NUMBER = /^[-+]?(?:\d+\.?\d*|\.\d+)$/;
+
+function isEverydayValue(text: string): boolean {
+  if (EVERYDAY_WORDS.has(text.toLowerCase())) return true;
+  return SHORT_NUMBER.test(text) && text.replace(/\D/g, '').length < 4;
+}
+
+/*
  * The values of every variable named like a secret, however it got its value - the card, a
  * `let:`, a declared or listed default - and of every secret-named key inside a variable's
  * mapping. A transform's copy of one is in the placeholders. Longest first, so a secret that
@@ -222,14 +260,28 @@ const SHORTEST_SECRET = 4;
  */
 /** Every value held under a secret-looking name, longest first, for redacting wherever it recurs. */
 export function secretValues(reports: TraceReport[]): string[] {
+  // The Markdown, the tree and the outline of one report each ask, so the walk is kept for
+  // as long as the list holds the same builds. A card that builds late adds one, and is read again.
+  const kept = secretsFound.get(reports);
+  if (kept && kept.of.length === reports.length && kept.of.every((report, index) => report === reports[index])) {
+    return kept.secrets;
+  }
+  const secrets = findSecretValues(reports);
+  secretsFound.set(reports, { of: [...reports], secrets });
+  return secrets;
+}
+
+const secretsFound = new WeakMap<TraceReport[], { of: TraceReport[]; secrets: string[] }>();
+
+function findSecretValues(reports: TraceReport[]): string[] {
   const found = new Set<string>();
   const add = (value: unknown, secret: boolean): void => {
     if (value !== null && typeof value === 'object') {
       for (const [key, inner] of Object.entries(value)) add(inner, secret || SECRET_NAME.test(key));
-    } else if (secret && value !== undefined && value !== null) {
+    } else if (secret && value !== undefined && value !== null && typeof value !== 'boolean') {
       const text = String(value);
       for (const piece of [text, ...text.split(/\r?\n/)]) {
-        if (piece.trim().length >= SHORTEST_SECRET) found.add(piece.trim());
+        if (piece.trim().length >= SHORTEST_SECRET && !isEverydayValue(piece.trim())) found.add(piece.trim());
       }
     }
   };
@@ -261,10 +313,6 @@ function placeholderName(placeholder: string): string {
     .split('|')[0]
     .trim()
     .replace(/\?$/, '');
-}
-
-function asText(value: unknown): string {
-  return value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
 
 // What redact() puts in. escapeInline() puts these in a code span: as bare text GitHub would

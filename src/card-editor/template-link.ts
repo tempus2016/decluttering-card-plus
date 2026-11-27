@@ -1,5 +1,6 @@
 import { LovelaceConfig } from 'custom-card-helpers';
 import { isTemplateCardType } from '../templates';
+import { sessionStore } from '../undo';
 
 /*
  * Idea 20: a card is often where you realise the template itself needs changing. The line
@@ -62,14 +63,7 @@ interface StorageLike {
   removeItem(key: string): void;
 }
 
-function storage(given?: StorageLike): StorageLike | undefined {
-  if (given) return given;
-  try {
-    return typeof sessionStorage === 'undefined' ? undefined : sessionStorage;
-  } catch {
-    return undefined;
-  }
-}
+const storage = (given?: StorageLike): StorageLike | undefined => given ?? sessionStore();
 
 /** Keeps the card's unsaved changes for the way back. */
 export function stashReturn(ticket: Omit<ReturnTicket, 'at'>, store?: StorageLike, now = Date.now()): void {

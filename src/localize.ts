@@ -163,9 +163,11 @@ export function localize(key: string, params?: Record<string, unknown>, hass?: H
   text ??= LANGUAGES[FALLBACK][key] ?? key;
 
   if (params) {
-    for (const [name, value] of Object.entries(params)) {
-      text = text.split(`{${name}}`).join(String(value));
-    }
+    // In one pass, so a value that itself holds `{name}` - a template called `{count}` - is not filled again.
+    const given = params;
+    text = text.replace(/\{([^{}]+)\}/g, (written: string, name: string) =>
+      Object.prototype.hasOwnProperty.call(given, name) ? String(given[name]) : written,
+    );
   }
   return text;
 }

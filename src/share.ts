@@ -16,6 +16,7 @@ import type { VariablesConfig } from './types';
 import { requirementsOf, shareInfo, unquotedVersions } from './sharing';
 import { placeholderSteps } from './structure';
 import { isFunctionTemplate } from './functions';
+import { globMatches } from './registry';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -23,7 +24,7 @@ import { isFunctionTemplate } from './functions';
 const OWN_TYPES = [TEMPLATE_TYPE, LEGACY_TEMPLATE_TYPE, ...CONSUMER_TYPES];
 
 // The things a template can define, exactly one of which it must.
-const THING_KEYS = ['card', 'badge', 'row', 'element', 'group'];
+export const THING_KEYS = ['card', 'badge', 'row', 'element', 'group'];
 
 // Read order for the exported YAML: what the template is, then what it takes, then what
 // it draws. Whatever is left over follows, so nothing is silently dropped.
@@ -132,9 +133,10 @@ function fitsPicked(pattern: string, names: string[]): string[] {
   const parts = pattern.split(/\[\[[^\]]*\]\]/);
   // Nothing written around the placeholder fits every template there is, which says nothing.
   if (!parts.join('')) return [];
-  const escaped = parts.map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.+');
-  const fits = new RegExp(`^${escaped}$`);
-  return names.filter((name) => fits.test(name));
+  // Matched as a glob rather than a regular expression: a name of many placeholders made
+  // one that backed off for minutes against every template (review 2026-11-27).
+  const glob = parts.join('*');
+  return names.filter((name) => globMatches(name, glob, true));
 }
 
 /**
@@ -211,7 +213,7 @@ export function buildExport(
     queue.push(...related);
     while (queue.length) {
       const name = queue.shift() as string;
-      if (name in includes || name === self) continue;
+      if (Object.prototype.hasOwnProperty.call(includes, name) || name === self) continue;
       if (isPicked(name)) {
         if (!picked.includes(name)) picked.push(name);
         const fits = fitsPicked(name, Object.keys(templates)).filter((each) => each !== self);
@@ -219,7 +221,9 @@ export function buildExport(
         queue.push(...fits);
         continue;
       }
-      const found = templates[name];
+      // Own names only: `constructor` is on every object, and is nobody's template unless written.
+      const found =
+        name !== '__proto__' && Object.prototype.hasOwnProperty.call(templates, name) ? templates[name] : undefined;
       if (!found) {
         if (!related.has(name)) missing.push(name);
         continue;

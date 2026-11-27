@@ -17,8 +17,9 @@ export function parseDate(text: string): Date | undefined {
   if (!trimmed) return undefined;
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
     const number = Number(trimmed);
-    // Seconds until the year 33658 is still under a trillion; milliseconds passed it in 2001.
-    const date = new Date(Math.abs(number) < 1e12 ? number * 1000 : number);
+    // Seconds until the year 5138 are still under a hundred billion; milliseconds passed it in
+    // 1973. A trillion, the line this once drew, read every millisecond before 2001 as seconds.
+    const date = new Date(Math.abs(number) < 1e11 ? number * 1000 : number);
     return Number.isNaN(date.getTime()) ? undefined : date;
   }
   // A time with no date, as the time selector gives one (#508), is today at that time.
@@ -32,7 +33,17 @@ export function parseDate(text: string): Date | undefined {
   }
   // Only what looks like a date is handed to Date.parse: it reads "3" and "on" as dates too.
   if (!/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return undefined;
-  const date = new Date(trimmed);
+  // A date with no time is that day here, as a time with no date is today here. Left to Date
+  // it is midnight in UTC, which west of Greenwich is still the day before.
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (day) {
+    const local = new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]));
+    // Years under 100 are read as 19xx by the constructor.
+    local.setFullYear(Number(day[1]));
+    return Number.isNaN(local.getTime()) ? undefined : local;
+  }
+  // `2026-03-10 12:00:00`, as an input_datetime's state is written: not every browser reads the space.
+  const date = new Date(trimmed.replace(/^(\d{4}-\d{2}-\d{2}) +(?=\d)/, '$1T'));
   return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
@@ -112,6 +123,22 @@ function names(language: string, options: Intl.DateTimeFormatOptions, date: Date
 
 const two = (n: number): string => String(n).padStart(2, '0');
 
+/*
+ * A month's name as it is written beside a day: `10 марта`, not `10 март`. Languages that
+ * decline it give the standalone form when asked for the month alone, so it is asked for with
+ * the day and the month taken back out.
+ */
+function monthBesideDay(language: string, width: 'long' | 'short', date: Date): string {
+  const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: width };
+  const part = (locale: string): string | undefined =>
+    new Intl.DateTimeFormat(locale, options).formatToParts(date).find((each) => each.type === 'month')?.value;
+  try {
+    return part(language || 'en') ?? names(language, { month: width }, date);
+  } catch {
+    return names(language, { month: width }, date);
+  }
+}
+
 /**
  * The date written to a pattern of the common letters - `HH:mm`, `ddd D MMM`, `YYYY-MM-DD` -
  * in the browser's own time zone, with month and day names in the language given. Anything
@@ -120,6 +147,7 @@ const two = (n: number): string => String(n).padStart(2, '0');
 export function formatDate(date: Date, pattern: string, language: string): string {
   const hours = date.getHours();
   const twelve = hours % 12 || 12;
+  const withDay = (pattern.match(TOKEN_PATTERN) ?? []).some((token) => token === 'D' || token === 'DD');
   return pattern.replace(TOKEN_PATTERN, (token) => {
     switch (token) {
       case 'YYYY':
@@ -127,9 +155,9 @@ export function formatDate(date: Date, pattern: string, language: string): strin
       case 'YY':
         return two(date.getFullYear() % 100);
       case 'MMMM':
-        return names(language, { month: 'long' }, date);
+        return withDay ? monthBesideDay(language, 'long', date) : names(language, { month: 'long' }, date);
       case 'MMM':
-        return names(language, { month: 'short' }, date);
+        return withDay ? monthBesideDay(language, 'short', date) : names(language, { month: 'short' }, date);
       case 'MM':
         return two(date.getMonth() + 1);
       case 'M':

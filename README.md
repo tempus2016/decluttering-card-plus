@@ -6,6 +6,7 @@
   knows, and visual editors. The name comes from the original decluttering-card it continues.
 </p>
 
+<!-- ha-marketplace:exclude-start -->
 <p align="center">
   <a href="https://github.com/tempus2016/decluttering-card-plus/releases"><img src="https://img.shields.io/github/v/release/tempus2016/decluttering-card-plus" alt="Latest Release"></a>
   <a href="https://github.com/hacs/default"><img src="https://img.shields.io/badge/Marketplace-Default-41BDF5.svg" alt="Marketplace Default"></a>
@@ -20,6 +21,7 @@
   <a href="https://github.com/tempus2016/decluttering-card-plus/commits/main"><img src="https://img.shields.io/github/commit-activity/y/tempus2016/decluttering-card-plus" alt="Commit activity"></a>
   <a href="https://community.home-assistant.io/t/decluttering-card-plus-a-maintained-continuation-of-decluttering-card-badges-cross-dashboard-templates-repeat/1021962"><img src="https://img.shields.io/badge/community-forum-brightgreen" alt="Community Forum"></a>
 </p>
+<!-- ha-marketplace:exclude-end -->
 
 We all use the same block of configuration over and over across a Lovelace dashboard, and none
 of us want to change the same thing in a hundred places. Define it once as a template, pass in
@@ -217,6 +219,7 @@ John MacKinnon. It began as a fork of RomRider's `decluttering-card`, which is c
 Alexandre Garcia, and parts of that original card remain in it — so both notices are carried in
 [LICENSE](LICENSE). Everything here is MIT licensed, as was all of the work it builds on.
 
+<!-- ha-marketplace:exclude-start -->
 ## Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md) covers building, testing, the commit format releases are
@@ -229,6 +232,7 @@ npm test        # unit tests
 npm run build   # lint, then bundle into dist/
 npm start       # rebuild on change, served on :5000 for the dev container
 ```
+<!-- ha-marketplace:exclude-end -->
 
 [builder]: https://tempus2016.github.io/decluttering-card-plus/builder.html
 [discussions-share]: https://github.com/tempus2016/decluttering-card-plus/discussions/categories/share-your-templates

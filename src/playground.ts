@@ -18,6 +18,10 @@ import { ownVariables, withStateScope } from './variables';
  */
 
 const MAX_ALIASES = 50;
+// Each row of the step-by-step table is a build of its own, so a chain of thousands of steps -
+// nobody's by hand, but a link can carry one - took the square of its length. The whole value
+// is still worked out; only the rows stop here.
+export const MAX_STEP_ROWS = 50;
 
 export type Kind = 'text' | 'number' | 'boolean' | 'list' | 'mapping' | 'null' | 'unresolved' | 'removed';
 
@@ -267,7 +271,7 @@ function run(make: PlaceholderBuild, expression: string): PlaygroundResult {
   const steps: StepResult[] = [];
   const split = splitPlaceholder(expression);
   if (split && split.steps.length) {
-    for (let count = 0; count <= split.steps.length; count += 1) {
+    for (let count = 0; count <= Math.min(split.steps.length, MAX_STEP_ROWS); count += 1) {
       const chain = [split.name, ...split.steps.slice(0, count)].join('|');
       const written = `[[${chain}${count === split.steps.length && split.optional ? '?' : ''}]]`;
       steps.push({

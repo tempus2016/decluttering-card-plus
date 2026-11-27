@@ -21,6 +21,7 @@ import {
   sharedUpdates,
   stampedTemplate,
   withinBudget,
+  withoutImages,
 } from '../community';
 import {
   collectTemplates,
@@ -32,8 +33,8 @@ import {
   installedFromShared,
   replaceTemplate,
 } from '../templates';
-import { TrashEntry, loadTrash, restoreTemplate, saveTrash, withoutEntry } from '../trash';
-import { copyText, getLovelaceConfig, getLovelacePanel } from '../utils';
+import { TrashEntry, loadTrash, onTrashChanged, restoreTemplate, saveTrash, withoutEntry } from '../trash';
+import { copyText, getLovelacePanel } from '../utils';
 import { localize } from '../localize';
 import { getDeclarations } from '../variables';
 import { VERSION } from '../version';
@@ -52,8 +53,19 @@ import {
   withSetup,
 } from '../sharing';
 import { readDashboard } from '../undo';
-import { rewriteDashboards, saverFor } from '../shared';
-import { isDefinedHere, anyRisk, newRisks, SECOND_PRESS_MS, saveDashboardWith, announce } from './common';
+import { saverFor } from '../shared';
+import {
+  isDefinedHere,
+  anyRisk,
+  newRisks,
+  SECOND_PRESS_MS,
+  SaveOutcome,
+  rewriteAndKeep,
+  savedLovelace,
+  saveDashboardWith,
+  announce,
+} from './common';
+import { importableIncludes } from './pure';
 import { GalleryEntry, galleryEntries } from '../gallery';
 import { GalleryStatus } from '../gallery-dialog';
 import { GALLERY_TAG } from '../shared';
@@ -84,7 +96,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
   }
 
   private get _savedLovelace(): LovelaceConfig | null | undefined {
-    return getLovelacePanel()?.config ?? this.lovelace ?? getLovelaceConfig();
+    return savedLovelace(this.lovelace);
   }
 
   static get styles(): CSSResult {
@@ -95,7 +107,11 @@ export class DeclutteringTemplateShareTab extends LitElement {
     fireEvent(this, 'config-changed', { config });
   }
 
-  private _saveDashboard(build: (config: unknown) => unknown, operation: string, dialog?: unknown): Promise<boolean> {
+  private _saveDashboard(
+    build: (config: unknown) => unknown,
+    operation: string,
+    dialog?: unknown,
+  ): Promise<SaveOutcome> {
     return saveDashboardWith(this, build, operation, dialog);
   }
 
@@ -207,9 +223,10 @@ export class DeclutteringTemplateShareTab extends LitElement {
   @state() private _comparePending = false;
   private _compareArmedAt = 0;
 
-  @state() private _trashShown?: number;
+  // By entry, not by its place in the list: the list is read again whenever a save changes it.
+  @state() private _trashShown?: string;
 
-  @state() private _trashPending?: number;
+  @state() private _trashPending?: string;
 
   private _trashArmedAt = 0;
 
@@ -218,6 +235,55 @@ export class DeclutteringTemplateShareTab extends LitElement {
   private async _loadTrash(): Promise<void> {
     if (!this.hass) return;
     this._trash = await loadTrash(this.hass);
+  }
+
+  // A save made from this tab can put a template in the trash while the list is on screen.
+  public connectedCallback(): void {
+    super.connectedCallback();
+    this._unwatchTrash ??= onTrashChanged(() => void this._loadTrash());
+  }
+
+  public disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._unwatchTrash?.();
+    this._unwatchTrash = undefined;
+  }
+
+  private static _trashKey(entry: TrashEntry): string {
+    return `${entry.at}\u0000${entry.dashboard}\u0000${entry.name}`;
+  }
+
+  /** What a copy button says: that it copied, that it could not, or what it copies. */
+  private _copyLabel(state: '' | 'done' | 'failed', idle: string): string {
+    return localize(
+      state === 'done' ? 'share.copied' : state === 'failed' ? 'share.copy_failed' : idle,
+      undefined,
+      this.hass,
+    );
+  }
+
+  /** Where an installed template lands: a template card on this view, or the dashboard's decluttering_templates. */
+  private _renderDestination(): TemplateResult {
+    return html`<ha-form
+      .hass=${this.hass}
+      .data=${{ where: this._libraryDestination }}
+      .schema=${[
+        {
+          name: 'where',
+          selector: {
+            select: {
+              mode: 'dropdown',
+              options: [
+                { value: 'view', label: localize('share.library_where_view', undefined, this.hass) },
+                { value: 'root', label: localize('share.library_where_root', undefined, this.hass) },
+              ],
+            },
+          },
+        },
+      ]}
+      .computeLabel=${(): string => localize('share.library_where', undefined, this.hass)}
+      @value-changed=${this._libraryDestinationPicked}
+    ></ha-form>`;
   }
 
   /*
@@ -235,26 +301,17 @@ export class DeclutteringTemplateShareTab extends LitElement {
         <h3>${localize('share.export_header', undefined, this.hass)}</h3>
         <p class="hint">${localize('share.export_hint', undefined, this.hass)}</p>
         ${notes.map((note) => html`<ha-alert alert-type="info">${note}</ha-alert>`)}
-        <ha-yaml-editor id="export" .hass=${this.hass} .defaultValue=${payload} read-only></ha-yaml-editor>
-        <ha-button @click=${this._copyExport}>
-          ${
-            this._copyState === 'done'
-              ? localize('share.copied', undefined, this.hass)
-              : this._copyState === 'failed'
-                ? localize('share.copy_failed', undefined, this.hass)
-                : localize('share.copy', undefined, this.hass)
-          }
-        </ha-button>
+        ${
+          // ha-yaml-editor reads defaultValue once, so an export that has changed - the sharing
+          // details just typed above - needs a new box, or Copy hands over the old text.
+          keyed(
+            JSON.stringify(payload) ?? '',
+            html`<ha-yaml-editor id="export" .hass=${this.hass} .defaultValue=${payload} read-only></ha-yaml-editor>`,
+          )
+        }
+        <ha-button @click=${this._copyExport}> ${this._copyLabel(this._copyState, 'share.copy')} </ha-button>
         <ha-button @click=${this._downloadExport}> ${localize('share.download', undefined, this.hass)} </ha-button>
-        <ha-button @click=${this._copyPost}>
-          ${
-            this._postCopyState === 'done'
-              ? localize('share.copied', undefined, this.hass)
-              : this._postCopyState === 'failed'
-                ? localize('share.copy_failed', undefined, this.hass)
-                : localize('share.post_copy', undefined, this.hass)
-          }
-        </ha-button>
+        <ha-button @click=${this._copyPost}> ${this._copyLabel(this._postCopyState, 'share.post_copy')} </ha-button>
         <p class="hint">
           ${localize('share.post_hint', undefined, this.hass)}
           <a href=${COMMUNITY_POST_URL} target="_blank" rel="noopener noreferrer"
@@ -508,26 +565,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
                     ></ha-yaml-editor>`,
                   )}
                 </ha-expansion-panel>
-                <ha-form
-                  .hass=${this.hass}
-                  .data=${{ where: this._libraryDestination }}
-                  .schema=${[
-                    {
-                      name: 'where',
-                      selector: {
-                        select: {
-                          mode: 'dropdown',
-                          options: [
-                            { value: 'view', label: localize('share.library_where_view', undefined, this.hass) },
-                            { value: 'root', label: localize('share.library_where_root', undefined, this.hass) },
-                          ],
-                        },
-                      },
-                    },
-                  ]}
-                  .computeLabel=${(): string => localize('share.library_where', undefined, this.hass)}
-                  @value-changed=${this._libraryDestinationPicked}
-                ></ha-form>
+                ${this._renderDestination()}
                 ${
                   this._communityKnownFailed
                     ? html`<ha-alert alert-type="error">
@@ -596,7 +634,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
         info.readme
           ? html`<ha-expansion-panel outlined>
               <span slot="header">${localize('share.about_readme', undefined, this.hass)}</span>
-              <ha-markdown class="readme" .content=${info.readme}></ha-markdown>
+              <ha-markdown class="readme" .content=${withoutImages(info.readme)}></ha-markdown>
             </ha-expansion-panel>`
           : html``
       }
@@ -695,24 +733,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
   private _renderRisks(risks: CommunityRisks, title: string): TemplateResult {
     return html`<ha-alert alert-type="warning" .title=${localize(title, undefined, this.hass)}>
       <ul class="risks">
-        ${
-          risks.actions.length
-            ? html`<li>${localize('share.community_risk_actions', { list: risks.actions.join(', ') }, this.hass)}</li>`
-            : html``
-        }
-        ${
-          risks.urls.length
-            ? html`<li>${localize('share.community_risk_urls', { list: risks.urls.join(', ') }, this.hass)}</li>`
-            : html``
-        }
-        ${risks.embeds ? html`<li>${localize('share.community_risk_embeds', undefined, this.hass)}</li>` : html``}
-        ${risks.scripts ? html`<li>${localize('share.community_risk_scripts', undefined, this.hass)}</li>` : html``}
-        ${
-          risks.placeholders
-            ? html`<li>${localize('share.community_risk_placeholders', undefined, this.hass)}</li>`
-            : html``
-        }
-        ${risks.overlay ? html`<li>${localize('share.community_risk_overlay', undefined, this.hass)}</li>` : html``}
+        ${this._riskSentences(risks).map((sentence) => html`<li>${sentence}</li>`)}
       </ul>
     </ha-alert>`;
   }
@@ -810,17 +831,20 @@ export class DeclutteringTemplateShareTab extends LitElement {
       (config) =>
         wanted.reduce(
           (built, [each, template]) =>
-            this._libraryDestination === 'root'
-              ? addTemplateToRoot(built, each, template as TemplateConfig)
-              : // Name and type lead, as on any template card, and nothing in the post overrides them.
-                addCardToView(
-                  built,
-                  view,
-                  Object.assign({ type: TEMPLATE_TYPE, template: each }, template, {
-                    type: TEMPLATE_TYPE,
-                    template: each,
-                  }),
-                ),
+            // Only a name still free: made again after the dialog saves, it adds nothing twice.
+            each in collectTemplates(built as LovelaceConfig)
+              ? built
+              : this._libraryDestination === 'root'
+                ? addTemplateToRoot(built, each, template as TemplateConfig)
+                : // Name and type lead, as on any template card, and nothing in the post overrides them.
+                  addCardToView(
+                    built,
+                    view,
+                    Object.assign({ type: TEMPLATE_TYPE, template: each }, template, {
+                      type: TEMPLATE_TYPE,
+                      template: each,
+                    }),
+                  ),
           config,
         ),
       'community_install',
@@ -1006,7 +1030,6 @@ export class DeclutteringTemplateShareTab extends LitElement {
       labels: {
         library: (each) => localize('compare.source_library', { name: each }, this.hass),
         shared: (title, author) => localize('compare.source_shared', { title, author }, this.hass),
-        elsewhere: (urlPath) => localize('compare.source_elsewhere', { dashboard: urlPath }, this.hass),
         trash: (when, reason) => localize(`compare.source_trash_${reason}`, { when }, this.hass),
         ago,
       },
@@ -1131,26 +1154,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
                     ></ha-yaml-editor>`,
                   )}
                 </ha-expansion-panel>
-                <ha-form
-                  .hass=${this.hass}
-                  .data=${{ where: this._libraryDestination }}
-                  .schema=${[
-                    {
-                      name: 'where',
-                      selector: {
-                        select: {
-                          mode: 'dropdown',
-                          options: [
-                            { value: 'view', label: localize('share.library_where_view', undefined, this.hass) },
-                            { value: 'root', label: localize('share.library_where_root', undefined, this.hass) },
-                          ],
-                        },
-                      },
-                    },
-                  ]}
-                  .computeLabel=${(): string => localize('share.library_where', undefined, this.hass)}
-                  @value-changed=${this._libraryDestinationPicked}
-                ></ha-form>
+                ${this._renderDestination()}
                 <ha-button .disabled=${this._busy || already} @click=${(): void => void this._install(entry.name)}>
                   ${localize(
                     already ? 'share.already_here' : armed ? 'share.install_anyway' : 'share.install',
@@ -1200,7 +1204,8 @@ export class DeclutteringTemplateShareTab extends LitElement {
       (config) =>
         wanted.reduce((built, each) => {
           const one = libraryEntry(each);
-          if (!one) return built;
+          // Only a name still free: made again after the dialog saves, it adds nothing twice.
+          if (!one || each in collectTemplates(built as LovelaceConfig)) return built;
           // Where it lands is the user's choice: a template card on this view, which is
           // visible and editable in place, or the dashboard's decluttering_templates block,
           // which keeps the view clean.
@@ -1300,7 +1305,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
         this._trash.length
           ? html`<ul class="installed trash">
               ${this._trash.map(
-                (entry, index) => html`
+                (entry) => html`
                   <li>
                     <strong>${entry.name}</strong>
                     <div class="status">
@@ -1311,27 +1316,40 @@ export class DeclutteringTemplateShareTab extends LitElement {
                       )}
                     </div>
                     ${
-                      this._trashPending === index
+                      this._trashPending === DeclutteringTemplateShareTab._trashKey(entry)
                         ? html`<ha-alert alert-type="warning">
                             ${localize('share.trash_clash', { name: entry.name }, this.hass)}
                           </ha-alert>`
                         : html``
                     }
-                    <ha-button .disabled=${this._busy} @click=${(): Promise<void> => this._restore(entry, index)}>
-                      ${localize(this._trashPending === index ? 'share.trash_restore_anyway' : 'share.trash_restore', undefined, this.hass)}
+                    <ha-button .disabled=${this._busy} @click=${(): void => void this._restore(entry)}>
+                      ${localize(
+                        this._trashPending === DeclutteringTemplateShareTab._trashKey(entry)
+                          ? 'share.trash_restore_anyway'
+                          : 'share.trash_restore',
+                        undefined,
+                        this.hass,
+                      )}
                     </ha-button>
                     <ha-button
                       @click=${(): void => {
-                        this._trashShown = this._trashShown === index ? undefined : index;
+                        const key = DeclutteringTemplateShareTab._trashKey(entry);
+                        this._trashShown = this._trashShown === key ? undefined : key;
                       }}
                     >
-                      ${localize(this._trashShown === index ? 'share.trash_hide' : 'share.trash_show', undefined, this.hass)}
+                      ${localize(
+                        this._trashShown === DeclutteringTemplateShareTab._trashKey(entry)
+                          ? 'share.trash_hide'
+                          : 'share.trash_show',
+                        undefined,
+                        this.hass,
+                      )}
                     </ha-button>
-                    <ha-button .disabled=${this._busy} @click=${(): Promise<void> => this._forget(entry)}>
+                    <ha-button .disabled=${this._busy} @click=${(): void => void this._forgetSaying(entry)}>
                       ${localize('share.trash_forget', undefined, this.hass)}
                     </ha-button>
                     ${
-                      this._trashShown === index
+                      this._trashShown === DeclutteringTemplateShareTab._trashKey(entry)
                         ? html`<ha-yaml-editor
                             .hass=${this.hass}
                             .defaultValue=${entry.template}
@@ -1348,8 +1366,9 @@ export class DeclutteringTemplateShareTab extends LitElement {
     `;
   }
 
-  private async _restore(entry: TrashEntry, index: number): Promise<void> {
+  private async _restore(entry: TrashEntry): Promise<void> {
     if (!this.hass) return;
+    const key = DeclutteringTemplateShareTab._trashKey(entry);
     const saver = saverFor(this.hass);
     let current: unknown;
     try {
@@ -1359,8 +1378,8 @@ export class DeclutteringTemplateShareTab extends LitElement {
       return;
     }
     const clash = entry.name in collectTemplates(current as LovelaceConfig);
-    if (clash && this._trashPending !== index) {
-      this._trashPending = index;
+    if (clash && this._trashPending !== key) {
+      this._trashPending = key;
       this._trashArmedAt = Date.now();
       return;
     }
@@ -1368,7 +1387,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     this._busy = true;
     this._toolError = undefined;
     try {
-      await rewriteDashboards(this, this.hass, 'restore', [
+      await rewriteAndKeep(this, this.hass, 'restore', [
         { urlPath: entry.dashboard, build: (config) => restoreTemplate(config, entry) },
       ]);
       this._trashPending = undefined;
@@ -1378,6 +1397,16 @@ export class DeclutteringTemplateShareTab extends LitElement {
       this._toolError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, this.hass);
     } finally {
       this._busy = false;
+    }
+  }
+
+  // The Remove button: what went wrong is said, where a restore says it for itself.
+  private async _forgetSaying(entry: TrashEntry): Promise<void> {
+    this._toolError = undefined;
+    try {
+      await this._forget(entry);
+    } catch (err) {
+      this._toolError = localize('share.trash_forget_failed', { message: (err as Error)?.message ?? err }, this.hass);
     }
   }
 
@@ -1582,13 +1611,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
                   : html``
               }
               <ha-button @click=${this._copyConversion}>
-                ${
-                  this._convertCopyState === 'done'
-                    ? localize('share.copied', undefined, this.hass)
-                    : this._convertCopyState === 'failed'
-                      ? localize('share.copy_failed', undefined, this.hass)
-                      : localize('convert.copy', undefined, this.hass)
-                }
+                ${this._copyLabel(this._convertCopyState, 'convert.copy')}
               </ha-button>
               <ha-button .disabled=${this._busy} @click=${(): void => void this._installConversion()}>
                 ${localize(this._convertClash ? 'share.install_anyway' : 'convert.install', undefined, this.hass)}
@@ -1631,6 +1654,11 @@ export class DeclutteringTemplateShareTab extends LitElement {
       .filter(Boolean)
       .join('\n---\n');
     this._convertCopyState = (await copyText(text)) ? 'done' : 'failed';
+    announce(
+      this,
+      localize(this._convertCopyState === 'done' ? 'share.copied' : 'share.copy_failed', undefined, this.hass),
+    );
+    setTimeout(() => (this._convertCopyState = ''), 3000);
   }
 
   // The conversion goes through the import, so a name clash or a risk is asked about the same way.
@@ -1719,7 +1747,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
     }
     if (Date.now() - this._importArmedAt < SECOND_PRESS_MS) return;
 
-    this._applyImport(name);
+    void this._applyImport(name);
   }
 
   /*
@@ -1731,10 +1759,10 @@ export class DeclutteringTemplateShareTab extends LitElement {
     // Only offered after the first press, which has already said what there is to say.
     if (Date.now() - this._importArmedAt < SECOND_PRESS_MS) return;
     const existing = Object.keys(collectTemplates(this._savedLovelace));
-    this._applyImport(freeName(this._importValue.template, existing));
+    void this._applyImport(freeName(this._importValue.template, existing));
   }
 
-  private _applyImport(name: string): void {
+  private async _applyImport(name: string): Promise<void> {
     /*
      * A paste is not an install from the shared list, whatever it says about itself: a
      * `source:` stamp in it would point Check for updates at a post of the paster's choosing,
@@ -1764,9 +1792,11 @@ export class DeclutteringTemplateShareTab extends LitElement {
     const includes = value.includes;
     if (includes && typeof includes === 'object' && !Array.isArray(includes)) {
       const existing = Object.keys(collectTemplates(this._savedLovelace));
-      const wanted = Object.entries(includes).filter(([each]) => !existing.includes(each));
+      const wanted = importableIncludes(includes, existing);
       if (wanted.length) {
-        void this._saveDashboard(
+        // Waited for: the tab is left once the import lands, and a save that failed after
+        // that had nowhere to say so - the template arrived without what it is built on.
+        const saved = await this._saveDashboard(
           (config) =>
             wanted.reduce(
               (built, [each, template]) => addTemplateToRoot(built, each, template as TemplateConfig),
@@ -1776,6 +1806,7 @@ export class DeclutteringTemplateShareTab extends LitElement {
           // The import also replaces what the dialog holds, so an undo puts that back too.
           this._config,
         );
+        if (!saved) return;
       }
     }
 
@@ -1792,6 +1823,5 @@ export class DeclutteringTemplateShareTab extends LitElement {
 }
 
 /** The tag the template editor renders this tab as. */
-export const SHARE_TAB_TAG = 'decluttering-template-share-tab';
-if (!customElements.get('decluttering-template-share-tab'))
-  customElements.define('decluttering-template-share-tab', DeclutteringTemplateShareTab);
+const SHARE_TAB_TAG = 'decluttering-template-share-tab';
+if (!customElements.get(SHARE_TAB_TAG)) customElements.define(SHARE_TAB_TAG, DeclutteringTemplateShareTab);

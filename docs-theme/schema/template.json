@@ -499,6 +499,10 @@
           "type": "boolean",
           "description": "Whether the template is unusable without it. Warns; it never blocks a save."
         },
+        "allow_empty": {
+          "type": "boolean",
+          "description": "Whether the card editor lets the field be left empty (#514): clearing it writes `''` on the card, which beats the default, instead of taking the line out so the default comes back. Reset still takes the line out. Without it, a cleared field sets nothing, as it always has."
+        },
         "pattern": {
           "type": "string",
           "description": "A regular expression the value must match. Warns; it never blocks a save."
@@ -758,6 +762,10 @@
         "required": {
           "type": "boolean",
           "description": "Whether the template is unusable without it. Warns; it never blocks a save."
+        },
+        "allow_empty": {
+          "type": "boolean",
+          "description": "Whether the card editor lets the field be left empty (#514): clearing it writes `''` on the card, which beats the default, instead of taking the line out so the default comes back. Reset still takes the line out. Without it, a cleared field sets nothing, as it always has."
         },
         "pattern": {
           "type": "string",

@@ -4,6 +4,8 @@
  * not run.
  */
 
+import type { HouseRow } from './playground-house';
+
 export function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   text?: string,
@@ -105,4 +107,34 @@ export function codeBlock(title: string, help: string, text: string): HTMLElemen
   wrap.appendChild(pre);
   button.addEventListener('click', () => copy(text, button, pre));
   return wrap;
+}
+
+/**
+ * The house's table for both Try pages, made from the rows the steps themselves read. `more`
+ * adds the column of everything else an entity has, which only Try a placeholder shows.
+ */
+export function houseTable(rows: HouseRow[], more = false): HTMLElement {
+  const table = el('table', undefined, 'try-house');
+  const head = el('tr');
+  const titles = ['Entity', 'State', 'Where', 'Labels', ...(more ? ['What else it has'] : [])];
+  titles.forEach((title) => head.appendChild(el('th', title)));
+  table.appendChild(el('thead')).appendChild(head);
+  const body = table.appendChild(el('tbody'));
+  for (const row of rows) {
+    const tr = el('tr', undefined, row.own ? 'try-house-own' : undefined);
+    const id = el('td');
+    id.appendChild(el('code', row.entity));
+    if (row.own) id.appendChild(el('span', ' yours', 'try-house-mark'));
+    tr.appendChild(id);
+    const state = el('td');
+    if (row.state) state.appendChild(el('code', row.state));
+    tr.appendChild(state);
+    tr.appendChild(el('td', row.where));
+    tr.appendChild(el('td', row.labels.join(', ')));
+    if (more) tr.appendChild(el('td', row.more.join('; ')));
+    body.appendChild(tr);
+  }
+  const scroll = el('div', undefined, 'try-house-scroll');
+  scroll.appendChild(table);
+  return scroll;
 }

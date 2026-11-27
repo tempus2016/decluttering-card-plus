@@ -22,8 +22,11 @@ class DeclutteringSkipped extends LitElement {
   }
 
   set hass(hass: any) {
+    // Only the language is read from it, so only a change of language draws the slot again.
+    const language = (each: any): unknown => each?.locale?.language ?? each?.language;
+    const changed = language(hass) !== language(this._hass);
     this._hass = hass;
-    this.requestUpdate();
+    if (changed) this.requestUpdate();
   }
 
   public getCardSize(): number {

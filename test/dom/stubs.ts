@@ -80,7 +80,8 @@ class StubHuiCard extends HTMLElement {
         this._apply();
       };
       if (customElements.get(tag)) make();
-      else void customElements.whenDefined(tag).then(make);
+      // A type no element can have is refused by the registry, and never made.
+      else void customElements.whenDefined(tag).then(make, () => undefined);
     } else {
       const text = document.createElement('div');
       text.className = 'stub-card';

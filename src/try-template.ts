@@ -35,6 +35,7 @@ import {
   handedDownNames,
   newTrace,
   nestedCardPaths,
+  setAt,
   TracePath,
   TraceReport,
   TraceSection,
@@ -77,7 +78,7 @@ const MAX_ALIASES = 50;
 // Past this many builds the page stops: a repeat of repeats should not take the tab with it.
 const MAX_BUILDS = 400;
 
-export const CARD_TYPE = 'custom:decluttering-card-plus';
+const CARD_TYPE = 'custom:decluttering-card-plus';
 
 /*
  * Every warning a build says comes to `onWarning` and into its trace; a quiet set that has
@@ -195,13 +196,6 @@ function getAt(config: any, path: TracePath): any {
   return node;
 }
 
-function setAt(config: any, path: TracePath, value: unknown): any {
-  if (!path.length) return value;
-  const parent = getAt(config, path.slice(0, -1));
-  if (parent && typeof parent === 'object') parent[path[path.length - 1]] = value;
-  return config;
-}
-
 // What a card of ours inside another hands down, filled in the outer card (src/element.ts `_handDown`).
 function handDown(
   variables: VariablesConfig[] | undefined,
@@ -311,6 +305,11 @@ function buildOne(given: any, path: TracePath, parents: string[], walk: Walk): u
   config = withSlotVariables(config);
   // The page is as wide as a desktop: `variables_mobile:` is not laid over.
   config = withMobileVariables(config, false);
+  // A name YAML read as a number - `template: 5` - is the template called "5"; anything else is no name.
+  if (typeof config.template === 'number') config = { ...config, template: String(config.template) };
+  else if (config.template !== undefined && typeof config.template !== 'string') {
+    return fail(localize('error.missing_template'));
+  }
   record.template = config.template ?? (byDomainOf(config) ? BY_DOMAIN_KEY : undefined);
   if (!config.template && !byDomainOf(config)) return fail(localize('error.missing_template'));
   const cycle = findCycle(open, config.template);

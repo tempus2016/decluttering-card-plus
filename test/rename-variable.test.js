@@ -145,8 +145,8 @@ check(
     type: 'custom:decluttering-card-plus',
     template: 'tile',
     name: '[[new]] card',
-    // A card's values are its own words, not the template's placeholders.
-    variables: [{ new: 'light.a' }, { keep: '[[old]]' }],
+    // A value the card sets is filled in from its other variables, so it reads the new name too.
+    variables: [{ new: 'light.a' }, { keep: '[[new]]' }],
     for_each: [{ new: 'light.b' }, [{ new: 'light.c' }]],
     for_each_from: { entities: 'light.*', overrides: { 'light.d': { new: 'x' } } },
     card: { name: '[[old]]' },
@@ -367,3 +367,159 @@ check(
   renamePlaceholders('[[x|unless:a]] [[y|unless:!a=on]]', 'a', 'b'),
   '[[x|unless:b]] [[y|unless:!b=on]]',
 );
+
+/* -------------------------------------------------------------------- every form readsIn reads (review) */
+
+const { readsIn } = require('../.test-build/unread.js');
+
+// After a rename, whatever read the old name reads the new one, and nothing else moved.
+const READ_FORMS = [
+  '[[old]]',
+  '[[old.light]]',
+  '[[old?]]',
+  '[[x|or:old]]',
+  '[[x|or:old.light]]',
+  '[[x|if:old]]',
+  '[[x|if:!old]]',
+  '[[x|if:old=on]]',
+  '[[x|if:old.on=1]]',
+  '[[x|if:!old.on]]',
+  '[[x|unless:old.on!=1]]',
+  '[[tmpl|repeat:old]]',
+  '[[tmpl|with:old]]',
+  '[[tmpl|with:old.inner]]',
+  '[[old|or:[[fallback]]]]',
+  '[[old|default:[[fallback]]]]',
+  '[[x|or:[[old|upper]]]]',
+  '[[old.[[level]]]]',
+  '[[colours.[[old]]]]',
+  '[[x|if:old=on|or:old]] and [[old|slug]]',
+  '[[older]] [[x|or:older]] [[x|if:older.on]] [[t|repeat:older]]',
+  '[[!old]] [["old"]] [[x|or:"old"]]',
+];
+const renamedRead = (name) => (name === 'old' ? 'new' : name.startsWith('old.') ? `new${name.slice(3)}` : name);
+for (const form of READ_FORMS) {
+  check(
+    `after a rename, ${form} reads the new name wherever it read the old`,
+    readsIn(rename(form)).sort(),
+    readsIn(form).map(renamedRead).sort(),
+  );
+}
+check(
+  'a step argument holding a placeholder keeps its place',
+  rename('[[old|or:[[fallback]]]]'),
+  '[[new|or:[[fallback]]]]',
+);
+check('a dotted or:', rename('[[x|or:old.light]]'), '[[x|or:new.light]]');
+check('a dotted condition', rename('[[x|if:!old.on]] [[x|if:old.on=1]]'), '[[x|if:!new.on]] [[x|if:new.on=1]]');
+check('what a repeat works through', rename('[[tmpl|repeat:old]]'), '[[tmpl|repeat:new]]');
+check('what a with lays over', rename('[[tmpl|with:old]]'), '[[tmpl|with:new]]');
+check('with: pairs name no variable', rename('[[tmpl|with:old=1]]'), '[[tmpl|with:old=1]]');
+check("button-card's JavaScript is left alone", rename('[[[ return old ]]]'), '[[[ return old ]]]');
+
+/* -------------------------------------------------------------------- bare names in a template (review) */
+
+const bare = renameVariableInTemplate(
+  {
+    card: { type: 'tile', entity: '[[old]]' },
+    variables: [
+      { name: 'old' },
+      { name: 'a', show_if: 'old=kitchen' },
+      { name: 'b', show_if: ['old', '!other'], hide_if: 'if:!old' },
+      { name: 'c', show_if: 'older' },
+    ],
+    groups: { g: { show_if: 'old', hide_if: ['unless:old.on'] } },
+    checks: [
+      { condition: '!old', message: 'm' },
+      { condition: '[[old|exists]]', message: 'x' },
+      { condition: true, message: 'y' },
+      { condition: 'older=1', message: 'z' },
+    ],
+    examples: [{ old: 'kitchen', other: 1 }, { name: 'Bed', values: { old: 'bedroom' } }, [{ old: 'x' }]],
+  },
+  'old',
+  'new',
+);
+check('show_if and hide_if on a declaration', bare.variables, [
+  { name: 'new' },
+  { name: 'a', show_if: 'new=kitchen' },
+  { name: 'b', show_if: ['new', '!other'], hide_if: 'if:!new' },
+  { name: 'c', show_if: 'older' },
+]);
+check('show_if and hide_if on a group', bare.groups, { g: { show_if: 'new', hide_if: ['unless:new.on'] } });
+check('a check written as a condition', bare.checks, [
+  { condition: '!new', message: 'm' },
+  { condition: '[[new|exists]]', message: 'x' },
+  { condition: true, message: 'y' },
+  { condition: 'older=1', message: 'z' },
+]);
+check('every example, named or not', bare.examples, [
+  { new: 'kitchen', other: 1 },
+  { name: 'Bed', values: { new: 'bedroom' } },
+  [{ new: 'x' }],
+]);
+check(
+  'declarations written as a mapping',
+  renameVariableInTemplate({ card: {}, variables: { old: null, a: { show_if: 'old' } } }, 'old', 'new').variables,
+  { new: null, a: { show_if: 'new' } },
+);
+
+/* -------------------------------------------------------------------- everything a card fills in (review) */
+
+check(
+  'a card reading the variable in its other values',
+  renameVariableInCard(
+    {
+      type: 'custom:decluttering-card-plus',
+      template: 't',
+      variables: [{ old: 'kitchen' }, { label: '[[old]] light' }],
+      for_each: [{ title: '[[old]] 1' }],
+      on_error: { type: 'markdown', content: '[[old]] broke' },
+      for_each_from: { entities: true, area: '[[old]]', overrides: { 'light.a': { old: 1, note: '[[old]]' } } },
+      rebuild_on: ['[[old]]', 'sensor.a'],
+      empty: { type: 'markdown', content: '[[old]]' },
+      slots: { old: { type: 'x' } },
+      name: '[[old]]',
+    },
+    'old',
+    'new',
+  ),
+  {
+    type: 'custom:decluttering-card-plus',
+    template: 't',
+    variables: [{ new: 'kitchen' }, { label: '[[new]] light' }],
+    for_each: [{ title: '[[new]] 1' }],
+    on_error: { type: 'markdown', content: '[[new]] broke' },
+    for_each_from: { entities: true, area: '[[new]]', overrides: { 'light.a': { new: 1, note: '[[new]]' } } },
+    rebuild_on: ['[[new]]', 'sensor.a'],
+    empty: { type: 'markdown', content: '[[new]]' },
+    slots: { new: { type: 'x' } },
+    name: '[[new]]',
+  },
+);
+
+const byDomain = renameVariableInDashboard(
+  {
+    decluttering_templates: { t: { card: { type: 'tile', entity: '[[old]]' } } },
+    views: [
+      {
+        cards: [
+          {
+            type: 'custom:decluttering-card-plus',
+            template_by_domain: { light: 't', default: 'other' },
+            variables: [{ old: 'k' }],
+          },
+          { type: 'custom:decluttering-card-plus', template_by_domain: { light: 'other' }, variables: [{ old: 'k' }] },
+        ],
+      },
+    ],
+  },
+  't',
+  'old',
+  'new',
+);
+check('a card choosing by domain that can choose the template', byDomain.config.views[0].cards[0].variables, [
+  { new: 'k' },
+]);
+check('one that cannot is left alone', byDomain.config.views[0].cards[1].variables, [{ old: 'k' }]);
+check('and is counted', byDomain.cards, 1);

@@ -246,7 +246,8 @@ export function newExpansionId(): string {
 
 const pathKey = (path: TracePath): string => JSON.stringify(path);
 
-function setAt(config: any, path: TracePath, value: unknown): any {
+/** `value` put at `path` inside `config`, which is given back - or `value` itself for the empty path. */
+export function setAt(config: any, path: TracePath, value: unknown): any {
   if (!path.length) return value;
   let node = config;
   for (const step of path.slice(0, -1)) {
@@ -447,6 +448,11 @@ export interface TraceReport {
   rebuilds?: RebuildRecord[];
 }
 
+/** A value as the report writes it: a mapping or a list as its JSON, anything else as its text. */
+export function asText(value: unknown): string {
+  return value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value);
+}
+
 // A table cell holds text: a mapping or a list goes in as its JSON, which is how it was written.
 function cell(value: unknown): unknown {
   return value !== null && typeof value === 'object' ? JSON.stringify(value) : value;
@@ -488,12 +494,6 @@ export function workedOut(value: unknown, trace: BuildTrace, hass?: any): Worked
     noted.add(placeholder);
     steps.push([placeholder, text]);
   };
-  const asText = (worked: unknown): string =>
-    typeof worked === 'string'
-      ? worked
-      : worked !== null && typeof worked === 'object'
-        ? JSON.stringify(worked)
-        : String(worked);
   const text = (written: string): unknown => {
     let current = written;
     for (;;) {

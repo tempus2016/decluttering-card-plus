@@ -82,6 +82,8 @@ export function functionNamesOf(templates: Record<string, TemplateConfig> | unde
  * A step's argument taken apart at its commas, a comma in quotes staying in its piece. The
  * text is the template's JSON, where a double quote is written `\"`.
  */
+const NAMED_SO_FAR = /^\s*[A-Za-z_][A-Za-z0-9_-]*\s*=\s*$/;
+
 function pieces(arg: string): string[] {
   const out: string[] = [];
   let current = '';
@@ -99,13 +101,16 @@ function pieces(arg: string): string[] {
       current += char;
       continue;
     }
-    if (arg.startsWith('\\"', i)) {
+    // A quote opens a piece, or the value of a named one. Anywhere else it is a character:
+    // the apostrophe in `don't,second` swallowed the comma and the argument after it.
+    const opens = current.trim() === '' || NAMED_SO_FAR.test(current);
+    if (opens && arg.startsWith('\\"', i)) {
       quote = '\\"';
       current += '\\"';
       i += 1;
       continue;
     }
-    if (char === '"' || char === "'") quote = char;
+    if (opens && (char === '"' || char === "'")) quote = char;
     if (char === ',') {
       out.push(current);
       current = '';

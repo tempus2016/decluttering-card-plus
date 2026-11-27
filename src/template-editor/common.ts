@@ -1,22 +1,26 @@
-import { HomeAssistant } from 'custom-card-helpers';
+import { HomeAssistant, LovelaceConfig } from 'custom-card-helpers';
 import { CommunityRisks } from '../community';
-import { getLovelacePanel } from '../utils';
+import { getLovelaceConfig, getLovelacePanel } from '../utils';
 import { localize } from '../localize';
-import { HELPERS, pageDashboard, rewriteDashboards, operationLabel, isDefinedHere, textField } from '../shared';
+import {
+  cardHelpers,
+  editDialogOf,
+  pageDashboard,
+  rewriteDashboards,
+  operationLabel,
+  isDefinedHere,
+  textField,
+} from '../shared';
+import { itemTemplatesOf } from '../templates';
+import { UndoEntry, dashboardKey } from '../undo';
+import { THING_STUBS, redoingRewrites } from './pure';
 
 // The one-line text input and the element check live in shared.ts (idea 55 moved them); re-exported for the tabs.
 export { isDefinedHere, textField };
 export type { TextFieldOptions } from '../shared';
 
-// What a template of each kind starts out as, when its type is chosen in the editor. One
-// of these is kept and the rest removed, so switching the type swaps the body for a
-// starter of the new kind - and leaves an existing body of the chosen kind alone.
-export const THING_STUBS: Record<string, unknown> = {
-  card: { type: 'entity', entity: 'sun.sun' },
-  badge: { type: 'entity', entity: 'sun.sun' },
-  row: { entity: 'sun.sun' },
-  element: { type: 'icon', icon: 'mdi:weather-sunny', style: { color: 'yellow' } },
-};
+// The starter body of each kind of template lives with the editor's other decisions (pure.ts); re-exported for the editor.
+export { THING_STUBS };
 
 // How many sets of similar cards the Where used tab offers, and how many cards of each it
 // names - enough to recognise the set, few enough that a big dashboard does not fill the dialog.
@@ -26,11 +30,6 @@ export const SIMILAR_MEMBERS_SHOWN = 8;
 
 // How many places a value search lists in each group before it stops.
 export const SEARCH_SHOWN = 50;
-
-/**
- * Splits a translated sentence at the one part that has to be rendered as markup - a
- * link, a `<code>` - so the words either side stay in the translator's order.
- */
 
 /** Whether a risk scan found anything worth a sentence. */
 export const anyRisk = (risks: CommunityRisks): boolean =>
@@ -66,8 +65,8 @@ export async function loadRowEditor(): Promise<void> {
   // They happen to be used by the vertical-stack card editor but there must be a better way?
   let cls = customElements.get('hui-entities-card');
   if (!cls) {
-    if (!HELPERS) return;
-    (await HELPERS).createCardElement({ type: 'entities', entities: [] });
+    if (!cardHelpers()) return;
+    (await cardHelpers()).createCardElement({ type: 'entities', entities: [] });
     await customElements.whenDefined('hui-entities-card');
     cls = customElements.get('hui-entities-card');
   }
@@ -84,15 +83,101 @@ export interface ToolHost {
 }
 
 /*
+ * The dashboard as it is saved now. The dialog's `lovelace` is the copy it was opened
+ * with, and every tool here saves the dashboard while the dialog stays open - read from
+ * that copy, Where used said nothing used a template just renamed, and the health panel
+ * kept offering to make a template of cards already made into one. The page's copy is
+ * the one a save through the page replaces; the dialog's is for where there is no page.
+ */
+export function savedLovelace(dialogCopy: LovelaceConfig | null | undefined): LovelaceConfig | null | undefined {
+  return getLovelacePanel()?.config ?? dialogCopy ?? getLovelaceConfig();
+}
+
+/*
+ * Where a `position: fixed` box at 0,0 really sits. A dialog that is transformed becomes what
+ * fixed positions are measured from, so a box placed at a viewport position lands off to the
+ * side by the dialog's own offset; `probe` is such a box, and this is that offset to take off.
+ */
+export function fixedOffset(probe: Element | null | undefined): { dx: number; dy: number } {
+  const origin = probe?.getBoundingClientRect();
+  return { dx: origin?.left ?? 0, dy: origin?.top ?? 0 };
+}
+
+/*
+ * Something that is a different object whenever what the dashboard borrows has been read
+ * again - the library dashboard, another dashboard's templates - for the editor to keep its
+ * answers by, beside the dashboard itself: a template resolved before the library arrived
+ * is not the template once it has. The item templates are kept by exactly that, so the
+ * object they come back as serves.
+ */
+export function borrowedEpoch(ll: LovelaceConfig | null | undefined): unknown {
+  return ll ? itemTemplatesOf(ll) : undefined;
+}
+
+/** The address of the dashboard on the page, as a link to one of its views starts: `/lovelace`. */
+export function dashboardHref(): string {
+  return document.location.pathname.split('/').slice(0, 2).join('/');
+}
+
+type DashboardChange = { urlPath: string; build: (config: any) => unknown }; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+/*
+ * The edit dialog for a card being added saves it into the dashboard as the dialog first had
+ * it, which would take back whatever a tool here has just saved - the card editor's installs
+ * guard against the same thing. The dialog's save is wrapped to make the rewrite again (see
+ * redoingRewrites), and the copy older dialogs build from is brought up to date.
+ */
+export function keepOnDialogSave(host: HTMLElement, rewrite: (config: unknown) => unknown, before: unknown): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const params = (editDialogOf(host) as any)?._params as Record<string, any> | undefined;
+  if (!params) return;
+  // The dashboard as the dialog first had it, which is what a card being added is saved into;
+  // where the dialog does not say, the dashboard as it was read just before the rewrite.
+  const opened = params.lovelaceConfig ?? before;
+  const panel = getLovelacePanel();
+  if (panel?.config && params.lovelaceConfig) params.lovelaceConfig = panel.config;
+  if (typeof params.saveCardConfig !== 'function') return;
+  params.saveCardConfig = redoingRewrites(params.saveCardConfig, rewrite, () => getLovelacePanel(), opened);
+}
+
+/*
+ * Every rewrite the editor's tools make goes through here: saved so it can be undone (see
+ * rewriteDashboards), and - for the dashboard on the page - kept when the dialog saves.
+ * Gives back what was written, or nothing when the rewrite left every dashboard as it was.
+ */
+export async function rewriteAndKeep(
+  host: HTMLElement,
+  hass: HomeAssistant | undefined,
+  operation: string,
+  changes: DashboardChange[],
+  dialog?: unknown,
+): Promise<UndoEntry | undefined> {
+  const entry = await rewriteDashboards(host, hass, operation, changes, dialog);
+  const own = pageDashboard();
+  const written = entry?.dashboards.find((each) => dashboardKey(each.urlPath) === own);
+  if (written) {
+    for (const change of changes) {
+      if (dashboardKey(change.urlPath) === own) keepOnDialogSave(host, change.build, written.before);
+    }
+  }
+  return entry;
+}
+
+/** How a tool's save went: written, nothing to write (the dashboard was already so), or not saved. */
+export type SaveOutcome = 'saved' | 'unchanged' | false;
+
+/*
  * Saves the dashboard through the one place every rewrite goes, so it can be undone, and
  * says on the host what went wrong when it could not. Shared by the three tabs of the editor.
+ * A rewrite that changed nothing saves nothing and is not announced as a save: `unchanged`
+ * comes back, for a tool that has to say its target was no longer there.
  */
 export async function saveDashboardWith(
   host: ToolHost & HTMLElement,
   build: (config: unknown) => unknown,
   operation: string,
   dialog?: unknown,
-): Promise<boolean> {
+): Promise<SaveOutcome> {
   const panel = getLovelacePanel();
   if (!panel) {
     host._toolError = localize('tools.cannot_save_here', undefined, host.hass);
@@ -102,10 +187,11 @@ export async function saveDashboardWith(
   host._toolError = undefined;
   try {
     // Through the one place every rewrite goes, so it can be undone.
-    await rewriteDashboards(host, host.hass, operation, [{ urlPath: pageDashboard(), build }], dialog);
+    const entry = await rewriteAndKeep(host, host.hass, operation, [{ urlPath: pageDashboard(), build }], dialog);
+    if (!entry) return 'unchanged';
     host._undoChanged = undefined;
     announce(host, localize('undo.toast', { operation: operationLabel(operation, host.hass) }, host.hass));
-    return true;
+    return 'saved';
   } catch (err) {
     host._toolError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, host.hass);
     return false;

@@ -1,4 +1,5 @@
 import { CONSUMER_TYPES, GROUP_CARD_TYPE, LEGACY_TEMPLATE_TYPE, TEMPLATE_TYPE } from './templates';
+import { isElementName } from './installed';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -73,6 +74,10 @@ function pageIdle(): Promise<void> {
  * seconds and then the page being free (#456): on a dashboard busy building, a card's script
  * can sit downloaded but not yet run for longer than two seconds, and calling it missing then
  * drew an error that was gone a few seconds later.
+ *
+ * A type that could never name an element - `custom:mushroomcard`, `custom:Button-Card` - is
+ * missing without waiting: the registry rejects a wait for one, which used to leave the
+ * mistyped type as the one failure the card never said.
  */
 export async function undefinedElements(
   tags: string[],
@@ -81,15 +86,79 @@ export async function undefinedElements(
   idle: () => Promise<void> = pageIdle,
 ): Promise<string[]> {
   const missing = tags.filter((tag) => !registry.get(tag));
-  if (!missing.length) return [];
+  const awaited = missing.filter(isElementName);
+  if (!awaited.length) return missing;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const defined = Promise.all(missing.map((tag) => registry.whenDefined(tag)));
+  const defined = Promise.all(awaited.map((tag) => registry.whenDefined(tag)));
   await Promise.race([
     defined,
     new Promise<void>((resolve) => {
       timer = setTimeout(resolve, wait);
     }).then(idle),
-  ]);
+  ]).catch(() => undefined);
   if (timer !== undefined) clearTimeout(timer);
   return missing.filter((tag) => !registry.get(tag));
+}
+
+/*
+ * Hearing that elements a card found missing have turned up. One wait per element for the
+ * whole page, shared by every card listening for it: a wait of each card's own, made again
+ * on every build, held on to the card and what it built for as long as the element stayed
+ * away - for good, when it was never installed. A card stops listening when it leaves the
+ * page or builds something else, and nothing of it is kept.
+ */
+type ElementRegistry = Pick<CustomElementRegistry, 'get' | 'whenDefined'>;
+
+interface Waiter {
+  remaining: Set<string>;
+  listener: () => void;
+}
+
+const WAITERS = new WeakMap<object, Map<string, Set<Waiter>>>();
+
+function waitersOf(registry: ElementRegistry): Map<string, Set<Waiter>> {
+  let byTag = WAITERS.get(registry);
+  if (!byTag) WAITERS.set(registry, (byTag = new Map()));
+  return byTag;
+}
+
+/**
+ * Calls `listener` once, when every one of `tags` is defined. Returns a way to stop
+ * listening. A tag that can never be an element's is never defined, so the listener is
+ * never called for a list holding one.
+ */
+export function whenElementsDefined(
+  tags: string[],
+  listener: () => void,
+  registry: ElementRegistry = customElements,
+): () => void {
+  if (!tags.length || !tags.every(isElementName)) return () => undefined;
+  const byTag = waitersOf(registry);
+  const waiter: Waiter = { remaining: new Set(tags), listener };
+  for (const tag of waiter.remaining) {
+    let waiting = byTag.get(tag);
+    if (!waiting) {
+      const set = new Set<Waiter>();
+      waiting = set;
+      byTag.set(tag, set);
+      Promise.resolve(registry.whenDefined(tag))
+        .then(() => {
+          byTag.delete(tag);
+          for (const each of set) {
+            each.remaining.delete(tag);
+            if (!each.remaining.size) each.listener();
+          }
+        })
+        .catch(() => undefined);
+    }
+    waiting.add(waiter);
+  }
+  return () => {
+    for (const tag of tags) byTag.get(tag)?.delete(waiter);
+  };
+}
+
+/** How many listeners are waiting on one element, for the tests. */
+export function listenersWaiting(tag: string, registry: ElementRegistry = customElements): number {
+  return waitersOf(registry).get(tag)?.size ?? 0;
 }

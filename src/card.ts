@@ -44,7 +44,7 @@ import {
 } from './variables';
 import { installedKey, whenInstalledChanges } from './installed';
 import { chainOf, describeCycle, describeTooDeep, findCycle, MAX_NESTING } from './cycles';
-import { customTags, OnError, onErrorOf, undefinedElements } from './on-error';
+import { customTags, OnError, onErrorOf, undefinedElements, whenElementsDefined } from './on-error';
 import { isRegistrySource, registryKey, resolveRegistryItems, sameRegistry } from './registry';
 import { resolverRegistryKey } from './registry-index';
 import { labelRegistry, loadLabels } from './labels';
@@ -172,6 +172,10 @@ export class DeclutteringCard extends DeclutteringElement {
     picker?: TemplatePicker;
     // Asks what is installed (#397), so it works its copies out again when a card turns up (#505).
     installs?: boolean;
+    // Whether it needs the label registry, or the category one, fetched - worked out once, at
+    // the build: hass arrives on every state change and must not read the template again.
+    labels?: boolean;
+    categories?: boolean;
   };
   private _registry?: unknown[];
 
@@ -278,9 +282,13 @@ export class DeclutteringCard extends DeclutteringElement {
     // which stops the card hearing about categories (below); put back, it starts again.
     if (this._hass && this._fromRegistry) this._loadLabelsIfWanted(this._hass);
     this._listenForInstalled();
+    // An element found missing may have turned up while the card was off the page.
+    this._listenForDefined();
     if (this._breakpoints) this._breakpoints.observe(this);
     if (this._lastConfig && hasMobileVariables(this._lastConfig) && mobileThreshold(this._lastConfig) === undefined) {
       this._watchViewport();
+      // Nothing was heard while the card was off the page, so the screen is read again.
+      this._crossed(isMobileViewport());
     }
     // On the page at last: now it can be said whether the card is on screen.
     if (this._deferred) this._watchForBuild();
@@ -304,6 +312,15 @@ export class DeclutteringCard extends DeclutteringElement {
     this._stopMedia = undefined;
     this._installedStop?.();
     this._installedStop = undefined;
+    this._definedStop?.();
+    this._definedStop = undefined;
+    // A rebuild waiting out a burst is not made off the page. The change counts as not seen
+    // yet, so the first hass after the card is put back sets the wait off again.
+    if (this._rebuildTimer) {
+      clearTimeout(this._rebuildTimer);
+      this._rebuildTimer = undefined;
+      this._rebuildSeen = this._rebuildBuilt;
+    }
   }
 
   /*
@@ -360,13 +377,7 @@ export class DeclutteringCard extends DeclutteringElement {
     // left (idea 45), which only a build knows how to do.
     const lazyToShow = this.preview && this._lazyShown;
     const skippedToDraw = this._skippedCopies > 0;
-    if (changedProperties.has('preview') && (lazyToShow || skippedToDraw)) {
-      try {
-        this._rebuild();
-      } catch (err) {
-        this._error = (err as Error)?.message ?? String(err);
-      }
-    }
+    if (changedProperties.has('preview') && (lazyToShow || skippedToDraw)) this._rebuild();
     // A preview waits for nothing: told it is one, a deferred card builds at once.
     if (changedProperties.has('preview') && this.preview && this._deferred) this._buildDeferred();
   }
@@ -392,6 +403,14 @@ export class DeclutteringCard extends DeclutteringElement {
    */
   public setConfig(config: DeclutteringCardConfig): void {
     this._lastConfig = config;
+    // Whatever was being fetched for the config before this one is out of date (see hassAvailable).
+    this._configured += 1;
+    this._forgetBuilt();
+    // A custom card the config before this one was waiting for is no longer waited for.
+    if (this._definedWait && this._definedWait.waitingOn !== config) {
+      this._definedWait = undefined;
+      this._listenForDefined();
+    }
     // A build still waiting goes on waiting: if this config is deferred too it takes the
     // wait over (_buildOrDefer), and if not, the waiting build finds itself out of date.
     this._held = undefined;
@@ -414,6 +433,23 @@ export class DeclutteringCard extends DeclutteringElement {
       if (!this._onError()) throw err;
       this._error = (err as Error)?.message ?? String(err);
     }
+  }
+
+  // How many configs the card has been handed, so an answer that comes back late can tell.
+  private _configured = 0;
+
+  /*
+   * Lets go of what the last build left to be built again when the registry, the labels, the
+   * translations or what is installed change. Only a build sets them, and a config that never
+   * gets as far as one - its template missing, a loop, a preview held - used to leave the
+   * ones from the config before: the next registry change then took the error off and drew
+   * the old card in its place, and built the card a paused preview was holding back (#407).
+   */
+  private _forgetBuilt(): void {
+    this._fromResolvers = undefined;
+    this._resolverRegistry = undefined;
+    this._fromRegistry = undefined;
+    this._registry = undefined;
   }
 
   private _configure(config: DeclutteringCardConfig): void {
@@ -596,6 +632,7 @@ export class DeclutteringCard extends DeclutteringElement {
 
   private _hold(held: NonNullable<DeclutteringCard['_held']>): void {
     this._dropThing();
+    this._forgetBuilt();
     this._error = undefined;
     this._errorDetail = undefined;
     this._held = held;
@@ -605,11 +642,7 @@ export class DeclutteringCard extends DeclutteringElement {
   private _buildAnyway(once: boolean): void {
     this._held = undefined;
     if (once) this._builtAnyway = this._lastConfig;
-    try {
-      this._rebuild();
-    } catch (err) {
-      this._error = (err as Error)?.message ?? String(err);
-    }
+    this._rebuild();
   }
 
   private _heardHold(event: PreviewHoldEvent): void {
@@ -687,7 +720,9 @@ export class DeclutteringCard extends DeclutteringElement {
       this._breakpoints?.disconnect();
       this._breakpoints = undefined;
       this._mobile = isMobileViewport();
-      this._watchViewport();
+      // Heard only while on the page: connectedCallback starts it, and a card configured
+      // and never placed would otherwise be held by the listener for good.
+      if (this.isConnected) this._watchViewport();
       return;
     }
     this._stopMedia?.();
@@ -718,11 +753,7 @@ export class DeclutteringCard extends DeclutteringElement {
   private _crossed(mobile: boolean): void {
     if (mobile === this._mobile) return;
     this._mobile = mobile;
-    try {
-      this._rebuild();
-    } catch (err) {
-      this._error = (err as Error)?.message ?? String(err);
-    }
+    this._rebuild();
   }
 
   /* ------------------------------------------------------------ idle first build (idea 10) */
@@ -901,7 +932,7 @@ export class DeclutteringCard extends DeclutteringElement {
         this._displayHidden();
       }
     }
-    void this._checkDefined(config);
+    this._checkDefined(config).catch(() => undefined);
   }
 
   /*
@@ -925,23 +956,47 @@ export class DeclutteringCard extends DeclutteringElement {
     } else {
       this._error = message;
     }
-    const waitingOn = this._lastConfig;
-    const thing = this._thing;
-    void Promise.all(missing.map((tag) => customElements.whenDefined(tag))).then(() => {
-      if (this._lastConfig !== waitingOn) return;
-      /*
-       * What was built is still right: only the element was late, and Home Assistant's own
-       * card wrappers draw it themselves once it is defined. So the error comes off and the
-       * build stays, rather than building every such card on the page again (#456). A
-       * stand-in from `on_error:` was built in place of the real card, so that one builds.
-       */
-      if (thing && this._thing === thing && this._thingConfig === config && config !== this._fallbackConfig) {
-        this._error = undefined;
-        this._errorDetail = undefined;
-        return;
-      }
-      this._rebuild();
-    });
+    // One wait for this card, whichever build asked last: a wait per build was never let go of.
+    this._definedWait = { tags: missing, waitingOn: this._lastConfig, thing: this._thing, config };
+    this._listenForDefined();
+  }
+
+  // What the card is waiting to hear defined, and what it had built when it found it missing.
+  private _definedWait?: {
+    tags: string[];
+    waitingOn: DeclutteringCardConfig | undefined;
+    thing: unknown;
+    config: LovelaceThingConfig;
+  };
+  private _definedStop?: () => void;
+
+  // Heard only while on the page, so a card taken off it is not held by the wait.
+  private _listenForDefined(): void {
+    this._definedStop?.();
+    this._definedStop = undefined;
+    const wait = this._definedWait;
+    if (!wait || !this.isConnected) return;
+    this._definedStop = whenElementsDefined(wait.tags, () => this._heardDefined());
+  }
+
+  private _heardDefined(): void {
+    const wait = this._definedWait;
+    this._definedWait = undefined;
+    this._definedStop = undefined;
+    if (!wait || this._lastConfig !== wait.waitingOn) return;
+    const { thing, config } = wait;
+    /*
+     * What was built is still right: only the element was late, and Home Assistant's own
+     * card wrappers draw it themselves once it is defined. So the error comes off and the
+     * build stays, rather than building every such card on the page again (#456). A
+     * stand-in from `on_error:` was built in place of the real card, so that one builds.
+     */
+    if (thing && this._thing === thing && this._thingConfig === config && config !== this._fallbackConfig) {
+      this._error = undefined;
+      this._errorDetail = undefined;
+      return;
+    }
+    this._rebuild();
   }
 
   /*
@@ -971,13 +1026,6 @@ export class DeclutteringCard extends DeclutteringElement {
   }
 
   /*
-   * Builds a card choosing by domain from the templates there are. A single card chooses
-   * once and is then built exactly as though it had named that template. A repeat keeps the
-   * way of choosing, so each copy - and each rebuild - picks its own; the template the card
-   * falls back on stands for the whole card where one has to, in its styles, its size and
-   * its `empty:`.
-   */
-  /*
    * Picking by domain can fail - no template for the entity's domain and no default, or a
    * named template that is not there. Said rather than thrown, as a plain missing template is
    * (idea 49): thrown out of setConfig, Home Assistant draws its own red card in this one's
@@ -995,6 +1043,13 @@ export class DeclutteringCard extends DeclutteringElement {
     }
   }
 
+  /*
+   * Builds a card choosing by domain from the templates there are. A single card chooses
+   * once and is then built exactly as though it had named that template. A repeat keeps the
+   * way of choosing, so each copy - and each rebuild - picks its own; the template the card
+   * falls back on stands for the whole card where one has to, in its styles, its size and
+   * its `empty:`.
+   */
   private _applyByDomain(templates: Record<string, TemplateConfig>, config: DeclutteringCardConfig): void {
     const available = Object.keys(templates);
     const lookup = (name: string | undefined): TemplateConfig | undefined =>
@@ -1150,7 +1205,14 @@ export class DeclutteringCard extends DeclutteringElement {
     if (isRegistrySource(config.for_each_from)) {
       // It works itself out again on a registry change already, which covers its resolvers.
       this._fromResolvers = undefined;
-      this._fromRegistry = { templateConfig, config, picker, installs };
+      this._fromRegistry = {
+        templateConfig,
+        config,
+        picker,
+        installs,
+        labels: labels || /label/i.test(JSON.stringify(config.for_each_from)),
+        categories: wantsCategories(config.for_each_from),
+      };
       this._listenForInstalled();
       // setConfig runs before hass is ever set, so the first resolution usually waits.
       if (this._hass) this._resolveFromRegistry(this._hass);
@@ -1284,9 +1346,15 @@ export class DeclutteringCard extends DeclutteringElement {
       ) {
         this._leftOutWarnedFor = this._lastConfig;
       }
-      this._setForEach(source.templateConfig, source.config, items, source.picker);
+      /*
+       * What the last build failed with goes before this one, as in _rebuildForResolvers, not
+       * after it: a repeat can end by saying an error itself - a check that stops the card,
+       * a strict refusal - without throwing, and clearing afterwards wiped that out, leaving
+       * the card blank with neither its error nor its `on_error:`.
+       */
       this._error = undefined;
       this._errorDetail = undefined;
+      this._setForEach(source.templateConfig, source.config, items, source.picker);
     } catch (err) {
       // Thrown from outside setConfig, where Home Assistant would catch it, so the card
       // has to report it itself rather than leaving the old copies on screen.
@@ -1323,13 +1391,10 @@ export class DeclutteringCard extends DeclutteringElement {
     // Only a card that shows labels or repeats over them asks (#456). Testing the whole config
     // for the word "label" sent every card with a `label:` option of its own, such as a
     // camera card's menu, to fetch the registry and then build again when it landed.
-    const labels =
-      !!this._fromResolvers?.labels ||
-      (!!this._fromRegistry &&
-        (/label/i.test(JSON.stringify(this._fromRegistry.config.for_each_from)) ||
-          usesLabels(this._fromRegistry.templateConfig, this._buildExtras().itemTemplates)));
+    // Read off what the build worked out, never off the template: this runs on every hass.
+    const labels = !!this._fromResolvers?.labels || !!this._fromRegistry?.labels;
     // Categories the same way, for a repeat narrowing by one - see categories.ts.
-    const categories = !!this._fromRegistry && wantsCategories(this._fromRegistry.config.for_each_from);
+    const categories = !!this._fromRegistry?.categories;
     if (!labels && !categories) return;
     // Renaming or filing into a category changes nothing on hass, so nothing else would
     // rebuild the card when the registry is fetched again. The registry key moves with it.
@@ -1377,12 +1442,7 @@ export class DeclutteringCard extends DeclutteringElement {
       const back = stateSnapshot(this._hass, this._rebuildOn, this._rebuildAttributes, this._rebuildWatch);
       if (!statesMoved(this._rebuildBuilt, back)) return;
       if (this._trace) this._noteRebuild(back);
-      try {
-        this._rebuild();
-      } catch (err) {
-        // Outside setConfig nobody catches a throw, so the card says it itself.
-        this._error = (err as Error)?.message ?? String(err);
-      }
+      this._rebuild();
     }, REBUILD_DEBOUNCE_MS);
   }
 
@@ -1480,16 +1540,26 @@ export class DeclutteringCard extends DeclutteringElement {
     // Built from a read that took the library in, so there is nothing to catch up with.
     this._libraryUnsettled = false;
 
+    /*
+     * The other dashboards are read over the connection, and the card can be handed another
+     * config meanwhile - an edit, or the same one again as it lands in its section. What comes
+     * back is then for a config the card no longer has: built, it drew the old card over the
+     * new one, or put the old one's error on it; and the same config handed twice built twice.
+     */
+    const run = this._configured;
+    const stale = (): boolean => run !== this._configured;
     const ll = getLovelaceConfig();
     const place = this._place(ll);
     if (byDomainOf(config)) {
       collectAllTemplates(hass, ll, place.view, undefined, place.section)
         .then((all) => {
+          if (stale()) return;
           // Thrown from outside setConfig, where nobody would catch it, so the card says it.
           this._applyByDomainOrSay(all, config);
           if (!this._error) this._loadLabelsIfWanted(hass);
         })
         .catch((err) => {
+          if (stale()) return;
           this._error = localize(
             'error.template_resolve_failed',
             { template: config.template ?? BY_DOMAIN_KEY, message: err?.message ?? err },
@@ -1500,6 +1570,7 @@ export class DeclutteringCard extends DeclutteringElement {
     }
     findTemplateAnywhere(hass, ll, config.template, place.view, place.section)
       .then((templateConfig) => {
+        if (stale()) return;
         if (templateConfig) {
           /*
            * A template that shows labels waits a moment for the label registry before its
@@ -1513,11 +1584,10 @@ export class DeclutteringCard extends DeclutteringElement {
             this._loadLabelsIfWanted(hass);
             this._loadTranslationsIfWanted(hass);
           };
-          const token = this._lastConfig;
           if (!labelRegistry(hass) && usesLabels(templateConfig, this._buildExtras().itemTemplates)) {
             void Promise.race([loadLabels(hass), new Promise((resolve) => setTimeout(resolve, LABELS_WAIT_MS))]).then(
               () => {
-                if (this._lastConfig === token && !this._pendingConfig) build();
+                if (!stale() && !this._pendingConfig) build();
               },
             );
           } else build();
@@ -1537,6 +1607,7 @@ export class DeclutteringCard extends DeclutteringElement {
         }
       })
       .catch((err) => {
+        if (stale()) return;
         this._error = localize(
           'error.template_resolve_failed',
           { template: config.template, message: err?.message ?? err },

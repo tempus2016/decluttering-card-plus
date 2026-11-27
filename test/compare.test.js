@@ -9,7 +9,6 @@ const { check } = require('./check');
 const labels = {
   library: (name) => `Starter library: ${name}`,
   shared: (title, author) => `Shared: ${title} by ${author}`,
-  elsewhere: (urlPath) => `On ${urlPath}`,
   trash: (ago, reason) => `Trash, ${reason} ${ago}`,
   ago: (ms) => `${Math.round(ms / 60000)} min ago`,
 };
@@ -28,7 +27,6 @@ const sources = compareSources('room_light_tile', {
     },
     { name: 'other', status: 'update', entry: { id: 8, title: 'Other', author: 'bob' }, latest: { card: {} } },
   ],
-  elsewhere: [{ urlPath: 'upstairs', template: { template: 'room_light_tile', card: { type: 'tile', name: 'Up' } } }],
   trash: [
     {
       name: 'room_light_tile',
@@ -51,16 +49,9 @@ const sources = compareSources('room_light_tile', {
 });
 
 check(
-  'sources come matching library first, then the shared post, other dashboards, trash newest first, and the rest of the library last',
+  'sources come matching library first, then the shared post, trash newest first, and the rest of the library last',
   sources.map((s) => s.id),
-  [
-    'library:room_light_tile',
-    'shared:7',
-    'elsewhere:upstairs',
-    'trash:9820000',
-    'trash:6400000',
-    'library:sensor_line',
-  ],
+  ['library:room_light_tile', 'shared:7', 'trash:9820000', 'trash:6400000', 'library:sensor_line'],
 );
 check(
   'labels name the source in words',
@@ -68,7 +59,6 @@ check(
   [
     'Starter library: room_light_tile',
     'Shared: My tile by ann',
-    'On upstairs',
     'Trash, replaced 3 min ago',
     'Trash, removed 60 min ago',
     'Starter library: sensor_line',

@@ -446,3 +446,44 @@ check(
     .slice(1)
     .map((o) => o.label),
 );
+
+/* ------------------------------------------------------------ only what was changed is written (review) */
+
+const UNTOUCHED = [
+  { ...base, strict: false },
+  { ...base, strict: true },
+  { ...base, strict: { errors: 'ignore' } },
+  { ...base, rebuild_on: 'sensor.a' },
+  { ...base, rebuild_on: ['sensor.a', 'light.*', 'group', 'sensor.b'] },
+  { ...base, rebuild_on: ['[[entity]]', 'sensor.a', { entity: 'sensor.b', watch: 'read' }] },
+  { ...base, grid_options: { columns: '007', rows: 2.5, min_rows: 1 } },
+  { ...base, name: '  x ' },
+  { ...base, style: 'ha-card { color: red }\n' },
+  { ...base, debug: true, inherit_variables: true, show_card_errors: false },
+  { ...base, on_error: 'hide', rebuild_on_watch: ['state'] },
+  { ...base, on_error: { type: 'markdown', content: 'x' }, debug: 'report' },
+];
+for (const config of UNTOUCHED) {
+  check(
+    `the form left as it was writes ${JSON.stringify(config).slice(base.type.length + 28)} back untouched`,
+    applyAdvanced(config, advancedData(config)),
+    config,
+  );
+}
+check(
+  'a card that turned strict off keeps it off through another edit',
+  applyAdvanced({ ...base, strict: false }, { ...advancedData({ ...base, strict: false }), debug: 'yaml' }),
+  { ...base, strict: false, debug: 'yaml' },
+);
+const mixed = { ...base, rebuild_on: ['sensor.a', 'light.*', '[[entity]]'] };
+check(
+  'an entity picked keeps what the picker cannot draw',
+  applyAdvanced(mixed, { ...advancedData(mixed), rebuild_on: ['sensor.a', 'sensor.c'] }).rebuild_on,
+  ['sensor.a', 'sensor.c', 'light.*', '[[entity]]'],
+);
+const grid = { ...base, grid_options: { columns: '007', rows: 2.5 } };
+check(
+  'a row count changed leaves the columns as written',
+  applyAdvanced(grid, { ...advancedData(grid), grid_rows: '3' }).grid_options,
+  { columns: '007', rows: 3 },
+);

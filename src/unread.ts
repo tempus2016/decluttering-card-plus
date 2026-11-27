@@ -31,6 +31,31 @@ import { CONSUMER_TYPES, closestTemplate, forEachPlace, placeValues } from './te
 const INNERMOST = '\\[\\[([^[\\]]*)\\]\\]';
 const STAND_IN = '_';
 
+/** The steps of a placeholder's inside, and whether the whole of it ends in the `?` that makes it optional. */
+export function placeholderSteps(inside: string): { steps: string[]; optional: boolean } {
+  const optional = inside.endsWith('?');
+  return { steps: (optional ? inside.slice(0, -1) : inside).split('|'), optional };
+}
+
+/** The name a placeholder's first step reads, and whether that step ends in a `?` of its own. */
+export function headName(head: string): { name: string; optional: boolean } {
+  const optional = head.endsWith('?');
+  return { name: optional ? head.slice(0, -1) : head, optional };
+}
+
+/**
+ * The variable a step after the first reads - `or:name`, `if:name=x`, `unless:!name`,
+ * `repeat:name`, `with:name` - and where in the step its name starts. What readsIn counts as
+ * read and what a rename rewrites both come from here, so the two cannot disagree.
+ */
+export function stepTarget(step: string): { name: string; at: number } | undefined {
+  const name = step.startsWith('or:') ? orTarget(step) : (conditionTarget(step) ?? structureSource(step));
+  if (!name) return undefined;
+  const colon = step.indexOf(':');
+  const at = colon + 1 + (step[colon + 1] === '!' ? 1 : 0);
+  return step.startsWith(name, at) ? { name, at } : undefined;
+}
+
 /**
  * Every variable the placeholders in a value read: the name a placeholder starts with (and
  * the part before its first dot, since `[[room.light]]` reads `room`), and the names its
@@ -45,15 +70,14 @@ export function readsIn(value: unknown): string[] {
     text = text.replace(new RegExp(INNERMOST, 'g'), (_match, inside: string) => {
       found = true;
       if (inside.startsWith(ESCAPE)) return STAND_IN;
-      const bare = inside.endsWith('?') ? inside.slice(0, -1) : inside;
-      const [head, ...steps] = bare.split('|');
-      const name = head.endsWith('?') ? head.slice(0, -1) : head;
+      const [head, ...steps] = placeholderSteps(inside).steps;
+      const { name } = headName(head);
       // A quoted name is text, not a variable (#398).
       if (quotedText(name) === undefined) {
         for (const each of [name, name.split('.')[0]]) if (each && each !== STAND_IN) names.add(each);
       }
       for (const step of steps) {
-        const target = step.startsWith('or:') ? orTarget(step) : (conditionTarget(step) ?? structureSource(step));
+        const target = stepTarget(step)?.name;
         if (target && target !== STAND_IN) names.add(target);
       }
       return STAND_IN;
@@ -245,10 +269,11 @@ export function checkUnreadVariables(ll: any, templates: Record<string, Template
         const report = (where: UnreadFinding['where'], variables: unknown): void => {
           // The card's own on_error: is built from its variables too, and so is its
           // for_each_from (#309); the template's on_error is part of the template, and
-          // read with it.
+          // read with it. An item of its for_each can read the card's variables as well.
           for (const each of unreadVariables(template, templates, variables as VariablesConfig[], outside, [
             node.on_error,
             node.for_each_from,
+            node.for_each,
           ])) {
             if (said.has(each.name)) continue;
             said.add(each.name);

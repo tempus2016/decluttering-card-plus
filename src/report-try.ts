@@ -51,8 +51,20 @@ export function tryScopes(reports: TraceReport[], hass?: any): TryScope[] {
   return scopes;
 }
 
-// Every variable a piece of text asks for, in a nested placeholder or a step's argument too.
+// Every variable a piece of text asks for by name, in a nested placeholder too.
 const ASKED_FOR = /\[\[\s*([^[\]|?]+)/g;
+// And every one a step reads: `or:password`, `if:token=x`, `unless:!pin`, `merge:credentials`.
+const STEP_READS = /\|\s*(?:or|if|unless|merge):\s*!?([^[\]|?=!<>]+)/g;
+
+/** Whether the expression reads a variable named like a secret, as a name, a key of one, or a step's target. */
+function asksForSecret(expression: string): boolean {
+  const names: string[] = [];
+  for (const pattern of [ASKED_FOR, STEP_READS]) {
+    pattern.lastIndex = 0;
+    for (let found = pattern.exec(expression); found; found = pattern.exec(expression)) names.push(found[1]);
+  }
+  return names.some((name) => name.split('.').some((part) => SECRET_NAME.test(part.trim())));
+}
 
 /*
  * What the box shows for one placeholder in one scope, redacted as the report is: a secret
@@ -71,8 +83,7 @@ export function tryInReport(
     expression,
   );
   if (!redacting) return result;
-  const asked: string[] = expression.match(ASKED_FOR) ?? [];
-  const secret = asked.some((each) => SECRET_NAME.test(each.slice(2).trim()));
+  const secret = asksForSecret(expression);
   const secrets = secret ? [] : secretValues(reports);
   const hide = (value: unknown): unknown => {
     if (value === undefined) return value;

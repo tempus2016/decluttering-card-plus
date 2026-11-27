@@ -55,10 +55,17 @@ const HA_TAGS = [
   '!env_var',
   '!input',
 ];
+// The tags the parse in hand has met. Noted as each is resolved, so a `!include` that is only
+// mentioned - in a comment, in a card's text - is not taken for one that brought something in.
+let tagsMet = new Set<string>();
 const HA_SCHEMA = CORE_SCHEMA.withTags(
   ...HA_TAGS.map((tag) =>
     defineScalarTag<string>(tag, {
-      resolve: (source, isExplicit) => (isExplicit ? `${tag} ${source ?? ''}`.trim() : NOT_RESOLVED),
+      resolve: (source, isExplicit) => {
+        if (!isExplicit) return NOT_RESOLVED;
+        tagsMet.add(tag);
+        return `${tag} ${source ?? ''}`.trim();
+      },
       identify: () => false,
     }),
   ),
@@ -92,9 +99,10 @@ function withoutTags(node: unknown): unknown {
 }
 
 export function parseDashboard(text: string): ParsedDashboard {
+  tagsMet = new Set();
   try {
     const config = load(text, { schema: HA_SCHEMA }) as LovelaceConfig | null;
-    const tags = HA_TAGS.filter((tag) => new RegExp(`(^|\\s)${tag}(\\s|$)`, 'm').test(text));
+    const tags = HA_TAGS.filter((tag) => tagsMet.has(tag));
     if (config === null || typeof config !== 'object' || Array.isArray(config)) {
       return { config: null, tags, error: 'not a mapping' };
     }
@@ -139,7 +147,27 @@ export function lintDashboard(
 ): CliFinding[] {
   const findings: CliFinding[] = [];
   const at = (template: string | undefined): number => (template ? lineOf(text, template) : 0);
+  // Shapes nothing below can read. Said, rather than passed over as a dashboard with no views or
+  // a template with nothing wrong in it.
+  const views = (config as { views?: unknown } | null | undefined)?.views;
+  if (views !== undefined && views !== null && !Array.isArray(views)) {
+    findings.push({ file, level: 'error', line: 0, path: 'views', message: 'views: should be a list of views' });
+    config = { ...(config as LovelaceConfig), views: [] };
+  }
   const templates = collectTemplates(config);
+  for (const name of Object.keys(templates).sort()) {
+    const template = templates[name] as unknown;
+    if (template !== null && template !== undefined && (typeof template !== 'object' || Array.isArray(template))) {
+      findings.push({
+        file,
+        level: 'error',
+        line: at(name),
+        path: name,
+        message: `The template "${name}" should be a mapping with a card:, row:, badge: or element: in it`,
+        template: name,
+      });
+    }
+  }
   const shared = collectSharedDeclarations(config).map((declaration) => declaration.name);
 
   const functions = functionNamesOf(templates);
@@ -274,7 +302,23 @@ export function lintText(text: string, file: string): { findings: CliFinding[]; 
       tags: parsed.tags,
     };
   }
-  return { findings: lintDashboard(parsed.config, file, text, parsed.tags.length > 0), tags: parsed.tags };
+  try {
+    return { findings: lintDashboard(parsed.config, file, text, parsed.tags.length > 0), tags: parsed.tags };
+  } catch (err) {
+    // A shape no check expected: one finding for the file, and the files after it are still read.
+    return {
+      findings: [
+        {
+          file,
+          level: 'error',
+          line: 0,
+          path: '',
+          message: `could not check the file: ${(err as Error).message.split('\n')[0]}`,
+        },
+      ],
+      tags: parsed.tags,
+    };
+  }
 }
 
 export interface Summary {

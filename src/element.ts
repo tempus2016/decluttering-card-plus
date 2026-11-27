@@ -32,7 +32,7 @@ import {
 import { chainWith, withChain, withInherited, withoutStamps } from './cycles';
 import { columnsFor, eagerCopies } from './layout';
 import { alertContent, buildThing, contentFor, templateAlerts, withGridOptions } from './build';
-import { copyText, getLovelace, getLovelaceConfig } from './utils';
+import { copyText, getLovelace, getLovelaceConfig, getLovelaceEmbed } from './utils';
 import { localize, onLanguageLoaded } from './localize';
 import { VERSION } from './version';
 import { toYaml } from './yaml';
@@ -63,7 +63,7 @@ import {
   withTrace,
 } from './trace';
 import {
-  HELPERS,
+  cardHelpers,
   LAZY_COPY_TAG,
   markdownReady,
   TEMPLATE_TAG,
@@ -520,7 +520,6 @@ export abstract class DeclutteringElement extends LitElement {
       :host(.decluttering-card) {
         height: 100%;
       }
-      /* The report sits under the card, outside the space the layout gave it. */
       /* The error card (idea 49). */
       .error-card {
         padding: 12px 16px;
@@ -587,6 +586,7 @@ export abstract class DeclutteringElement extends LitElement {
           animation: none;
         }
       }
+      /* The report sits under the card, outside the space the layout gave it. */
       :host(.decluttering-report) {
         height: auto;
       }
@@ -1256,7 +1256,7 @@ export abstract class DeclutteringElement extends LitElement {
       locale?: { language?: string };
       language?: string;
     };
-    const lovelace = getLovelace() as unknown as { mode?: string } | null;
+    const lovelace = (getLovelace() ?? getLovelaceEmbed()) as unknown as { mode?: string } | null;
     const text = formatReport(
       {
         context: {
@@ -1531,7 +1531,7 @@ export abstract class DeclutteringElement extends LitElement {
    * the card helpers for one to load it, and shows the source until it has.
    */
   private _renderFormatted(text: string): TemplateResult {
-    if (markdownReady(() => this.requestUpdate()))
+    if (markdownReady(() => this.requestUpdate(), this))
       return html`<ha-markdown class="formatted" .content=${text} @click=${this._onFormattedClick}></ha-markdown>`;
     return html`<pre tabindex="0">${text}</pre>`;
   }
@@ -1718,11 +1718,6 @@ export abstract class DeclutteringElement extends LitElement {
     return alerts;
   }
 
-  // The template's `alert:`, built in place of its content while a warning or an error stands.
-  private _alertOr(templateConfig: TemplateConfig, alerts: Alert[]): unknown {
-    return alertContent(templateConfig, alerts);
-  }
-
   /*
    * A failed `error` check shows the debug report under the card even with `debug` off -
    * unless the template has an `alert:` to show instead, which is its own way of saying it.
@@ -1730,7 +1725,7 @@ export abstract class DeclutteringElement extends LitElement {
    */
   private _forceReport(alerts: Alert[], templateConfig: TemplateConfig): void {
     const wanted =
-      alerts.some((alert) => alert.level === 'error') && this._alertOr(templateConfig, alerts) === undefined;
+      alerts.some((alert) => alert.level === 'error') && alertContent(templateConfig, alerts) === undefined;
     const forced = this._reportForced;
     if (forced && !wanted) {
       // Rebuilt without the config changing, and the error has gone: back to what the card asked for.
@@ -1834,20 +1829,20 @@ export abstract class DeclutteringElement extends LitElement {
   }
 
   /*
-   * What this card hands down to a nested card that asks for its variables, with any
-   * placeholders in them filled in here - in the nested card they would be read against
-   * the wrong values. An optional placeholder that nothing fills drops its entry.
-   */
-  /*
-   * SPIKE #227: what a build needs for `with:`, `repeat:` and `__repeat__` - the dashboard's
+   * What a build needs for `with:`, `repeat:` and `__repeat__` (#227) - the dashboard's
    * item templates and the context a registry source reads.
    */
   protected _buildExtras(): BuildExtras {
     const ll = getLovelaceConfig();
-    // No rendered Jinja sources here: a `repeat:` over `template:` is out of the spike's scope.
+    // No rendered Jinja sources here: a `repeat:` over `template:` gets none from a card's build.
     return { itemTemplates: itemTemplatesOf(ll), context: sourceContext(ll), templateChain: this._openTemplates };
   }
 
+  /*
+   * What this card hands down to a nested card that asks for its variables, with any
+   * placeholders in them filled in here - in the nested card they would be read against
+   * the wrong values. An optional placeholder that nothing fills drops its entry.
+   */
   private _handDown(
     variables: VariablesConfig[] | undefined,
     templateConfig: TemplateConfig,
@@ -2437,6 +2432,7 @@ export abstract class DeclutteringElement extends LitElement {
 
   public connectedCallback(): void {
     super.connectedCallback();
+    this._chipPlace = undefined;
     this._stopLanguageListener ??= onLanguageLoaded(() => this.requestUpdate());
     // A card inside that rebuilt - a custom card that loaded late - may have refused its config (#463).
     this.addEventListener('card-updated', this._onCardUpdated);
@@ -2497,6 +2493,7 @@ export abstract class DeclutteringElement extends LitElement {
 
   public disconnectedCallback(): void {
     super.disconnectedCallback();
+    this._chipPlace = undefined;
     this.removeEventListener('card-updated', this._onCardUpdated);
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
@@ -2651,10 +2648,13 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     }
     // Not on the card that defines the template, which is its own editor's business, and not
     // on the preview inside an edit dialog, where every card counts as being edited.
-    if (this.localName === TEMPLATE_TAG || editDialogOf(this)) return '';
+    if (this.localName === TEMPLATE_TAG) return '';
     // In a sections view Home Assistant's edit overlay covers the card, so the chip could
     // never be pressed there; its own Edit button does the job.
-    if (inSectionsView(this)) return '';
+    // Where the card sits only changes by its being moved, which takes it off the page and
+    // puts it back - so it is looked up once per stay rather than on every state change.
+    this._chipPlace ??= editDialogOf(this) || inSectionsView(this) ? 'none' : 'chip';
+    if (this._chipPlace === 'none') return '';
     if (this._chipSourceFor !== name) {
       this._chipSourceFor = name;
       this._chipSource = undefined;
@@ -2674,14 +2674,22 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     ></decluttering-card-plus-chip>`;
   }
 
+  // Whether the chip may be drawn where the card sits now; forgotten whenever it is moved.
+  private _chipPlace?: 'chip' | 'none';
+  // The last answer of _canOpenTemplate, for the dashboard and template it was worked out for.
+  private _canOpenFor?: { ll: unknown; name: string; can: boolean };
+
   /** Whether "Edit template" can open the named template: a template card here, one declared under the root key, or one on another dashboard. */
   private _canOpenTemplate(name: string): boolean {
+    if (this._chipSource) return true;
     const ll = getLovelaceConfig();
-    return (
-      !!this._chipSource ||
+    const kept = this._canOpenFor;
+    if (kept && kept.ll === ll && kept.name === name) return kept.can;
+    const can =
       !!templateEditPath(ll, name) ||
-      !!(ll as { decluttering_templates?: Record<string, unknown> } | null)?.decluttering_templates?.[name]
-    );
+      !!(ll as { decluttering_templates?: Record<string, unknown> } | null)?.decluttering_templates?.[name];
+    this._canOpenFor = { ll, name, can };
+    return can;
   }
 
   private _chipAction(action: ChipAction): void {
@@ -2720,12 +2728,15 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
         ];
         if (declared && typeof declared === 'object') {
           // The template editor lives in the editors chunk, so the dialog waits for it.
-          void loadEditors().then(() => {
-            this._templateDialog = {
-              name,
-              config: { type: 'custom:decluttering-template-plus', template: name, ...declared },
-            };
-          });
+          // A chunk that would not load leaves the dialog shut; asked again, it is fetched again.
+          loadEditors()
+            .then(() => {
+              this._templateDialog = {
+                name,
+                config: { type: 'custom:decluttering-template-plus', template: name, ...declared },
+              };
+            })
+            .catch(() => undefined);
         }
       }
     }
@@ -2780,11 +2791,6 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
   }
 
   /*
-   * The error card (idea 49): what could not be built, the line that failed in context, the
-   * nearest name with how common it is, and - for an admin with the dashboard in edit mode -
-   * the buttons that do the fix. A viewer sees the message and the line.
-   */
-  /*
    * A card that failed after its inner card was built - a custom card nobody installed - had
    * already told the section that card's size: half a row in a sections grid, one row high, with
    * the error card overflowing the cell. The error card is laid out like one that never built:
@@ -2813,6 +2819,11 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     });
   }
 
+  /*
+   * The error card (idea 49): what could not be built, the line that failed in context, the
+   * nearest name with how common it is, and - for an admin with the dashboard in edit mode -
+   * the buttons that do the fix. A viewer sees the message and the line.
+   */
   private _renderErrorCard(detail: ErrorDetail): TemplateResult {
     const hass = this._hass;
     // The buttons need a click, which a sections view's edit overlay never lets through.
@@ -2843,8 +2854,8 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
           hass,
         )
       : '';
-    const ll = getLovelaceConfig();
-    const ownPath = this._ownConfig ? findCardPath(ll, this._ownConfig) : undefined;
+    // Only the buttons use it, and only an admin in edit mode has them.
+    const ownPath = admin ? this._ownPath() : undefined;
     const variables = this._ownConfig?.variables;
     const passed =
       variables && (Array.isArray(variables) ? variables.length : Object.keys(variables).length)
@@ -2912,6 +2923,24 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
     `;
   }
 
+  /*
+   * Where this card is written on the dashboard, for the error card's Fix button. Looking
+   * compares the card with every card there is, and the error card is drawn again on every
+   * state change, so the answer is kept for as long as the dashboard and the card are the same.
+   */
+  private _ownPathFor?: { ll: unknown; config: unknown; path: number[] | undefined };
+
+  private _ownPath(): number[] | undefined {
+    const config = this._ownConfig;
+    if (!config) return undefined;
+    const ll = getLovelaceConfig();
+    const kept = this._ownPathFor;
+    if (kept && kept.ll === ll && kept.config === config) return kept.path;
+    const path = findCardPath(ll, config);
+    this._ownPathFor = { ll, config, path };
+    return path;
+  }
+
   /** Use the nearest template: the one key rewritten and saved, undoable from the toast. */
   private _useClosest(closest: string): void {
     const original = this._ownConfig;
@@ -2955,16 +2984,16 @@ ${this._debug === 'yaml' ? toYaml(withoutStamps(this._thingConfig)) : JSON.strin
       return;
     }
 
-    if (HELPERS) {
+    if (cardHelpers()) {
       if (thingType === 'card') {
-        if (thingConfig.type === 'divider') thing = (await HELPERS).createRowElement(thingConfig);
-        else thing = (await HELPERS).createCardElement(thingConfig);
+        if (thingConfig.type === 'divider') thing = (await cardHelpers()).createRowElement(thingConfig);
+        else thing = (await cardHelpers()).createCardElement(thingConfig);
       } else if (thingType === 'row') {
-        thing = (await HELPERS).createRowElement(thingConfig);
+        thing = (await cardHelpers()).createRowElement(thingConfig);
       } else if (thingType === 'element') {
-        thing = (await HELPERS).createHuiElement(thingConfig);
+        thing = (await cardHelpers()).createHuiElement(thingConfig);
       } else if (thingType === 'badge') {
-        thing = (await HELPERS).createBadgeElement(thingConfig);
+        thing = (await cardHelpers()).createBadgeElement(thingConfig);
       } else {
         throw new Error(localize('error.unsupported_thing_type', { kind: thingType }));
       }

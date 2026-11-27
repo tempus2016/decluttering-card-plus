@@ -1,14 +1,15 @@
 import { TemplateConfig } from './types';
-import { ESCAPE, conditionTarget } from './variables';
+import { ESCAPE, isCondition, isWellFormedCondition, quotedText } from './variables';
 import {
   CONSUMER_TYPES,
   LIBRARY_DASHBOARD,
+  byDomainOf,
   collectRawTemplates,
   getTemplateSources,
   isTemplateCardType,
 } from './templates';
 import { definedNames } from './lint';
-import { readsIn } from './unread';
+import { headName, placeholderSteps, readsIn, stepTarget } from './unread';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -27,50 +28,66 @@ export function validVariableName(name: string): boolean {
   return /^[A-Za-z0-9_-]+$/.test(name);
 }
 
-function escapeForRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** A name the placeholder reads, renamed when it is `from` or a dotted reach into it. */
+function renamedName(name: string, from: string, to: string): string {
+  // `[[room]]` and `[[room.light]]` both read `room`; the part after the dot is a key of its value.
+  return name === from || name.startsWith(`${from}.`) ? `${to}${name.slice(from.length)}` : name;
+}
+
+/**
+ * One step after the first with `from` renamed where the step reads it: `or:from`, `if:from`,
+ * `if:!from`, `if:from=on`, `if:from!=on`, `unless:` (idea 36), `repeat:from` and `with:from`
+ * all keep their shape. Found with the parser readsIn uses, so whatever counts as a read is renamed.
+ */
+function renameStep(step: string, from: string, to: string): string {
+  const target = stepTarget(step);
+  if (!target) return step;
+  return `${step.slice(0, target.at)}${renamedName(target.name, from, to)}${step.slice(target.at + target.name.length)}`;
 }
 
 /** One placeholder's inside with `from` renamed wherever it names a variable. */
 function renameInside(inside: string, from: string, to: string): string {
-  const optional = inside.endsWith('?');
-  const steps = (optional ? inside.slice(0, -1) : inside).split('|');
-
-  const head = steps[0];
-  const headOptional = head.endsWith('?');
-  const name = headOptional ? head.slice(0, -1) : head;
-  // `[[room]]` and `[[room.light]]` both read `room`; the part after the dot is a key of its value.
-  if (name === from || name.startsWith(`${from}.`)) {
-    steps[0] = `${to}${name.slice(from.length)}${headOptional ? '?' : ''}`;
+  const { steps, optional } = placeholderSteps(inside);
+  const head = headName(steps[0]);
+  // A quoted name is text, not a variable (#398).
+  if (quotedText(head.name) === undefined) {
+    steps[0] = `${renamedName(head.name, from, to)}${head.optional ? '?' : ''}`;
   }
-
-  for (let index = 1; index < steps.length; index += 1) {
-    const step = steps[index];
-    if (step === `or:${from}`) steps[index] = `or:${to}`;
-    else if (conditionTarget(step) === from) {
-      // `if:from`, `if:!from`, `if:from=on` and `if:from!=on` all keep their shape - and so
-      // does `unless:` (idea 36), which is the same step spelled the other way round.
-      const prefix = step.startsWith('unless:') ? 'unless:' : 'if:';
-      const not = step.startsWith(`${prefix}!`) ? '!' : '';
-      steps[index] = `${prefix}${not}${to}${step.slice(prefix.length + not.length + from.length)}`;
-    }
-  }
+  for (let index = 1; index < steps.length; index += 1) steps[index] = renameStep(steps[index], from, to);
   return `${steps.join('|')}${optional ? '?' : ''}`;
 }
 
+// A placeholder already dealt with, set aside so the one around it can be read: private-use
+// characters no dashboard writes, with its place in the list between them.
+const HELD_OPEN = '\uE000';
+const HELD_CLOSE = '\uE001';
+const HELD = new RegExp(`${HELD_OPEN}(\\d+)${HELD_CLOSE}`, 'g');
+
 /**
  * Text with every placeholder reading `from` reading `to` instead: `[[from]]`,
- * `[[from|slug]]`, `[[from?]]`, `[[from.key]]`, `[[x|or:from]]`, `[[x|if:from]]` and
- * `[[x|if:from=on]]`, with or without a `!`. An escaped `[[!from]]` is the brackets written out, and is left alone.
+ * `[[from|slug]]`, `[[from?]]`, `[[from.key]]`, `[[x|or:from]]`, `[[x|if:from]]`,
+ * `[[x|if:from=on]]` with or without a `!`, `[[t|repeat:from]]` and `[[t|with:from]]`. An
+ * escaped `[[!from]]` is the brackets written out, and is left alone.
+ *
+ * Read from the inside out, as readsIn reads them, so a placeholder holding another -
+ * `[[from.[[level]]]]`, `[[from|or:[[other]]]]` - is renamed as well as the one inside it.
  */
 export function renamePlaceholders(text: string, from: string, to: string): string {
-  if (!text.includes('[[')) return text;
-  const renamed = text.replace(/\[\[([^[\]]+)\]\]/g, (match, inside: string) =>
-    inside.startsWith(ESCAPE) ? match : `[[${renameInside(inside, from, to)}]]`,
-  );
-  // A lookup's outer name, `[[from.[[level]]]]`, is not a placeholder of its own until the
-  // inner one is in, so it is renamed where it stands.
-  return renamed.replace(new RegExp(`\\[\\[${escapeForRegExp(from)}(?=\\.\\[\\[)`, 'g'), `[[${to}`);
+  if (!text.includes('[[') || text.includes(HELD_OPEN)) return text;
+  const held: string[] = [];
+  let out = text;
+  for (let pass = 0; pass < 5; pass += 1) {
+    let found = false;
+    out = out.replace(/\[\[([^[\]]+)\]\]/g, (match, inside: string) => {
+      found = true;
+      held.push(inside.startsWith(ESCAPE) ? match : `[[${renameInside(inside, from, to)}]]`);
+      return `${HELD_OPEN}${held.length - 1}${HELD_CLOSE}`;
+    });
+    if (!found) break;
+  }
+  // Put back outermost first: each one may hold the places of the ones inside it.
+  while (out.includes(HELD_OPEN)) out = out.replace(HELD, (_match, index: string) => held[Number(index)]);
+  return out;
 }
 
 /** Every string - keys included, since substitution reaches those too - with its placeholders renamed. */
@@ -128,10 +145,81 @@ export function renameVariableInTemplate<T extends TemplateConfig>(template: T, 
     // Declarations written as a mapping (#223) are keyed by name.
     out.variables = renameVariableKey(out.variables, from, to);
   }
+  // A field's show_if and hide_if (#347) name the variable bare, and so do a group's (#473).
+  if (Array.isArray(out.variables))
+    out.variables = out.variables.map((entry: any) => renameVisibility(entry, from, to));
+  else if (isMapping(out.variables))
+    out.variables = mapValues(out.variables, (entry) => renameVisibility(entry, from, to));
+  if (isMapping(out.groups)) out.groups = mapValues(out.groups, (entry) => renameVisibility(entry, from, to));
+  // A check's condition (#389) is one of show_if's when it is not text to fill in.
+  if (Array.isArray(out.checks)) {
+    out.checks = out.checks.map((check: any) =>
+      isMapping(check) && typeof check.condition === 'string'
+        ? { ...check, condition: renameCondition(check.condition, from, to) }
+        : check,
+    );
+  }
+  // Each example is a set of variables written the way a card writes them, named or not.
+  if (out.examples !== undefined) {
+    const example = (each: any): any =>
+      isNamedExample(each)
+        ? { ...each, values: renameVariableKey(each.values, from, to) }
+        : renameVariableKey(each, from, to);
+    out.examples = Array.isArray(out.examples) ? out.examples.map(example) : example(out.examples);
+  }
   if (out.default !== undefined) out.default = renameVariableKey(out.default, from, to);
   if ((out as any).defaults !== undefined) (out as any).defaults = renameVariableKey((out as any).defaults, from, to);
   if (out.let !== undefined) out.let = renameVariableKey(out.let, from, to);
   return out;
+}
+
+const isMapping = (value: unknown): value is Record<string, any> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+function mapValues(mapping: Record<string, any>, change: (value: any) => any): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(mapping)) out[key] = change(value);
+  return out;
+}
+
+/** A condition written bare - `name`, `!name`, `name=text`, with or without `if:` in front - reading `to` for `from`. */
+function renameCondition(condition: string, from: string, to: string): string {
+  const trimmed = condition.trim();
+  const prefixed = isCondition(trimmed);
+  const step = prefixed ? trimmed : `if:${trimmed}`;
+  // Text with placeholders in it, or anything else an `if:` cannot read, was dealt with as text.
+  if (!isWellFormedCondition(step)) return condition;
+  const renamed = renameStep(step, from, to);
+  if (renamed === step) return condition;
+  return prefixed ? renamed : renamed.slice('if:'.length);
+}
+
+/** A declaration or a group with the conditions under its show_if and hide_if renamed. */
+function renameVisibility(entry: any, from: string, to: string): any {
+  if (!isMapping(entry)) return entry;
+  let out = entry;
+  for (const key of ['show_if', 'hide_if']) {
+    const written = entry[key];
+    const renamed = Array.isArray(written)
+      ? written.map((each) => (typeof each === 'string' ? renameCondition(each, from, to) : each))
+      : typeof written === 'string'
+        ? renameCondition(written, from, to)
+        : written;
+    if (renamed !== written) out = { ...out, [key]: renamed };
+  }
+  return out;
+}
+
+// An example carrying a name (idea 44): a mapping of exactly `name` and `values`, as examples.ts reads it.
+function isNamedExample(example: unknown): boolean {
+  if (!isMapping(example)) return false;
+  const keys = Object.keys(example);
+  return (
+    keys.length === 2 &&
+    typeof example.name === 'string' &&
+    example.values !== null &&
+    typeof example.values === 'object'
+  );
 }
 
 /**
@@ -141,13 +229,22 @@ export function renameVariableInTemplate<T extends TemplateConfig>(template: T, 
  */
 export function renameVariableInCard<T extends Record<string, any>>(card: T, from: string, to: string): T {
   const out: Record<string, any> = { ...card };
-  if (out.variables !== undefined) out.variables = renameVariableKey(out.variables, from, to);
-  if (Array.isArray(out.for_each)) out.for_each = out.for_each.map((item: any) => renameVariableKey(item, from, to));
-  else if (out.for_each !== undefined) out.for_each = renameVariableKey(out.for_each, from, to);
+  // What the card sets can read its other variables - `label: '[[room]] light'` - so the
+  // values are renamed as well as the names.
+  const values = (variables: any): any => renameEverywhere(renameVariableKey(variables, from, to), from, to);
+  if (out.variables !== undefined) out.variables = values(out.variables);
+  if (Array.isArray(out.for_each)) out.for_each = out.for_each.map(values);
+  else if (out.for_each !== undefined) out.for_each = values(out.for_each);
+  // A slot (idea 35) is a variable under another key.
+  if (isMapping(out.slots)) out.slots = values(out.slots);
+  // Everything else the card fills in from its own variables.
+  for (const key of ['on_error', 'for_each_from', 'rebuild_on', 'empty']) {
+    if (out[key] !== undefined) out[key] = renameEverywhere(out[key], from, to);
+  }
   const overrides = out.for_each_from?.overrides;
   if (overrides && typeof overrides === 'object' && !Array.isArray(overrides)) {
     const renamed: Record<string, any> = {};
-    for (const [entity, values] of Object.entries(overrides)) renamed[entity] = renameVariableKey(values, from, to);
+    for (const [entity, each] of Object.entries(overrides)) renamed[entity] = renameVariableKey(each, from, to);
     out.for_each_from = { ...out.for_each_from, overrides: renamed };
   }
   if (typeof out.name === 'string') out.name = renamePlaceholders(out.name, from, to);
@@ -220,7 +317,9 @@ export function renameVariableInDashboard(
     if (!node || typeof node !== 'object') return node;
     let out: any = {};
     for (const [key, value] of Object.entries(node)) out[key] = walk(value);
-    if (CONSUMER_TYPES.includes(node.type) && affected.has(node.template)) {
+    // A card choosing by domain uses each template its mapping can choose.
+    const chosen = [node.template, ...Object.values(byDomainOf(node) ?? {})];
+    if (CONSUMER_TYPES.includes(node.type) && chosen.some((each) => affected.has(each))) {
       const renamed = renameVariableInCard(out, from, to);
       if (changed(renamed, out)) cards += 1;
       out = renamed;

@@ -14,7 +14,6 @@ import {
   collectAllTemplates,
   findTemplateLocation,
   mayBorrowTemplates,
-  templatePickerOptions,
   replaceCard,
   applyOverride,
   misplacedOverrides,
@@ -30,6 +29,7 @@ import {
   libraryRead,
 } from './templates';
 import { BuildCache, buildKey } from './card-editor/build-cache';
+import { registryKey, sameRegistry } from './registry-index';
 
 // #430: how long the Result waits after a change before it is built.
 const RESULT_WAIT_MS = 250;
@@ -55,7 +55,6 @@ import {
   PlacedNote,
   stripHaMarks,
   withNotes,
-  mergeVariables,
   ownVariables,
   POSITION_NAMES,
   variableName,
@@ -96,7 +95,6 @@ import {
   filledAllowed,
   filledDefault,
   matchesDefault,
-  isShownValue,
   defaultTarget,
   hasResetSlot,
   defaultLine,
@@ -152,8 +150,17 @@ import {
   withNewListItem,
   withoutListItem,
   withRepeatMode,
+  knownDomains,
 } from './card-editor/repeat-builder';
-import { knownDomains } from './card-editor/repeat-builder';
+import {
+  applyVariablesForm,
+  holdingOnSave,
+  isForeignConfig,
+  itemIds,
+  ShownAs,
+  VARIABLE_FIELD_PREFIX,
+  withCardVariable,
+} from './card-editor/edits';
 import {
   countText,
   filterPickerItems,
@@ -218,9 +225,6 @@ interface Diagnosis {
   needed: string[];
 }
 
-// Declared variables get their own form field, and the prefix keeps a variable called
-// "template" from colliding with the field that chooses the template.
-const VARIABLE_FIELD_PREFIX = 'variable:';
 // A note (#509) in the variables form: drawn by the editor itself, never given to ha-form.
 const NOTE_FIELD_PREFIX = 'note:';
 const NOTE_TYPE = 'decluttering_note';
@@ -239,7 +243,6 @@ const REMOVE_PATH =
 const RESET_PATH =
   'M13,3A9,9 0 0,0 4,12H1L4.89,15.89L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3Z';
 
-/** A declared field's Reset (#255): what it falls back to, as text, and where that is written. */
 /** An entry of the variables form's schema, as far as the per-field drawing reads it. */
 interface SchemaEntry {
   name?: string;
@@ -255,6 +258,7 @@ interface SchemaEntry {
   schema?: SchemaEntry[];
 }
 
+/** A declared field's Reset (#255): what it falls back to, as text, and where that is written. */
 interface FieldReset {
   text: string;
   source: string;
@@ -282,69 +286,65 @@ const MATCHES_SHOWN = 12;
 const DRAG_PATH =
   'M7,19V17H9V19H7M11,19V17H13V19H11M15,19V17H17V19H15M7,15V13H9V15H7M11,15V13H13V15H11M15,15V13H17V15H15M7,11V9H9V11H7M11,11V9H13V11H11M15,11V9H17V11H15M7,7V5H9V7H7M11,7V5H13V7H11M15,7V5H17V7H15Z';
 
-// One shared instance, built on first use so it speaks the user's language: the editor
-// re-renders on every state change Home Assistant sends, and a fresh schema object each
-// time would mark every field dirty for no reason.
-let REPEAT_SCHEMA: unknown[] | undefined;
-
-function repeatSchema(): unknown[] {
-  REPEAT_SCHEMA ??= [
+// Built in the user's language and kept by the editor until that changes (see _drawn): the
+// editor re-renders on every state change Home Assistant sends, and a fresh schema object each
+// time would have every field work its options out again for no reason.
+function repeatSchema(hass: unknown): unknown[] {
+  const text = (key: string): string => localize(key, undefined, hass as undefined);
+  return [
     {
       name: 'gap',
-      label: localize('editor.gap_label'),
-      helper: localize('editor.gap_helper'),
+      label: text('editor.gap_label'),
+      helper: text('editor.gap_helper'),
       selector: { number: { min: 0, max: 64, mode: 'box' } },
     },
     {
       name: 'columns',
-      label: localize('editor.columns_label'),
-      helper: localize('editor.columns_helper'),
+      label: text('editor.columns_label'),
+      helper: text('editor.columns_helper'),
       selector: { number: { min: 1, max: 6, mode: 'box' } },
     },
     {
       name: 'min_column_width',
-      label: localize('editor.min_column_width_label'),
-      helper: localize('editor.min_column_width_helper'),
+      label: text('editor.min_column_width_label'),
+      helper: text('editor.min_column_width_helper'),
       selector: { number: { min: 50, max: 1000, step: 10, mode: 'box' } },
     },
     {
       name: 'lazy',
-      label: localize('editor.lazy_label'),
-      helper: localize('editor.lazy_helper'),
+      label: text('editor.lazy_label'),
+      helper: text('editor.lazy_helper'),
       selector: { boolean: {} },
     },
     {
       name: 'lazy_eager',
-      label: localize('editor.lazy_eager_label'),
-      helper: localize('editor.lazy_eager_helper'),
+      label: text('editor.lazy_eager_label'),
+      helper: text('editor.lazy_eager_helper'),
       selector: { number: { min: 0, max: 100, mode: 'box' } },
     },
   ];
-  return REPEAT_SCHEMA;
 }
 
 // Offered for every template, described or not, since it is about where the card sits
 // rather than about what the template contains.
-let FIT_SCHEMA: unknown[] | undefined;
-
-function fitSchema(): unknown[] {
-  FIT_SCHEMA ??= [
+function fitSchema(hass: unknown): unknown[] {
+  const text = (key: string): string => localize(key, undefined, hass as undefined);
+  return [
     {
       name: 'fit',
-      label: localize('editor.fit_label'),
-      helper: localize('editor.fit_helper'),
+      label: text('editor.fit_label'),
+      helper: text('editor.fit_helper'),
       selector: {
         select: {
           mode: 'dropdown',
           options: [
-            { value: 'box', label: localize('editor.fit_box') },
-            { value: 'contents', label: localize('editor.fit_contents') },
+            { value: 'box', label: text('editor.fit_box') },
+            { value: 'contents', label: text('editor.fit_contents') },
           ],
         },
       },
     },
   ];
-  return FIT_SCHEMA;
 }
 
 function splitAt(sentence: string, token: string): [string, string] {
@@ -456,6 +456,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         overflow-wrap: anywhere;
       }
       .rebuild-remove {
+        --ha-icon-button-size: 40px;
         --mdc-icon-button-size: 40px;
         margin-inline-start: auto;
       }
@@ -865,10 +866,12 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @property() public hass?: HomeAssistant;
 
   private _templates?: Record<string, TemplateConfig>;
+  // How many times the borrowed templates have been asked for, to tell the latest answer.
+  private _templatesAsked = 0;
   // The language the templates' own texts were put in (#392).
   private _templatesLanguage?: string;
   // Typed booleans drawn as a switch other than the value written - see _formData.
-  private _shownAs = new Map<string, { shown: unknown; written: unknown }>();
+  private _shownAs = new Map<string, ShownAs>();
   @state() private _loadingTemplates = false;
   @state() private _ejectPending = false;
   @state() private _sectionsPending = false;
@@ -887,10 +890,24 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   private _holdStops: (() => void)[] = [];
   // #430: the editor's builds, each kept until something it reads changes.
   private _builds = new BuildCache();
+  /*
+   * What is handed to Home Assistant's forms and pickers, and what the lists beside them are
+   * worked out from, kept the same way: a form given the same schema object it had leaves its
+   * fields alone, where a fresh one on every state change in the house had each of them work
+   * its options out again. Apart from _builds, whose count of builds the tests read.
+   */
+  private _drawn = new BuildCache();
+  private _label = (entry: FormSchemaEntry): string => entry.label ?? entry.name;
+  private _helper = (entry: FormSchemaEntry): string => entry.helper ?? '';
+  // A declared field's entry as the one-entry schema its own form takes, the same list each render.
+  private _single = new WeakMap<object, unknown[]>();
   // #430: while the card is being typed into, the Result waits this long after the last change.
   private _resultTimer?: ReturnType<typeof setTimeout>;
   private _resultDue = false;
+  // What the build the Result is waiting to make reads, so only a change starts the wait again.
+  private _resultWaitsFor?: unknown[];
   @state() private _copied = false;
+  private _copiedTimer?: ReturnType<typeof setTimeout>;
   /*
    * #488: whether the "What it builds" panel is open. It starts folded - most cards never need
    * the YAML - and stays as it was left for as long as the editor is open.
@@ -910,8 +927,11 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   @state() private _byDomainDraft?: ByDomainRow[];
   // The by-domain switch turned off, waiting for a yes before the mapping is dropped.
   @state() private _byDomainOffPending = false;
-  // Which hand-written items are open for editing, by position.
+  // Which hand-written items are open for editing, by the id each is given while the editor is open.
   @state() private _openItems = new Set<number>();
+  // An id per item of the hand-written list, moved and removed with it, so an open item's
+  // YAML box stays with its item: the box reads what it shows only once.
+  private _itemIds: number[] = [];
   private _dragging?: number;
   // Idea 21: the template combo box's rows, as filtered by what was typed.
   @state() private _pickerFilter = '';
@@ -938,23 +958,34 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   private _unsent?: DeclutteringCardConfig;
   // Any edit the editor sends carries the held one with it, so the hold ends there.
   private _sentSomething = (ev: Event): void => {
-    if (ev.composedPath()[0] === this) this._unsent = undefined;
+    if (ev.composedPath()[0] !== this) return;
+    this._unsent = undefined;
+    // Remembered so setConfig can tell this card's next edit from another card's config.
+    this._fired = (ev as CustomEvent).detail?.config;
+  };
+  private _fired?: unknown;
+  /*
+   * #510: a press anywhere outside the editor - the dialog's Save above all - sends a value
+   * still held back first. A field is only left by a press where the browser moves the focus
+   * with it, and a tap on a button on a phone does not.
+   */
+  private _pressedOutside = (ev: Event): void => {
+    if (this._unsent && !ev.composedPath().includes(this)) this._sendUnsent();
   };
   // What each `for_each_from: { template: }` written in this editor rendered to, so the
   // match preview can show it. Rendered once per distinct template text, like the card.
   @state() private _renderedTemplates: Record<string, TemplateRender> = {};
   private _renderingTemplates = new Set<string>();
+  // Whether the categories have been asked for from this editor.
+  private _categoriesAsked = false;
   // #404: each `options_from:` dropdown's choices, worked out once while this editor is open.
   private _optionsFrom = new Map<string, unknown>();
   // The card as the dialog opened it, which is what an eject replaces on the dashboard.
   private _openedWith?: DeclutteringCardConfig;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _schema: any;
 
   set lovelace(lovelace: LovelaceConfig) {
     this._lovelace = lovelace;
     this._templates = undefined;
-    this._schema = undefined;
   }
 
   /*
@@ -975,6 +1006,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   public disconnectedCallback(): void {
     super.disconnectedCallback();
     this.removeEventListener('config-changed', this._sentSomething);
+    window.removeEventListener('pointerdown', this._pressedOutside, true);
+    clearTimeout(this._copiedTimer);
+    this._copiedTimer = undefined;
     this._stopLanguageListener?.();
     this._stopLanguageListener = undefined;
     for (const stop of this._holdStops) stop();
@@ -986,6 +1020,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   async connectedCallback(): Promise<void> {
     super.connectedCallback();
     this.addEventListener('config-changed', this._sentSomething);
+    window.addEventListener('pointerdown', this._pressedOutside, true);
     if (!this._holdStops.length) {
       this._holdStops = [
         onPreviewHold((event) => {
@@ -997,6 +1032,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     }
     this._stopLanguageListener ??= onLanguageLoaded(() => {
       this._builds.clear();
+      // The schemas are in the language that was there when they were made.
+      this._drawn.clear();
       this.requestUpdate();
     });
     // A card-valued variable renders Home Assistant's own card editor and picker, which
@@ -1053,14 +1090,33 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   public setConfig(config: DeclutteringCardConfig): void {
     // A config from Home Assistant replaces anything held back (#510).
     this._unsent = undefined;
-    // The first config is the card as the dashboard has it saved; every later one is an edit.
-    if (!this._openedWith) {
-      this._openedWith = config;
-      // Idea 20: this card was left to edit its template; its unsaved changes come back.
-      this._resume = takeReturn(config);
-    }
     const before = this._config;
-    if (before && before.template === config.template) {
+    // Home Assistant keeps this element for the next card of the same type - a stack's next
+    // tab, or what was typed in the code editor - and nothing remembered about the card that
+    // was here belongs to that one.
+    const foreign = isForeignConfig(config, before, this._fired);
+    this._fired = undefined;
+    if (foreign) this._forgetCard();
+    // The first config is the card as the dashboard has it saved; every later one is an edit.
+    if (!before || foreign) {
+      const saved = !before || this._onDashboard(config);
+      /*
+       * Another card's config is the card as saved when the dashboard has it written that way.
+       * When it does not - the code editor's text, a tab already edited - the card this
+       * editor opened with still stands while it is the only card the dialog edits, and
+       * nothing does when it is one of several: an undo that put back the wrong card would
+       * be worse than none.
+       */
+      if (saved) {
+        this._openedWith = config;
+        // Idea 20: this card was left to edit its template; its unsaved changes come back.
+        this._resume = takeReturn(config);
+      } else if (this._nested()) {
+        this._openedWith = undefined;
+        this._resume = undefined;
+      }
+    }
+    if (before && !foreign && before.template === config.template) {
       // Several edits before the next update count as one, from where the first started.
       this._pendingEdit = { before: this._pendingEdit?.before ?? before.variables, after: config.variables };
     } else if (before) {
@@ -1068,6 +1124,41 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       this._leftBehind = new Map();
     }
     this._config = config;
+  }
+
+  /** Everything remembered about the card that was being edited, let go when another card's config arrives. */
+  private _forgetCard(): void {
+    this._byDomainDraft = undefined;
+    this._byDomainOffPending = false;
+    this._ejectPending = false;
+    this._sectionsPending = false;
+    this._sectionsError = undefined;
+    this._presetPending = undefined;
+    this._openItems = new Set();
+    this._itemIds = [];
+    this._onErrorMode = undefined;
+    this._builtAnyway = undefined;
+    this._lastYaml = undefined;
+    this._markedLines = [];
+    this._cannotOpen = false;
+    this._installError = undefined;
+  }
+
+  /** Whether the dashboard as saved has a card written exactly like this one. */
+  private _onDashboard(config: DeclutteringCardConfig): boolean {
+    const saved = getLovelacePanel()?.config;
+    return !!saved && replaceCard(saved, config, {}) !== saved;
+  }
+
+  /** Whether this editor is inside another card's editor - a stack's - rather than the dialog's own. */
+  private _nested(): boolean {
+    let editors = 0;
+    const above = (node: Node): Node | null =>
+      node.parentNode instanceof ShadowRoot ? node.parentNode.host : node.parentNode;
+    for (let node = above(this); node; node = above(node)) {
+      if ((node as Element).localName === 'hui-card-element-editor') editors += 1;
+    }
+    return editors > 1;
   }
 
   /*
@@ -1087,7 +1178,6 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     const language = hassLanguage(this.hass);
     if (this._templates && this._templatesLanguage !== language) {
       this._templates = undefined;
-      this._schema = undefined;
     }
     if (!this._templates) {
       const place = this._editingPlace();
@@ -1098,31 +1188,9 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       );
       this._loadBorrowedTemplates();
     }
-    if (!this._schema) {
-      this._schema = [
-        {
-          name: 'template',
-          label: localize('editor.template_label', undefined, this.hass),
-          selector: {
-            select: {
-              mode: 'dropdown',
-              custom_value: true,
-              // A name on its own says nothing about what a template is for, and a
-              // dashboard with twenty of them becomes a memory test. The description the
-              // template already carries is put beside it. Sorted already, with the
-              // deprecated ones marked and last, which the select's own sort would undo.
-              options: templatePickerOptions(this._templates, this.hass),
-            },
-          },
-        },
-        {
-          name: 'variables',
-          label: localize('editor.variables_label', undefined, this.hass),
-          helper: localize('editor.variables_helper', undefined, this.hass),
-          selector: { object: {} },
-        },
-      ];
-    }
+    // "A card of my choosing" is remembered only until a card is written for it. Settled
+    // here rather than while drawing, which would ask for another update from inside one.
+    if (this._onErrorMode && onErrorCard(this._config)) this._onErrorMode = undefined;
     this._noteLeftBehind();
   }
 
@@ -1213,7 +1281,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
   }
 
   protected render(): TemplateResult | void {
-    if (!this.hass || !this._config || !this._templates || !this._schema) return html``;
+    if (!this.hass || !this._config || !this._templates) return html``;
 
     const template = this._templates[this._config.template];
     const declarations = getDeclarations(template);
@@ -1419,7 +1487,6 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       this._onErrorMode && written.on_error_mode !== 'card'
         ? { ...written, on_error_mode: this._onErrorMode }
         : written;
-    if (written.on_error_mode === 'card' && this._onErrorMode) this._onErrorMode = undefined;
     const fallback = onErrorCard(this._config);
     const CardSlot = unsafeStatic(CARD_SLOT_TAG);
     return html`
@@ -1437,15 +1504,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
           </span>
         </span>
         <div class="advanced-body">
-          ${before}
-          ${this._renderAdvancedForm(
-            data,
-            withoutFields(
-              advancedSchema(this.hass, this._config, template, hasOwnWatch(this._rebuildOnEach(template))),
-              hidden.advancedFields,
-            ),
-            template,
-          )}
+          ${before} ${this._renderAdvancedForm(data, this._advancedSchema(template, hidden.advancedFields), template)}
           ${
             data.on_error_mode === 'card'
               ? staticHtml`<${CardSlot}
@@ -1464,6 +1523,17 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     `;
   }
 
+  /** The Advanced form's fields, the same list for as long as nothing they are made from changes. */
+  private _advancedSchema(template: TemplateConfig | undefined, left: string[]): unknown[] {
+    const config = this._config;
+    const ownWatch = hasOwnWatch(this._rebuildOnEach(template));
+    return this._drawn.get(
+      'advanced-schema',
+      [hassLanguage(this.hass), JSON.stringify(config?.rebuild_on_watch), template, ownWatch, left.join('\n')],
+      () => withoutFields(advancedSchema(this.hass, config, template, ownWatch), left),
+    );
+  }
+
   /*
    * The section's form, split after rebuild_on when the card or its template writes
    * something the entity picker cannot draw (#411), so it is listed right under the picker.
@@ -1479,8 +1549,8 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
         .hass=${this.hass}
         .data=${data}
         .schema=${entries}
-        .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-        .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+        .computeLabel=${this._label}
+        .computeHelper=${this._helper}
         @value-changed=${this._advancedChanged}
       ></ha-form>`;
     const at = schema.findIndex((entry) => (entry as FormSchemaEntry)?.name === 'rebuild_on');
@@ -1512,7 +1582,11 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
       return localize('editor.advanced.rebuild_on_nothing', undefined, this.hass);
     };
     const notes = (row: RebuildOnEntry): string => [filled(row), watches(row)].filter(Boolean).join(', ');
-    return html`${form(schema.slice(0, at + 1))}
+    const [head, tail] = this._drawn.get('advanced-split', [schema, at], () => [
+      schema.slice(0, at + 1),
+      schema.slice(at + 1),
+    ]);
+    return html`${form(head)}
       <div class="rebuild-extra">
         ${
           mine.length
@@ -1558,7 +1632,7 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
             : html``
         }
       </div>
-      ${at + 1 < schema.length ? form(schema.slice(at + 1)) : html``}`;
+      ${tail.length ? form(tail) : html``}`;
   }
 
   private _removeRebuildEntry(entry: unknown): void {
@@ -1625,24 +1699,25 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     if (!options.length || !this._config) return html``;
     const matching = presetMatching(template, this._config.variables);
     const pending = this._presetPending;
+    const none = matching === undefined && ownVariables(this._config.variables).length > 0;
+    const schema = this._drawn.get('preset-schema', [hassLanguage(this.hass), template, none], () => [
+      {
+        name: 'preset',
+        label: localize('editor.preset.label', undefined, this.hass),
+        helper: none
+          ? localize('editor.preset.none', undefined, this.hass)
+          : localize('editor.preset.helper', undefined, this.hass),
+        selector: { select: { mode: 'dropdown', options } },
+      },
+    ]);
     return html`
       <div class="presets">
         <ha-form
           .hass=${this.hass}
           .data=${{ preset: matching === undefined ? '' : String(matching) }}
-          .schema=${[
-            {
-              name: 'preset',
-              label: localize('editor.preset.label', undefined, this.hass),
-              helper:
-                matching === undefined && ownVariables(this._config.variables).length
-                  ? localize('editor.preset.none', undefined, this.hass)
-                  : localize('editor.preset.helper', undefined, this.hass),
-              selector: { select: { mode: 'dropdown', options } },
-            },
-          ]}
-          .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-          .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+          .schema=${schema}
+          .computeLabel=${this._label}
+          .computeHelper=${this._helper}
           @value-changed=${(ev: CustomEvent): void => this._presetPicked(ev, template)}
         ></ha-form>
         ${
@@ -1849,26 +1924,26 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     if (template !== undefined && !Object.prototype.hasOwnProperty.call(this._renderedTemplates, template)) {
       return undefined;
     }
-    try {
-      const matched = resolveRegistryItems(this.hass, source, {
-        ...sourceContext(this._lovelace),
-        rendered: this._renderedTemplates,
-      });
-      return matched.length ? matched : undefined;
-    } catch {
-      return undefined;
-    }
+    return this._swept('preview-items', this._templates?.[this._config?.template as string], () => {
+      try {
+        const matched = resolveRegistryItems(this.hass, source, {
+          ...sourceContext(this._lovelace),
+          rendered: this._renderedTemplates,
+        });
+        return matched.length ? matched : undefined;
+      } catch {
+        return undefined;
+      }
+    });
   }
 
   private _cardVariableChanged(name: string, ev?: CustomEvent): void {
     ev?.stopPropagation();
     const value = ev?.detail?.config;
-    const variables = ownVariables(this._config?.variables).filter((entry) => variableName(entry) !== name);
-    if (value && typeof value === 'object') variables.push({ [name]: value });
-    const config = { ...this._config } as DeclutteringCardConfig;
-    if (variables.length) config.variables = variables;
-    else delete config.variables;
-    fireEvent(this, 'config-changed', { config });
+    // The nested editor says so when its YAML is emptied or cannot be read; that is somebody
+    // half-way through typing, not the card taken away - which is what Clear is for.
+    if (ev && !(value && typeof value === 'object')) return;
+    fireEvent(this, 'config-changed', { config: withCardVariable(this._config, name, value) });
   }
 
   /*
@@ -1984,8 +2059,11 @@ export class DeclutteringCardEditor extends LitElement implements LovelaceCardEd
     type Built = ReturnType<DeclutteringCardEditor['_buildResult']>;
     const waiting =
       !held && !anyway && !this._resultDue && !this._builds.holds('result', key) && !!this._builds.last('result');
-    if (waiting) {
+    // Started again only by a change: the editor also renders for every state change in the
+    // house, and in a busy one a wait started over by each of those never came to an end.
+    if (waiting && (this._resultTimer === undefined || !sameRegistry(this._resultWaitsFor, key))) {
       clearTimeout(this._resultTimer);
+      this._resultWaitsFor = key;
       this._resultTimer = setTimeout(() => {
         this._resultTimer = undefined;
         this._resultDue = true;
@@ -2181,12 +2259,10 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   };
 
   /*
-   * #488: a held preview said at the top of the editor, whether the panel is folded, open or
-   * left out - with the panel's own Resume and Render now. Nothing while nothing is held.
-   */
-  /*
-   * At the top only while paused: a preview held for a required variable is said by the
-   * status line under the preview instead, and in full when it is opened (UX pass).
+   * #488: a paused preview said at the top of the editor, whether the panel is folded, open or
+   * left out - with the panel's own Resume and Render now. At the top only while paused: a
+   * preview held for a required variable is said by the status line under the preview
+   * instead, and in full when it is opened (UX pass).
    */
   private _renderHeld(): TemplateResult {
     return previewPauseOn() ? this._renderHeldAlert(true) : html``;
@@ -2229,7 +2305,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   private _copyYaml(yaml: string): void {
     void copyText(yaml).then((ok) => {
       this._copied = ok;
-      if (ok) setTimeout(() => (this._copied = false), 1500);
+      clearTimeout(this._copiedTimer);
+      if (ok && this.isConnected) this._copiedTimer = setTimeout(() => (this._copied = false), 1500);
     });
   }
 
@@ -2329,8 +2406,11 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     };
     dialog.addEventListener('dialog-closed', once, { once: true });
     const closedNow = dialog.closeDialog?.();
+    // A dialog that stayed open is no longer waited on, or its next close - for anything at
+    // all - would open the template.
+    if (closedNow === false) dialog.removeEventListener('dialog-closed', once);
     // A dialog that closed without saying so - an older one - is not waited on for ever.
-    if (closedNow !== false) setTimeout(once, 400);
+    else setTimeout(once, 400);
   }
 
   /*
@@ -2370,19 +2450,28 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
      */
     if (isDefinedHere('ha-generic-picker')) {
       const all = this._pickerItems;
-      // Drawn inside the picker's own shadow root, where this editor's styles do not reach.
-      const rowRenderer = (item: ComboItem): TemplateResult => html`
-        <div class="pick-row" style="padding: 6px 16px">
-          <div class="pick-name">
-            <span>${item.primary}</span>
-            <small
-              class=${item.secondary?.startsWith(localize('editor.picker.unused', undefined, this.hass)) ? 'unused' : ''}
-            >
-              ${item.secondary}
-            </small>
-          </div>
-        </div>
-      `;
+      // The same functions for the same list, so the picker does not take each render for a new list.
+      const picker = this._drawn.get('picker', [all, hassLanguage(this.hass)], () => {
+        const hass = this.hass;
+        return {
+          getItems: (): (ComboItem | string)[] => pickerList(all, '', hass),
+          searchFn: (search: string): (ComboItem | string)[] => pickerList(all, search, hass),
+          searchKeys: [
+            { name: 'primary', weight: 10 },
+            { name: 'secondary', weight: 5 },
+            { name: 'search', weight: 3 },
+          ],
+          // Drawn inside the picker's own shadow root, where this editor's styles do not reach.
+          rowRenderer: (item: ComboItem): TemplateResult => html`
+            <div class="pick-row" style="padding: 6px 16px">
+              <div class="pick-name">
+                <span>${item.primary}</span>
+                <small class=${item.unused ? 'unused' : ''}> ${item.secondary} </small>
+              </div>
+            </div>
+          `,
+        };
+      });
       return html`
         <ha-generic-picker
           class="picker"
@@ -2391,14 +2480,10 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
           .helper=${helper}
           .searchLabel=${helper}
           .value=${this._config.template ?? ''}
-          .getItems=${(): (ComboItem | string)[] => pickerList(all, '', this.hass)}
-          .searchKeys=${[
-            { name: 'primary', weight: 10 },
-            { name: 'secondary', weight: 5 },
-            { name: 'search', weight: 3 },
-          ]}
-          .searchFn=${(search: string): (ComboItem | string)[] => pickerList(all, search, this.hass)}
-          .rowRenderer=${rowRenderer}
+          .getItems=${picker.getItems}
+          .searchKeys=${picker.searchKeys}
+          .searchFn=${picker.searchFn}
+          .rowRenderer=${picker.rowRenderer}
           .invalid=${!!error}
           .errorMessage=${errorText}
           allow-custom-value
@@ -2669,7 +2754,11 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
    */
   private _renderSectionPerCopy(): TemplateResult {
     const ll = getLovelacePanel()?.config;
-    if (!this._config || !ll || !findRepeatingCard(ll, this._config)) return html``;
+    const card = this._config;
+    // Looked for once per card and dashboard: it reads every card of every sections view.
+    if (!card || !ll || !this._drawn.get('repeating-card', [ll, card], () => !!findRepeatingCard(ll, card))) {
+      return html``;
+    }
     return html`
       <div class="section-per-copy">
         <p class="hint">${localize('editor.section_per_copy_hint', undefined, this.hass)}</p>
@@ -2706,12 +2795,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       this._sectionsError = localize('tools.save_failed', { message: (err as Error)?.message ?? err }, this.hass);
       return;
     }
-    let node: Node | null = this.parentNode instanceof ShadowRoot ? this.parentNode.host : this.parentNode;
-    while (node && (node as Element).localName !== 'hui-dialog-edit-card') {
-      node = node.parentNode instanceof ShadowRoot ? node.parentNode.host : node.parentNode;
-    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (node as any)?.closeDialog?.();
+    (editDialogOf(this) as any)?.closeDialog?.();
   }
 
   private _eject(resolved: unknown): void {
@@ -2726,22 +2811,36 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
 
   /*
    * Ejecting changes the card in the dialog, and the dialog is what saves it - so unlike the
-   * other tools, nothing is written here. What is kept for undoing is the dashboard as it is
-   * now, and as it will be once the dialog saves this card ejected: the card the dialog
-   * opened with, swapped for what it builds. If the dialog saves anything else as well, or
-   * is closed without saving, the dashboard will not match that, and undoing asks first.
-   * A card not yet on the dashboard has nothing to put back.
+   * other tools, nothing is written here. What is kept for undoing is the dashboard as it was
+   * before the dialog saved and as it is after. An older dialog's save cannot be reached, so
+   * for that one it is the dashboard as it is now and as it will be once the dialog saves this
+   * card ejected - the card the dialog opened with, swapped for what it builds - and if the
+   * dialog saves anything else as well, or is closed without saving, the dashboard will not
+   * match that, and undoing asks first. A card not yet on the dashboard has nothing to put back.
    */
   private _holdEjectUndo(resolved: unknown): void {
     const panel = getLovelacePanel();
-    if (!panel || !this._openedWith) return;
-    const after = replaceCard(panel.config, this._openedWith, resolved as Record<string, unknown>);
-    if (after === panel.config) return;
-    holdUndo({
-      operation: 'eject',
-      at: Date.now(),
-      dashboards: [{ urlPath: pageDashboard(), before: panel.config, after }],
-    });
+    const opened = this._openedWith;
+    if (!panel || !opened) return;
+    const ejected = replaceCard(panel.config, opened, resolved as Record<string, unknown>);
+    if (ejected === panel.config) return;
+    const hold = (before: unknown, after: unknown): void => {
+      if (after === before) return;
+      holdUndo({ operation: 'eject', at: Date.now(), dashboards: [{ urlPath: pageDashboard(), before, after }] });
+    };
+    /*
+     * Kept when the dialog saves rather than now, where the dialog's save can be reached: held
+     * now, it took the place of the last real undo - a template just installed, a rename -
+     * and closing the dialog without saving left nothing to undo at all.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const params = (editDialogOf(this) as any)?._params as Record<string, any> | undefined;
+    if (typeof params?.saveCardConfig === 'function') {
+      params.saveCardConfig = holdingOnSave(params.saveCardConfig, () => getLovelacePanel()?.config, hold);
+      return;
+    }
+    // An older dialog saves by the card's path: what it will have saved is worked out now.
+    hold(panel.config, ejected);
   }
 
   /*
@@ -2799,7 +2898,18 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
 
   // The card's for_each_from with its placeholders filled in, as the card fills it in (#309).
   private _filledSource(templateConfig: TemplateConfig | undefined): unknown {
-    return fillSource(this._config?.for_each_from, this._config?.variables, templateConfig, this.hass);
+    return this._swept('filled-source', templateConfig, () =>
+      fillSource(this._config?.for_each_from, this._config?.variables, templateConfig, this.hass),
+    );
+  }
+
+  /*
+   * What a sweep of the registries gave, kept until the card, the dashboard, a registry or a
+   * rendered source changes - which is when the card itself sweeps again. The editor draws on
+   * every state change in the house, and each of these reads every entity there is.
+   */
+  private _swept<T>(slot: string, template: TemplateConfig | undefined, sweep: () => T): T {
+    return this._drawn.get(slot, this._readsKey(template, this._renderedTemplates), sweep);
   }
 
   /*
@@ -2812,10 +2922,12 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const template = sourceTemplate(source);
     if (!this.hass || template === undefined) return [];
     if (!Object.prototype.hasOwnProperty.call(this._renderedTemplates, template)) return [];
-    const names = new Set<string>();
-    const items = resolveRegistryItems(this.hass, source, { rendered: this._renderedTemplates });
-    for (const item of items) for (const name of Object.keys(item)) names.add(name);
-    return [...names];
+    return this._swept('rendered-names', templateConfig, () => {
+      const names = new Set<string>();
+      const items = resolveRegistryItems(this.hass, source, { rendered: this._renderedTemplates });
+      for (const item of items) for (const name of Object.keys(item)) names.add(name);
+      return [...names];
+    });
   }
 
   /** Renders a template source's Jinja once for the preview, then draws again. */
@@ -2840,7 +2952,10 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
 
     // A category is only known once fetched, and the card fetches it for itself - the
     // editor has to as well, or every category filter would preview as matching nothing.
-    if (wantsCategories(source) && !categoryRegistry()) {
+    // Asked for once: a fetch that failed leaves nothing fetched, and asking again from each
+    // render it set off would be a loop of calls for as long as it went on failing.
+    if (wantsCategories(source) && !categoryRegistry() && !this._categoriesAsked) {
+      this._categoriesAsked = true;
       void loadCategories(this.hass).then(() => this.requestUpdate());
     }
 
@@ -2863,18 +2978,22 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
       }
     }
 
-    let matched: Record<string, unknown>[] = [];
-    try {
-      matched = resolveRegistryItems(this.hass, source, {
-        ...sourceContext(this._lovelace),
-        rendered: this._renderedTemplates,
-      });
-    } catch {
-      return html``;
-    }
-
-    // What the sweep matched but Home Assistant hides or files as config or diagnostic (#452).
-    const left = entitiesLeftOut(this.hass, source);
+    const swept = this._swept('matches', templateConfig, () => {
+      try {
+        return {
+          matched: resolveRegistryItems(this.hass, source, {
+            ...sourceContext(this._lovelace),
+            rendered: this._renderedTemplates,
+          }) as Record<string, unknown>[],
+          // What the sweep matched but Home Assistant hides or files as config or diagnostic (#452).
+          left: entitiesLeftOut(this.hass, source),
+        };
+      } catch {
+        return undefined;
+      }
+    });
+    if (!swept) return html``;
+    const { matched, left } = swept;
     const leftOut = left ? leftOutParams(left, this.hass) : undefined;
 
     if (!matched.length) {
@@ -2953,14 +3072,14 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   private _renderRepeat(repeatable: boolean, template: TemplateConfig | undefined): TemplateResult {
     if (!this._config || !repeatable) return html``;
     const mode = repeatMode(this._config);
-    const modeSchema = [
+    const modeSchema = this._drawn.get('mode-schema', [hassLanguage(this.hass), mode], () => [
       {
         name: 'mode',
         label: localize('editor.repeat.mode_label', undefined, this.hass),
         helper: localize('editor.repeat.mode_helper', undefined, this.hass),
         selector: { select: { mode: 'dropdown', options: repeatModeOptions(this.hass, mode) } },
       },
-    ];
+    ]);
     return html`
       <div class="repeat">
         <h3>${localize('editor.repeat.header', undefined, this.hass)}</h3>
@@ -2968,8 +3087,8 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
           .hass=${this.hass}
           .data=${{ mode }}
           .schema=${modeSchema}
-          .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-          .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+          .computeLabel=${this._label}
+          .computeHelper=${this._helper}
           @value-changed=${this._repeatModeChanged}
         ></ha-form>
         ${
@@ -2994,22 +3113,22 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   private _renderByDomainSwitch(): TemplateResult {
     if (!this._config) return html``;
     const on = hasByDomain(this._config);
-    const schema = [
+    const schema = this._drawn.get('by-domain-switch', [hassLanguage(this.hass)], () => [
       {
         name: 'by_domain',
         label: localize('editor.by_domain.switch', undefined, this.hass),
         helper: localize('editor.by_domain.switch_helper', undefined, this.hass),
         selector: { boolean: {} },
       },
-    ];
+    ]);
     return html`
       <ha-form
         class="by-domain-switch"
         .hass=${this.hass}
         .data=${{ by_domain: on }}
         .schema=${schema}
-        .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-        .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+        .computeLabel=${this._label}
+        .computeHelper=${this._helper}
         @value-changed=${this._byDomainToggled}
       ></ha-form>
       ${
@@ -3061,15 +3180,18 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
 
   // How the copies are laid out and where the card sits, under the repeat they belong to.
   private _renderLayout(data: Record<string, unknown>, repeatable: boolean, hidden: EditorHidden): TemplateResult {
-    const schema = [...(repeatable ? repeatSchema() : []), ...(hidden.fit ? [] : fitSchema())];
+    const schema = this._drawn.get('layout-schema', [hassLanguage(this.hass), repeatable, hidden.fit], () => [
+      ...(repeatable ? repeatSchema(this.hass) : []),
+      ...(hidden.fit ? [] : fitSchema(this.hass)),
+    ]);
     if (!schema.length) return html``;
     return html`
       <ha-form
         .hass=${this.hass}
         .data=${data}
         .schema=${schema}
-        .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-        .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+        .computeLabel=${this._label}
+        .computeHelper=${this._helper}
         @value-changed=${this._valueChanged}
       ></ha-form>
     `;
@@ -3088,14 +3210,23 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     const source = this._config?.for_each_from;
     const kind = sourceKind(source);
     if (!kind) return html``;
-    const data = repeatData(source);
+    // The dropdowns offer every domain, device class and integration there is, read off every
+    // entity: worked out again when the source or a registry changes, not for each state.
+    const { data, schema } = this._drawn.get(
+      'repeat-form',
+      [source, hassLanguage(this.hass), ...registryKey(this.hass)],
+      () => {
+        const shown = repeatData(source);
+        return { data: shown, schema: repeatBuilderSchema(this.hass, kind, shown) };
+      },
+    );
     return html`
       <ha-form
         .hass=${this.hass}
         .data=${data}
-        .schema=${repeatBuilderSchema(this.hass, kind, data)}
-        .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-        .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+        .schema=${schema}
+        .computeLabel=${this._label}
+        .computeHelper=${this._helper}
         @value-changed=${this._repeatBuilderChanged}
       ></ha-form>
       ${this._renderMatches(template)}
@@ -3148,18 +3279,33 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
 
   private _renderRepeatList(): TemplateResult {
     const items = this._listItems();
+    const ids = (this._itemIds = itemIds(this._itemIds, items.length));
+    // The ids go where the items go, before the list is written.
+    const move = (from: number, to: number): void => {
+      this._itemIds = moveItem(ids, from, to);
+      this._setList(moveItem(items, from, to));
+    };
+    const remove = (index: number): void => {
+      const open = new Set(this._openItems);
+      open.delete(ids[index]);
+      this._openItems = open;
+      this._itemIds = withoutListItem(ids, index);
+      this._setList(withoutListItem(items, index));
+    };
     const name = (item: unknown, index: number): string =>
       listItemLabel(item) || localize('editor.repeat.list_item', { number: index + 1 }, this.hass);
     const drop = (ev: DragEvent, to: number): void => {
       ev.preventDefault();
       const from = this._dragging;
       this._dragging = undefined;
-      if (from !== undefined && from !== to) this._setList(moveItem(items, from, to));
+      if (from !== undefined && from !== to) move(from, to);
     };
     return html`
       <p class="hint">${localize('editor.repeat.list_hint', undefined, this.hass)}</p>
       <ul class="items">
-        ${items.map(
+        ${repeat(
+          items,
+          (_item, index) => ids[index],
           (item, index) => html`
             <li
               draggable="true"
@@ -3189,27 +3335,27 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
                   .path=${'M7,15L12,10L17,15H7Z'}
                   .disabled=${index === 0}
                   .label=${localize('editor.repeat.move_up', { name: name(item, index) }, this.hass)}
-                  @click=${(): void => this._setList(moveItem(items, index, index - 1))}
+                  @click=${(): void => move(index, index - 1)}
                 ></ha-icon-button>
                 <ha-icon-button
                   .path=${'M7,10L12,15L17,10H7Z'}
                   .disabled=${index === items.length - 1}
                   .label=${localize('editor.repeat.move_down', { name: name(item, index) }, this.hass)}
-                  @click=${(): void => this._setList(moveItem(items, index, index + 1))}
+                  @click=${(): void => move(index, index + 1)}
                 ></ha-icon-button>
                 <ha-icon-button
                   .path=${'M3,6H21V8H3V6M3,11H21V13H3V11M3,16H21V18H3V16Z'}
                   .label=${localize('editor.repeat.list_edit', { name: name(item, index) }, this.hass)}
-                  @click=${(): void => this._toggleItem(index)}
+                  @click=${(): void => this._toggleItem(ids[index])}
                 ></ha-icon-button>
                 <ha-icon-button
                   .path=${'M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z'}
                   .label=${localize('editor.repeat.list_remove', { name: name(item, index) }, this.hass)}
-                  @click=${(): void => this._setList(withoutListItem(items, index))}
+                  @click=${(): void => remove(index)}
                 ></ha-icon-button>
               </div>
               ${
-                this._openItems.has(index)
+                this._openItems.has(ids[index])
                   ? html`<ha-yaml-editor
                       .hass=${this.hass}
                       .defaultValue=${item}
@@ -3231,10 +3377,10 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     `;
   }
 
-  private _toggleItem(index: number): void {
+  private _toggleItem(id: number): void {
     const open = new Set(this._openItems);
-    if (open.has(index)) open.delete(index);
-    else open.add(index);
+    if (open.has(id)) open.delete(id);
+    else open.add(id);
     this._openItems = open;
   }
 
@@ -3330,9 +3476,32 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     hidden: EditorHidden,
     template: TemplateConfig | undefined,
   ): unknown[] {
+    // The names as text: the shown list is filtered afresh each render.
+    const names = declarations.map((declaration) => declaration.name).join('\n');
+    return this._drawn.get(
+      'form-schema',
+      this._readsKey(template, names, hidden.extras, this._renderedTemplates, hassLanguage(this.hass)),
+      () => this._formSchemaNow(declarations, hidden, template),
+    );
+  }
+
+  private _formSchemaNow(
+    declarations: VariableDeclaration[],
+    hidden: EditorHidden,
+    template: TemplateConfig | undefined,
+  ): unknown[] {
     // With nothing described, the variables field is the only way to set any, so it stays.
-    // The template field is the picker above the form (idea 21), so the schema starts after it.
-    if (!declarations.length) return this._schema.slice(1);
+    // The template is chosen in the picker above the form (idea 21).
+    if (!declarations.length) {
+      return this._drawn.get('variables-schema', [hassLanguage(this.hass)], () => [
+        {
+          name: 'variables',
+          label: localize('editor.variables_label', undefined, this.hass),
+          helper: localize('editor.variables_helper', undefined, this.hass),
+          selector: { object: {} },
+        },
+      ]);
+    }
 
     // A variable the repeat fills is shown greyed and says so, rather than as an empty
     // field that looks like a mistake (idea 15).
@@ -3401,10 +3570,13 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   /** Each rebuild_on entry of the card and its template, with what it fills to now (#411). */
   private _rebuildOnEach(template: TemplateConfig | undefined): RebuildOnEntry[] {
     const ll = this._lovelace ?? getLovelaceConfig();
-    return rebuildOnEach(this._config, template, this.hass, {
-      itemTemplates: itemTemplatesOf(ll),
-      context: sourceContext(ll),
-    });
+    // Asked for twice a render, and filled in without reading any state, as _rebuildOnFor is.
+    return this._drawn.get('rebuild_on_each', buildKey(this.hass, [], this._config, template, ll, libraryRead()), () =>
+      rebuildOnEach(this._config, template, this.hass, {
+        itemTemplates: itemTemplatesOf(ll),
+        context: sourceContext(ll),
+      }),
+    );
   }
 
   /** What the card rebuilds on with this template: its own rebuild_on and the template's, filled in (#411). */
@@ -3469,17 +3641,23 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
         .data=${data}
         .schema=${entries}
         .error=${error}
-        .computeLabel=${(s: FormSchemaEntry): string => s.label ?? s.name}
-        .computeHelper=${(s: FormSchemaEntry): string => s.helper ?? ''}
+        .computeLabel=${this._label}
+        .computeHelper=${this._helper}
         @value-changed=${this._valueChanged}
         @focusout=${this._sendUnsent}
         @keydown=${this._enterSends}
       ></ha-form>`;
     if (!shown.length) return form(schema);
 
+    // Each field's form takes a schema of that one entry: the same list for the same entry.
+    const one = (entry: SchemaEntry): unknown[] => {
+      let list = this._single.get(entry);
+      if (!list) this._single.set(entry, (list = [entry]));
+      return list;
+    };
     const field = (entry: SchemaEntry): TemplateResult => {
       if (entry.type === NOTE_TYPE) return this._renderNote(entry);
-      if (typeof entry.name !== 'string' || !entry.name.startsWith(VARIABLE_FIELD_PREFIX)) return form([entry]);
+      if (typeof entry.name !== 'string' || !entry.name.startsWith(VARIABLE_FIELD_PREFIX)) return form(one(entry));
       const name = entry.name.slice(VARIABLE_FIELD_PREFIX.length);
       const reset = entry.disabled ? undefined : resets.get(name);
       /*
@@ -3488,7 +3666,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
        * width. A field that never can has no place, so it gets the width back on a phone.
        */
       return html`<div class="declared-field">
-        ${form([entry])}
+        ${form(one(entry))}
         ${
           needed.includes(name)
             ? html`<div class="required-line" data-required=${name}>
@@ -3544,7 +3722,7 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   private _renderNote(entry: SchemaEntry): TemplateResult {
     const text = entry.content ?? '';
     return html`<div class="declared-note" data-note=${entry.name ?? ''}>
-      ${markdownReady(() => this.requestUpdate()) ? html`<ha-markdown .content=${text}></ha-markdown>` : html`<pre>${text}</pre>`}
+      ${markdownReady(() => this.requestUpdate(), this) ? html`<ha-markdown .content=${text}></ha-markdown>` : html`<pre>${text}</pre>`}
     </div>`;
   }
 
@@ -3684,19 +3862,39 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   }
 
   /*
-   * Warnings, never errors: a template can be edited after the cards that use it, so a
-   * card that looks wrong now may be right again in a moment. Nothing here stops a save.
-   */
-  /*
    * What the diagnostics have to say about the card as it stands, as alerts to show and the
    * required variables left unset - which the counter over the variables and the status line
-   * under the preview both read, so they are worked out once per render.
+   * under the preview both read, so they are worked out once per render. Nothing here stops a
+   * save: a template can be edited after the cards that use it, so a card that looks wrong
+   * now may be right again in a moment.
    */
   private _diagnose(template: TemplateConfig | undefined, readable: boolean): Diagnosis {
     // Choosing by domain, the variables are shared by copies of different templates, so
     // what one of them leaves unset or unused says nothing about the others.
     if (!template || this._loadingTemplates || !readable || byDomainOf(this._config)) return { alerts: [], needed: [] };
+    /*
+     * #516: kept until something it reads changes, like the other builds here. Worked out on
+     * every render, it filled in each default made from placeholders again for a state
+     * changing anywhere in the house, and on a big template the editor fell behind. Besides
+     * what every build reads, a declared type checks the entities the card names
+     * (device_class:), and a template source supplies names once it has rendered.
+     */
+    const named: string[] = [];
+    for (const entry of ownVariables(this._config?.variables)) {
+      for (const value of Object.values(entry)) {
+        if (typeof value === 'string' && ENTITY_ID_LIKE.test(value)) named.push(value);
+      }
+    }
+    const key = this._readsKey(
+      template,
+      this._renderedTemplates,
+      named.join('\n'),
+      ...named.map((id) => this.hass?.states?.[id]),
+    );
+    return this._builds.get('diagnose', key, () => this._diagnoseNow(template));
+  }
 
+  private _diagnoseNow(template: TemplateConfig): Diagnosis {
     // The items' names count as supplied, so a variable only the items set is not
     // missing - but they are not the card's own, so they are never called unused.
     // Both kinds of repeat supply names to every copy, and neither is the card's own to
@@ -3713,7 +3911,12 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
     ];
     const repeated = supplied.map((name) => ({ [name]: null }));
     // The card's own for_each_from and on_error are filled in from its variables as well.
-    const { missing, unused, required } = diagnoseInstance(
+    const {
+      missing,
+      unused: allUnused,
+      unusedVia = [],
+      required,
+    } = diagnoseInstance(
       this._config ? withSlotVariables(this._config).variables : undefined,
       template,
       repeated,
@@ -3842,6 +4045,19 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
         ${localize('editor.invalid_value_now', { value: each.value }, this.hass)}`,
       );
     }
+    // A name only another variable's default reads is said apart, with why that default never applies (#511).
+    const viaNames = new Set(unusedVia.map((each) => each.name));
+    const unused = allUnused.filter((name) => !viaNames.has(name));
+    for (const each of unusedVia) {
+      say(
+        'info',
+        html`${localize(
+          each.set ? 'editor.unused_via_set' : 'editor.unused_via_unread',
+          { name: each.name, via: each.via.join(', ') },
+          this.hass,
+        )}`,
+      );
+    }
     if (unused.length) {
       say(
         'info',
@@ -3890,38 +4106,17 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   private _valueChanged(ev: CustomEvent): void {
     const data = ev.detail.value;
     const declarations = getDeclarations(this._templates?.[data.template]);
-    if (!declarations.length) {
-      fireEvent(this, 'config-changed', { config: data });
-      return;
-    }
-
-    const desired: VariablesConfig[] = [];
-    for (const declaration of declarations) {
-      let value = data[VARIABLE_FIELD_PREFIX + declaration.name];
-      // A switch shown for a written word it was not moved from keeps the word, and a default
-      // only shown in its field (#373) stays unwritten until the field is changed.
-      const shownAs = this._shownAs.get(declaration.name);
-      if (shownAs && isShownValue(value, shownAs.shown)) value = shownAs.written;
-      // A field left alone or cleared sets nothing, so the template's own default keeps
-      // working. An empty string can still be set through the box below.
-      if (value !== undefined && value !== '') desired.push({ [declaration.name]: value });
-    }
-    if (Array.isArray(data.extras)) desired.push(...data.extras);
-
-    const config = { ...this._config, template: data.template } as DeclutteringCardConfig;
-    // Whatever shape the config was written in, what is saved back is the list form.
-    const variables = mergeVariables(ownVariables(this._config?.variables), desired);
-    if (variables.length) config.variables = variables;
-    else delete config.variables;
-    setOrDelete(config, 'columns', data.columns);
-    setOrDelete(config, 'min_column_width', data.min_column_width);
-    setOrDelete(config, 'gap', data.gap);
-    // Off is the default, so switching it off takes the key out rather than writing false.
-    setOrDelete(config, 'lazy', data.lazy === true ? true : undefined);
-    setOrDelete(config, 'lazy_eager', data.lazy_eager);
-
+    // What the edit writes is worked out apart from the element - see card-editor/edits.ts.
+    const config = applyVariablesForm(
+      this._config,
+      data,
+      declarations.map((declaration) => declaration.name),
+      this._shownAs,
+      new Set(declarations.filter((declaration) => declaration.allow_empty === true).map((d) => d.name)),
+    );
     // #510: a field that waits to be left keeps its value here and tells the preview later.
-    if (onlyLeaveFieldsChanged(this._config, config, declarations)) {
+    if (declarations.length && onlyLeaveFieldsChanged(this._config, config, declarations)) {
+      this._fired = config;
       this.setConfig(config);
       this._unsent = config;
       return;
@@ -3946,15 +4141,21 @@ ${this._markedLines.map((line) => html`<span class="l ${line.changed ? 'changed'
   // The dropdown starts with this dashboard's templates and gains the borrowed ones once
   // the other dashboards have been read.
   private _loadBorrowedTemplates(): void {
-    if (!mayBorrowTemplates(this._lovelace)) return;
+    // Only the read asked for last counts: an earlier one, landing late, is of a dashboard
+    // that has been replaced since - by a template just installed, say.
+    const asked = (this._templatesAsked += 1);
+    if (!mayBorrowTemplates(this._lovelace)) {
+      this._loadingTemplates = false;
+      return;
+    }
     this._loadingTemplates = true;
     const place = this._editingPlace();
     collectAllTemplates(this.hass, this._lovelace, place.view, undefined, place.section)
       .then((templates) => {
-        this._templates = translatedTemplates(templates, this.hass);
-        this._schema = undefined;
+        if (asked === this._templatesAsked) this._templates = translatedTemplates(templates, this.hass);
       })
       .finally(() => {
+        if (asked !== this._templatesAsked) return;
         this._loadingTemplates = false;
         this.requestUpdate();
       });

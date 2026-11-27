@@ -37,6 +37,12 @@ check(
   ['000000', '000001', '000002', '000003'],
 );
 check('the search text travels with the item', combo[1].search, 'room_tile a tile per room rooms');
+// Review: read from the count, not from where the word "unused" falls after a description.
+check(
+  'an item no card uses says so itself, description or not',
+  combo.map((item) => item.unused),
+  [false, true, false, false],
+);
 
 // Round 2 (idea 21): Home Assistant draws a plain string in the item list as a section
 // title, and calls searchFn only once something is typed - so the headings come from the

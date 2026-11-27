@@ -151,16 +151,18 @@ function asList(value: boolean | string | string[] | undefined): string[] | unde
 }
 
 /*
- * Whether one `*` pattern matches a text in full, without regard to case. Not a regexp: a
+ * Whether one `*` pattern matches a text in full, without regard to case unless told to mind
+ * it. The one matcher for every `*` pattern there is - a repeat's, a `requires:` entity's, a
+ * picked template name's. Not a regexp: a
  * pattern turned into `.*a.*a.*a.*z` backs off polynomially against a run of a's, and a
  * shared template can supply both the pattern (an `overrides:` key) and, through a Jinja
  * source, the text (review 2026-10-18). This is the usual two-pointer walk instead - each
  * star remembers where it was, and a mismatch after one goes back to let it take one more
  * character - which is linear in the text for any pattern.
  */
-export function globMatches(text: string, pattern: string): boolean {
-  const subject = text.toLowerCase();
-  const glob = pattern.toLowerCase();
+export function globMatches(text: string, pattern: string, matchCase = false): boolean {
+  const subject = matchCase ? text : text.toLowerCase();
+  const glob = matchCase ? pattern : pattern.toLowerCase();
   let s = 0;
   let g = 0;
   let star = -1;
@@ -418,18 +420,10 @@ function areaItems(hass: any, source: RegistrySource): Record<string, any>[] {
      * is handed straight to a nested repeat, which is how one card becomes a tile per room
      * each listing that room's lights.
      */
-    if (gather) {
-      const inside = entityItems(hass, { ...gather, area: area.area_id });
-      const ordered = [...inside].sort(byName);
-      // A room with no lights in it is usually noise rather than news, so it goes - unless
-      // the card says otherwise, which is how "no lights in here" gets to be shown.
-      if (!ordered.length && !gather.keep_empty) continue;
-      item.items = ordered;
-      item.entities = ordered.map((entity) => entity.entity);
-      item.entity_count = ordered.length;
-    }
-
-    items.push(item);
+    // A room with no lights in it is usually noise rather than news, so it goes - unless
+    // the card says otherwise, which is how "no lights in here" gets to be shown.
+    const gathered = gatherInto(item, gather ? entityItems(hass, { ...gather, area: area.area_id }) : [], gather);
+    if (gathered) items.push(gathered);
   }
   return items;
 }

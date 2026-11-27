@@ -21,32 +21,70 @@ import { UnreadFinding } from './unread';
 export const VERSION_KEY = 'version';
 export const CHANGES_KEY = 'changes';
 
+/** A version as written: a number, or text of dotted numbers that a number cannot hold (`1.10`, `1.2.3`). */
+export type Version = number | string;
+
 export interface VersionNote {
-  version: number;
+  version: Version;
   note: string;
   /** The name the note says the variable became, when it says one. */
   replacement?: string;
 }
 
+const DOTTED = /^\d+(?:\.\d+)*$/;
+
+/*
+ * A version read as what was written. `1.10` as a number is 1.1, which is older than 1.9 -
+ * so text is only made a number when the number says the same thing, and anything else of
+ * dotted numbers stays text, to be compared part by part. Nothing at all - an empty string
+ * included, which a number would have read as nought - is no version.
+ */
+function asVersion(written: unknown): Version | undefined {
+  if (typeof written === 'number') return Number.isFinite(written) ? written : undefined;
+  if (typeof written !== 'string') return undefined;
+  const text = written.trim();
+  if (!DOTTED.test(text)) return undefined;
+  return String(Number(text)) === text ? Number(text) : text;
+}
+
+/** Two versions compared part by part, a missing part counting as nought: 1.10 is after 1.9. */
+export function compareVersions(a: Version, b: Version): number {
+  const parts = (value: Version): number[] =>
+    String(value)
+      .split('.')
+      .map((each) => Number(each) || 0);
+  const x = parts(a);
+  const y = parts(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
+    const difference = (x[i] ?? 0) - (y[i] ?? 0);
+    if (difference) return difference;
+  }
+  return 0;
+}
+
+/** The template's version as written - a number where it is one - or undefined when it has none. */
+function writtenVersion(template: TemplateConfig | undefined): Version | undefined {
+  return asVersion((template as any)?.[VERSION_KEY]);
+}
+
 /** The template's version as a number, or undefined when it has none it can count. */
 export function templateVersion(template: TemplateConfig | undefined): number | undefined {
-  const written = (template as any)?.[VERSION_KEY];
-  const version = typeof written === 'number' ? written : typeof written === 'string' ? Number(written) : NaN;
+  const version = Number(writtenVersion(template) ?? NaN);
   return Number.isFinite(version) ? version : undefined;
 }
 
 /** The change notes, newest first, each as a version and its text. */
-export function changeNotes(template: TemplateConfig | undefined): { version: number; note: string }[] {
+export function changeNotes(template: TemplateConfig | undefined): { version: Version; note: string }[] {
   const changes = (template as any)?.[CHANGES_KEY];
   if (!changes || typeof changes !== 'object') return [];
-  const notes: { version: number; note: string }[] = [];
+  const notes: { version: Version; note: string }[] = [];
   for (const [key, value] of Object.entries(changes)) {
-    const version = Number(key);
-    if (!Number.isFinite(version)) continue;
+    const version = asVersion(key);
+    if (version === undefined) continue;
     const texts = Array.isArray(value) ? value : [value];
     for (const text of texts) if (typeof text === 'string' && text.trim()) notes.push({ version, note: text.trim() });
   }
-  return notes.sort((a, b) => b.version - a.version);
+  return notes.sort((a, b) => compareVersions(b.version, a.version));
 }
 
 const NAME = '[A-Za-z_][\\w.]*';
@@ -91,8 +129,8 @@ export function withVersionNotes(findings: UnreadFinding[], templates: Record<st
 
 export interface OlderElsewhere {
   template: string;
-  here: number;
-  there: number;
+  here: Version;
+  there: Version;
   dashboard: string;
 }
 
@@ -108,9 +146,10 @@ export function olderElsewhere(
 ): OlderElsewhere[] {
   const out: OlderElsewhere[] = [];
   for (const [name, template] of Object.entries(local)) {
-    const here = templateVersion(template);
-    const there = templateVersion(borrowed[name]);
-    if (here === undefined || there === undefined || there >= here) continue;
+    const here = writtenVersion(template);
+    // Own names only: `constructor` is on every object, and no lender wrote it.
+    const there = writtenVersion(Object.prototype.hasOwnProperty.call(borrowed, name) ? borrowed[name] : undefined);
+    if (here === undefined || there === undefined || compareVersions(there, here) >= 0) continue;
     out.push({ template: name, here, there, dashboard: from[name] ?? '' });
   }
   return out;

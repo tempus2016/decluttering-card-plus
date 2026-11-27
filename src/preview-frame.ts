@@ -111,6 +111,20 @@ const LIGHT_STYLES: Record<string, string> = {
   'disabled-color': '#bdbdbd',
 };
 
+/*
+ * What a picture element is previewed on: a plain backdrop, drawn here. It used to be a
+ * picture fetched from demo.home-assistant.io, so opening an element template's editor made
+ * a request to another site - and showed a broken image with no way out to the internet.
+ */
+const ELEMENT_BACKDROP =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90">' +
+      '<rect width="160" height="90" fill="#808080" fill-opacity="0.18"/>' +
+      '<path d="M0 30h160M0 60h160M40 0v90M80 0v90M120 0v90" stroke="#808080" stroke-opacity="0.35" stroke-width="0.5"/>' +
+      '</svg>',
+  );
+
 export class DeclutteringPreviewFrame extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
   /** What the card built: a card config, or for a badge/row/element their config. */
@@ -340,6 +354,11 @@ export class DeclutteringPreviewFrame extends LitElement {
       </div>
     `;
     const caption = this._caption(width);
+    // A theme no longer on show lets go of its card, rather than keeping it built off the page.
+    const shown = this._theme === 'both' ? ['false:', 'true:'] : [`${this._theme === 'dark'}:`];
+    for (const known of [...this._things.keys()]) {
+      if (!shown.some((prefix) => known.startsWith(prefix))) this._things.delete(known);
+    }
     return html`
       ${
         this._theme === 'both'
@@ -379,8 +398,16 @@ export class DeclutteringPreviewFrame extends LitElement {
   // One element per theme, kept across renders so the card inside is not rebuilt on every keystroke.
   private _things = new Map<string, HTMLElement>();
 
+  // The config as text, for telling one card from the next: written once per config, not once per hass.
+  private _configText?: { config: unknown; text: string };
+
   private _thing(dark: boolean): HTMLElement | TemplateResult {
-    const key = `${dark}:${JSON.stringify(this.config)}:${this.kind}`;
+    let written = this._configText;
+    if (!written || written.config !== this.config) {
+      written = { config: this.config, text: JSON.stringify(this.config) };
+      this._configText = written;
+    }
+    const key = `${dark}:${written.text}:${this.kind}`;
     for (const known of [...this._things.keys()]) {
       if (known !== key && known.startsWith(`${dark}:`)) this._things.delete(known);
     }
@@ -428,7 +455,7 @@ export class DeclutteringPreviewFrame extends LitElement {
         ? { type: 'entities', entities: [config] }
         : {
             type: 'picture-elements',
-            image: 'https://demo.home-assistant.io/stub_config/floorplan.png',
+            image: ELEMENT_BACKDROP,
             elements: [config],
           };
     return card;
@@ -436,6 +463,8 @@ export class DeclutteringPreviewFrame extends LitElement {
 
   // The variables applied last time, so a switch back to light takes every one of them off again.
   private _themed = new WeakMap<HTMLElement, string[]>();
+  // What each holder was last themed for: hass arrives on every state change, the themes do not.
+  private _themedFor = new WeakMap<HTMLElement, { themes: unknown; selected: string; dark: boolean }>();
 
   /*
    * The dashboard's own theme in the mode asked for, applied to the holder only. The
@@ -447,6 +476,9 @@ export class DeclutteringPreviewFrame extends LitElement {
     const hass = this.hass as any;
     const themes = hass?.themes;
     const selected: string = hass?.selectedTheme?.theme ?? themes?.default_theme ?? 'default';
+    const done = this._themedFor.get(el);
+    if (done && done.themes === themes && done.selected === selected && done.dark === dark) return;
+    this._themedFor.set(el, { themes, selected, dark });
     if (themes && selected !== 'default') {
       try {
         applyThemesOnElement(el, themes, selected, false);

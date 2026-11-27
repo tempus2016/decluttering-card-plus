@@ -11,6 +11,8 @@ export interface ComboItem {
   id: string;
   primary: string;
   secondary?: string;
+  /** No card uses it, which the row shows greyed - said here rather than read back out of the words. */
+  unused: boolean;
   /** Every word the editor's own filter looks through, for the picker's search keys. */
   search: string;
   sorting_label: string;
@@ -22,6 +24,7 @@ export function comboItems(items: PickerItem[], hass?: unknown): ComboItem[] {
     id: item.value,
     primary: item.label,
     secondary: [item.description, countText(item.count, hass)].filter(Boolean).join(' · '),
+    unused: item.count === 0,
     search: item.search,
     // Padded, so the picker's own sort - when it is not told to keep ours - keeps our order.
     sorting_label: String(index).padStart(6, '0'),

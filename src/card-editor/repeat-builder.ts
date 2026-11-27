@@ -139,34 +139,61 @@ function wordOrList(list: string[] | undefined): string | string[] | undefined {
   return list.length === 1 ? list[0] : list;
 }
 
-/** The source with the builder's values written in; keys the builder does not draw stay as they were. */
+const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The source with the builder's values written in; keys the builder does not draw stay as they were.
+ *
+ * Only what the form changed is written. The form hands back every field on every change, and
+ * a field it could not draw whole - a `limit:` made from a placeholder, a third `sort:` key -
+ * comes back as it was shown, so a key whose field is still what `repeatData` showed for it is
+ * left exactly as written rather than rewritten from the little the form knows of it.
+ */
 export function applyRepeat(source: unknown, data: RepeatData): Record<string, unknown> {
-  const out = { ...((source ?? {}) as Record<string, unknown>) };
+  const written = (source ?? {}) as Record<string, unknown>;
+  const out = { ...written };
+  const shown = repeatData(source);
   const kind = sourceKind(source) ?? 'entities';
-  out[kind] =
-    data.patterns && data.patterns.length ? wordOrList(data.patterns.map((each) => each.trim()).filter(Boolean)) : true;
+  if (!same(data.patterns ?? [], shown.patterns)) {
+    out[kind] = wordOrList((data.patterns ?? []).map((each) => each.trim()).filter(Boolean)) ?? true;
+  }
   for (const key of FILTER_KEYS) {
+    if (same(data[key], shown[key])) continue;
     const value = wordOrList(data[key]?.filter((each) => each.trim()));
     if (value === undefined) delete out[key];
     else out[key] = value;
   }
-  const sort = [data.sort, data.then].filter((each): each is string => typeof each === 'string' && each.trim() !== '');
-  if (!sort.length) delete out.sort;
-  else out.sort = sort.length === 1 ? sort[0] : sort;
-  if (data.reverse === true) out.reverse = true;
-  else delete out.reverse;
-  const limit = asNumber(data.limit);
-  if (limit === undefined) delete out.limit;
-  else out.limit = limit;
-  const offset = asNumber(data.offset);
-  if (offset === undefined || offset === 0) delete out.offset;
-  else out.offset = offset;
-  if (typeof data.group_by === 'string' && data.group_by) out.group_by = data.group_by;
-  else delete out.group_by;
-  if (data.entity_category === true) {
-    // A written list of categories already keeps them; only a bare on needs the word.
-    if (!Array.isArray(out.entity_category) && typeof out.entity_category !== 'string') out.entity_category = 'all';
-  } else delete out.entity_category;
+  if (!same([data.sort, data.then], [shown.sort, shown.then])) {
+    // The form draws two keys; any written after them still break the ties they always did.
+    const more = (asList(written.sort) ?? []).slice(2);
+    const sort = [data.sort, data.then, ...more].filter(
+      (each): each is string => typeof each === 'string' && each.trim() !== '',
+    );
+    if (!sort.length) delete out.sort;
+    else out.sort = sort.length === 1 ? sort[0] : sort;
+  }
+  if (data.reverse !== shown.reverse) {
+    if (data.reverse === true) out.reverse = true;
+    else delete out.reverse;
+  }
+  if (!same(data.limit, shown.limit)) {
+    const limit = asNumber(data.limit);
+    if (limit === undefined) delete out.limit;
+    else out.limit = limit;
+  }
+  if (!same(data.offset, shown.offset)) {
+    const offset = asNumber(data.offset);
+    if (offset === undefined || offset === 0) delete out.offset;
+    else out.offset = offset;
+  }
+  if (!same(data.group_by, shown.group_by)) {
+    if (typeof data.group_by === 'string' && data.group_by) out.group_by = data.group_by;
+    else delete out.group_by;
+  }
+  if (data.entity_category !== shown.entity_category) {
+    if (data.entity_category === true) out.entity_category = 'all';
+    else delete out.entity_category;
+  }
   return out;
 }
 

@@ -113,6 +113,8 @@ const yamlDashboards = new Set<string>();
 let started = false;
 let hassRef: Hass | undefined;
 const listeners = new Set<() => void>();
+// The saves being looked at, one after another.
+let saves: Promise<void> = Promise.resolve();
 
 /** Called whenever the trash changes, so an open editor can show the new entry. */
 export function onTrashChanged(listener: () => void): () => void {
@@ -168,20 +170,47 @@ async function saved(hass: Hass, path: string): Promise<void> {
 }
 
 /*
+ * Asks to hear of every dashboard save. A subscription that fails is not tried again on every
+ * hass - that would be once per state change - but it is tried once more after a while, on
+ * the latest hass: a connection that dropped as the page loaded is usually back by then.
+ * Failing twice is nobody's to hear, and a reload starts over.
+ */
+function subscribe(hass: Hass, retryMs: number | undefined): void {
+  Promise.resolve()
+    .then(() =>
+      hass.connection?.subscribeEvents?.((event: any) => {
+        const path = dashboardKey(event?.data?.url_path);
+        if (!hassRef || yamlDashboards.has(path)) return;
+        /*
+         * One save at a time. Each reads the trash, adds to it and writes it back, so two at
+         * once - two dashboards saved in the same moment - both read the same trash and the
+         * second write lost what the first had added. A save that cannot be read or written
+         * loses its own entries only, and the next goes on.
+         */
+        saves = saves.then(() => (hassRef ? saved(hassRef, path) : undefined)).catch(() => undefined);
+      }, 'lovelace_updated'),
+    )
+    .catch(() => {
+      if (retryMs === undefined) return;
+      const timer = setTimeout(() => {
+        if (hassRef) subscribe(hassRef, undefined);
+      }, retryMs);
+      // In node (the tests) a pending retry must not keep the process alive.
+      (timer as unknown as { unref?: () => void }).unref?.();
+    });
+}
+
+/*
  * Starts watching, once per page, for an admin only - only an admin can save a dashboard,
  * and only an admin's user data should hold copies of every template. Every dashboard is read
  * once now, so the first save of any of them has something to be compared with.
  */
-export function watchForTrash(given: unknown): void {
+export function watchForTrash(given: unknown, retryMs = 30000): void {
   const hass = given as Hass | undefined;
   if (started || !hass?.user?.is_admin || typeof hass.connection?.subscribeEvents !== 'function') return;
   started = true;
   hassRef = hass;
-  hass.connection.subscribeEvents((event: any) => {
-    const path = dashboardKey(event?.data?.url_path);
-    if (!hassRef || yamlDashboards.has(path)) return;
-    void saved(hassRef, path);
-  }, 'lovelace_updated');
+  subscribe(hass, retryMs);
   void (async () => {
     let dashboards: any[] = [];
     try {

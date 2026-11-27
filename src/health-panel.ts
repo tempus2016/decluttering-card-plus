@@ -167,31 +167,49 @@ export class DeclutteringHealthPanel extends LitElement {
   }
 
   /*
+   * A dashboard that borrows templates has names defined elsewhere, and the sweep must know
+   * them or every card using one is reported as pointing at nothing. Fetched once per
+   * dashboard config; until it lands, "does not exist" is held back rather than said. Asked
+   * for before the render rather than in it, and a fetch that fails ends the wait with no
+   * borrowed names - held back for good, a missing template was never said at all.
+   */
+  protected willUpdate(): void {
+    const ll = this.lovelace;
+    if (!mayBorrowTemplates(ll)) return;
+    if (this._borrowed?.ll !== ll) {
+      this._borrowed = { ll };
+      const local = new Set(Object.keys(collectTemplates(ll)));
+      collectAllTemplates(this.hass, ll).then(
+        (all) => {
+          if (this._borrowed?.ll === ll) {
+            this._borrowed = { ll, names: Object.keys(all).filter((name) => !local.has(name)), templates: all };
+          }
+        },
+        () => {
+          if (this._borrowed?.ll === ll) this._borrowed = { ll, names: [] };
+        },
+      );
+    }
+    if (this._lenders?.ll !== ll) {
+      this._lenders = { ll, templates: {}, from: {} };
+      borrowedTemplateSources(this.hass, ll).then(
+        (lent) => {
+          if (this._lenders?.ll === ll) this._lenders = { ll, ...lent };
+        },
+        // Nothing to compare versions with; the rest of the panel does not wait on it.
+        () => undefined,
+      );
+    }
+  }
+
+  /*
    * Everything the console would have muttered about this dashboard, in one place: cards
    * pointing at templates that are not there, cards leaving variables unset, templates
    * nothing uses. The sweep is cheap and honest, so it simply runs.
    */
   protected render(): TemplateResult {
     const ll = this.lovelace;
-    // A dashboard that borrows templates has names defined elsewhere, and the sweep must
-    // know them or every card using one is reported as pointing at nothing. Fetched once
-    // per dashboard config; until it lands, "does not exist" is held back rather than said.
     const borrowing = mayBorrowTemplates(ll);
-    if (borrowing && this._borrowed?.ll !== ll) {
-      this._borrowed = { ll };
-      const local = new Set(Object.keys(collectTemplates(ll)));
-      void collectAllTemplates(this.hass, ll).then((all) => {
-        if (this._borrowed?.ll === ll) {
-          this._borrowed = { ll, names: Object.keys(all).filter((name) => !local.has(name)), templates: all };
-        }
-      });
-    }
-    if (borrowing && this._lenders?.ll !== ll) {
-      this._lenders = { ll, templates: {}, from: {} };
-      void borrowedTemplateSources(this.hass, ll).then((lent) => {
-        if (this._lenders?.ll === ll) this._lenders = { ll, ...lent };
-      });
-    }
     const older = this._lenders
       ? olderElsewhere(collectTemplates(ll), this._lenders.templates, this._lenders.from)
       : [];
@@ -446,7 +464,9 @@ export class DeclutteringHealthPanel extends LitElement {
   @state() private _copiedStats = false;
   private _snapshot?: StatsSnapshot;
   private _snapshotRead = false;
-  private _loadedAt = performance.now();
+  // The page's own clock starts when the page loads, and so do the build log and the
+  // warnings: nought until the statistics are reset, never when this panel was opened.
+  private _loadedAt = 0;
 
   private _writeSnapshot = (): void => {
     try {

@@ -1,7 +1,7 @@
 import { Kind, PlaygroundResult, kindOf } from './playground';
 import { PageResult, PageState, houseRows, tryOnPage } from './playground-house';
-import { decodeHash, encodeState } from './playground-share';
-import { codeWithPlaceholders, el } from './docs-dom';
+import { decodeHash, encodeState, TOO_LARGE_TO_LINK } from './playground-share';
+import { codeWithPlaceholders, el, houseTable } from './docs-dom';
 
 /*
  * The "Try a placeholder" page on the docs site: docs-theme/playground.html. Built by
@@ -206,28 +206,7 @@ function renderNote(note: HTMLElement, error: string | undefined, problems: stri
 
 // The sample house's table, made from the same data the steps read.
 function renderHouse(target: HTMLElement, result: PageResult): void {
-  const table = el('table', undefined, 'try-house');
-  const head = el('tr');
-  ['Entity', 'State', 'Where', 'Labels', 'What else it has'].forEach((title) => head.appendChild(el('th', title)));
-  table.appendChild(el('thead')).appendChild(head);
-  const body = table.appendChild(el('tbody'));
-  for (const row of houseRows(result.entities.house, result.entities.added)) {
-    const tr = el('tr', undefined, row.own ? 'try-house-own' : undefined);
-    const id = el('td');
-    id.appendChild(el('code', row.entity));
-    if (row.own) id.appendChild(el('span', ' yours', 'try-house-mark'));
-    tr.appendChild(id);
-    const state = el('td');
-    if (row.state) state.appendChild(el('code', row.state));
-    tr.appendChild(state);
-    tr.appendChild(el('td', row.where));
-    tr.appendChild(el('td', row.labels.join(', ')));
-    tr.appendChild(el('td', row.more.join('; ')));
-    body.appendChild(tr);
-  }
-  const scroll = el('div', undefined, 'try-house-scroll');
-  scroll.appendChild(table);
-  target.replaceChildren(scroll);
+  target.replaceChildren(houseTable(houseRows(result.entities.house, result.entities.added), true));
 }
 
 function byId<T extends HTMLElement>(id: string): T | null {
@@ -301,8 +280,14 @@ async function start(): Promise<void> {
   // The address follows the boxes, a little behind them, so a copied address is the example.
   let writing: number | undefined;
   let written = '';
+  // Empty when the boxes hold too much for a link: the address is left as it was.
   const writeHash = async (): Promise<string> => {
-    const hash = await encodeState(state());
+    let hash: string;
+    try {
+      hash = await encodeState(state());
+    } catch {
+      return '';
+    }
     written = hash;
     try {
       history.replaceState(null, '', `#${hash}`);
@@ -346,6 +331,11 @@ async function start(): Promise<void> {
   copy.addEventListener('click', async () => {
     window.clearTimeout(writing);
     const hash = await writeHash();
+    if (!hash) {
+      link.hidden = true;
+      linkNote.textContent = TOO_LARGE_TO_LINK;
+      return;
+    }
     const url = `${location.href.split('#')[0]}#${hash}`;
     link.value = url;
     try {

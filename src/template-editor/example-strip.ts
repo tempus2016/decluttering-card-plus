@@ -1,13 +1,15 @@
 import { LitElement, html, TemplateResult, css, CSSResult, nothing } from 'lit';
 import { property } from 'lit/decorators.js';
 import { HomeAssistant, LovelaceConfig, fireEvent } from 'custom-card-helpers';
-import { DeclutteringTemplateConfig, FormSchemaEntry } from '../types';
+import { DeclutteringTemplateConfig, FormSchemaEntry, TemplateConfig } from '../types';
 import { checkExamples, exampleSets } from '../examples';
 import { addExample, exampleHint } from '../example-labels';
 import { collectTemplates } from '../templates';
 import { normaliseVariables, templateDefaults } from '../variables';
 import { localize } from '../localize';
 import { PREVIEW_EXAMPLE_EVENT, previewExamples } from '../shared';
+import { borrowedEpoch } from './common';
+import { memoLast } from './pure';
 
 /*
  * The example strip (idea 26): which of the template's examples the preview, the
@@ -19,6 +21,9 @@ export class DeclutteringExampleStrip extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant;
   @property({ attribute: false }) public lovelace?: LovelaceConfig | null;
   @property({ attribute: false }) public config?: DeclutteringTemplateConfig;
+
+  // Kept until the template or the dashboard is replaced: the strip draws on every state change.
+  private readonly _memoResolved = memoLast<TemplateConfig>();
 
   static get styles(): CSSResult {
     return css`
@@ -65,7 +70,11 @@ export class DeclutteringExampleStrip extends LitElement {
     const current = chosen === undefined || chosen >= sets.length ? '' : String(chosen);
     // The template as the dashboard would resolve it, so an example is checked against
     // what a card gets, parents and shared declarations included.
-    const resolved = collectTemplates(this.lovelace, undefined, config)[name] ?? config;
+    const ll = this.lovelace;
+    const resolved = this._memoResolved(
+      [ll, borrowedEpoch(ll), config],
+      () => collectTemplates(ll, undefined, config)[name] ?? config,
+    );
     const failed = sets.length ? checkExamples({ [name]: resolved }, [], this.hass) : [];
     const passes = sets.length - failed.length;
     const failing = current === '' ? undefined : failed.find((each) => each.example === Number(current) + 1);
@@ -157,5 +166,5 @@ export class DeclutteringExampleStrip extends LitElement {
   }
 }
 
-export const EXAMPLE_STRIP_TAG = 'decluttering-example-strip';
+const EXAMPLE_STRIP_TAG = 'decluttering-example-strip';
 if (!customElements.get(EXAMPLE_STRIP_TAG)) customElements.define(EXAMPLE_STRIP_TAG, DeclutteringExampleStrip);
