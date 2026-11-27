@@ -54,11 +54,11 @@
     "playwright": "^1.65.1",
     "pngjs": "^7.0.0",
     "prettier": "^3.10.1",
-    "rollup": "^4.68.5",
+    "rollup": "^4.68.7",
     "rollup-plugin-serve": "^3.0.0",
     "rollup-plugin-typescript2": "^0.37.0",
     "semantic-release": "^26.0.1",
-    "ts-json-schema-generator": "^2.9.0",
+    "ts-json-schema-generator": "^2.10.0",
     "ts-lit-plugin": "^2.0.2",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.73.0"
